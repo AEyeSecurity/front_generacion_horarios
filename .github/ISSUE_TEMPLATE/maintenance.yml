@@ -1,0 +1,40 @@
+name: Maintenance
+description: Maintenance, refactor, docs, test, or build task.
+title: "maintenance: "
+labels: ["type/maintenance"]
+body:
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: "What will be changed and why."
+    validations: { required: true }
+  - type: checkboxes
+    id: flags
+    attributes:
+      label: Flags
+      options:
+        - { label: refactor }
+        - { label: docs }
+        - { label: test }
+        - { label: build }
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options: ["P0","P1","P2","P3"]
+    validations: { required: true }
+  - type: input
+    id: start
+    attributes: { label: "Start date (YYYY-MM-DD)" }
+  - type: input
+    id: target
+    attributes: { label: "Target date (YYYY-MM-DD)" }
+  - type: checkboxes
+    id: dod
+    attributes:
+      label: DoD (Definition of Done)
+      options:
+        - { label: "Risk and rollback considered" }
+        - { label: "No behavior change (if refactor)" }
+        - { label: "PR includes 'Closes #N'" }

@@ -1,0 +1,42 @@
+name: Feature
+description: New user-visible functionality.
+title: "feat: "
+labels: ["type/feat"]
+body:
+  - type: textarea
+    id: story
+    attributes:
+      label: User story
+      description: "As a <role>, I want <action> so that <benefit>."
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: "Links, decisions, assumptions."
+  - type: textarea
+    id: criteria
+    attributes:
+      label: Acceptance criteria
+      description: "Verifiable conditions to consider the feature complete."
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options: ["P0","P1","P2","P3"]
+    validations: { required: true }
+  - type: input
+    id: start
+    attributes: { label: "Start date (YYYY-MM-DD)" }
+  - type: input
+    id: target
+    attributes: { label: "Target date (YYYY-MM-DD)" }
+  - type: checkboxes
+    id: dod
+    attributes:
+      label: DoD (Definition of Done)
+      options:
+        - { label: "PR includes 'Closes #N'" }
+        - { label: "Happy path tested manually" }
+        - { label: "Docs updated if applicable" }

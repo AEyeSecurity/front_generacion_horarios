@@ -1,0 +1,42 @@
+name: Bug
+description: Something existing is broken or works incorrectly.
+title: "fix: "
+labels: ["type/fix"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: "What happens vs what should happen."
+    validations: { required: true }
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: "1) ... 2) ... 3) ..."
+    validations: { required: true }
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: "Logs, screenshots, request/response."
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options: ["P0","P1","P2","P3"]
+    validations: { required: true }
+  - type: input
+    id: start
+    attributes: { label: "Start date (YYYY-MM-DD)" }
+  - type: input
+    id: target
+    attributes: { label: "Target date (YYYY-MM-DD)" }
+  - type: checkboxes
+    id: dod
+    attributes:
+      label: DoD (Definition of Done)
+      options:
+        - { label: "Root cause understood" }
+        - { label: "Added test to prevent regression (if applicable)" }
+        - { label: "PR includes 'Closes #N'" }

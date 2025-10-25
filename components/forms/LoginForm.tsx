@@ -1,0 +1,44 @@
+"use client";
+
+import { useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+
+export default function LoginForm() {
+  const [username, setU] = useState("");
+  const [password, setP] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const sp = useSearchParams();
+  const router = useRouter();
+  const next = sp.get("next") || "/dashboard";
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) {
+      const { error } = await res.json().catch(() => ({ error: "Login failed" }));
+      setError(error || "Login failed");
+      return;
+    }
+    router.replace(next);
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-3">
+      <div>
+        <label className="block text-sm">Username</label>
+        <input className="border rounded w-full p-2" value={username} onChange={e=>setU(e.target.value)} />
+      </div>
+      <div>
+        <label className="block text-sm">Password</label>
+        <input className="border rounded w-full p-2" type="password" value={password} onChange={e=>setP(e.target.value)} />
+      </div>
+      {error && <div className="text-red-600 text-sm">{error}</div>}
+      <button className="px-4 py-2 rounded bg-black text-white">Login</button>
+    </form>
+  );
+}
