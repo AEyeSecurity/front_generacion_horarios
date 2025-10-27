@@ -1,8 +1,10 @@
 // app/grids/[id]/page.tsx
 import { backendFetchJSON } from "@/lib/backend";
 import type { Grid } from "@/lib/types";
+import GridSidebar from "@/components/SideBar";
 
-const ES_DAY = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
+const ES_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 // Next 15: params es Promise
 export default async function GridOverview({
@@ -59,41 +61,45 @@ export default async function GridOverview({
   const days = (grid.days_enabled || []).map((i) => ES_DAY[i] ?? String(i));
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl md:text-2xl font-semibold">{grid.name}</h1>
-          <p className="text-sm text-gray-500">
-            Calendario Semanal · Arrastra personas y categorías al calendario
-          </p>
-        </div>
-        <div className="hidden md:flex items-center gap-2">
-          <button className="px-3 py-1.5 rounded border text-sm">Compartir</button>
-          <button className="px-3 py-1.5 rounded bg-black text-white text-sm">Publicar</button>
-        </div>
-      </div>
+    <div className="flex">
+      {/* Sidebar */}
+      <GridSidebar gridId={Number(grid.id)} />
 
-      <div className="border rounded-lg bg-white overflow-hidden">
-        <div className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-          <div className="bg-gray-50 border-b h-12" />
-          {days.map((d) => (
-            <div key={d} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
-              {d}
-            </div>
-          ))}
+      {/* Main calendar */}
+      <div className="flex-1 p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl md:text-2xl font-semibold">{grid.name}</h1>
+            <p className="text-sm text-gray-500">Weekly Calendar</p>
+          </div>
+          <div className="hidden md:flex items-center gap-2">
+            <button className="px-3 py-1.5 rounded border text-sm">Share</button>
+            <button className="px-3 py-1.5 rounded bg-black text-white text-sm">Publish</button>
+          </div>
         </div>
 
-        <div className="max-h-[70vh] overflow-y-auto">
-          {rows.map((t) => (
-            <div key={t} className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-              <div className="border-r border-b h-16 flex items-center justify-center text-xs text-gray-600">
-                {fmt(t)}
+        <div className="border rounded-lg bg-white overflow-hidden">
+          <div className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
+            <div className="bg-gray-50 border-b h-12" />
+            {days.map((d) => (
+              <div key={d} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
+                {d}
               </div>
-              {days.map((d, j) => (
-                <div key={`${t}-${d}`} className={`border-b ${j < days.length - 1 ? "border-r" : ""} h-16 hover:bg-gray-50`} />
-              ))}
-            </div>
-          ))}
+            ))}
+          </div>
+
+          <div className="max-h-[70vh] overflow-y-auto">
+            {rows.map((t) => (
+              <div key={t} className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
+                <div className="border-r border-b h-16 flex items-center justify-center text-xs text-gray-600">
+                  {fmt(t)}
+                </div>
+                {days.map((d, j) => (
+                  <div key={`${t}-${d}`} className={`border-b ${j < days.length - 1 ? "border-r" : ""} h-16 hover:bg-gray-50`} />
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

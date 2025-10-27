@@ -5,19 +5,19 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 const DAY_OPTS = [
-  { idx: 0, label: "Lun" },
-  { idx: 1, label: "Mar" },
-  { idx: 2, label: "Mié" },
-  { idx: 3, label: "Jue" },
-  { idx: 4, label: "Vie" },
-  { idx: 5, label: "Sáb" },
-  { idx: 6, label: "Dom" },
+  { idx: 0, label: "Mon" },
+  { idx: 1, label: "Tue" },
+  { idx: 2, label: "Wed" },
+  { idx: 3, label: "Thu" },
+  { idx: 4, label: "Fri" },
+  { idx: 5, label: "Sat" },
+  { idx: 6, label: "Sun" },
 ];
 
 export default function NewGridPage() {
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
-  const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4]); // Lun-Vie
+  const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4]); // Mon-Fri
   const [start, setStart] = useState("08:00");
   const [end, setEnd] = useState("20:00");
   const [cellMinutes, setCellMinutes] = useState(60);
@@ -40,9 +40,9 @@ export default function NewGridPage() {
       description: desc || "",
       day_start: toHHMMSS(start),
       day_end: toHHMMSS(end),
-      days_enabled: days,          // ⬅️ números 0..6
+      days_enabled: days,          // 0..6
       cell_size_min: Number(cellMinutes),
-      // timezone opcional: envíalo si lo recolectás en el form
+      // timezone optional
     };
 
     const res = await fetch("/api/grids", {
