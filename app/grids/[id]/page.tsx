@@ -1,10 +1,9 @@
 // app/grids/[id]/page.tsx
 import { backendFetchJSON } from "@/lib/backend";
 import type { Grid } from "@/lib/types";
-import GridSidebar from "@/components/SideBar";
+import SideDock from "@/components/SideDock";
 
-
-const ES_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const EN_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 // Next 15: params es Promise
 export default async function GridOverview({
@@ -28,13 +27,12 @@ export default async function GridOverview({
   } catch (e: any) {
     return (
       <div className="space-y-3">
-        <h1 className="text-xl font-semibold">Grid no encontrado</h1>
+        <h1 className="text-xl font-semibold">Grid not found</h1>
         <pre className="text-xs p-3 bg-red-50 border rounded text-red-700 overflow-auto">
           {String(e?.message ?? e)}
         </pre>
         <p className="text-sm text-gray-600">
-          Verificá si el endpoint es <code>/api/grids/{id}/</code> o{" "}
-          <code>/api/grids/{id}</code>, y que el ID exista para tu usuario.
+          Check <code>/api/grids/{id}/</code> or <code>/api/grids/{id}</code>, and that the ID exists for your user.
         </p>
       </div>
     );
@@ -58,15 +56,15 @@ export default async function GridOverview({
   const start = toMin(grid.day_start);
   const end = toMin(grid.day_end);
   const rows = steps(start, end, grid.cell_size_min);
-  const days = (grid.days_enabled || []).map((i) => ES_DAY[i] ?? String(i));
+  const days = (grid.days_enabled || []).map((i) => EN_DAY[i] ?? String(i));
 
   return (
-    <div className="flex">
-      {/* Sidebar */}
-      <GridSidebar gridId={Number(grid.id)} />
+    <div className="relative"> {/* ⬅️ contenedor para el dock superpuesto */}
+      {/* Dock flotante con panel superpuesto que reutiliza tu SideBar */}
+      <SideDock gridId={Number(grid.id)} />
 
-      {/* Main calendar */}
-      <div className="flex-1 p-4 space-y-4">
+      {/* Main calendar full-width */}
+      <div className="p-4 space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl md:text-2xl font-semibold">{grid.name}</h1>
@@ -95,7 +93,10 @@ export default async function GridOverview({
                   {fmt(t)}
                 </div>
                 {days.map((d, j) => (
-                  <div key={`${t}-${d}`} className={`border-b ${j < days.length - 1 ? "border-r" : ""} h-16 hover:bg-gray-50`} />
+                  <div
+                    key={`${t}-${d}`}
+                    className={`border-b ${j < days.length - 1 ? "border-r" : ""} h-16 hover:bg-gray-50`}
+                  />
                 ))}
               </div>
             ))}
