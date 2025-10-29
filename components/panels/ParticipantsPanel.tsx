@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
-type Participant = { id: number; name: string; surname: string };
+type Participant = { id: number; name: string; surname?: string };
 
 export default function ParticipantsPanel({ gridId }: { gridId: number }) {
   const [list, setList] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const router = useRouter();
 
   async function load() {
     setLoading(true);
@@ -29,7 +31,10 @@ export default function ParticipantsPanel({ gridId }: { gridId: number }) {
   useEffect(() => { load(); }, [gridId]);
 
   const filtered = useMemo(
-    () => list.filter(p => `${p.name} ${p.surname ?? ""}`.toLowerCase().includes(q.toLowerCase())),
+    () =>
+      list.filter((p) =>
+        `${p.name} ${p.surname ?? ""}`.toLowerCase().includes(q.toLowerCase())
+      ),
     [list, q]
   );
 
@@ -46,7 +51,7 @@ export default function ParticipantsPanel({ gridId }: { gridId: number }) {
 
       {err && <div className="text-sm text-red-600">{err}</div>}
 
-      {/* Box principal que ocupa todo el espacio libre */}
+      {/* Lista que ocupa todo el panel; scroll si se llena */}
       <div className="flex-1 border rounded bg-white p-2 overflow-y-auto">
         {loading ? (
           <div className="text-sm text-gray-500 p-3">Loading…</div>
@@ -55,8 +60,15 @@ export default function ParticipantsPanel({ gridId }: { gridId: number }) {
         ) : (
           <ul className="grid gap-2">
             {filtered.map((p) => (
-              <li key={p.id} className="border rounded p-2 text-sm hover:bg-gray-50">
-                <div className="font-medium">{p.name} {p.surname}</div>
+              <li key={p.id}>
+                <button
+                  onClick={() => router.push(`/grids/${gridId}/participants/${p.id}`)}
+                  className="w-full text-left border rounded p-2 text-sm hover:bg-gray-50"
+                >
+                  <div className="font-medium">
+                    {p.name} {p.surname ?? ""}
+                  </div>
+                </button>
               </li>
             ))}
           </ul>
