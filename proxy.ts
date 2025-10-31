@@ -6,7 +6,12 @@ const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // ⚠️ No tocar /api/** (lo maneja el route handler)
+  // Allow static assets from /public (any file with an extension)
+  // and Next.js internal assets
+  if (pathname.startsWith("/_next") || /\.[a-zA-Z0-9]+$/.test(pathname)) {
+    return NextResponse.next();
+  }
+
   if (pathname.startsWith("/api/")) return NextResponse.next();
 
   // Público
@@ -23,5 +28,5 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next|favicon.ico|assets).*)"],
+  matcher: ["/((?!_next|assets|favicon.ico|.*\\..*).*)"],
 };

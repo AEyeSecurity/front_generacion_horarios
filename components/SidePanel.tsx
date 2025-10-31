@@ -42,6 +42,7 @@ export default function SidePanel({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="left"
+        offsetTop={56}
         className="p-0 w-[380px] sm:w-[440px] z-[60]"
         // ⬇️ Radix hooks para ignorar outside clicks provenientes del dock
         onPointerDownOutside={ignoreDockOutside}
@@ -101,3 +102,4 @@ export default function SidePanel({
     </Sheet>
   );
 }
+

@@ -24,7 +24,10 @@ export default function LoginForm() {
       setError(error || "Login failed");
       return;
     }
+    // Navigate and force a re-render so server components (NavBar)
+    // pick up the new auth cookies without a manual refresh
     router.replace(next);
+    router.refresh();
   }
 
   return (

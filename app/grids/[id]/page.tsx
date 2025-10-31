@@ -2,6 +2,7 @@
 import { backendFetchJSON } from "@/lib/backend";
 import type { Grid } from "@/lib/types";
 import SideDock from "@/components/SideDock";
+import GridTopBar from "@/components/GridTopBar";
 
 const EN_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -63,20 +64,11 @@ export default async function GridOverview({
       {/* Dock flotante con panel superpuesto que reutiliza tu SideBar */}
       <SideDock gridId={Number(grid.id)} />
 
-      {/* Main calendar full-width */}
-      <div className="p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl md:text-2xl font-semibold">{grid.name}</h1>
-            <p className="text-sm text-gray-500">Weekly Calendar</p>
-          </div>
-          <div className="hidden md:flex items-center gap-2">
-            <button className="px-3 py-1.5 rounded border text-sm">Share</button>
-            <button className="px-3 py-1.5 rounded bg-black text-white text-sm">Publish</button>
-          </div>
-        </div>
 
-        <div className="border rounded-lg bg-white overflow-hidden">
+      {/* Main calendar centered and 80% width */}
+      <div className="p-4">
+        <div className="w-[80%] mx-auto space-y-4">
+        <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
           <div className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
             <div className="bg-gray-50 border-b h-12" />
             {days.map((d) => (
@@ -101,6 +93,7 @@ export default async function GridOverview({
               </div>
             ))}
           </div>
+        </div>
         </div>
       </div>
     </div>

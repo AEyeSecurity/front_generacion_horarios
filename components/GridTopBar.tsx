@@ -1,0 +1,26 @@
+// components/GridTopBar.tsx
+import Link from "next/link";
+import { CalendarDays } from "lucide-react";
+import { getCurrentUser } from "@/lib/auth";
+import GridActions from "@/components/GridActions";
+
+export default async function GridTopBar({ id, name }: { id: number, name: string }) {
+  const me = await getCurrentUser();
+  return (
+    <div className="w-full border-b bg-white">
+      <div className="max-w-5xl mx-auto flex items-center justify-between px-4 h-14">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link href="/dashboard" className="flex items-center gap-2 shrink-0" title="Back to dashboard">
+            <CalendarDays className="w-5 h-5" aria-hidden />
+          </Link>
+          <span className="font-medium truncate" title={name}>{name}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <button className="px-3 py-1.5 rounded border text-sm">Share</button>
+          {me && <span className="text-sm text-gray-600">{me.username}</span>}
+          <GridActions gridId={id} />
+        </div>
+      </div>
+    </div>
+  );
+}

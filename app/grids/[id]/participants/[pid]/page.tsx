@@ -123,7 +123,8 @@ export default async function ParticipantAvailabilityPage({
   const gridEndHHMM = norm(grid.day_end);
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4">
+      <div className="w-[80%] mx-auto space-y-4">
       {/* header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -149,7 +150,7 @@ export default async function ParticipantAvailabilityPage({
       </div>
 
       {/* calendario con overlay de rules */}
-      <div className="border rounded-lg bg-white overflow-hidden">
+      <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
         {/* header de días */}
         <div className="grid" style={{ gridTemplateColumns: `100px repeat(${DAY_COUNT}, 1fr)` }}>
           <div className="bg-gray-50 border-b h-12" />
@@ -208,5 +209,7 @@ export default async function ParticipantAvailabilityPage({
         </div>
       </div>
     </div>
+    </div>
   );
 }
+
