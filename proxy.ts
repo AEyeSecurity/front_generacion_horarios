@@ -14,10 +14,16 @@ export function proxy(req: NextRequest) {
 
   if (pathname.startsWith("/api/")) return NextResponse.next();
 
-  // Público
-  if (pathname === "/" || pathname.startsWith("/login")) return NextResponse.next();
+  // Public pages
+  if (
+    pathname === "/" ||
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/register")
+  ) {
+    return NextResponse.next();
+  }
 
-  // Protegidas (simple: presencia de cookie)
+  // Protected pages (simple cookie presence)
   if (!req.cookies.get(ACCESS)?.value) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
@@ -30,3 +36,4 @@ export function proxy(req: NextRequest) {
 export const config = {
   matcher: ["/((?!_next|assets|favicon.ico|.*\\..*).*)"],
 };
+

@@ -8,9 +8,11 @@ type Category = { id: number; name: string; parent: number | null };
 export default function CategoriesPanel({
   gridId,
   onParents,
+  refreshKey = 0,
 }: {
   gridId: number;
   onParents?: (parents: { id: number; name: string }[]) => void;
+  refreshKey?: number;
 }) {
   const [list, setList] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
@@ -38,7 +40,7 @@ export default function CategoriesPanel({
     }
   }
 
-  useEffect(() => { load(); }, [gridId]);
+  useEffect(() => { load(); }, [gridId, refreshKey]);
 
   const filtered = useMemo(
     () => list.filter(c => c.name.toLowerCase().includes(q.toLowerCase())),

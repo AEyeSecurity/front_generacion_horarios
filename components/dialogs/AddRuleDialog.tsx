@@ -15,6 +15,8 @@ type Props = {
   participantId: number;
   gridStart: string; // "HH:MM"
   gridEnd: string;   // "HH:MM"
+  allowedDays?: number[]; // restrict selectable days (0..6)
+  minMinutes?: number;    // minimum block length (>= grid.cell_size_min)
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onCreated?: () => void;
@@ -45,6 +47,8 @@ export default function AddAvailabilityRuleDialog({
   participantId,
   gridStart,
   gridEnd,
+  allowedDays,
+  minMinutes,
   open,
   onOpenChange,
   onCreated,
@@ -62,7 +66,11 @@ export default function AddAvailabilityRuleDialog({
     const s = toMin(start);
     const e = toMin(end);
     if (s >= e) return "End time must be greater than start time.";
+    if (typeof minMinutes === "number" && e - s < minMinutes) {
+      return `Duration must be at least ${minMinutes} minutes.`;
+    }
     if (s < gs || e > ge) return `Rule must be within grid bounds (${gridStart}–${gridEnd}).`;
+    if (allowedDays && !allowedDays.includes(day)) return "Selected day is not enabled in this grid.";
     return null;
   };
 
@@ -120,18 +128,19 @@ export default function AddAvailabilityRuleDialog({
               value={day}
               onChange={(e) => setDay(Number(e.target.value))}
             >
-              {DAYS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+              {(allowedDays ? DAYS.filter(d => allowedDays.includes(d.value)) : DAYS)
+                .map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
             </select>
           </div>
 
           <div className="space-y-2">
             <label className="text-sm font-medium">Start time</label>
-            <input type="time" className="border rounded px-3 py-2 w-full"
+            <input type="time" className="border rounded px-3 py-2 w-full" step={(minMinutes ?? 5) * 60}
                    value={start} onChange={(e) => setStart(e.target.value)} />
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">End time</label>
-            <input type="time" className="border rounded px-3 py-2 w-full"
+            <input type="time" className="border rounded px-3 py-2 w-full" step={(minMinutes ?? 5) * 60}
                    value={end} onChange={(e) => setEnd(e.target.value)} />
           </div>
         </div>

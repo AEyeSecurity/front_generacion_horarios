@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { CalendarDays, Users, Clock } from "lucide-react";
 
 export default function HomePage() {
@@ -20,13 +21,12 @@ export default function HomePage() {
           </p>
 
           <div className="mt-10">
-            <button
-              type="button"
+            <Link
+              href="/register"
               className="inline-flex items-center px-6 py-3 rounded bg-black text-white text-base"
-              // Intentionally no onClick yet
             >
               Start Now
-            </button>
+            </Link>
           </div>
         </section>
 

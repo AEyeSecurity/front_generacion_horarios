@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 type Participant = { id: number; name: string; surname?: string };
 
-export default function ParticipantsPanel({ gridId }: { gridId: number }) {
+export default function ParticipantsPanel({ gridId, refreshKey = 0 }: { gridId: number; refreshKey?: number }) {
   const [list, setList] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -28,7 +28,7 @@ export default function ParticipantsPanel({ gridId }: { gridId: number }) {
     }
   }
 
-  useEffect(() => { load(); }, [gridId]);
+  useEffect(() => { load(); }, [gridId, refreshKey]);
 
   const filtered = useMemo(
     () =>

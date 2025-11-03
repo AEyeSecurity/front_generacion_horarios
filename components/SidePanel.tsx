@@ -26,6 +26,8 @@ export default function SidePanel({
   const [showPerson, setShowPerson] = useState(false);
   const [showCategory, setShowCategory] = useState(false);
   const [categoryParents, setCategoryParents] = useState<{ id: number; name: string }[]>([]);
+  const [participantsKey, setParticipantsKey] = useState(0);
+  const [categoriesKey, setCategoriesKey] = useState(0);
 
   const AddParticipantDialog = dynamic(() => import("./dialogs/AddParticipantDialog"), { ssr: false });
   const AddCategoryDialog   = dynamic(() => import("./dialogs/AddCategoryDialog"),   { ssr: false });
@@ -56,11 +58,12 @@ export default function SidePanel({
         <div className="h-full flex flex-col pl-16 pr-4 pt-4 pb-0">
           <div className="flex-1 overflow-y-auto pb-[72px]">
             {tab === "participants" ? (
-              <ParticipantsPanel gridId={gridId} />
+              <ParticipantsPanel gridId={gridId} refreshKey={participantsKey} />
             ) : (
               <CategoriesPanel
                 gridId={gridId}
                 onParents={(p) => setCategoryParents(p)}
+                refreshKey={categoriesKey}
               />
             )}
           </div>
@@ -78,6 +81,7 @@ export default function SidePanel({
                   gridId={gridId}
                   open={showPerson}
                   onOpenChange={setShowPerson}
+                  onCreated={() => setParticipantsKey((k) => k + 1)}
                 />
               </>
             ) : (
@@ -93,6 +97,7 @@ export default function SidePanel({
                   open={showCategory}
                   onOpenChange={setShowCategory}
                   parents={categoryParents}
+                  onCreated={() => setCategoriesKey((k) => k + 1)}
                 />
               </>
             )}

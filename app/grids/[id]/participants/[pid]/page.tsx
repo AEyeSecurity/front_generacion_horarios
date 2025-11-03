@@ -3,6 +3,7 @@ import { backendFetchJSON } from "@/lib/backend";
 import type { Grid } from "@/lib/types";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import RuleBubble from "@/components/RuleBubble";
 import AddRuleButton from "@/components/AddRuleButton";
 import DeleteParticipantButton from "@/components/DeleteParticipantButton";
 
@@ -109,11 +110,11 @@ export default async function ParticipantAvailabilityPage({
   const colorFor = (pref: Rule["preference"]) => {
     switch (pref) {
       case "preferred":
-        return { bg: "bg-green-50", text: "text-green-800", bar: "bg-green-400" };
+        return { bg: "bg-green-50", text: "text-green-800", bar: "bg-green-400", topBorder: "border-t-green-400" };
       case "flexible":
-        return { bg: "bg-yellow-50", text: "text-yellow-800", bar: "bg-yellow-400" };
+        return { bg: "bg-yellow-50", text: "text-yellow-800", bar: "bg-yellow-400", topBorder: "border-t-yellow-400" };
       default:
-        return { bg: "bg-red-50", text: "text-red-800", bar: "bg-red-400" };
+        return { bg: "bg-red-50", text: "text-red-800", bar: "bg-red-400", topBorder: "border-t-red-400" };
     }
   };
 
@@ -147,6 +148,8 @@ export default async function ParticipantAvailabilityPage({
           participantId={Number(pid)}
           gridStart={gridStartHHMM}
           gridEnd={gridEndHHMM}
+          allowedDays={daysIdx}
+          minMinutes={grid.cell_size_min}
         />
       </div>
       
@@ -184,25 +187,41 @@ export default async function ParticipantAvailabilityPage({
               if (cIdx < 0) return null;
               const s = toMin(r.start_time);
               const e = toMin(r.end_time);
-              const top = ((s - start) / (end - start)) * BODY_H;
-              const height = ((e - s) / (end - start)) * BODY_H;
-              const left = `calc(var(--time-col) + ${cIdx} * ((100% - var(--time-col)) / ${DAY_COUNT}))`;
-              const width = `calc(((100% - var(--time-col)) / ${DAY_COUNT}) - 12px)`;
+              // Gutters for nicer spacing, tuned to sit centered within each row/column
+              const GUTTER_X = 14; // px total (≈7px each side)
+              const GUTTER_Y = 16; // px total (≈8px top/bottom)
+              const TOP_BAR = 4;   // px top border rendered inside bubble
+              const ROW_BORDER = 1; // px bottom border per row
+
+              // Compute purely in grid slots (cell_size_min) to avoid proportional rounding
+              const slot = grid.cell_size_min;
+              const startSlot = (s - start) / slot;
+              const endSlot = (e - start) / slot;
+              const slotHeight = ROW_PX; // visual height of one slot excluding border
+
+              const baseTop = startSlot * slotHeight;
+              const rawHeight = (endSlot - startSlot) * slotHeight;
+
+              // Borders: add one pixel per full row before the start, and per row spanned inside
+              const borderBefore = Math.max(0, Math.floor(startSlot)) * ROW_BORDER;
+              const borderWithin = Math.max(0, Math.floor(endSlot - startSlot)) * ROW_BORDER;
+
+              // Center with symmetric vertical gutter and compensate top bar thickness
+              const top = baseTop + borderBefore + (GUTTER_Y / 2) - (TOP_BAR / 2);
+              const height = Math.max(6, rawHeight + borderWithin - GUTTER_Y - TOP_BAR);
+              // Account for 1px column borders on each side when centering
+              const left = `calc(var(--time-col) + ${cIdx} * ((100% - var(--time-col)) / ${DAY_COUNT}) + ${(GUTTER_X / 2) + 1}px)`;
+              const width = `calc(((100% - var(--time-col)) / ${DAY_COUNT}) - ${GUTTER_X + 2}px)`;
               const c = colorFor(r.preference);
 
               return (
-                <div key={r.id} className="absolute rounded-md shadow-sm overflow-hidden" style={{ top, left, width, height }}>
-                  <div className={`h-full w-full ${c.bg} border border-gray-200`}>
-                    <div className={`h-1 w-full ${c.bar}`} />
-                    <div className="p-2">
-                      <div className={`text-sm font-medium ${c.text}`}>
-                        {r.preference === "preferred" ? "Preferred" : r.preference === "flexible" ? "Flexible" : "Impossible"}
-                      </div>
-                      <div className="text-xs text-gray-600">
-                        {norm(r.start_time)} – {norm(r.end_time)}
-                      </div>
-                    </div>
-                  </div>
+                <div key={r.id} className="absolute overflow-hidden pointer-events-auto" style={{ top, left, width, height }}>
+                  <RuleBubble
+                    id={r.id}
+                    title={r.preference === "preferred" ? "Preferred" : r.preference === "flexible" ? "Flexible" : "Impossible"}
+                    subtitle={`${norm(r.start_time)} – ${norm(r.end_time)}`}
+                    colors={c}
+                  />
                 </div>
               );
             })}

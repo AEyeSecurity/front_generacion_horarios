@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function LoginForm() {
   const [username, setU] = useState("");
@@ -30,8 +31,14 @@ export default function LoginForm() {
     router.refresh();
   }
 
+  const registered = sp.get("registered");
   return (
     <form onSubmit={onSubmit} className="space-y-3">
+      {registered && (
+        <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded p-2">
+          Account created. You can sign in now.
+        </div>
+      )}
       <div>
         <label className="block text-sm">Username</label>
         <input className="border rounded w-full p-2" value={username} onChange={e=>setU(e.target.value)} />

@@ -9,10 +9,14 @@ export default function AddRuleButton({
   participantId,
   gridStart,
   gridEnd,
+  allowedDays,
+  minMinutes,
 }: {
   participantId: number;
   gridStart: string; // "HH:MM"
   gridEnd: string;   // "HH:MM"
+  allowedDays?: number[];
+  minMinutes?: number;
 }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
@@ -32,6 +36,8 @@ export default function AddRuleButton({
         participantId={participantId}
         gridStart={gridStart}
         gridEnd={gridEnd}
+        allowedDays={allowedDays}
+        minMinutes={minMinutes}
         open={open}
         onOpenChange={setOpen}
         onCreated={() => {
