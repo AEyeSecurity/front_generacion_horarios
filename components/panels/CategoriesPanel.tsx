@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 
 type Category = { id: number; name: string; parent: number | null };
 
@@ -15,6 +16,10 @@ export default function CategoriesPanel({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [selected, setSelected] = useState<Category | null>(null);
+  const [showDialog, setShowDialog] = useState(false);
+
+  const CategoryDialog = dynamic(() => import("../dialogs/CategoryDialog"), { ssr: false });
 
   async function load() {
     setLoading(true);
@@ -62,13 +67,29 @@ export default function CategoriesPanel({
         ) : (
           <ul className="grid gap-2">
             {filtered.map((c) => (
-              <li key={c.id} className="border rounded p-2 text-sm hover:bg-gray-50">
-                <div className="font-medium">{c.name}</div>
+              <li key={c.id}>
+                <button
+                  className="w-full text-left border rounded p-2 text-sm hover:bg-gray-50"
+                  onClick={() => { setSelected(c); setShowDialog(true); }}
+                >
+                  <div className="font-medium">{c.name}</div>
+                  {c.parent !== null && (
+                    <div className="text-xs text-gray-500">Parent: {c.parent}</div>
+                  )}
+                </button>
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      {/* Category details dialog */}
+      <CategoryDialog
+        category={selected}
+        open={showDialog}
+        onOpenChange={setShowDialog}
+        onDeleted={() => { setShowDialog(false); setSelected(null); /* refresh */ (async () => await load())(); }}
+      />
     </div>
   );
 }

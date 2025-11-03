@@ -60,7 +60,7 @@ export default async function GridOverview({
   const days = (grid.days_enabled || []).map((i) => EN_DAY[i] ?? String(i));
 
   return (
-    <div className="relative"> {/* ⬅️ contenedor para el dock superpuesto */}
+    <div className="relative"> {/* ⬅ contenedor para el dock superpuesto */}
       {/* Dock flotante con panel superpuesto que reutiliza tu SideBar */}
       <SideDock gridId={Number(grid.id)} />
 

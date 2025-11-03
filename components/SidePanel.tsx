@@ -30,7 +30,7 @@ export default function SidePanel({
   const AddParticipantDialog = dynamic(() => import("./dialogs/AddParticipantDialog"), { ssr: false });
   const AddCategoryDialog   = dynamic(() => import("./dialogs/AddCategoryDialog"),   { ssr: false });
 
-  // ⛔️ Evitar que un click en el dock sea considerado "outside" por el Sheet
+  // Evitar que un click en el dock sea considerado "outside" por el Sheet
   const ignoreDockOutside = (e: any) => {
     const dock = document.getElementById("sidedock");
     if (dock && e.target && dock.contains(e.target as Node)) {
@@ -44,7 +44,7 @@ export default function SidePanel({
         side="left"
         offsetTop={56}
         className="p-0 w-[380px] sm:w-[440px] z-[60]"
-        // ⬇️ Radix hooks para ignorar outside clicks provenientes del dock
+        // Radix hooks para ignorar outside clicks provenientes del dock
         onPointerDownOutside={ignoreDockOutside}
         onInteractOutside={ignoreDockOutside}
       >

@@ -9,8 +9,8 @@ type Grid = {
   id: number;
   name: string;
   description?: string;
-  day_start: string;      // "HH:MM"
-  day_end: string;        // "HH:MM"
+  day_start: string; // "HH:MM"
+  day_end: string; // "HH:MM"
   days_enabled: number[]; // [0..6]
   cell_size_min: number;
 };
@@ -19,20 +19,20 @@ type TimeRange = {
   id: number;
   name: string;
   start_time: string; // "HH:MM"
-  end_time: string;   // "HH:MM"
+  end_time: string; // "HH:MM"
 };
 
 const DAY_OPTS = [
-  { idx: 0, label: "Lun" },
-  { idx: 1, label: "Mar" },
-  { idx: 2, label: "Mié" },
-  { idx: 3, label: "Jue" },
-  { idx: 4, label: "Vie" },
-  { idx: 5, label: "Sáb" },
-  { idx: 6, label: "Dom" },
+  { idx: 0, label: "Mon" },
+  { idx: 1, label: "Tue" },
+  { idx: 2, label: "Wed" },
+  { idx: 3, label: "Thu" },
+  { idx: 4, label: "Fri" },
+  { idx: 5, label: "Sat" },
+  { idx: 6, label: "Sun" },
 ];
 
-// --- Helpers: normalización y operaciones de tiempo ---
+// --- Helpers: time normalization and operations ---
 function normalizeTime(t: string) {
   // "08:00:00" -> "08:00"; "8:5" -> "08:05"
   const [hRaw, mRaw] = t.split(":");
@@ -56,16 +56,16 @@ function clamp(mins: number, lo: number, hi: number) {
 export default function NewGridPage() {
   const router = useRouter();
 
-  // Paso del wizard
+  // Wizard step
   const [step, setStep] = useState<1 | 2>(1);
 
-  // --- Paso 1: Crear Grid (tu form original) ---
+  // --- Step 1: Create Grid ---
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
-  const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4]); // Lun-Vie por defecto
+  const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4]); // Mon-Fri by default
   const [start, setStart] = useState("08:00");
   const [end, setEnd] = useState("20:00");
-  const [cellMinutes, setCellMinutes] = useState(30);
+  const [cellMinutes, setCellMinutes] = useState(60); // default 60
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -75,6 +75,16 @@ export default function NewGridPage() {
     );
   }
 
+  const isStep1Valid = (() => {
+    const s = normalizeTime(start);
+    const e = normalizeTime(end);
+    const validTime = toMin(e) > toMin(s);
+    const validCell = cellMinutes >= 30 && cellMinutes % 5 === 0;
+    const hasName = name.trim().length > 0;
+    const hasDays = days.length > 0;
+    return validTime && validCell && hasName && hasDays && !loading;
+  })();
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
@@ -83,11 +93,11 @@ export default function NewGridPage() {
     const e_ = normalizeTime(end);
 
     if (toMin(e_) <= toMin(s)) {
-      setErr("La hora de fin debe ser posterior a la de inicio.");
+      setErr("End time must be after start time.");
       return;
     }
-    if (cellMinutes < 5 || cellMinutes % 5 !== 0) {
-      setErr("El tamaño de celda debe ser múltiplo de 5 y mayor a 0.");
+    if (cellMinutes < 30 || cellMinutes % 5 !== 0) {
+      setErr("Cell size must be at least 30 and a multiple of 5.");
       return;
     }
 
@@ -115,15 +125,15 @@ export default function NewGridPage() {
     }
 
     const g: Grid = await r.json();
-    // Normalizar SIEMPRE a HH:MM al guardar en estado
+    // Normalize to HH:MM before storing
     g.day_start = normalizeTime(g.day_start);
     g.day_end = normalizeTime(g.day_end);
     setCreatedGrid(g);
 
-    // Inicializar los inputs del step 2 alineados al grid
+    // Initialize step 2 inputs aligned to grid
     const startMin = toMin(g.day_start);
     const endMin = toMin(g.day_end);
-    const firstEnd = clamp(startMin + 60, startMin + 5, endMin); // por defecto 1h o lo que entre
+    const firstEnd = clamp(startMin + 60, startMin + 5, endMin); // default 1h or what fits
     setTrName("");
     setTrStart(fromMin(startMin));
     setTrEnd(fromMin(firstEnd));
@@ -131,7 +141,7 @@ export default function NewGridPage() {
     setStep(2);
   }
 
-  // --- Paso 2: Time Ranges ---
+  // --- Step 2: Time Ranges ---
   const [createdGrid, setCreatedGrid] = useState<Grid | null>(null);
   const [trs, setTrs] = useState<TimeRange[]>([]);
   const [trName, setTrName] = useState("");
@@ -151,7 +161,7 @@ export default function NewGridPage() {
     const eMin = toMin(e);
     const gSMin = toMin(createdGrid.day_start);
     const gEMin = toMin(createdGrid.day_end);
-    // Inclusivo en los límites (puede empezar justo en el inicio y terminar justo en el fin)
+    // Inclusive bounds (may start at grid start and end at grid end)
     return sMin >= gSMin && eMin <= gEMin && eMin > sMin;
   }
 
@@ -165,7 +175,7 @@ export default function NewGridPage() {
 
     if (!withinBounds(s, e_)) {
       setTrErr(
-        `El rango debe estar dentro del horario del grid ${boundsHint} y Fin > Inicio.`
+        `The range must be within the grid schedule ${boundsHint} and End > Start.`
       );
       return;
     }
@@ -190,13 +200,12 @@ export default function NewGridPage() {
     }
 
     const t: TimeRange = await r.json();
-    // normalizar por las dudas
+    // normalize just in case
     t.start_time = normalizeTime(t.start_time);
     t.end_time = normalizeTime(t.end_time);
     setTrs((prev) => [...prev, t]);
 
-    // Reset “inteligente”: próximo bloque de 1h desde el fin anterior,
-    // pero clamp dentro del grid
+    // Smart reset: next 1h block from previous end, clamped to grid
     const gSMin = toMin(createdGrid.day_start);
     const gEMin = toMin(createdGrid.day_end);
     const nextStart = clamp(toMin(t.end_time), gSMin, gEMin);
@@ -214,13 +223,32 @@ export default function NewGridPage() {
 
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-8">
+      {/* Step indicator */}
+      <div className="flex items-center justify-center gap-2 select-none">
+        <div
+          className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-semibold ${
+            step === 1 ? "bg-black text-white border-black" : "bg-white text-black"
+          }`}
+        >
+          1
+        </div>
+        <div className="h-0.5 w-10 bg-gray-300" />
+        <div
+          className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-semibold ${
+            step === 2 ? "bg-black text-white border-black" : "bg-white text-black"
+          }`}
+        >
+          2
+        </div>
+      </div>
+
       {step === 1 && (
         <div className="max-w-2xl bg-white border rounded p-6 space-y-5 mx-auto">
-          <h1 className="text-xl font-semibold">Crear nueva cuadrícula</h1>
+          <h1 className="text-xl font-semibold">Create New Grid</h1>
 
           <form onSubmit={onSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm mb-1">Nombre</label>
+              <label className="block text-sm mb-1">Name</label>
               <input
                 className="border rounded w-full p-2"
                 value={name}
@@ -230,7 +258,7 @@ export default function NewGridPage() {
             </div>
 
             <div>
-              <label className="block text-sm mb-1">Descripción</label>
+              <label className="block text-sm mb-1">Description</label>
               <input
                 className="border rounded w-full p-2"
                 value={desc}
@@ -239,7 +267,7 @@ export default function NewGridPage() {
             </div>
 
             <div>
-              <label className="block text-sm mb-1">Días de la semana</label>
+              <label className="block text-sm mb-1">Days of the week</label>
               <div className="flex flex-wrap gap-2">
                 {DAY_OPTS.map((d) => (
                   <label
@@ -264,14 +292,14 @@ export default function NewGridPage() {
 
             <div className="flex flex-col sm:flex-row sm:items-center sm:gap-6">
               <div className="flex items-center gap-2">
-                <span className="text-sm">Desde</span>
+                <span className="text-sm">From</span>
                 <input
                   type="time"
                   value={start}
                   onChange={(e) => setStart(normalizeTime(e.target.value))}
                   className="border rounded p-1"
                 />
-                <span className="text-sm">Hasta</span>
+                <span className="text-sm">To</span>
                 <input
                   type="time"
                   value={end}
@@ -280,10 +308,10 @@ export default function NewGridPage() {
                 />
               </div>
               <div className="flex items-center gap-2 mt-2 sm:mt-0">
-                <label className="text-sm">Tamaño de celda (min)</label>
+                <label className="text-sm">Cell size (min)</label>
                 <input
                   type="number"
-                  min={5}
+                  min={30}
                   step={5}
                   className="border rounded w-28 p-2"
                   value={cellMinutes}
@@ -296,8 +324,11 @@ export default function NewGridPage() {
               <div className="text-sm text-red-600 whitespace-pre-wrap">{err}</div>
             )}
 
-            <button className="px-4 py-2 rounded bg-black text-white" disabled={loading}>
-              {loading ? "Creando..." : "Crear cuadrícula"}
+            <button
+              className="px-4 py-2 rounded bg-black text-white disabled:opacity-60"
+              disabled={!isStep1Valid}
+            >
+              {loading ? "Saving..." : "Continue to Step 2"}
             </button>
           </form>
         </div>
@@ -306,15 +337,15 @@ export default function NewGridPage() {
       {step === 2 && createdGrid && (
         <div className="bg-white border rounded p-6 space-y-6">
           <h2 className="text-lg font-semibold">
-            Paso 2 — Agregar Time Ranges para “{createdGrid.name}”
+            Step 2 — Add Time Ranges for “{createdGrid.name}”
           </h2>
           <p className="text-sm text-gray-600">
-            Límite del grid: <b>{createdGrid.day_start}</b> a <b>{createdGrid.day_end}</b>
+            Grid bounds: <b>{createdGrid.day_start}</b> to <b>{createdGrid.day_end}</b>
           </p>
 
           <form onSubmit={addTimeRange} className="space-y-4">
             <div>
-              <label className="block text-sm mb-1">Nombre</label>
+              <label className="block text-sm mb-1">Name</label>
               <input
                 className="border rounded w-full p-2"
                 value={trName}
@@ -325,7 +356,7 @@ export default function NewGridPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm mb-1">Desde</label>
+                <label className="block text-sm mb-1">From</label>
                 <input
                   type="time"
                   className="border rounded w-full p-2 text-sm"
@@ -337,7 +368,7 @@ export default function NewGridPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm mb-1">Hasta</label>
+                <label className="block text-sm mb-1">To</label>
                 <input
                   type="time"
                   className="border rounded w-full p-2 text-sm"
@@ -355,13 +386,13 @@ export default function NewGridPage() {
             )}
 
             <Button type="submit" disabled={trBusy}>
-              {trBusy ? "Agregando..." : "Agregar Time Range"}
+              {trBusy ? "Adding..." : "Add Time Range"}
             </Button>
           </form>
 
           <div className="space-y-2">
             {trs.length === 0 ? (
-              <p className="text-sm text-gray-500">Aún no agregaste Time Ranges.</p>
+              <p className="text-sm text-gray-500">No time ranges added yet.</p>
             ) : (
               <ul className="space-y-2">
                 {trs.map((t) => (
@@ -374,11 +405,12 @@ export default function NewGridPage() {
           </div>
 
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setStep(1)}>Volver</Button>
-            <Button onClick={finishWizard}>Finalizar</Button>
+            <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
+            <Button onClick={finishWizard}>Finish</Button>
           </div>
         </div>
       )}
     </div>
   );
 }
+

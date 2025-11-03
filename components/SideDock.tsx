@@ -48,7 +48,7 @@ export default function SideDock({ gridId }: { gridId: number }) {
     (next: Tab) => {
       if (lockRef.current) return;
 
-      // ✅ Si ya está abierto y tocas el mismo ícono, no hacer nada
+      // Si ya está abierto y tocas el mismo ícono, no hacer nada
       if (open && tab === next) return;
 
       // Panel cerrado → abrir directo
@@ -74,7 +74,7 @@ export default function SideDock({ gridId }: { gridId: number }) {
 
   return (
     <div className="pointer-events-none">
-      {/* ⬇️ Marcamos el dock para filtrar outside clicks del Sheet */}
+      {/* Marcamos el dock para filtrar outside clicks del Sheet */}
       <div
         id="sidedock"
         className="fixed left-4 top-1/2 -translate-y-1/2 z-[100] flex flex-col gap-3 pointer-events-auto"

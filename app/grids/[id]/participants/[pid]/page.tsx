@@ -4,6 +4,7 @@ import type { Grid } from "@/lib/types";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import AddRuleButton from "@/components/AddRuleButton";
+import DeleteParticipantButton from "@/components/DeleteParticipantButton";
 
 type Rule = {
   id: number;
@@ -148,7 +149,7 @@ export default async function ParticipantAvailabilityPage({
           gridEnd={gridEndHHMM}
         />
       </div>
-
+      
       {/* calendario con overlay de rules */}
       <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
         {/* header de días */}
@@ -207,6 +208,15 @@ export default async function ParticipantAvailabilityPage({
             })}
           </div>
         </div>
+      </div>
+      
+      {/* Danger zone: delete participant */}
+      <div className="mt-8 p-4 border rounded bg-white flex items-center justify-between">
+        <div>
+          <div className="font-medium">Danger zone</div>
+          <div className="text-sm text-gray-600">Delete this participant and all their availability rules.</div>
+        </div>
+        <DeleteParticipantButton gridId={id} participantId={pid} />
       </div>
     </div>
     </div>

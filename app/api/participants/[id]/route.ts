@@ -1,4 +1,4 @@
-// Proxy: /api/availability_rules/:id → BACKEND_URL/api/availability-rules/:id
+// Proxy: /api/participants/:id → BACKEND_URL/api/participants/:id
 import { NextRequest, NextResponse } from "next/server";
 import { getAccessToken } from "@/lib/cookies";
 
@@ -9,37 +9,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const access = await getAccessToken();
   if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
 
-  const res = await fetch(`${B}/api/availability-rules/${id}/`, {
+  const res = await fetch(`${B}/api/participants/${id}/`, {
     headers: {
       Authorization: `Bearer ${access}`,
       cookie: req.headers.get("cookie") || "",
     },
     cache: "no-store",
   });
-
-  return new NextResponse(await res.text(), {
-    status: res.status,
-    headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
-  });
-}
-
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-
-  const body = await req.text();
-  const res = await fetch(`${B}/api/availability-rules/${id}/`, {
-    method: "PATCH",
-    headers: {
-      "content-type": "application/json",
-      Authorization: `Bearer ${access}`,
-      cookie: req.headers.get("cookie") || "",
-    },
-    body,
-  });
-
-  return new NextResponse(await res.text(), {
+  const txt = await res.text().catch(() => "");
+  return new NextResponse(txt, {
     status: res.status,
     headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
   });
@@ -50,12 +28,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const access = await getAccessToken();
   if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
 
-  const res = await fetch(`${B}/api/availability-rules/${id}/`, {
+  const res = await fetch(`${B}/api/participants/${id}/`, {
     method: "DELETE",
     headers: {
       Authorization: `Bearer ${access}`,
       cookie: req.headers.get("cookie") || "",
     },
+    cache: "no-store",
   });
   if (res.status === 204) return new NextResponse(null, { status: 204 });
   const txt = await res.text().catch(() => "");
