@@ -3,6 +3,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import type { ApiList, Grid } from "@/lib/types";
 import { headers } from "next/headers";
+import RecentProjects from "@/components/dashboard/RecentProjects";
 
 type GridsResp = ApiList<Grid> | Grid[];
 const norm = (r: GridsResp) => (Array.isArray(r) ? r : (r.results ?? []));
@@ -21,43 +22,30 @@ export default async function DashboardPage() {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`Failed to load grids (${res.status})`);
-
   const grids = norm(await res.json());
 
   return (
-    <div className="max-w-5xl mx-auto p-4 space-y-4">
-      <h1 className="text-2xl font-semibold">Dashboard</h1>
-      <p className="text-sm text-gray-600">Welcome, {me.username}.</p>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Link
-          href="/grids/new"
-          className="rounded border-dashed border-2 bg-white p-4 flex items-center justify-center hover:bg-gray-50"
-        >
-          <span className="inline-flex items-center gap-2 text-sm font-medium">
-            <span className="text-lg leading-none">+</span> Create new grid
-          </span>
-        </Link>
-      </div>
-
-      {grids.length === 0 ? (
-        <div className="text-sm text-gray-500 border rounded bg-white p-4">
-          No grids yet.
+    <div className="min-h-screen bg-gray-50">
+      {/* Create section */}
+      <section className="bg-gray-100">
+        <div className="max-w-6xl mx-auto px-6 py-4">
+          <h2 className="text-lg font-semibold mb-4">Create a project</h2>
+          <Link
+            href="/grids/new"
+            className="block w-44 h-56 bg-white rounded-xl border shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+              <div className="text-4xl text-gray-400 leading-none">+</div>
+              <div className="text-sm text-gray-700">Blank project</div>
+            </div>
+          </Link>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {grids.map((g) => (
-            <Link
-              key={g.id}
-              href={`/grids/${g.id}`}
-              className="rounded border bg-white p-4 hover:bg-gray-50 transition-colors"
-            >
-              <div className="font-medium">{g.name}</div>
-              <div className="text-xs text-gray-500">ID: {g.id}</div>
-            </Link>
-          ))}
-        </div>
-      )}
+      </section>
+
+      {/* Recent projects */}
+      <section className="max-w-6xl mx-auto px-6 py-8">
+        <RecentProjects meId={me.id} initialItems={grids} />
+      </section>
     </div>
   );
 }

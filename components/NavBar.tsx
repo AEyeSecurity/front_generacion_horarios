@@ -11,10 +11,10 @@ export default async function NavBar() {
 
   return (
     <nav className="w-full border-b bg-white">
-      <div className="max-w-5xl mx-auto flex items-center justify-between px-4 h-14">
+      <div className="max-w-6xl mx-auto flex items-center justify-between px-6 h-14">
         <div className="flex items-center gap-2">
-          <CalendarDays className="w-5 h-5" aria-hidden />
-          <Link href="/dashboard" className="font-semibold">Shift</Link>
+          <CalendarDays className="w-6 h-6" aria-hidden />
+          <Link href="/dashboard" className="text-xl font-semibold">Shift</Link>
         </div>
         <div className="flex items-center gap-4">
           {me ? (
