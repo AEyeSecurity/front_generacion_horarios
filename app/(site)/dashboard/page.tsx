@@ -28,7 +28,7 @@ export default async function DashboardPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Create section */}
       <section className="bg-gray-100">
-        <div className="max-w-6xl mx-auto px-6 py-4">
+        <div className="max-w-6xl mx-auto px-6 py-2">
           <h2 className="text-lg font-semibold mb-4">Create a project</h2>
           <Link
             href="/grids/new"

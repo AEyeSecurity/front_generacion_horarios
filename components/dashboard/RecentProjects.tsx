@@ -1,136 +1,167 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { LayoutGrid, List, ArrowDownAZ } from "lucide-react";
+import { List as ListIcon, Grid as GridIcon, ArrowDownAZ, Clock4, Search } from "lucide-react";
 import type { Grid } from "@/lib/types";
 
-function fmtDate(iso: string) {
-  try {
-    return new Date(iso).toLocaleDateString();
-  } catch {
-    return iso;
-  }
-}
+const EN_DAY = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 
-export default function RecentProjects({
-  meId,
-  initialItems,
-}: {
-  meId: number;
-  initialItems: Grid[];
-}) {
-  const [view, setView] = useState<"grid" | "list">("grid");
-  const [alpha, setAlpha] = useState(false);
-  const [q, setQ] = useState("");
+type View = "grid" | "list";
+type Sort = "chrono" | "alpha";
 
-  const filtered = useMemo(() => {
-    let arr = [...initialItems];
-    if (q.trim()) arr = arr.filter((g) => g.name.toLowerCase().includes(q.toLowerCase()));
-    if (alpha)
-      arr.sort((a, b) => a.name.localeCompare(b.name));
-    else
-      arr.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    return arr;
-  }, [initialItems, alpha, q]);
+export default function RecentProjects({ meId, initialItems }: { meId: number; initialItems: Grid[] }) {
+  const [query, setQuery] = useState("");
+  const [view, setView] = useState<View>("grid");
+  const [sort, setSort] = useState<Sort>("chrono");
+  const [ownerByGrid, setOwnerByGrid] = useState<Record<number, string>>({});
+
+  const items = useMemo(() => {
+    let list = [...initialItems];
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      list = list.filter((g) => g.name?.toLowerCase().includes(q));
+    }
+    if (sort === "alpha") {
+      list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    } else {
+      list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }
+    return list;
+  }, [initialItems, query, sort]);
+
+  useEffect(() => {
+    // Resolve creators' names for the items shown
+    const abort = new AbortController();
+    (async () => {
+      const toFetch = items.map((g) => g.id).filter((id) => !(id in ownerByGrid));
+      if (toFetch.length === 0) return;
+      const updates: Record<number, string> = {};
+      await Promise.all(
+        toFetch.map(async (gridId) => {
+          try {
+            const r = await fetch(`/api/grid_memberships/?grid=${gridId}`, { cache: "no-store", signal: abort.signal });
+            if (!r.ok) return;
+            const data = await r.json();
+            const list = Array.isArray(data) ? data : data.results ?? [];
+            // Try to find explicit creator fields, or the membership whose user matches grid.creator, or supervisor
+            let name = "";
+            const m0 = list.find((m: any) => m.owner === true);
+            if (m0) {
+              name = `${m0.grid_creator_first_name ?? m0.user_first_name ?? m0.user?.first_name ?? ""}`.trim() +
+                     ` ${m0.grid_creator_last_name ?? m0.user_last_name ?? m0.user?.last_name ?? ""}`.trim();
+            }
+            if (!name) {
+              const sup = list.find((m: any) => m.role === "supervisor");
+              if (sup) {
+                const fn = sup.user_first_name ?? sup.user?.first_name ?? "";
+                const ln = sup.user_last_name ?? sup.user?.last_name ?? "";
+                name = `${fn} ${ln}`.trim();
+              }
+            }
+            updates[gridId] = name;
+          } catch {}
+        })
+      );
+      if (!abort.signal.aborted && Object.keys(updates).length) {
+        setOwnerByGrid((prev) => ({ ...prev, ...updates }));
+      }
+    })();
+    return () => abort.abort();
+  }, [items, ownerByGrid]);
+
+  const DayBadges = ({ days }: { days: number[] }) => (
+    <div className="flex items-center justify-center gap-1 mt-1">
+      {days.map((i) => (
+        <span
+          key={i}
+          className="text-[10px] font-semibold uppercase border border-gray-300 rounded-sm px-1.5 py-[1px] tracking-wider"
+        >
+          {EN_DAY[i] ?? String(i)}
+        </span>
+      ))}
+    </div>
+  );
 
   return (
-    <section className="space-y-4">
-      {/* Header: title | centered search | controls */}
-      <div className="flex items-center gap-4">
-        {/* left: title */}
-        <h2 className="text-lg font-semibold shrink-0">Recent Projects</h2>
-
-        {/* center: search bar */}
-        <div className="flex-1 flex justify-center">
-          <input
-            className="w-full max-w-2xl bg-white border rounded-full px-5 h-11 text-sm shadow-sm placeholder:text-gray-400"
-            placeholder="Search projects"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
+    <div className="space-y-4">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="text-base font-semibold whitespace-nowrap">Recent Projects</div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="relative w-full max-w-md">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search"
+              className="w-full bg-white text-sm rounded-md border px-9 py-2 shadow-sm"
+            />
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          </div>
         </div>
-
-        {/* right: view + sort icons */}
-        <div className="shrink-0 flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <button
-            className="p-2 inline-flex items-center justify-center text-gray-600 hover:text-black transition"
-            onClick={() => setView((v) => (v === "grid" ? "list" : "grid"))}
-            title={view === "grid" ? "Switch to list view" : "Switch to grid view"}
+            type="button"
+            onClick={() => setSort((s) => (s === "chrono" ? "alpha" : "chrono"))}
+            title={sort === "chrono" ? "Sort A–Z" : "Sort by recent"}
+            className="w-9 h-9 inline-flex items-center justify-center rounded-md border bg-white hover:bg-gray-50"
           >
-            {view === "grid" ? <List className="w-5 h-5" /> : <LayoutGrid className="w-5 h-5" />}
+            {sort === "chrono" ? <ArrowDownAZ className="w-4 h-4" /> : <Clock4 className="w-4 h-4" />}
           </button>
-
           <button
-            className={`p-2 inline-flex items-center justify-center transition ${
-              alpha ? "text-black" : "text-gray-600 hover:text-black"
-            }`}
-            onClick={() => setAlpha((v) => !v)}
-            title="Sort A–Z"
+            type="button"
+            onClick={() => setView((v) => (v === "grid" ? "list" : "grid"))}
+            title={view === "grid" ? "List view" : "Grid view"}
+            className="w-9 h-9 inline-flex items-center justify-center rounded-md border bg-white hover:bg-gray-50"
           >
-            <ArrowDownAZ className="w-5 h-5" />
+            {view === "grid" ? <ListIcon className="w-4 h-4" /> : <GridIcon className="w-4 h-4" />}
           </button>
         </div>
       </div>
 
       {/* Content */}
       {view === "grid" ? (
-        <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filtered.map((g) => {
-            const EN = ["MON","TUE","WED","THU","FRI","SAT","SUN"] as const;
-            const days = (g.days_enabled || [])
-              .slice()
-              .sort((a, b) => a - b)
-              .map((i) => EN[i] ?? String(i));
-            return (
-              <Link key={g.id} href={`/grids/${g.id}`} className="group block">
-                <div className="h-32 bg-white rounded-xl border shadow-sm group-hover:shadow-md transition-shadow flex flex-col justify-between overflow-hidden">
-                  <div className="px-3 pt-2 flex items-center justify-center">
-                    <div className="flex flex-wrap items-center justify-center gap-1.5">
-                      {days.map((d) => (
-                        <span key={d} className="inline-flex items-center justify-center px-2 py-0.5 border rounded-sm text-[10px] font-bold uppercase tracking-wide text-gray-800">{d}</span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="p-3">
-                    <div className="font-medium truncate" title={g.name}>{g.name}</div>
-                    <div className="text-xs text-gray-500">{g.creator === meId ? "You" : (g.creator ?? "Unknown")} • {fmtDate(g.created_at)}</div>
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
-          {filtered.length === 0 && (
-            <div className="col-span-full text-sm text-gray-500">No projects found.</div>
-          )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {items.map((g) => (
+            <Link
+              key={g.id}
+              href={`/grids/${g.id}`}
+              className="bg-white rounded-xl border shadow-sm hover:shadow-md transition-shadow p-3 flex flex-col justify-between min-h-[120px]"
+            >
+              <div className="text-sm font-medium truncate" title={g.name}>{g.name}</div>
+              <DayBadges days={g.days_enabled || []} />
+              <div className="mt-2 text-xs text-gray-600 flex items-center justify-between">
+                <span>
+                  {g.creator === meId
+                    ? "By you"
+                    : (ownerByGrid[g.id] || "")}
+                </span>
+                <span>{new Date(g.created_at).toLocaleDateString()}</span>
+              </div>
+            </Link>
+          ))}
         </div>
       ) : (
-        <div className="rounded-xl border bg-white divide-y">
-          {filtered.length === 0 ? (
-            <div className="p-4 text-sm text-gray-500">No projects found.</div>
-          ) : (
-            filtered.map((g) => (
-              <Link
-                key={g.id}
-                href={`/grids/${g.id}`}
-                className="flex items-center justify-between px-4 py-3 hover:bg-gray-50"
-              >
-                <div className="min-w-0">
-                  <div className="font-medium truncate" title={g.name}>
-                    {g.name}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {g.creator === meId ? "You" : g.creator ?? "Unknown"}
-                  </div>
+        <div className="bg-white rounded-xl border overflow-hidden">
+          <div className="grid grid-cols-12 text-xs font-medium text-gray-600 px-3 py-2 border-b bg-gray-50">
+            <div className="col-span-6">Title</div>
+            <div className="col-span-3">Owner</div>
+            <div className="col-span-3 text-right">Created</div>
+          </div>
+          <div className="divide-y">
+            {items.map((g) => (
+              <Link key={g.id} href={`/grids/${g.id}`} className="grid grid-cols-12 items-center px-3 py-2 hover:bg-gray-50 text-sm">
+                <div className="col-span-6 truncate" title={g.name}>{g.name}</div>
+                <div className="col-span-3 truncate">
+                  {g.creator === meId ? "You" : (ownerByGrid[g.id] || "")}
                 </div>
-                <div className="text-xs text-gray-500 shrink-0 ml-4">
-                  {fmtDate(g.created_at)}
-                </div>
+                <div className="col-span-3 text-right text-gray-600 text-xs">{new Date(g.created_at).toLocaleDateString()}</div>
               </Link>
-            ))
-          )}
+            ))}
+          </div>
         </div>
       )}
-    </section>
+    </div>
   );
 }
+
