@@ -10,16 +10,16 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 
-type Props = { gridId: number | string }; // ← obligatorio
+type Props = { gridId: number | string; canDelete?: boolean };
 
-export default function GridActions({ gridId }: Props) {
+export default function GridActions({ gridId, canDelete = false }: Props) {
   const router = useRouter();
 
   async function onDelete() {
     const id = String(gridId);
     if (!id || id === "undefined") {
       console.error("[GridActions] Missing gridId prop:", gridId);
-      alert("Could not resolve grid id — delete aborted.");
+      alert("Could not resolve grid id – delete aborted.");
       return;
     }
     if (!window.confirm("Delete this grid? This action cannot be undone.")) return;
@@ -33,6 +33,8 @@ export default function GridActions({ gridId }: Props) {
     router.replace("/dashboard");
     router.refresh();
   }
+
+  if (!canDelete) return null;
 
   return (
     <DropdownMenu>
@@ -50,3 +52,4 @@ export default function GridActions({ gridId }: Props) {
     </DropdownMenu>
   );
 }
+

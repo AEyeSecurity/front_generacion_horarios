@@ -1,6 +1,7 @@
 // app/grids/[id]/participants/[pid]/page.tsx
 import { backendFetchJSON } from "@/lib/backend";
-import type { Grid } from "@/lib/types";
+import { getCurrentUser } from "@/lib/auth";
+import type { Grid, Role } from "@/lib/types";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import RuleBubble from "@/components/RuleBubble";
@@ -76,6 +77,20 @@ export default async function ParticipantAvailabilityPage({
     fetchParticipantName(pid),
     fetchRules(pid),
   ]);
+
+  // Resolve my role in this grid for gating delete controls
+  let role: Role = "viewer";
+  try {
+    const me = await getCurrentUser();
+    if (me) {
+      const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
+      const list = Array.isArray(data) ? data : data.results ?? [];
+      const mine = list.find(
+        (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
+      );
+      role = (mine?.role ?? "viewer") as Role;
+    }
+  } catch {}
 
   // --- time/grid helpers ---
   const toMin = (hhmm: string) => {
@@ -229,14 +244,16 @@ export default async function ParticipantAvailabilityPage({
         </div>
       </div>
       
-      {/* Danger zone: delete participant */}
-      <div className="mt-8 p-4 border rounded bg-white flex items-center justify-between">
-        <div>
-          <div className="font-medium">Danger zone</div>
-          <div className="text-sm text-gray-600">Delete this participant and all their availability rules.</div>
+      {/* Danger zone: delete participant (supervisors only) */}
+      {role === "supervisor" && (
+        <div className="mt-8 p-4 border rounded bg-white flex items-center justify-between">
+          <div>
+            <div className="font-medium">Danger zone</div>
+            <div className="text-sm text-gray-600">Delete this participant and all their availability rules.</div>
+          </div>
+          <DeleteParticipantButton gridId={id} participantId={pid} />
         </div>
-        <DeleteParticipantButton gridId={id} participantId={pid} />
-      </div>
+      )}
     </div>
     </div>
   );

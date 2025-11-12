@@ -4,7 +4,7 @@ import { CalendarDays } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import GridActions from "@/components/GridActions";
 
-export default async function GridTopBar({ id, name }: { id: number, name: string }) {
+export default async function GridTopBar({ id, name, canDelete = false }: { id: number; name: string; canDelete?: boolean }) {
   const me = await getCurrentUser();
   return (
     <div className="w-full border-b bg-white">
@@ -18,7 +18,7 @@ export default async function GridTopBar({ id, name }: { id: number, name: strin
         <div className="flex items-center gap-3">
           <button className="px-3 py-1.5 rounded border text-sm">Share</button>
           {me && <span className="text-sm text-gray-600">{me.username}</span>}
-          <GridActions gridId={id} />
+          <GridActions gridId={id} canDelete={canDelete} />
         </div>
       </div>
     </div>

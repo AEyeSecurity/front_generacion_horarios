@@ -1,8 +1,10 @@
 "use client";
 
 import { MouseEvent, useCallback, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import SidePanel from "./SidePanel";
-import { Users, Tags } from "lucide-react";
+import { Users, Tags, User as UserIcon } from "lucide-react";
+import type { Role } from "@/lib/types";
 
 type Tab = "participants" | "categories";
 const SHEET_ANIM_MS = 240;
@@ -38,27 +40,30 @@ function DockButton({
   );
 }
 
-export default function SideDock({ gridId }: { gridId: number }) {
+export default function SideDock({
+  gridId,
+  role,
+  selfParticipantId,
+}: {
+  gridId: number;
+  role: Role;
+  selfParticipantId?: number | null;
+}) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("participants");
   const lockRef = useRef(false);
   const pendingTabRef = useRef<Tab | null>(null);
+  const router = useRouter();
 
   const switchTo = useCallback(
     (next: Tab) => {
       if (lockRef.current) return;
-
-      // Si ya está abierto y tocas el mismo ícono, no hacer nada
       if (open && tab === next) return;
-
-      // Panel cerrado → abrir directo
       if (!open) {
         setTab(next);
         setOpen(true);
         return;
       }
-
-      // Animar cambio: cerrar → abrir
       lockRef.current = true;
       pendingTabRef.current = next;
       setOpen(false);
@@ -72,9 +77,32 @@ export default function SideDock({ gridId }: { gridId: number }) {
     [open, tab]
   );
 
+  // Viewer: no dock at all
+  if (role === "viewer") return null;
+
+  // Editor: only a user icon linking to own availability rules
+  if (role === "editor") {
+    const gotoSelf = () => {
+      if (!selfParticipantId) return;
+      router.push(`/grids/${gridId}/participants/${selfParticipantId}`);
+    };
+    return (
+      <div className="pointer-events-none">
+        <div
+          id="sidedock"
+          className="fixed left-4 top-1/2 -translate-y-1/2 z-[100] flex flex-col gap-3 pointer-events-auto"
+        >
+          <DockButton title="My availability" onClick={gotoSelf}>
+            <UserIcon className={`w-5 h-5 ${selfParticipantId ? "" : "opacity-50"}`} />
+          </DockButton>
+        </div>
+      </div>
+    );
+  }
+
+  // Supervisor: full dock with panels
   return (
     <div className="pointer-events-none">
-      {/* Marcamos el dock para filtrar outside clicks del Sheet */}
       <div
         id="sidedock"
         className="fixed left-4 top-1/2 -translate-y-1/2 z-[100] flex flex-col gap-3 pointer-events-auto"
@@ -105,3 +133,4 @@ export default function SideDock({ gridId }: { gridId: number }) {
     </div>
   );
 }
+

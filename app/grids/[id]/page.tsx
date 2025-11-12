@@ -1,6 +1,7 @@
 // app/grids/[id]/page.tsx
 import { backendFetchJSON } from "@/lib/backend";
-import type { Grid } from "@/lib/types";
+import { getCurrentUser } from "@/lib/auth";
+import type { Grid, Role } from "@/lib/types";
 import SideDock from "@/components/SideDock";
 import GridTopBar from "@/components/GridTopBar";
 
@@ -59,41 +60,73 @@ export default async function GridOverview({
   const rows = steps(start, end, grid.cell_size_min);
   const days = (grid.days_enabled || []).map((i) => EN_DAY[i] ?? String(i));
 
-  return (
-    <div className="relative"> {/* ⬅ contenedor para el dock superpuesto */}
-      {/* Dock flotante con panel superpuesto que reutiliza tu SideBar */}
-      <SideDock gridId={Number(grid.id)} />
+  // Resolve my role and (if editor) my participant id in this grid
+  let role: Role = "viewer";
+  let selfPid: number | null = null;
+  try {
+    const me = await getCurrentUser();
+    if (me) {
+      // Role
+      try {
+        const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
+        const list = Array.isArray(data) ? data : data.results ?? [];
+        const mine = list.find(
+          (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
+        );
+        role = (mine?.role ?? "viewer") as Role;
+      } catch {}
+      // Self participant id
+      try {
+        let plist: any[] = [];
+        try {
+          const pdata = await backendFetchJSON<any>(`/api/participants/?grid=${id}`);
+          plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
+        } catch {
+          const pdata = await backendFetchJSON<any>(`/api/participants?grid=${id}`);
+          plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
+        }
+        const myp = plist.find(
+          (p: any) => (p.user_id ?? (typeof p.user === "number" ? p.user : p.user?.id)) === me.id
+        );
+        if (myp?.id != null) selfPid = Number(myp.id);
+      } catch {}
+    }
+  } catch {}
 
+  return (
+    <div className="relative">
+      {/* Side dock varies by role: supervisor full, editor self icon, viewer none */}
+      <SideDock gridId={Number(grid.id)} role={role} selfParticipantId={selfPid ?? undefined} />
 
       {/* Main calendar centered and 80% width */}
       <div className="p-4">
         <div className="w-[80%] mx-auto space-y-4">
-        <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
-          <div className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-            <div className="bg-gray-50 border-b h-12" />
-            {days.map((d) => (
-              <div key={d} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
-                {d}
-              </div>
-            ))}
-          </div>
-
-          <div className="max-h-[70vh] overflow-y-auto">
-            {rows.map((t) => (
-              <div key={t} className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-                <div className="border-r border-b h-16 flex items-center justify-center text-xs text-gray-600">
-                  {fmt(t)}
+          <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
+            <div className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
+              <div className="bg-gray-50 border-b h-12" />
+              {days.map((d) => (
+                <div key={d} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
+                  {d}
                 </div>
-                {days.map((d, j) => (
-                  <div
-                    key={`${t}-${d}`}
-                    className={`border-b ${j < days.length - 1 ? "border-r" : ""} h-16 hover:bg-gray-50`}
-                  />
-                ))}
-              </div>
-            ))}
+              ))}
+            </div>
+
+            <div className="max-h-[70vh] overflow-y-auto">
+              {rows.map((t) => (
+                <div key={t} className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
+                  <div className="border-r border-b h-16 flex items-center justify-center text-xs text-gray-600">
+                    {fmt(t)}
+                  </div>
+                  {days.map((d, j) => (
+                    <div
+                      key={`${t}-${d}`}
+                      className={`border-b ${j < days.length - 1 ? "border-r" : ""} h-16 hover:bg-gray-50`}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
         </div>
       </div>
     </div>

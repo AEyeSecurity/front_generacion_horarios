@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { List as ListIcon, Grid as GridIcon, ArrowDownAZ, Clock4, Search } from "lucide-react";
+import { List as ListIcon, Grid as GridIcon, ArrowDownAZ, Clock4, Search, User } from "lucide-react";
 import type { Grid } from "@/lib/types";
 
 const EN_DAY = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
@@ -14,10 +14,14 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
   const [query, setQuery] = useState("");
   const [view, setView] = useState<View>("grid");
   const [sort, setSort] = useState<Sort>("chrono");
+  const [mineOnly, setMineOnly] = useState(false);
   const [ownerByGrid, setOwnerByGrid] = useState<Record<number, string>>({});
 
   const items = useMemo(() => {
     let list = [...initialItems];
+    if (mineOnly) {
+      list = list.filter((g) => g.creator === meId);
+    }
     if (query.trim()) {
       const q = query.trim().toLowerCase();
       list = list.filter((g) => g.name?.toLowerCase().includes(q));
@@ -28,7 +32,7 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
       list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }
     return list;
-  }, [initialItems, query, sort]);
+  }, [initialItems, query, sort, mineOnly]);
 
   useEffect(() => {
     // Resolve creators' names for the items shown
@@ -48,15 +52,16 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
             let name = "";
             const m0 = list.find((m: any) => m.owner === true);
             if (m0) {
-              name = `${m0.grid_creator_first_name ?? m0.user_first_name ?? m0.user?.first_name ?? ""}`.trim() +
-                     ` ${m0.grid_creator_last_name ?? m0.user_last_name ?? m0.user?.last_name ?? ""}`.trim();
+              const fn = m0.grid_creator_first_name ?? m0.user_first_name ?? m0.user?.first_name ?? "";
+              const ln = m0.grid_creator_last_name ?? m0.user_last_name ?? m0.user?.last_name ?? "";
+              name = [fn, ln].filter(Boolean).join(" ");
             }
             if (!name) {
               const sup = list.find((m: any) => m.role === "supervisor");
               if (sup) {
                 const fn = sup.user_first_name ?? sup.user?.first_name ?? "";
                 const ln = sup.user_last_name ?? sup.user?.last_name ?? "";
-                name = `${fn} ${ln}`.trim();
+                name = [fn, ln].filter(Boolean).join(" ");
               }
             }
             updates[gridId] = name;
@@ -102,9 +107,17 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() => setMineOnly((v) => !v)}
+            title={mineOnly ? "Show all projects" : "Show my projects only"}
+            className="w-9 h-9 inline-flex items-center justify-center rounded-md hover:bg-gray-100"
+          >
+            <User className={`w-4 h-4 ${mineOnly ? "text-black" : "text-gray-600"}`} />
+          </button>
+          <button
+            type="button"
             onClick={() => setSort((s) => (s === "chrono" ? "alpha" : "chrono"))}
             title={sort === "chrono" ? "Sort A–Z" : "Sort by recent"}
-            className="w-9 h-9 inline-flex items-center justify-center rounded-md border bg-white hover:bg-gray-50"
+            className="w-9 h-9 inline-flex items-center justify-center rounded-md hover:bg-gray-100"
           >
             {sort === "chrono" ? <ArrowDownAZ className="w-4 h-4" /> : <Clock4 className="w-4 h-4" />}
           </button>
@@ -112,7 +125,7 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
             type="button"
             onClick={() => setView((v) => (v === "grid" ? "list" : "grid"))}
             title={view === "grid" ? "List view" : "Grid view"}
-            className="w-9 h-9 inline-flex items-center justify-center rounded-md border bg-white hover:bg-gray-50"
+            className="w-9 h-9 inline-flex items-center justify-center rounded-md hover:bg-gray-100"
           >
             {view === "grid" ? <ListIcon className="w-4 h-4" /> : <GridIcon className="w-4 h-4" />}
           </button>
@@ -164,4 +177,3 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
     </div>
   );
 }
-
