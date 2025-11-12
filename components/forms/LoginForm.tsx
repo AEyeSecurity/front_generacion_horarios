@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function LoginForm() {
-  const [username, setU] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setP] = useState("");
   const [error, setError] = useState<string | null>(null);
   const sp = useSearchParams();
@@ -18,7 +18,7 @@ export default function LoginForm() {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ email, password }),
     });
     if (!res.ok) {
       const { error } = await res.json().catch(() => ({ error: "Login failed" }));
@@ -40,8 +40,8 @@ export default function LoginForm() {
         </div>
       )}
       <div>
-        <label className="block text-sm">Username</label>
-        <input className="border rounded w-full p-2" value={username} onChange={e=>setU(e.target.value)} />
+        <label className="block text-sm">Email</label>
+        <input className="border rounded w-full p-2" type="email" value={email} onChange={e=>setEmail(e.target.value)} />
       </div>
       <div>
         <label className="block text-sm">Password</label>

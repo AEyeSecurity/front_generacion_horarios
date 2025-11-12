@@ -17,7 +17,11 @@ export default async function GridTopBar({ id, name, canDelete = false }: { id: 
         </div>
         <div className="flex items-center gap-3">
           <button className="px-3 py-1.5 rounded border text-sm">Share</button>
-          {me && <span className="text-sm text-gray-600">{me.username}</span>}
+          {me && (
+            <span className="text-sm text-gray-600">
+              {[me.first_name, me.last_name].filter(Boolean).join(" ") || me.email}
+            </span>
+          )}
           <GridActions gridId={id} canDelete={canDelete} />
         </div>
       </div>

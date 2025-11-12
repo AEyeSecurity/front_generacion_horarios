@@ -14,11 +14,11 @@ const cookieOptions = {
 };
 
 export async function POST(req: Request) {
-  const { username, password } = await req.json();
+  const { email, password } = await req.json();
   const res = await fetch(`${process.env.BACKEND_URL}/api/auth/login/`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ email, password }),
     cache: 'no-store',
   });
 

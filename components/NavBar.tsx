@@ -19,7 +19,9 @@ export default async function NavBar() {
         <div className="flex items-center gap-4">
           {me ? (
             <>
-              <span className="text-sm text-gray-600">{me.username}</span>
+              <span className="text-sm text-gray-600">
+                {[me.first_name, me.last_name].filter(Boolean).join(" ") || me.email}
+              </span>
               <form action="/api/auth/logout" method="post">
                 <button className="inline-flex items-center px-4 py-2 rounded bg-black text-white text-sm">Logout</button>
               </form>

@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function RegisterForm() {
-  const [username, setUsername] = useState("");
   const [firstName, setFirst] = useState("");
   const [lastName, setLast] = useState("");
   const [email, setEmail] = useState("");
@@ -21,7 +20,7 @@ export default function RegisterForm() {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ username: username || undefined, first_name: firstName || undefined, last_name: lastName || undefined, email, password }),
+        body: JSON.stringify({ first_name: firstName, last_name: lastName, email, password }),
       });
       if (!res.ok) {
         // Expect normalized JSON { error } from our proxy. Fallback to status text.
@@ -47,18 +46,14 @@ export default function RegisterForm() {
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
-      <div>
-        <label className="block text-sm">Username (optional)</label>
-        <input className="border rounded w-full p-2" value={username} onChange={(e)=>setUsername(e.target.value)} />
-      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className="block text-sm">First name (optional)</label>
-          <input className="border rounded w-full p-2" value={firstName} onChange={(e)=>setFirst(e.target.value)} />
+          <label className="block text-sm">First name</label>
+          <input className="border rounded w-full p-2" value={firstName} onChange={(e)=>setFirst(e.target.value)} required />
         </div>
         <div>
-          <label className="block text-sm">Last name (optional)</label>
-          <input className="border rounded w-full p-2" value={lastName} onChange={(e)=>setLast(e.target.value)} />
+          <label className="block text-sm">Last name</label>
+          <input className="border rounded w-full p-2" value={lastName} onChange={(e)=>setLast(e.target.value)} required />
         </div>
       </div>
       <div>
