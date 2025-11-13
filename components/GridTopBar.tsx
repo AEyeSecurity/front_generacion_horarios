@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CalendarDays } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import GridActions from "@/components/GridActions";
+import UserMenu from "@/components/UserMenu";
 
 export default async function GridTopBar({ id, name, canDelete = false }: { id: number; name: string; canDelete?: boolean }) {
   const me = await getCurrentUser();
@@ -17,11 +18,7 @@ export default async function GridTopBar({ id, name, canDelete = false }: { id: 
         </div>
         <div className="flex items-center gap-3">
           <button className="px-3 py-1.5 rounded border text-sm">Share</button>
-          {me && (
-            <span className="text-sm text-gray-600">
-              {[me.first_name, me.last_name].filter(Boolean).join(" ") || me.email}
-            </span>
-          )}
+          {me && <UserMenu me={me} />}
           <GridActions gridId={id} canDelete={canDelete} />
         </div>
       </div>

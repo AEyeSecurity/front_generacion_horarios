@@ -5,6 +5,10 @@ export type User = {
   email: string;
   first_name: string;
   last_name: string;
+  // Optional avatar fields (backend may expose any of these)
+  avatar_url?: string | null;
+  avatar?: string | null;
+  image?: string | null;
 };
 
 export interface GridMembership {

@@ -67,7 +67,7 @@ export default function HomePage() {
       </main>
 
       {/* Footer with partner logos */}
-      <footer className="bg-gray-800 text-gray-300">
+      <footer className="bg-black text-gray-300">
         <div className="mx-auto max-w-6xl px-4 py-8">
           <div className="flex items-center justify-center gap-10">
             <Image

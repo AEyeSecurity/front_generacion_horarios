@@ -1,6 +1,7 @@
 // components/NavBar.tsx
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
+import UserMenu from "@/components/UserMenu";
 import { CalendarDays } from "lucide-react";
 
 
@@ -18,14 +19,7 @@ export default async function NavBar() {
         </div>
         <div className="flex items-center gap-4">
           {me ? (
-            <>
-              <span className="text-sm text-gray-600">
-                {[me.first_name, me.last_name].filter(Boolean).join(" ") || me.email}
-              </span>
-              <form action="/api/auth/logout" method="post">
-                <button className="inline-flex items-center px-4 py-2 rounded bg-black text-white text-sm">Logout</button>
-              </form>
-            </>
+            <UserMenu me={me} />
           ) : (
             <form action="/login" method="get">
               <button className="inline-flex items-center px-4 py-2 rounded bg-black text-white text-sm">Log In</button>
