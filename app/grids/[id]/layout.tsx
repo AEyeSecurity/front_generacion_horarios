@@ -42,7 +42,7 @@ export default async function GridLayout({
 
   return (
     <>
-      <GridTopBar id={Number(id)} name={name} canDelete={role === "supervisor"} />
+      <GridTopBar id={Number(id)} name={name} canDelete={role === "supervisor"} canInvite={role === "supervisor"} />
       {children}
     </>
   );

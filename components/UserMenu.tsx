@@ -40,12 +40,14 @@ export default function UserMenu({ me }: { me: User }) {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[18rem] p-4 space-y-3">
-        <div className="text-sm text-gray-700 break-all">{me.email}</div>
+        <div className="text-center">
+          <div className="text-sm text-gray-700 break-all">{me.email}</div>
+        </div>
         <div className="flex items-center justify-center">
           <Image src={src} alt="Avatar" width={large} height={large} className="w-16 h-16 rounded-full object-cover" />
         </div>
         <div className="text-center">
-          <div className="text-base font-semibold">Hi, {displayName(me)}!</div>
+          <div className="text-base font-semibold">{displayName(me)}</div>
         </div>
         <div className="pt-2">
           <form action="/api/auth/logout" method="post" className="w-full">

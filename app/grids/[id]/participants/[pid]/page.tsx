@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import RuleBubble from "@/components/RuleBubble";
 import AddRuleButton from "@/components/AddRuleButton";
 import DeleteParticipantButton from "@/components/DeleteParticipantButton";
+import EditorInviteInline from "@/components/EditorInviteInline";
 
 type Rule = {
   id: number;
@@ -41,14 +42,14 @@ export default async function ParticipantAvailabilityPage({
     }
   };
 
-  const fetchParticipantName = async (participantId: string) => {
+  const fetchParticipant = async (participantId: string) => {
     try {
-      const p = await backendFetchJSON<{ id: number; name: string; surname?: string }>(
+      const p = await backendFetchJSON<{ id: number; name: string; surname?: string; user?: any; user_id?: number }>(
         `/api/participants/${participantId}/`
       );
-      return `${p.name}${p.surname ? " " + p.surname : ""}`;
+      return p;
     } catch {
-      return `#${participantId}`;
+      return { id: Number(participantId), name: `#${participantId}` } as any;
     }
   };
 
@@ -72,11 +73,13 @@ export default async function ParticipantAvailabilityPage({
     }
   };
 
-  const [grid, participantName, rules] = await Promise.all([
+  const [grid, participant, rules] = await Promise.all([
     fetchGridSmart(id),
-    fetchParticipantName(pid),
+    fetchParticipant(pid),
     fetchRules(pid),
   ]);
+  const participantName = `${(participant as any).name}${(participant as any).surname ? " " + (participant as any).surname : ""}`;
+  const participantLinked = Boolean((participant as any).user_id ?? (participant as any).user);
 
   // Resolve my role in this grid for gating delete controls
   let role: Role = "viewer";
@@ -166,6 +169,9 @@ export default async function ParticipantAvailabilityPage({
           allowedDays={daysIdx}
           minMinutes={grid.cell_size_min}
         />
+        {!participantLinked && (
+          <EditorInviteInline gridId={id} participantId={pid} />
+        )}
       </div>
       
       {/* calendario con overlay de rules */}
