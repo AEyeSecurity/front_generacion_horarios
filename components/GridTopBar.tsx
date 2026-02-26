@@ -6,7 +6,19 @@ import GridActions from "@/components/GridActions";
 import UserMenu from "@/components/UserMenu";
 import ShareInviteButton from "@/components/ShareInviteButton";
 
-export default async function GridTopBar({ id, name, canDelete = false, canInvite = false }: { id: number; name: string; canDelete?: boolean; canInvite?: boolean }) {
+export default async function GridTopBar({
+  id,
+  name,
+  canDelete = false,
+  canInvite = false,
+  hasSolution = false,
+}: {
+  id: number;
+  name: string;
+  canDelete?: boolean;
+  canInvite?: boolean;
+  hasSolution?: boolean;
+}) {
   const me = await getCurrentUser();
   return (
     <div className="w-full border-b bg-white">
@@ -18,9 +30,15 @@ export default async function GridTopBar({ id, name, canDelete = false, canInvit
           <span className="font-medium truncate" title={name}>{name}</span>
         </div>
         <div className="flex items-center gap-3">
-          <ShareInviteButton gridId={id} disabled={!canInvite} />
+          {canInvite && (
+            <ShareInviteButton
+              gridId={id}
+              disabled={!canInvite}
+              roleOptions={hasSolution ? ["viewer", "supervisor"] : ["supervisor"]}
+            />
+          )}
           {me && <UserMenu me={me} />}
-          <GridActions gridId={id} canDelete={canDelete} />
+          {hasSolution && <GridActions gridId={id} canDelete={canDelete} />}
         </div>
       </div>
     </div>

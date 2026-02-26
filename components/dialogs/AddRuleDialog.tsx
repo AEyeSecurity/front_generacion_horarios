@@ -24,7 +24,6 @@ type Props = {
 
 const PREFS = [
   { value: "preferred", label: "Preferred" },
-  { value: "flexible", label: "Flexible" },
   { value: "impossible", label: "Impossible" },
 ] as const;
 
@@ -106,7 +105,7 @@ export default function AddAvailabilityRuleDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Add Availability Rule</DialogTitle>
-          <DialogDescription>Define when the participant is available.</DialogDescription>
+          <DialogDescription>Use Preferred or Impossible. Unspecified slots are treated as Flexible.</DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

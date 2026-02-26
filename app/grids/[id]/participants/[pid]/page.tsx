@@ -8,6 +8,7 @@ import RuleBubble from "@/components/RuleBubble";
 import AddRuleButton from "@/components/AddRuleButton";
 import DeleteParticipantButton from "@/components/DeleteParticipantButton";
 import EditorInviteInline from "@/components/EditorInviteInline";
+import ParticipantScheduleOverlay from "@/components/ParticipantScheduleOverlay";
 
 type Rule = {
   id: number;
@@ -28,10 +29,14 @@ const norm = (t: string) => {
 
 export default async function ParticipantAvailabilityPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; pid: string }>;
+  searchParams?: Promise<{ view?: string }>;
 }) {
   const { id, pid } = await params;
+  const sp = await searchParams;
+  const view = sp?.view === "schedule" ? "schedule" : "rules";
 
   // --- helpers ---
   const fetchGridSmart = async (gridId: string): Promise<Grid> => {
@@ -81,10 +86,12 @@ export default async function ParticipantAvailabilityPage({
   const participantName = `${(participant as any).name}${(participant as any).surname ? " " + (participant as any).surname : ""}`;
   const participantLinked = Boolean((participant as any).user_id ?? (participant as any).user);
 
-  // Resolve my role in this grid for gating delete controls
+  // Resolve my role in this grid for gating rule controls
   let role: Role = "viewer";
+  let meId: number | null = null;
   try {
     const me = await getCurrentUser();
+    meId = me?.id ?? null;
     if (me) {
       const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
       const list = Array.isArray(data) ? data : data.results ?? [];
@@ -94,6 +101,10 @@ export default async function ParticipantAvailabilityPage({
       role = (mine?.role ?? "viewer") as Role;
     }
   } catch {}
+  const participantUserId =
+    (participant as any).user_id ??
+    (typeof (participant as any).user === "number" ? (participant as any).user : (participant as any).user?.id);
+  const canManageRules = role === "supervisor" || (meId != null && participantUserId === meId);
 
   // --- time/grid helpers ---
   const toMin = (hhmm: string) => {
@@ -102,7 +113,7 @@ export default async function ParticipantAvailabilityPage({
   };
   const steps = (a: number, b: number, s: number) => {
     const out: number[] = [];
-    for (let t = a; t <= b; t += s) out.push(t);
+    for (let t = a; t < b; t += s) out.push(t);
     return out;
   };
   const fmt = (mins: number) => {
@@ -161,94 +172,145 @@ export default async function ParticipantAvailabilityPage({
           </div>
         </div>
 
-        {/* botón + diálogo (cliente) */}
-        <AddRuleButton
-          participantId={Number(pid)}
-          gridStart={gridStartHHMM}
-          gridEnd={gridEndHHMM}
-          allowedDays={daysIdx}
-          minMinutes={grid.cell_size_min}
-        />
-        {!participantLinked && (
-          <EditorInviteInline gridId={id} participantId={pid} />
-        )}
-      </div>
-      
-      {/* calendario con overlay de rules */}
-      <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
-        {/* header de días */}
-        <div className="grid" style={{ gridTemplateColumns: `100px repeat(${DAY_COUNT}, 1fr)` }}>
-          <div className="bg-gray-50 border-b h-12" />
-          {days.map((d) => (
-            <div key={d} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
-              {d}
-            </div>
-          ))}
-        </div>
-
-        {/* body con líneas + overlay absoluto */}
-        <div
-          className="relative max-h-[70vh] overflow-y-auto"
-          style={{ ["--time-col" as any]: `${TIME_COL_PX}px` }}
-        >
-          {rows.map((t) => (
-            <div key={t} className="grid" style={{ gridTemplateColumns: `100px repeat(${DAY_COUNT}, 1fr)` }}>
-              <div className="border-r border-b h-16 flex items-center justify-center text-xs text-gray-600">
-                {fmt(t)}
-              </div>
-              {days.map((d, j) => (
-                <div key={`${t}-${d}`} className={`border-b ${j < DAY_COUNT - 1 ? "border-r" : ""} h-16`} />
-              ))}
-            </div>
-          ))}
-
-          <div className="pointer-events-none absolute inset-0" style={{ height: BODY_H }}>
-            {visibleRules.map((r) => {
-              const cIdx = daysIdx.indexOf(r.day_of_week);
-              if (cIdx < 0) return null;
-              const s = toMin(r.start_time);
-              const e = toMin(r.end_time);
-              // Gutters for nicer spacing, tuned to sit centered within each row/column
-              const GUTTER_X = 14; // px total (≈7px each side)
-              const GUTTER_Y = 16; // px total (≈8px top/bottom)
-              const TOP_BAR = 4;   // px top border rendered inside bubble
-              const ROW_BORDER = 1; // px bottom border per row
-
-              // Compute purely in grid slots (cell_size_min) to avoid proportional rounding
-              const slot = grid.cell_size_min;
-              const startSlot = (s - start) / slot;
-              const endSlot = (e - start) / slot;
-              const slotHeight = ROW_PX; // visual height of one slot excluding border
-
-              const baseTop = startSlot * slotHeight;
-              const rawHeight = (endSlot - startSlot) * slotHeight;
-
-              // Borders: add one pixel per full row before the start, and per row spanned inside
-              const borderBefore = Math.max(0, Math.floor(startSlot)) * ROW_BORDER;
-              const borderWithin = Math.max(0, Math.floor(endSlot - startSlot)) * ROW_BORDER;
-
-              // Center with symmetric vertical gutter and compensate top bar thickness
-              const top = baseTop + borderBefore + (GUTTER_Y / 2) - (TOP_BAR / 2);
-              const height = Math.max(6, rawHeight + borderWithin - GUTTER_Y - TOP_BAR);
-              // Account for 1px column borders on each side when centering
-              const left = `calc(var(--time-col) + ${cIdx} * ((100% - var(--time-col)) / ${DAY_COUNT}) + ${(GUTTER_X / 2) + 1}px)`;
-              const width = `calc(((100% - var(--time-col)) / ${DAY_COUNT}) - ${GUTTER_X + 2}px)`;
-              const c = colorFor(r.preference);
-
-              return (
-                <div key={r.id} className="absolute overflow-hidden pointer-events-auto" style={{ top, left, width, height }}>
-                  <RuleBubble
-                    id={r.id}
-                    title={r.preference === "preferred" ? "Preferred" : r.preference === "flexible" ? "Flexible" : "Impossible"}
-                    subtitle={`${norm(r.start_time)} – ${norm(r.end_time)}`}
-                    colors={c}
-                  />
-                </div>
-              );
-            })}
+        <div className="flex flex-row-reverse items-center gap-3">
+          {view === "rules" && (
+            <AddRuleButton
+              participantId={Number(pid)}
+              gridStart={gridStartHHMM}
+              gridEnd={gridEndHHMM}
+              allowedDays={daysIdx}
+              minMinutes={grid.cell_size_min}
+              disabled={!canManageRules}
+            />
+          )}
+          {!participantLinked && view === "rules" && (
+            <EditorInviteInline gridId={id} participantId={pid} />
+          )}
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/grids/${id}/participants/${pid}`}
+              className={`px-3 py-1.5 rounded-full text-sm border ${view === "rules" ? "bg-black text-white" : "bg-white"}`}
+            >
+              Availability
+            </Link>
+            <Link
+              href={`/grids/${id}/participants/${pid}?view=schedule`}
+              className={`px-3 py-1.5 rounded-full text-sm border ${view === "schedule" ? "bg-black text-white" : "bg-white"}`}
+            >
+              Schedule
+            </Link>
           </div>
         </div>
       </div>
+      
+      {view === "rules" && (
+        <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
+          <div className="grid" style={{ gridTemplateColumns: `100px repeat(${DAY_COUNT}, 1fr)` }}>
+            <div className="bg-gray-50 border-b h-12" />
+            {days.map((d) => (
+              <div key={d} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
+                {d}
+              </div>
+            ))}
+          </div>
+
+          <div
+            className="relative max-h-[70vh] overflow-y-auto"
+            style={{ ["--time-col" as any]: `${TIME_COL_PX}px` }}
+          >
+            {rows.map((t) => (
+              <div key={t} className="grid" style={{ gridTemplateColumns: `100px repeat(${DAY_COUNT}, 1fr)` }}>
+                <div className="border-r border-b h-16 flex items-center justify-center text-xs text-gray-600">
+                  {fmt(t)} - {fmt(t + grid.cell_size_min)}
+                </div>
+                {days.map((d, j) => (
+                  <div key={`${t}-${d}`} className={`border-b ${j < DAY_COUNT - 1 ? "border-r" : ""} h-16`} />
+                ))}
+              </div>
+            ))}
+
+            <div className="pointer-events-none absolute inset-0" style={{ height: BODY_H }}>
+              {visibleRules.map((r) => {
+                const cIdx = daysIdx.indexOf(r.day_of_week);
+                if (cIdx < 0) return null;
+                const s = toMin(r.start_time);
+                const e = toMin(r.end_time);
+                const GUTTER_X = 14;
+                const GUTTER_Y = 16;
+                const TOP_BAR = 4;
+                const ROW_BORDER = 1;
+
+                const slot = grid.cell_size_min;
+                const startSlot = (s - start) / slot;
+                const endSlot = (e - start) / slot;
+                const slotHeight = ROW_PX;
+
+                const baseTop = startSlot * slotHeight;
+                const rawHeight = (endSlot - startSlot) * slotHeight;
+
+                const borderBefore = Math.max(0, Math.floor(startSlot)) * ROW_BORDER;
+                const borderWithin = Math.max(0, Math.floor(endSlot - startSlot)) * ROW_BORDER;
+
+                const top = baseTop + borderBefore + (GUTTER_Y / 2) - (TOP_BAR / 2);
+                const height = Math.max(6, rawHeight + borderWithin - GUTTER_Y - TOP_BAR);
+                const left = `calc(var(--time-col) + ${cIdx} * ((100% - var(--time-col)) / ${DAY_COUNT}) + ${(GUTTER_X / 2) + 1}px)`;
+                const width = `calc(((100% - var(--time-col)) / ${DAY_COUNT}) - ${GUTTER_X + 2}px)`;
+                const c = colorFor(r.preference);
+
+                return (
+                  <div key={r.id} className="absolute overflow-hidden pointer-events-auto" style={{ top, left, width, height }}>
+                    <RuleBubble
+                      id={r.id}
+                      title={r.preference === "preferred" ? "Preferred" : r.preference === "flexible" ? "Flexible" : "Impossible"}
+                      subtitle={`${norm(r.start_time)} - ${norm(r.end_time)}`}
+                      colors={c}
+                      canEdit={canManageRules}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {view === "schedule" && (
+        <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
+          <div className="grid" style={{ gridTemplateColumns: `100px repeat(${DAY_COUNT}, 1fr)` }}>
+            <div className="bg-gray-50 border-b h-12" />
+            {days.map((d) => (
+              <div key={d} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
+                {d}
+              </div>
+            ))}
+          </div>
+
+          <div
+            className="relative max-h-[70vh] overflow-y-auto"
+            style={{ ["--time-col" as any]: `${TIME_COL_PX}px` }}
+          >
+            {rows.map((t) => (
+              <div key={t} className="grid" style={{ gridTemplateColumns: `100px repeat(${DAY_COUNT}, 1fr)` }}>
+                <div className="border-r border-b h-16 flex items-center justify-center text-xs text-gray-600">
+                  {fmt(t)} - {fmt(t + grid.cell_size_min)}
+                </div>
+                {days.map((d, j) => (
+                  <div key={`${t}-${d}`} className={`border-b ${j < DAY_COUNT - 1 ? "border-r" : ""} h-16`} />
+                ))}
+              </div>
+            ))}
+
+            <ParticipantScheduleOverlay
+              gridId={Number(id)}
+              participantId={Number(pid)}
+              daysCount={DAY_COUNT}
+              rowPx={ROW_PX}
+              timeColPx={TIME_COL_PX}
+              bodyHeight={BODY_H}
+            />
+          </div>
+        </div>
+      )}
       
       {/* Danger zone: delete participant (supervisors only) */}
       {role === "supervisor" && (

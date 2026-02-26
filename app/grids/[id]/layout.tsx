@@ -22,6 +22,7 @@ export default async function GridLayout({
   const { id } = await params;
   let name = "Grid";
   let role: Role = "viewer";
+  let hasSolved = false;
   try {
     const grid = await fetchGridSmart(id);
     name = grid.name;
@@ -40,9 +41,29 @@ export default async function GridLayout({
     }
   } catch {}
 
+  try {
+    const sdata = await backendFetchJSON<any>(`/api/grids/${id}/solutions/`);
+    const list = Array.isArray(sdata) ? sdata : sdata.results ?? [];
+    if (list.length > 0) {
+      const sorted = list.slice().sort((a: any, b: any) => {
+        const ta = new Date(a.created_at || 0).getTime();
+        const tb = new Date(b.created_at || 0).getTime();
+        return tb - ta;
+      });
+      const latest = sorted[0] || list[list.length - 1];
+      hasSolved = latest?.state === "DONE" && (latest?.status === "OPTIMAL" || latest?.status === "FEASIBLE");
+    }
+  } catch {}
+
   return (
     <>
-      <GridTopBar id={Number(id)} name={name} canDelete={role === "supervisor"} canInvite={role === "supervisor"} />
+      <GridTopBar
+        id={Number(id)}
+        name={name}
+        canDelete={role === "supervisor"}
+        canInvite={role === "supervisor"}
+        hasSolution={hasSolved}
+      />
       {children}
     </>
   );

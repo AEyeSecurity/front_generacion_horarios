@@ -3,7 +3,7 @@
 import { MouseEvent, useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import SidePanel from "./SidePanel";
-import { Users, Tags, User as UserIcon } from "lucide-react";
+import { Users, Tags, User as UserIcon, LayoutGrid } from "lucide-react";
 import type { Role } from "@/lib/types";
 
 type Tab = "participants" | "categories";
@@ -54,6 +54,7 @@ export default function SideDock({
   const lockRef = useRef(false);
   const pendingTabRef = useRef<Tab | null>(null);
   const router = useRouter();
+  const gotoCells = () => router.push(`/grids/${gridId}/cells`);
 
   const switchTo = useCallback(
     (next: Tab) => {
@@ -90,7 +91,7 @@ export default function SideDock({
       <div className="pointer-events-none">
         <div
           id="sidedock"
-          className="fixed left-4 top-1/2 -translate-y-1/2 z-[100] flex flex-col gap-3 pointer-events-auto"
+          className="fixed left-4 top-1/2 -translate-y-1/2 z-[150] flex flex-col gap-3 pointer-events-auto"
         >
           <DockButton title="My availability" onClick={gotoSelf}>
             <UserIcon className={`w-5 h-5 ${selfParticipantId ? "" : "opacity-50"}`} />
@@ -105,7 +106,7 @@ export default function SideDock({
     <div className="pointer-events-none">
       <div
         id="sidedock"
-        className="fixed left-4 top-1/2 -translate-y-1/2 z-[100] flex flex-col gap-3 pointer-events-auto"
+        className="fixed left-4 top-1/2 -translate-y-1/2 z-[150] flex flex-col gap-3 pointer-events-auto"
       >
         <DockButton
           title="Participants"
@@ -113,6 +114,10 @@ export default function SideDock({
           onClick={() => switchTo("participants")}
         >
           <Users className="w-5 h-5" />
+        </DockButton>
+
+        <DockButton title="Cells" onClick={gotoCells}>
+          <LayoutGrid className="w-5 h-5" />
         </DockButton>
 
         <DockButton
@@ -133,4 +138,3 @@ export default function SideDock({
     </div>
   );
 }
-

@@ -4,6 +4,11 @@ import { getCurrentUser } from "@/lib/auth";
 import type { Grid, Role } from "@/lib/types";
 import SideDock from "@/components/SideDock";
 import GridTopBar from "@/components/GridTopBar";
+import UnitTabs from "@/components/UnitTabs";
+import { Users, Tags, LayoutGrid, Clock4 } from "lucide-react";
+import GlassIcons from "@/components/GlassIcons";
+import SolveOverlay from "@/components/SolveOverlay";
+import DeleteGridBubble from "@/components/DeleteGridBubble";
 
 const EN_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -46,7 +51,7 @@ export default async function GridOverview({
   };
   const steps = (a: number, b: number, s: number) => {
     const out: number[] = [];
-    for (let t = a; t <= b; t += s) out.push(t);
+    for (let t = a; t < b; t += s) out.push(t);
     return out;
   };
   const fmt = (mins: number) => {
@@ -59,6 +64,15 @@ export default async function GridOverview({
   const end = toMin(grid.day_end);
   const rows = steps(start, end, grid.cell_size_min);
   const days = (grid.days_enabled || []).map((i) => EN_DAY[i] ?? String(i));
+  const ROW_PX = 64;
+  const TIME_COL_PX = 100;
+  const BODY_H = rows.length * ROW_PX;
+  let units: { id: number | string; name: string }[] = [];
+  try {
+    const udata = await backendFetchJSON<any>(`/api/units/?grid=${id}`);
+    const list = Array.isArray(udata) ? udata : udata.results ?? [];
+    units = list.map((u: any) => ({ id: u.id, name: u.name || `Unit ${u.id}` }));
+  } catch {}
 
   // Resolve my role and (if editor) my participant id in this grid
   let role: Role = "viewer";
@@ -93,40 +107,141 @@ export default async function GridOverview({
     }
   } catch {}
 
+  // Minimal onboarding: require at least one participant, category, and cell
+  let participantsCount = 0;
+  let categoriesCount = 0;
+  let cellsCount = 0;
+  try {
+    const pdata = await backendFetchJSON<any>(`/api/participants/?grid=${id}`);
+    const plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
+    participantsCount = plist.length;
+  } catch {}
+  try {
+    const cdata = await backendFetchJSON<any>(`/api/categories/?grid=${id}`);
+    const clist = Array.isArray(cdata) ? cdata : cdata.results ?? [];
+    categoriesCount = clist.length;
+  } catch {}
+  try {
+    const celldata = await backendFetchJSON<any>(`/api/cells/?grid=${id}`);
+    const celllist = Array.isArray(celldata) ? celldata : celldata.results ?? [];
+    cellsCount = celllist.length;
+  } catch {}
+
+  const ready = participantsCount > 0 && categoriesCount > 0 && cellsCount > 0;
+
+  // Determine if there is a solved solution to show schedule view
+  let hasSolved = false;
+  try {
+    const sdata = await backendFetchJSON<any>(`/api/grids/${id}/solutions/`);
+    const list = Array.isArray(sdata) ? sdata : sdata.results ?? [];
+    if (list.length > 0) {
+      const sorted = list.slice().sort((a: any, b: any) => {
+        const ta = new Date(a.created_at || 0).getTime();
+        const tb = new Date(b.created_at || 0).getTime();
+        return tb - ta;
+      });
+      const latest = sorted[0] || list[list.length - 1];
+      hasSolved = latest?.state === "DONE" && (latest?.status === "OPTIMAL" || latest?.status === "FEASIBLE");
+    }
+  } catch {}
+
   return (
     <div className="relative">
-      {/* Side dock varies by role: supervisor full, editor self icon, viewer none */}
-      <SideDock gridId={Number(grid.id)} role={role} selfParticipantId={selfPid ?? undefined} />
+      {hasSolved && (
+        <SideDock gridId={Number(grid.id)} role={role} selfParticipantId={selfPid ?? undefined} />
+      )}
+      {!hasSolved && role === "supervisor" && <DeleteGridBubble gridId={Number(grid.id)} />}
 
-      {/* Main calendar centered and 80% width */}
       <div className="p-4">
         <div className="w-[80%] mx-auto space-y-4">
-          <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
-            <div className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-              <div className="bg-gray-50 border-b h-12" />
-              {days.map((d) => (
-                <div key={d} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
-                  {d}
-                </div>
-              ))}
+          {!ready || (ready && !hasSolved) ? (
+            <div className="min-h-[70vh] flex items-center justify-center">
+              <div className="w-full max-w-3xl relative" style={{ height: "600px" }}>
+                <GlassIcons
+                  items={[
+                    {
+                      icon: <Users className="w-5 h-5 text-white" />,
+                      color: "gray",
+                      label: "Participants",
+                      href: `/grids/${id}/participants`,
+                    },
+                    {
+                      icon: <LayoutGrid className="w-5 h-5 text-white" />,
+                      color: "gray",
+                      label: "Cells",
+                      href: `/grids/${id}/cells`,
+                    },
+                    {
+                      icon: <Tags className="w-5 h-5 text-white" />,
+                      color: "gray",
+                      label: "Categories",
+                      href: `/grids/${id}/categories`,
+                    },
+                    {
+                      icon: <Clock4 className="w-5 h-5 text-white" />,
+                      color: "gray",
+                      label: "Time Ranges",
+                      href: `/grids/${id}/time-ranges`,
+                    },
+                  ]}
+                  className="py-0 h-full place-items-center grid-cols-2 md:grid-cols-2"
+                />
+              </div>
+              {ready && (
+                <SolveOverlay
+                  gridId={Number(grid.id)}
+                  role={role}
+                  daysCount={days.length}
+                  rowPx={ROW_PX}
+                  timeColPx={TIME_COL_PX}
+                  bodyHeight={BODY_H}
+                  selectedUnitId={null}
+                />
+              )}
             </div>
-
-            <div className="max-h-[70vh] overflow-y-auto">
-              {rows.map((t) => (
-                <div key={t} className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-                  <div className="border-r border-b h-16 flex items-center justify-center text-xs text-gray-600">
-                    {fmt(t)}
+          ) : (
+            <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
+              <>
+                  <div className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
+                    <div className="bg-gray-50 border-b h-12" />
+                    {days.map((d) => (
+                      <div key={d} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
+                        {d}
+                      </div>
+                    ))}
                   </div>
-                  {days.map((d, j) => (
-                    <div
-                      key={`${t}-${d}`}
-                      className={`border-b ${j < days.length - 1 ? "border-r" : ""} h-16 hover:bg-gray-50`}
+
+                  <div
+                    className="relative max-h-[70vh] overflow-y-auto"
+                    style={{ ["--time-col" as any]: `${TIME_COL_PX}px` }}
+                  >
+                    {rows.map((t) => (
+                      <div key={t} className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
+                        <div className="border-r border-b h-16 flex items-center justify-center text-xs text-gray-600">
+                          {fmt(t)} - {fmt(t + grid.cell_size_min)}
+                        </div>
+                        {days.map((d, j) => (
+                          <div
+                            key={`${t}-${d}`}
+                            className={`border-b ${j < days.length - 1 ? "border-r" : ""} h-16 hover:bg-gray-50`}
+                          />
+                        ))}
+                      </div>
+                    ))}
+
+                    <UnitTabs
+                      gridId={Number(grid.id)}
+                      role={role}
+                      units={units}
+                      daysCount={days.length}
+                      rowPx={ROW_PX}
+                      timeColPx={TIME_COL_PX}
+                      bodyHeight={BODY_H}
                     />
-                  ))}
-                </div>
-              ))}
+                  </div>
+              </>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

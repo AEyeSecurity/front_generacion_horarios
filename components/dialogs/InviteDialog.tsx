@@ -18,16 +18,27 @@ export default function InviteDialog({
   gridId,
   open,
   onOpenChange,
+  roleOptions,
 }: {
   gridId: number;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  roleOptions?: Role[];
 }) {
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState<Role>("viewer");
   const [message, setMessage] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    if (roleOptions && roleOptions.length === 1) {
+      setRole(roleOptions[0]);
+    } else {
+      setRole("viewer");
+    }
+  }, [open, roleOptions]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -68,7 +79,11 @@ export default function InviteDialog({
         <DialogContent className="sm:max-w-[560px] z-[96]">
           <DialogHeader>
             <DialogTitle>Share grid</DialogTitle>
-            <DialogDescription>Invite a user as viewer or supervisor.</DialogDescription>
+            <DialogDescription>
+              {roleOptions && roleOptions.length === 1
+                ? `Invite a user as ${roleOptions[0]}.`
+                : "Invite a user as viewer or supervisor."}
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={submit} className="space-y-4">
             <div>
@@ -78,9 +93,11 @@ export default function InviteDialog({
             <div>
               <label className="block text-sm mb-1">Role</label>
               <div className="flex gap-4 text-sm">
-                <label className="inline-flex items-center gap-2">
-                  <input type="radio" name="role" value="viewer" checked={role==="viewer"} onChange={()=>setRole("viewer")} /> Viewer
-                </label>
+                {(!roleOptions || roleOptions.includes("viewer")) && (
+                  <label className="inline-flex items-center gap-2">
+                    <input type="radio" name="role" value="viewer" checked={role==="viewer"} onChange={()=>setRole("viewer")} /> Viewer
+                  </label>
+                )}
                 <label className="inline-flex items-center gap-2">
                   <input type="radio" name="role" value="supervisor" checked={role==="supervisor"} onChange={()=>setRole("supervisor")} /> Supervisor
                 </label>

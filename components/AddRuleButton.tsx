@@ -11,12 +11,14 @@ export default function AddRuleButton({
   gridEnd,
   allowedDays,
   minMinutes,
+  disabled = false,
 }: {
   participantId: number;
   gridStart: string; // "HH:MM"
   gridEnd: string;   // "HH:MM"
   allowedDays?: number[];
   minMinutes?: number;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
@@ -25,8 +27,9 @@ export default function AddRuleButton({
     <>
       <button
         type="button"
-        className="inline-flex items-center gap-2 px-3 py-2 rounded bg-black text-white text-sm"
+        className="inline-flex items-center gap-2 px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50"
         onClick={() => setOpen(true)}
+        disabled={disabled}
       >
         <Plus className="w-4 h-4" />
         Add Rule

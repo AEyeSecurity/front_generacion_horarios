@@ -44,7 +44,7 @@ export default function CategoryDialog({
       if (!res.ok) throw new Error(`Failed (${res.status})`);
       const data = await res.json();
       const items = Array.isArray(data) ? data : data.results ?? [];
-      setValues(items);
+      setValues(items.filter((v: any) => Number(v.category) === Number(catId)));
     } catch (e: any) {
       setErr(e.message || "Error loading values");
     } finally {

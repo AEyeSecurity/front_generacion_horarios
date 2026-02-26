@@ -3,7 +3,17 @@
 import { useState } from "react";
 import InviteDialog from "@/components/dialogs/InviteDialog";
 
-export default function ShareInviteButton({ gridId, disabled = false }: { gridId: number; disabled?: boolean }) {
+type Role = "viewer" | "supervisor";
+
+export default function ShareInviteButton({
+  gridId,
+  disabled = false,
+  roleOptions,
+}: {
+  gridId: number;
+  disabled?: boolean;
+  roleOptions?: Role[];
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -14,8 +24,7 @@ export default function ShareInviteButton({ gridId, disabled = false }: { gridId
       >
         Share
       </button>
-      <InviteDialog gridId={gridId} open={open} onOpenChange={setOpen} />
+      <InviteDialog gridId={gridId} open={open} onOpenChange={setOpen} roleOptions={roleOptions} />
     </>
   );
 }
-

@@ -16,7 +16,7 @@ const cookieOptions = {
 export async function POST(req: Request) {
   const out = NextResponse.redirect(new URL('/login', req.url));
   // Delete cookies using same attributes as when they were set
-  out.cookies.delete(ACCESS, cookieOptions);
-  out.cookies.delete(REFRESH, cookieOptions);
+  out.cookies.set(ACCESS, "", { ...cookieOptions, maxAge: 0 });
+  out.cookies.set(REFRESH, "", { ...cookieOptions, maxAge: 0 });
   return out;
 }
