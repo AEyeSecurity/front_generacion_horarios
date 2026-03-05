@@ -142,8 +142,8 @@ export default function AddCategoryDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogPortal>
-        <DialogOverlay className="fixed inset-0 bg-black/50 z-[95]" />
-        <DialogContent className="sm:max-w-[720px] z-[96]">
+        <DialogOverlay className="fixed inset-0 bg-black/50 z-[180]" />
+        <DialogContent className="sm:max-w-[720px] z-[181]">
           <DialogHeader>
             <DialogTitle>{createdId ? "Add Category Values" : "Add Category"}</DialogTitle>
           </DialogHeader>
@@ -249,4 +249,3 @@ export default function AddCategoryDialog({
     </Dialog>
   );
 }
-

@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MoreVertical, Trash2, Clock4, FileDown } from "lucide-react";
+import { MoreVertical, Trash2, Clock4, FileDown, Settings } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -11,9 +11,9 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 
-type Props = { gridId: number | string; canDelete?: boolean };
+type Props = { gridId: number | string; canDelete?: boolean; canConfigureSolve?: boolean };
 
-export default function GridActions({ gridId, canDelete = false }: Props) {
+export default function GridActions({ gridId, canDelete = false, canConfigureSolve = false }: Props) {
   const router = useRouter();
   const [latestSolutionId, setLatestSolutionId] = useState<string | null>(null);
   const [loadingSolutions, setLoadingSolutions] = useState(true);
@@ -72,12 +72,16 @@ export default function GridActions({ gridId, canDelete = false }: Props) {
     const id = String(gridId);
     router.push(`/grids/${encodeURIComponent(id)}/time-ranges`);
   };
+  const goSettings = () => {
+    const id = String(gridId);
+    router.push(`/grids/${encodeURIComponent(id)}/settings`);
+  };
   const exportSchedule = () => {
     if (!latestSolutionId) return;
     window.location.assign(`/api/solutions/${encodeURIComponent(latestSolutionId)}/export/`);
   };
 
-  if (!canDelete) return null;
+  if (!canDelete && !canConfigureSolve) return null;
 
   return (
     <DropdownMenu>
@@ -87,13 +91,19 @@ export default function GridActions({ gridId, canDelete = false }: Props) {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[10rem]">
-        <DropdownMenuItem onClick={exportSchedule} disabled={!latestSolutionId || loadingSolutions}>
-          <FileDown className="w-4 h-4 mr-2" />
-          Export Schedule (XLSX)
-        </DropdownMenuItem>
+        {canConfigureSolve && (
+          <DropdownMenuItem onClick={goSettings}>
+            <Settings className="w-4 h-4 mr-2" />
+            Settings
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={goTimeRanges}>
           <Clock4 className="w-4 h-4 mr-2" />
-          Configure Time Ranges
+          Time Ranges
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={exportSchedule} disabled={!latestSolutionId || loadingSolutions}>
+          <FileDown className="w-4 h-4 mr-2" />
+          Export Schedule (.xlsx)
         </DropdownMenuItem>
         {canDelete && (
         <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-700">

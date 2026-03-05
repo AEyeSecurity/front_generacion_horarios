@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { ChevronDown } from "lucide-react";
+import { TierBadge, type Tier } from "@/components/TierBadge";
 import {
   Dialog,
   DialogPortal,
@@ -11,6 +13,12 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function AddParticipantDialog({
   gridId,
@@ -25,6 +33,7 @@ export default function AddParticipantDialog({
 }) {
   const [first, setFirst] = React.useState("");
   const [last, setLast] = React.useState("");
+  const [tier, setTier] = React.useState<Tier>("PRIMARY");
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
@@ -41,6 +50,7 @@ export default function AddParticipantDialog({
           grid: gridId,
           name: first.trim(),
           surname: last.trim(),
+          tier,
         }),
       });
       if (!res.ok) {
@@ -49,6 +59,7 @@ export default function AddParticipantDialog({
       }
       setFirst("");
       setLast("");
+      setTier("PRIMARY");
       onCreated?.();
       onOpenChange(false);
     } catch (e: any) {
@@ -62,14 +73,14 @@ export default function AddParticipantDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
         {/* Overlay por encima del panel lateral */}
-        <DialogOverlay className="fixed inset-0 bg-black/50 z-[95] data-[state=open]:animate-in data-[state=closed]:animate-out" />
-        <DialogContent className="sm:max-w-[720px] z-[96]">
+        <DialogOverlay className="fixed inset-0 bg-black/50 z-[180] data-[state=open]:animate-in data-[state=closed]:animate-out" />
+        <DialogContent className="sm:max-w-[720px] z-[181]">
           <DialogHeader>
             <DialogTitle>Add Participant</DialogTitle>
           </DialogHeader>
 
           <form onSubmit={submit} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_112px] gap-3">
               <div>
                 <label className="block text-sm mb-1">First name *</label>
                 <input
@@ -86,6 +97,34 @@ export default function AddParticipantDialog({
                   value={last}
                   onChange={(e) => setLast(e.target.value)}
                 />
+              </div>
+              <div>
+                <label className="block text-sm mb-1">Tier *</label>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex h-[42px] w-full min-w-0 items-center justify-center gap-1 overflow-hidden rounded border bg-white px-2 py-2"
+                      aria-label="Select tier"
+                    >
+                      <span className="flex min-w-0 flex-1 items-center justify-center overflow-hidden">
+                        <TierBadge tier={tier} compact />
+                      </span>
+                      <ChevronDown className="h-4 w-4 shrink-0 text-gray-500" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" sideOffset={6} className="z-[190] min-w-[8rem]">
+                    <DropdownMenuItem onClick={() => setTier("PRIMARY")} className="justify-center">
+                      <TierBadge tier="PRIMARY" compact />
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTier("SECONDARY")} className="justify-center">
+                      <TierBadge tier="SECONDARY" compact />
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTier("TERTIARY")} className="justify-center">
+                      <TierBadge tier="TERTIARY" compact />
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
 

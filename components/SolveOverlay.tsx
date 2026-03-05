@@ -2,6 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Lightbulb } from "lucide-react";
+import { formatSlotRange } from "@/lib/schedule";
+import {
+  buildSolverParamsPayload,
+  getGridSolverSettingsKey,
+  parseGridSolverSettings,
+} from "@/lib/grid-solver-settings";
 
 const COLOR_OPTIONS = [
   "#E7180B",
@@ -83,9 +89,11 @@ type Solution = {
   runtime_ms?: number;
   schedule?: Array<{
     cell_id: string;
+    source_cell_id?: string | number;
     day_index: number;
     start_slot: number;
     end_slot: number;
+    assigned_participants?: Array<string | number>;
     participants?: string[];
     units?: Array<string | number>;
   }>;
@@ -98,10 +106,24 @@ type Props = {
   rowPx: number;
   timeColPx: number;
   bodyHeight: number;
+  dayStartMin: number;
+  slotMin: number;
   selectedUnitId?: string | null;
+  topOffset?: number;
 };
 
-export default function SolveOverlay({ gridId, role, daysCount, rowPx, timeColPx, bodyHeight, selectedUnitId }: Props) {
+export default function SolveOverlay({
+  gridId,
+  role,
+  daysCount,
+  rowPx,
+  timeColPx,
+  bodyHeight,
+  dayStartMin,
+  slotMin,
+  selectedUnitId,
+  topOffset = 0,
+}: Props) {
   const [hasCells, setHasCells] = useState(false);
   const [isSolving, setIsSolving] = useState(false);
   const [solveStartedAt, setSolveStartedAt] = useState<number | null>(null);
@@ -112,9 +134,10 @@ export default function SolveOverlay({ gridId, role, daysCount, rowPx, timeColPx
   const [cellStaffsById, setCellStaffsById] = useState<Record<string, string[]>>({});
   const [cellColorById, setCellColorById] = useState<Record<string, string>>({});
   const [staffMembersByStaffId, setStaffMembersByStaffId] = useState<Record<string, string[]>>({});
+  const [staffNameById, setStaffNameById] = useState<Record<string, string>>({});
   const [participantNameById, setParticipantNameById] = useState<Record<string, string>>({});
 
-  const canSolve = role === "supervisor" || role === "editor";
+  const canSolve = role === "supervisor";
 
   useEffect(() => {
     let active = true;
@@ -191,6 +214,13 @@ export default function SolveOverlay({ gridId, role, daysCount, rowPx, timeColPx
           if (!smm[sid]) smm[sid] = [];
           smm[sid].push(pid);
         }
+        const rs = await fetch(`/api/staffs?grid=${gridId}`, { cache: "no-store" });
+        const sdata = await rs.json().catch(() => ([]));
+        const slist = Array.isArray(sdata) ? sdata : sdata.results ?? [];
+        const snames: Record<string, string> = {};
+        for (const s of slist) {
+          if (s?.id != null) snames[String(s.id)] = s.name || `Staff ${s.id}`;
+        }
         const rp = await fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" });
         const pdata = await rp.json().catch(() => ([]));
         const plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
@@ -203,6 +233,7 @@ export default function SolveOverlay({ gridId, role, daysCount, rowPx, timeColPx
           setCellStaffsById(cstaffs);
           setCellColorById(ccolors);
           setStaffMembersByStaffId(smm);
+          setStaffNameById(snames);
           setParticipantNameById(pmap);
         }
       } catch {}
@@ -227,10 +258,13 @@ export default function SolveOverlay({ gridId, role, daysCount, rowPx, timeColPx
     setError(null);
     setSolution(null);
     try {
+      const settingsKey = getGridSolverSettingsKey(gridId);
+      const parsedSettings = parseGridSolverSettings(window.localStorage.getItem(settingsKey));
+      const solverParams = buildSolverParamsPayload(parsedSettings);
       const r = await fetch(`/api/grids/${gridId}/solve/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ solver_params: solverParams }),
       });
       if (!r.ok) {
         const txt = await r.text().catch(() => "");
@@ -265,37 +299,53 @@ export default function SolveOverlay({ gridId, role, daysCount, rowPx, timeColPx
     <>
       {/* Schedule overlay */}
       {filteredSchedule.length > 0 && (
-        <div className="pointer-events-none absolute inset-0" style={{ height: bodyHeight }}>
+        <div className="pointer-events-none absolute inset-x-0" style={{ top: topOffset, height: bodyHeight }}>
           {filteredSchedule.map((s, idx) => {
             const col = s.day_index;
             if (col < 0 || col >= daysCount) return null;
+            const sourceCellId = String(s.source_cell_id ?? s.cell_id);
             const top = s.start_slot * rowPx;
             const height = Math.max(6, (s.end_slot - s.start_slot) * rowPx);
             const left = `calc(${timeColPx}px + ${col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
             const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`;
-            const cellName = cellNameById[String(s.cell_id)] || `Cell ${s.cell_id}`;
-            const staffIds = cellStaffsById[String(s.cell_id)] || [];
-            const bg = cellColorById[String(s.cell_id)] || "";
+            const cellName = cellNameById[sourceCellId] || `Cell ${sourceCellId}`;
+            const timeLabel = formatSlotRange(dayStartMin, slotMin, s.start_slot, s.end_slot);
+            const staffIds = cellStaffsById[sourceCellId] || [];
+            const bg = cellColorById[sourceCellId] || "";
             const colorIdx = COLOR_OPTIONS.findIndex((c) => c.toLowerCase() === bg.toLowerCase());
             const useColor = Boolean(bg && colorIdx >= 0);
             const textDark = useColor ? COLOR_TEXT_DARK[colorIdx] : "#1f2937";
             const textLight = useColor ? COLOR_TEXT_LIGHT[colorIdx] : "#111827";
             const border = useColor ? shadeHex(bg, -0.35) : "#e5e7eb";
-            const pSet = new Set<string>();
-            for (const sid of staffIds) {
-              const pids = staffMembersByStaffId[sid] || [];
-              for (const pid of pids) pSet.add(pid);
+            const assignedParticipantIds = Array.isArray(s.assigned_participants)
+              ? s.assigned_participants.map(String).sort()
+              : Array.isArray(s.participants)
+              ? s.participants.map(String).sort()
+              : [];
+            let assignmentLabel = assignedParticipantIds
+              .map((pid) => participantNameById[pid] || `#${pid}`)
+              .join(assignedParticipantIds.length > 2 ? " + " : ", ");
+            if (assignedParticipantIds.length > 0) {
+              const matchedStaffId = staffIds.find((sid) => {
+                const members = (staffMembersByStaffId[sid] || []).map(String).sort();
+                return members.length === assignedParticipantIds.length && members.every((id, index) => id === assignedParticipantIds[index]);
+              });
+              if (matchedStaffId) {
+                assignmentLabel = staffNameById[matchedStaffId] || `Staff ${matchedStaffId}`;
+              }
             }
-            const pNames = Array.from(pSet).map((pid) => participantNameById[String(pid)] || `#${pid}`);
-            const pName = pNames.join(", ");
             return (
               <div key={`${s.cell_id}-${idx}`} className="absolute" style={{ top, left, width, height }}>
                 <div
-                  className="w-full h-full rounded-md border text-[11px] flex flex-col items-center justify-center leading-tight"
+                  className="w-full h-full rounded-md border px-2 py-2 text-[11px]"
                   style={{ backgroundColor: bg || "#f3f4f6", borderColor: border, color: textDark }}
                 >
-                  <div className="font-semibold" style={{ color: textLight }}>{cellName}</div>
-                  {pName && <div className="text-center px-1">{pName}</div>}
+                  <div className="flex h-full flex-col items-center justify-center text-center leading-tight">
+                    <div className="font-semibold" style={{ color: textLight }}>{cellName}</div>
+                    {assignmentLabel && <div className="px-1">{assignmentLabel}</div>}
+                    <div className="h-2" />
+                    <div className="text-[10px] font-medium" style={{ color: textDark }}>{timeLabel}</div>
+                  </div>
                 </div>
               </div>
             );

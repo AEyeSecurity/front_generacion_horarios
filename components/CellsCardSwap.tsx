@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import CardSwap, { Card } from "@/components/CardSwap";
 import EditCellDialog from "@/components/dialogs/EditCellDialog";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
 
 const COLOR_OPTIONS = [
   "#E7180B",
@@ -83,14 +83,32 @@ type Cell = {
   name?: string;
   description?: string;
   duration_min?: number;
+  division_days?: number;
+  time_range?: number | string;
   units?: Array<number | string>;
   bundles?: Array<number | string>;
   staffs?: Array<number | string>;
+  headcount?: number | null;
+  tier_counts?: Partial<Record<"PRIMARY" | "SECONDARY" | "TERTIARY", number>> | null;
+  tier_pools?: Partial<Record<"PRIMARY" | "SECONDARY" | "TERTIARY", Array<number | string>>> | null;
+  staff_options_resolved?: Array<{ staff?: string | number; members?: Array<string | number> }> | null;
   colorHex?: string | null;
   color_hex?: string | null;
+  series_id?: string | null;
+  seriesCells?: Cell[];
 };
 
 type Bundle = { id: number | string; name?: string };
+type Staff = { id: number | string; name?: string };
+type CellCardGroup = {
+  key: string;
+  cell: Cell;
+  cells: Cell[];
+  displayName: string;
+  bundleNames: string[];
+};
+type TierKey = "PRIMARY" | "SECONDARY" | "TERTIARY";
+const TIERS: TierKey[] = ["PRIMARY", "SECONDARY", "TERTIARY"];
 
 export default function CellsCardSwap({
   cells,
@@ -108,18 +126,64 @@ export default function CellsCardSwap({
     }
     return map;
   }, [bundles]);
+  const groupedCells = useMemo(() => {
+    const ordered: CellCardGroup[] = [];
+    const seriesMap = new Map<string, CellCardGroup>();
+
+    for (const cell of cells) {
+      const seriesId = cell.series_id ? String(cell.series_id) : null;
+      if (!seriesId) {
+        const bundleIds = Array.isArray(cell.bundles) ? cell.bundles : [];
+        const bundleLabel = bundleIds.map((b) => bundleNameById[String(b)] || `Bundle ${b}`).join("; ") || "-";
+        ordered.push({
+          key: `single:${cell.id}`,
+          cell,
+          cells: [cell],
+          displayName: cell.name || `Cell ${cell.id}`,
+          bundleNames: bundleLabel === "-" ? [] : bundleLabel.split("; "),
+        });
+        continue;
+      }
+
+      if (!seriesMap.has(seriesId)) {
+        const baseName = (cell.name || "").replace(/\s*\[[^\]]+\]\s*$/, "").trim() || cell.name || `Series ${seriesId}`;
+        const group: CellCardGroup = {
+          key: `series:${seriesId}`,
+          cell,
+          cells: [cell],
+          displayName: baseName,
+          bundleNames: [],
+        };
+        seriesMap.set(seriesId, group);
+        ordered.push(group);
+      } else {
+        seriesMap.get(seriesId)!.cells.push(cell);
+      }
+    }
+
+    for (const group of ordered) {
+      const bundleNames = [...new Set(
+        group.cells.flatMap((cell) =>
+          (Array.isArray(cell.bundles) ? cell.bundles : []).map((bundleId) => bundleNameById[String(bundleId)] || `Bundle ${bundleId}`)
+        )
+      )];
+      group.bundleNames = bundleNames;
+    }
+
+    return ordered;
+  }, [bundleNameById, cells]);
 
   const router = useRouter();
   const [editCell, setEditCell] = useState<Cell | null>(null);
-  const [staffMembersByStaffId, setStaffMembersByStaffId] = useState<Record<string, string[]>>({});
+  const [staffNameById, setStaffNameById] = useState<Record<string, string>>({});
   const [participantNameById, setParticipantNameById] = useState<Record<string, string>>({});
 
   const perStack = 5;
   const pages = useMemo(() => {
-    const out: Cell[][] = [];
-    for (let i = 0; i < cells.length; i += perStack) out.push(cells.slice(i, i + perStack));
+    const out: CellCardGroup[][] = [];
+    for (let i = 0; i < groupedCells.length; i += perStack) out.push(groupedCells.slice(i, i + perStack));
     return out.length > 0 ? out : [[]];
-  }, [cells]);
+  }, [groupedCells]);
   const [pageIdx, setPageIdx] = useState(0);
 
   useEffect(() => {
@@ -134,15 +198,12 @@ export default function CellsCardSwap({
     let active = true;
     (async () => {
       try {
-        const rsm = await fetch(`/api/staff-members?grid=${gridId}`, { cache: "no-store" });
-        const smdata = await rsm.json().catch(() => ([]));
-        const smlist = Array.isArray(smdata) ? smdata : smdata.results ?? [];
-        const smm: Record<string, string[]> = {};
-        for (const m of smlist) {
-          const sid = String(m.staff);
-          const pid = String(m.participant);
-          if (!smm[sid]) smm[sid] = [];
-          smm[sid].push(pid);
+        const rs = await fetch(`/api/staffs?grid=${gridId}`, { cache: "no-store" });
+        const sdata = await rs.json().catch(() => ([]));
+        const slist = Array.isArray(sdata) ? sdata : sdata.results ?? [];
+        const smap: Record<string, string> = {};
+        for (const s of slist) {
+          if (s?.id != null) smap[String(s.id)] = s.name || `Staff ${s.id}`;
         }
         const rp = await fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" });
         const pdata = await rp.json().catch(() => ([]));
@@ -152,7 +213,7 @@ export default function CellsCardSwap({
           if (p?.id != null) pmap[String(p.id)] = `${p.name}${p.surname ? " " + p.surname : ""}`;
         }
         if (active) {
-          setStaffMembersByStaffId(smm);
+          setStaffNameById(smap);
           setParticipantNameById(pmap);
         }
       } catch {}
@@ -206,41 +267,97 @@ export default function CellsCardSwap({
             hoverEffect
             containerClassName="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 origin-center perspective-[900px] overflow-visible"
           >
-            {currentCells.map((cell) => {
+            {currentCells.map((group) => {
+              const cell = group.cell;
               const color = (cell.colorHex || cell.color_hex || "") as string;
               const colorIdx = COLOR_OPTIONS.findIndex((c) => c.toLowerCase() === color.toLowerCase());
               const useColor = Boolean(color && colorIdx >= 0);
               const textDark = useColor ? COLOR_TEXT_DARK[colorIdx] : "";
               const textLight = useColor ? COLOR_TEXT_LIGHT[colorIdx] : "";
               const border = useColor ? shadeHex(color, -0.35) : "";
-              const bundleIds = Array.isArray(cell.bundles) ? cell.bundles : [];
-              const bundleNames = bundleIds.map((b) => bundleNameById[String(b)] || `Bundle ${b}`);
-              const bundleLabel = bundleNames.join(" + ");
-              const staffIds = Array.isArray(cell.staffs) ? cell.staffs.map((s) => String(s)) : [];
-              const pSet = new Set<string>();
-              for (const sid of staffIds) {
-                const pids = staffMembersByStaffId[sid] || [];
-                for (const pid of pids) pSet.add(pid);
-              }
-              const pNames = Array.from(pSet).map((pid) => participantNameById[pid] || `#${pid}`);
-              const participantsLabel = pNames.join(", ");
+              const staffIds = [...new Set(
+                group.cells.flatMap((entry) => (Array.isArray(entry.staffs) ? entry.staffs.map((s) => String(s)) : []))
+              )];
+              const staffNames = staffIds.length > 0
+                ? staffIds.map((sid) => staffNameById[sid] || `Staff ${sid}`)
+                : [];
+              const tierPools = (cell.tier_pools ?? {}) as Partial<Record<TierKey, Array<number | string>>>;
               return (
                 <Card
-                  key={cell.id}
+                  key={group.key}
                   customClass="shadow-lg p-4 border"
-                  onDoubleClick={() => setEditCell(cell)}
+                  onDoubleClick={() =>
+                    setEditCell({
+                      ...cell,
+                      name: group.displayName,
+                      seriesCells: group.cells,
+                    })
+                  }
                   style={{ backgroundColor: color || "#ffffff", borderColor: border || "#e5e7eb", color: textDark || undefined }}
                 >
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-semibold" style={{ color: textLight || undefined }}>
-                      {cell.name || `Cell ${cell.id}`}
-                    </h3>
-                    {bundleLabel && <p className="text-sm">{bundleLabel}</p>}
-                    {participantsLabel && <p className="text-sm">{participantsLabel}</p>}
-                    {cell.description && <p className="text-sm">{cell.description}</p>}
-                    {cell.duration_min != null && (
-                      <p className="text-xs">Duration: {cell.duration_min} min</p>
-                    )}
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <h3 className="min-w-0 text-lg font-semibold leading-tight" style={{ color: textLight || undefined }}>
+                        {group.displayName}
+                      </h3>
+                      <div className="relative shrink-0 overflow-hidden px-3 py-1 text-xs font-bold" style={{ color: textLight || undefined }}>
+                        <Clock3
+                          className="absolute left-1/2 top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 opacity-25"
+                          style={{ color: textDark || "#374151" }}
+                        />
+                        <span className="relative z-10 whitespace-nowrap">{cell.duration_min ?? 0} min</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start justify-between gap-4 text-xs">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span className="font-medium" style={{ color: textLight || undefined }}>Bundles:</span>
+                          {group.bundleNames.length > 0 ? group.bundleNames.map((bundleName) => (
+                            <span
+                              key={bundleName}
+                              className="rounded-md border px-2 py-1"
+                              style={{ borderColor: border || "#d1d5db", color: textDark || undefined }}
+                            >
+                              {bundleName}
+                            </span>
+                          )) : (
+                            <span>-</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-xs">
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="font-medium" style={{ color: textLight || undefined }}>Staffs:</span>
+                        {staffNames.length > 0 ? staffNames.map((staffName) => (
+                          <span
+                            key={staffName}
+                            className="rounded-md border px-2 py-1"
+                            style={{ borderColor: border || "#d1d5db", color: textDark || undefined }}
+                          >
+                            {staffName}
+                          </span>
+                        )) : (
+                          <span>-</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium" style={{ color: textLight || undefined }}>
+                        Eligible Participants
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 text-xs">
+                        {TIERS.map((tier) => {
+                          const ids = Array.isArray(tierPools[tier]) ? tierPools[tier]! : [];
+                          const names = ids.map((id) => participantNameById[String(id)] || `#${id}`).join(", ");
+                          return (
+                            <div key={tier} className="min-w-0">
+                              <div className="break-words leading-relaxed">{names || "-"}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </Card>
               );

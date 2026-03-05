@@ -9,6 +9,7 @@ import { Users, Tags, LayoutGrid, Clock4 } from "lucide-react";
 import GlassIcons from "@/components/GlassIcons";
 import SolveOverlay from "@/components/SolveOverlay";
 import DeleteGridBubble from "@/components/DeleteGridBubble";
+import GradualBlur from "@/components/GradualBlur";
 
 const EN_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -195,12 +196,14 @@ export default async function GridOverview({
                   rowPx={ROW_PX}
                   timeColPx={TIME_COL_PX}
                   bodyHeight={BODY_H}
+                  dayStartMin={start}
+                  slotMin={grid.cell_size_min}
                   selectedUnitId={null}
                 />
               )}
             </div>
           ) : (
-            <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
+            <div className="relative border rounded-lg bg-white overflow-hidden shadow-sm">
               <>
                   <div className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
                     <div className="bg-gray-50 border-b h-12" />
@@ -212,14 +215,28 @@ export default async function GridOverview({
                   </div>
 
                   <div
-                    className="relative max-h-[70vh] overflow-y-auto"
+                    data-schedule-scroll
+                    className="relative max-h-[70vh] overflow-y-auto hide-scrollbar"
                     style={{ ["--time-col" as any]: `${TIME_COL_PX}px` }}
                   >
+                    <div className="pointer-events-none absolute left-0 top-0 z-[2]" style={{ width: TIME_COL_PX, height: BODY_H }}>
+                      <div className="absolute inset-x-0 top-1 text-center text-xs text-gray-500">{fmt(start)}</div>
+                      {rows.slice(1).map((t, index) => (
+                        <div
+                          key={`time-axis-${t}`}
+                          className="absolute inset-x-0 -translate-y-1/2 text-center text-xs text-gray-500"
+                          style={{ top: (index + 1) * ROW_PX }}
+                        >
+                          {fmt(t)}
+                        </div>
+                      ))}
+                      <div className="absolute inset-x-0 bottom-1 text-center text-xs text-gray-500">
+                        {fmt(end)}
+                      </div>
+                    </div>
                     {rows.map((t) => (
                       <div key={t} className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-                        <div className="border-r border-b h-16 flex items-center justify-center text-xs text-gray-600">
-                          {fmt(t)} - {fmt(t + grid.cell_size_min)}
-                        </div>
+                        <div className="h-16 border-r" />
                         {days.map((d, j) => (
                           <div
                             key={`${t}-${d}`}
@@ -237,8 +254,33 @@ export default async function GridOverview({
                       rowPx={ROW_PX}
                       timeColPx={TIME_COL_PX}
                       bodyHeight={BODY_H}
+                      dayStartMin={start}
+                      slotMin={grid.cell_size_min}
                     />
                   </div>
+                  <GradualBlur
+                    target="parent"
+                    position="top"
+                    height="2.1rem"
+                    strength={2}
+                    divCount={5}
+                    curve="bezier"
+                    exponential
+                    opacity={1}
+                    showWhen="not-at-start"
+                    style={{ top: "3rem" }}
+                  />
+                  <GradualBlur
+                    target="parent"
+                    position="bottom"
+                    height="2.1rem"
+                    strength={2}
+                    divCount={5}
+                    curve="bezier"
+                    exponential
+                    opacity={1}
+                    showWhen="not-at-end"
+                  />
               </>
             </div>
           )}

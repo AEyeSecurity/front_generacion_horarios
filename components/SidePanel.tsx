@@ -55,7 +55,7 @@ export default function SidePanel({
           <SheetTitle>Manage panel</SheetTitle>
         </SheetHeader>
 
-        <div className="h-full flex flex-col pl-16 pr-4 pt-4 pb-0">
+        <div className="h-full flex flex-col pl-18 pr-4 pt-4 pb-0">
           <div className="flex-1 overflow-y-auto pb-[72px]">
             {tab === "participants" ? (
               <ParticipantsPanel gridId={gridId} refreshKey={participantsKey} />

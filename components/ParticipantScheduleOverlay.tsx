@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { formatSlotRange } from "@/lib/schedule";
 
 const COLOR_OPTIONS = [
   "#E7180B",
@@ -80,10 +81,12 @@ type Solution = {
   status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE" | "ERROR";
   schedule?: Array<{
     cell_id: string;
+    source_cell_id?: string | number;
     day_index: number;
     start_slot: number;
     end_slot: number;
-    units?: Array<string | number>;
+    assigned_participants?: Array<string | number>;
+    participants?: Array<string | number>;
   }>;
   created_at?: string;
 };
@@ -95,6 +98,9 @@ type Props = {
   rowPx: number;
   timeColPx: number;
   bodyHeight: number;
+  dayStartMin: number;
+  slotMin: number;
+  topOffset?: number;
 };
 
 export default function ParticipantScheduleOverlay({
@@ -104,14 +110,15 @@ export default function ParticipantScheduleOverlay({
   rowPx,
   timeColPx,
   bodyHeight,
+  dayStartMin,
+  slotMin,
+  topOffset = 0,
 }: Props) {
   const [solution, setSolution] = useState<Solution | null>(null);
   const [cellNameById, setCellNameById] = useState<Record<string, string>>({});
-  const [cellUnitsById, setCellUnitsById] = useState<Record<string, Array<string | number>>>({});
-  const [cellStaffsById, setCellStaffsById] = useState<Record<string, string[]>>({});
+  const [cellBundlesById, setCellBundlesById] = useState<Record<string, Array<string | number>>>({});
   const [cellColorById, setCellColorById] = useState<Record<string, string>>({});
-  const [staffMembersByStaffId, setStaffMembersByStaffId] = useState<Record<string, string[]>>({});
-  const [unitNameById, setUnitNameById] = useState<Record<string, string>>({});
+  const [bundleNameById, setBundleNameById] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let active = true;
@@ -144,46 +151,31 @@ export default function ParticipantScheduleOverlay({
         const cdata = await rc.json().catch(() => ([]));
         const clist = Array.isArray(cdata) ? cdata : cdata.results ?? [];
         const cmap: Record<string, string> = {};
-        const cunits: Record<string, Array<string | number>> = {};
-        const cstaffs: Record<string, string[]> = {};
+        const cbundles: Record<string, Array<string | number>> = {};
         const ccolors: Record<string, string> = {};
         for (const c of clist) {
           if (c?.id != null) {
             const cid = String(c.id);
             cmap[cid] = c.name || `Cell ${c.id}`;
-            cunits[cid] = Array.isArray(c.units) ? c.units : [];
-            if (Array.isArray(c.staffs)) cstaffs[cid] = c.staffs.map((s: any) => String(s));
+            cbundles[cid] = Array.isArray(c.bundles) ? c.bundles : [];
             if (c?.colorHex) ccolors[cid] = c.colorHex;
             else if (c?.color_hex) ccolors[cid] = c.color_hex;
           }
         }
 
-        const rs = await fetch(`/api/staff-members?grid=${gridId}`, { cache: "no-store" });
-        const smdata = await rs.json().catch(() => ([]));
-        const smlist = Array.isArray(smdata) ? smdata : smdata.results ?? [];
-        const smm: Record<string, string[]> = {};
-        for (const m of smlist) {
-          const sid = String(m.staff);
-          const pid = String(m.participant);
-          if (!smm[sid]) smm[sid] = [];
-          smm[sid].push(pid);
-        }
-
-        const ru = await fetch(`/api/units?grid=${gridId}`, { cache: "no-store" });
-        const udata = await ru.json().catch(() => ([]));
-        const ulist = Array.isArray(udata) ? udata : udata.results ?? [];
-        const umap: Record<string, string> = {};
-        for (const u of ulist) {
-          if (u?.id != null) umap[String(u.id)] = u.name || `Unit ${u.id}`;
+        const rb = await fetch(`/api/bundles?grid=${gridId}`, { cache: "no-store" });
+        const bdata = await rb.json().catch(() => ([]));
+        const blist = Array.isArray(bdata) ? bdata : bdata.results ?? [];
+        const bmap: Record<string, string> = {};
+        for (const b of blist) {
+          if (b?.id != null) bmap[String(b.id)] = b.name || `Bundle ${b.id}`;
         }
 
         if (active) {
           setCellNameById(cmap);
-          setCellUnitsById(cunits);
-          setCellStaffsById(cstaffs);
+          setCellBundlesById(cbundles);
           setCellColorById(ccolors);
-          setStaffMembersByStaffId(smm);
-          setUnitNameById(umap);
+          setBundleNameById(bmap);
         }
       } catch {}
     })();
@@ -192,21 +184,6 @@ export default function ParticipantScheduleOverlay({
     };
   }, [gridId]);
 
-  const allowedCellIds = useMemo(() => {
-    const pid = String(participantId);
-    const allowed = new Set<string>();
-    for (const [cellId, staffIds] of Object.entries(cellStaffsById)) {
-      for (const sid of staffIds) {
-        const members = staffMembersByStaffId[sid] || [];
-        if (members.includes(pid)) {
-          allowed.add(cellId);
-          break;
-        }
-      }
-    }
-    return allowed;
-  }, [cellStaffsById, staffMembersByStaffId, participantId]);
-
   const schedule =
     solution &&
     solution.state === "DONE" &&
@@ -214,25 +191,33 @@ export default function ParticipantScheduleOverlay({
       ? solution.schedule || []
       : [];
 
-  const filteredSchedule = schedule.filter((s) => allowedCellIds.has(String(s.cell_id)));
+  const filteredSchedule = schedule.filter((s) => {
+    const assigned = Array.isArray(s.assigned_participants)
+      ? s.assigned_participants
+      : Array.isArray(s.participants)
+      ? s.participants
+      : [];
+    return assigned.map(String).includes(String(participantId));
+  });
 
   if (filteredSchedule.length === 0) return null;
 
   return (
-    <div className="pointer-events-none absolute inset-0" style={{ height: bodyHeight }}>
+    <div className="pointer-events-none absolute inset-x-0" style={{ top: topOffset, height: bodyHeight }}>
       {filteredSchedule.map((s, idx) => {
         const col = s.day_index;
         if (col < 0 || col >= daysCount) return null;
+        const sourceCellId = String(s.source_cell_id ?? s.cell_id);
         const top = s.start_slot * rowPx;
         const height = Math.max(6, (s.end_slot - s.start_slot) * rowPx);
         const left = `calc(${timeColPx}px + ${col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
         const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`;
-        const cid = String(s.cell_id);
-        const cellName = cellNameById[cid] || `Cell ${s.cell_id}`;
-        const unitIds = Array.isArray(s.units) ? s.units : cellUnitsById[cid] || [];
-        const unitNames = unitIds.map((u) => unitNameById[String(u)] || `Unit ${u}`);
-        const unitsLabel = unitNames.join(" + ");
-        const bg = cellColorById[cid] || "";
+        const cellName = cellNameById[sourceCellId] || `Cell ${sourceCellId}`;
+        const timeLabel = formatSlotRange(dayStartMin, slotMin, s.start_slot, s.end_slot);
+        const bundleIds = cellBundlesById[sourceCellId] || [];
+        const bundleNames = bundleIds.map((b) => bundleNameById[String(b)] || `Bundle ${b}`);
+        const bundlesLabel = bundleNames.join(" + ");
+        const bg = cellColorById[sourceCellId] || "";
         const colorIdx = COLOR_OPTIONS.findIndex((c) => c.toLowerCase() === bg.toLowerCase());
         const useColor = Boolean(bg && colorIdx >= 0);
         const textDark = useColor ? COLOR_TEXT_DARK[colorIdx] : "#1f2937";
@@ -241,11 +226,15 @@ export default function ParticipantScheduleOverlay({
         return (
           <div key={`${s.cell_id}-${idx}`} className="absolute" style={{ top, left, width, height }}>
             <div
-              className="w-full h-full rounded-md border text-[11px] flex flex-col items-center justify-center leading-tight"
+              className="w-full h-full rounded-md border px-2 py-2 text-[11px]"
               style={{ backgroundColor: bg || "#f3f4f6", borderColor: border, color: textDark }}
             >
-              <div className="font-semibold" style={{ color: textLight }}>{cellName}</div>
-              {unitsLabel && <div className="text-center px-1">{unitsLabel}</div>}
+              <div className="flex h-full flex-col items-center justify-center text-center leading-tight">
+                <div className="font-semibold" style={{ color: textLight }}>{cellName}</div>
+                {bundlesLabel && <div className="px-1">{bundlesLabel}</div>}
+                <div className="h-2" />
+                <div className="text-[10px] font-medium" style={{ color: textDark }}>{timeLabel}</div>
+              </div>
             </div>
           </div>
         );

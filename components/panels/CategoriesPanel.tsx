@@ -46,6 +46,14 @@ export default function CategoriesPanel({
     () => list.filter(c => c.name.toLowerCase().includes(q.toLowerCase())),
     [list, q]
   );
+  const parentNameById = useMemo(
+    () =>
+      list.reduce<Record<number, string>>((acc, item) => {
+        acc[item.id] = item.name;
+        return acc;
+      }, {}),
+    [list]
+  );
 
   return (
     <div className="flex flex-col h-full space-y-3">
@@ -76,7 +84,7 @@ export default function CategoriesPanel({
                 >
                   <div className="font-medium">{c.name}</div>
                   {c.parent !== null && (
-                    <div className="text-xs text-gray-500">Parent: {c.parent}</div>
+                    <div className="text-xs text-gray-500">Parent: {parentNameById[c.parent] ?? c.parent}</div>
                   )}
                 </button>
               </li>

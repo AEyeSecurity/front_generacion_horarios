@@ -1,12 +1,21 @@
 // components/NavBar.tsx
+import Image from "next/image";
 import Link from "next/link";
+import localFont from "next/font/local";
 import { getCurrentUser } from "@/lib/auth";
 import UserMenu from "@/components/UserMenu";
 import InvitesMenu from "@/components/InvitesMenu";
-import { CalendarDays } from "lucide-react";
 
+export const dynamic = "force-dynamic";
 
-export const dynamic = "force-dynamic"; // 🔑 re-render en cada request
+const sourceSerif = localFont({
+  src: [
+    { path: "../app/fonts/source-serif/SourceSerif4-Regular.ttf", weight: "400", style: "normal" },
+    { path: "../app/fonts/source-serif/SourceSerif4-SemiBold.ttf", weight: "600", style: "normal" },
+    { path: "../app/fonts/source-serif/SourceSerif4-Bold.ttf", weight: "700", style: "normal" },
+  ],
+  display: "swap",
+});
 
 export default async function NavBar() {
   const me = await getCurrentUser();
@@ -15,8 +24,13 @@ export default async function NavBar() {
     <nav className="w-full border-b bg-white">
       <div className="max-w-6xl mx-auto flex items-center justify-between px-6 h-14">
         <div className="flex items-center gap-2">
-          <CalendarDays className="w-6 h-6" aria-hidden />
-          <Link href="/dashboard" className="text-xl font-semibold">Shift</Link>
+          <Image src="/shift_min.png" alt="Shift logo" width={28} height={28} className="h-7 w-7 object-contain" priority />
+          <Link
+            href="/dashboard"
+            className={`${sourceSerif.className} text-xl font-bold`}
+          >
+            Shift
+          </Link>
         </div>
         <div className="flex items-center gap-4">
           {me ? (

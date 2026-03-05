@@ -13,6 +13,9 @@ export default function UnitTabs({
   rowPx,
   timeColPx,
   bodyHeight,
+  dayStartMin,
+  slotMin,
+  topOffset = 0,
 }: {
   gridId: number;
   role: "viewer" | "editor" | "supervisor";
@@ -21,6 +24,9 @@ export default function UnitTabs({
   rowPx: number;
   timeColPx: number;
   bodyHeight: number;
+  dayStartMin: number;
+  slotMin: number;
+  topOffset?: number;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const tabs = useMemo(
@@ -45,7 +51,10 @@ export default function UnitTabs({
         rowPx={rowPx}
         timeColPx={timeColPx}
         bodyHeight={bodyHeight}
+        dayStartMin={dayStartMin}
+        slotMin={slotMin}
         selectedUnitId={effectiveSelected}
+        topOffset={topOffset}
       />
 
       {tabs.length > 0 && (

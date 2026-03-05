@@ -63,6 +63,7 @@ export default async function GridLayout({
         canDelete={role === "supervisor"}
         canInvite={role === "supervisor"}
         hasSolution={hasSolved}
+        canConfigureSolve={role === "supervisor"}
       />
       {children}
     </>

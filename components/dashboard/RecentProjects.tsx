@@ -9,6 +9,58 @@ const EN_DAY = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 
 type View = "grid" | "list";
 type Sort = "chrono" | "alpha";
+type Member = { id: number; name: string; avatarUrl: string | null };
+
+function toDisplayName(first: string, last: string, fallback: string) {
+  const name = [first, last].filter(Boolean).join(" ").trim();
+  return name || fallback;
+}
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
+  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
+}
+
+function AvatarStack({ members }: { members: Member[] }) {
+  if (!members.length) return null;
+  const visible = members.slice(0, 3);
+  const overflow = members.length - visible.length;
+
+  return (
+    <div className="ml-2 flex items-center shrink-0">
+      {visible.map((m, idx) => (
+        <div
+          key={m.id}
+          className={`relative h-6 w-6 rounded-full border border-white bg-gray-200 ${idx === 0 ? "" : "-ml-2"}`}
+          title={m.name}
+        >
+          {m.avatarUrl ? (
+            <img
+              src={m.avatarUrl}
+              alt={m.name}
+              className="h-full w-full rounded-full object-cover"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = "/user.png";
+              }}
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center rounded-full bg-gray-300 text-[10px] font-semibold text-gray-700">
+              {initials(m.name)}
+            </div>
+          )}
+        </div>
+      ))}
+      {overflow > 0 && (
+        <div className="ml-1 flex h-6 w-6 items-center justify-center rounded-full border border-gray-300 bg-white text-xs font-semibold text-gray-600">
+          +
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function RecentProjects({ meId, initialItems }: { meId: number; initialItems: Grid[] }) {
   const [query, setQuery] = useState("");
@@ -16,6 +68,19 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
   const [sort, setSort] = useState<Sort>("chrono");
   const [mineOnly, setMineOnly] = useState(false);
   const [ownerByGrid, setOwnerByGrid] = useState<Record<number, string>>({});
+  const [membersByGrid, setMembersByGrid] = useState<Record<number, Member[]>>({});
+  const [isSingleColumn, setIsSingleColumn] = useState(false);
+  const [canShowListToggle, setCanShowListToggle] = useState(false);
+
+  useEffect(() => {
+    const update = () => {
+      setIsSingleColumn(window.innerWidth < 640);
+      setCanShowListToggle(window.innerWidth >= 1024); // lg: grid can render 4 cards
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
 
   const items = useMemo(() => {
     let list = [...initialItems];
@@ -35,61 +100,126 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
   }, [initialItems, query, sort, mineOnly]);
 
   useEffect(() => {
-    // Resolve creators' names for the items shown
+    // Resolve creators + collaborators shown in cards/list
     const abort = new AbortController();
     (async () => {
-      const toFetch = items.map((g) => g.id).filter((id) => !(id in ownerByGrid));
-      if (toFetch.length === 0) return;
-      const updates: Record<number, string> = {};
+      const ownerUpdates: Record<number, string> = {};
+      const memberUpdates: Record<number, Member[]> = {};
       await Promise.all(
-        toFetch.map(async (gridId) => {
+        items.map(async (grid) => {
           try {
+            const gridId = grid.id;
             const r = await fetch(`/api/grid_memberships/?grid=${gridId}`, { cache: "no-store", signal: abort.signal });
             if (!r.ok) return;
             const data = await r.json();
             const list = Array.isArray(data) ? data : data.results ?? [];
-            // Try to find explicit creator fields, or the membership whose user matches grid.creator, or supervisor
-            let name = "";
-            const m0 = list.find((m: any) => m.owner === true);
-            if (m0) {
-              const fn = m0.grid_creator_first_name ?? m0.user_first_name ?? m0.user?.first_name ?? "";
-              const ln = m0.grid_creator_last_name ?? m0.user_last_name ?? m0.user?.last_name ?? "";
-              name = [fn, ln].filter(Boolean).join(" ");
+
+            const byUserId = new Map<number, Member>();
+            for (const m of list) {
+              const userId = Number(
+                m.user_id ??
+                  (typeof m.user === "number" ? m.user : m.user?.id)
+              );
+              if (!Number.isFinite(userId)) continue;
+              if (byUserId.has(userId)) continue;
+
+              const first = m.user_first_name ?? m.user?.first_name ?? "";
+              const last = m.user_last_name ?? m.user?.last_name ?? "";
+              const email = m.user_email ?? m.user?.email ?? `User ${userId}`;
+              const avatarUrl =
+                m.user_avatar_url ??
+                m.user?.avatar_url ??
+                m.user?.avatar ??
+                m.user?.image ??
+                null;
+
+              byUserId.set(userId, {
+                id: userId,
+                name: toDisplayName(first, last, email),
+                avatarUrl: avatarUrl || null,
+              });
             }
-            if (!name) {
+
+            const members = Array.from(byUserId.values());
+            memberUpdates[gridId] = members.filter((m) => m.id !== meId);
+
+            const creator = members.find((m) => m.id === Number(grid.creator));
+            if (creator) {
+              ownerUpdates[gridId] = creator.name;
+            } else {
               const sup = list.find((m: any) => m.role === "supervisor");
               if (sup) {
                 const fn = sup.user_first_name ?? sup.user?.first_name ?? "";
                 const ln = sup.user_last_name ?? sup.user?.last_name ?? "";
-                name = [fn, ln].filter(Boolean).join(" ");
+                ownerUpdates[gridId] = [fn, ln].filter(Boolean).join(" ");
               }
             }
-            updates[gridId] = name;
           } catch {}
         })
       );
-      if (!abort.signal.aborted && Object.keys(updates).length) {
-        setOwnerByGrid((prev) => ({ ...prev, ...updates }));
+      if (!abort.signal.aborted) {
+        if (Object.keys(ownerUpdates).length) {
+          setOwnerByGrid((prev) => ({ ...prev, ...ownerUpdates }));
+        }
+        if (Object.keys(memberUpdates).length) {
+          setMembersByGrid((prev) => ({ ...prev, ...memberUpdates }));
+        }
       }
     })();
     return () => abort.abort();
-  }, [items, ownerByGrid]);
+  }, [items, meId]);
 
-  const DayBadges = ({ days }: { days: number[] }) => (
-    <div className="flex items-center justify-center gap-1 mt-1">
-      {days.map((i) => (
-        <span
-          key={i}
-          className="text-[10px] font-semibold uppercase border border-gray-300 rounded-sm px-1.5 py-[1px] tracking-wider"
-        >
-          {EN_DAY[i] ?? String(i)}
-        </span>
-      ))}
-    </div>
-  );
+  const shouldWrapWeekends = !isSingleColumn;
+
+  useEffect(() => {
+    if (!canShowListToggle && view === "list") {
+      setView("grid");
+    }
+  }, [canShowListToggle, view]);
+
+  const DayBadges = ({
+    days,
+    align = "center",
+    splitWeekends = false,
+  }: {
+    days: number[];
+    align?: "center" | "left";
+    splitWeekends?: boolean;
+  }) => {
+    const ordered = [...days].sort((a, b) => a - b);
+    const chip = (i: number) => (
+      <span
+        key={i}
+        className="text-[10px] font-semibold uppercase border border-gray-300 rounded-sm px-1.5 py-0 tracking-wider"
+      >
+        {EN_DAY[i] ?? String(i)}
+      </span>
+    );
+
+    if (splitWeekends && ordered.length === 7) {
+      const weekdays = ordered.slice(0, 5);
+      const weekends = ordered.slice(5);
+      return (
+        <div className="mt-1 space-y-1">
+          <div className={`flex flex-wrap gap-1 ${align === "left" ? "justify-start" : "justify-center"}`}>
+            {weekdays.map(chip)}
+          </div>
+          <div className={`flex gap-1 ${align === "left" ? "justify-start" : "justify-center"}`}>
+            {weekends.map(chip)}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className={`mt-1 flex flex-wrap gap-1 ${align === "left" ? "justify-start" : "justify-center"}`}>
+        {ordered.map(chip)}
+      </div>
+    );
+  };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-4">
         <div className="text-base font-semibold whitespace-nowrap">Recent Projects</div>
@@ -121,14 +251,16 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
           >
             {sort === "chrono" ? <ArrowDownAZ className="w-4 h-4" /> : <Clock4 className="w-4 h-4" />}
           </button>
-          <button
-            type="button"
-            onClick={() => setView((v) => (v === "grid" ? "list" : "grid"))}
-            title={view === "grid" ? "List view" : "Grid view"}
-            className="w-9 h-9 inline-flex items-center justify-center rounded-md hover:bg-gray-100"
-          >
-            {view === "grid" ? <ListIcon className="w-4 h-4" /> : <GridIcon className="w-4 h-4" />}
-          </button>
+          {canShowListToggle && (
+            <button
+              type="button"
+              onClick={() => setView((v) => (v === "grid" ? "list" : "grid"))}
+              title={view === "grid" ? "List view" : "Card view"}
+              className="w-9 h-9 inline-flex items-center justify-center rounded-md hover:bg-gray-100"
+            >
+              {view === "grid" ? <ListIcon className="w-4 h-4" /> : <GridIcon className="w-4 h-4" />}
+            </button>
+          )}
         </div>
       </div>
 
@@ -139,11 +271,14 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
             <Link
               key={g.id}
               href={`/grids/${g.id}`}
-              className="bg-white rounded-xl border shadow-sm hover:shadow-md transition-shadow p-3 flex flex-col justify-between min-h-[120px]"
+              className="bg-white rounded-xl border shadow-sm hover:shadow-md transition-shadow p-3 flex flex-col justify-between min-h-[142px]"
             >
-              <div className="text-sm font-medium truncate" title={g.name}>{g.name}</div>
-              <DayBadges days={g.days_enabled || []} />
-              <div className="mt-2 text-xs text-gray-600 flex items-center justify-between">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 text-sm font-medium truncate" title={g.name}>{g.name}</div>
+                <AvatarStack members={membersByGrid[g.id] || []} />
+              </div>
+              <DayBadges days={g.days_enabled || []} align="center" splitWeekends={shouldWrapWeekends} />
+              <div className="mt-1 text-xs text-gray-600 flex items-center justify-between">
                 <span>
                   {g.creator === meId
                     ? "By you"
@@ -163,8 +298,11 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
           </div>
           <div className="divide-y">
             {items.map((g) => (
-              <Link key={g.id} href={`/grids/${g.id}`} className="grid grid-cols-12 items-center px-3 py-2 hover:bg-gray-50 text-sm">
-                <div className="col-span-6 truncate" title={g.name}>{g.name}</div>
+              <Link key={g.id} href={`/grids/${g.id}`} className="grid grid-cols-12 items-center px-3 py-3 hover:bg-gray-50 text-sm">
+                <div className="col-span-6 min-w-0">
+                  <div className="truncate" title={g.name}>{g.name}</div>
+                  <DayBadges days={g.days_enabled || []} align="left" />
+                </div>
                 <div className="col-span-3 truncate">
                   {g.creator === meId ? "You" : (ownerByGrid[g.id] || "")}
                 </div>

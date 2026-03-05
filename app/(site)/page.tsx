@@ -1,8 +1,18 @@
 import Image from "next/image";
 import Link from "next/link";
+import localFont from "next/font/local";
 import { CalendarDays, Users, Clock } from "lucide-react";
 import RotatingText from "@/components/RotatingText";
 import Squares from "@/components/Squares";
+
+const sourceSerif = localFont({
+  src: [
+    { path: "../fonts/source-serif/SourceSerif4-Regular.ttf", weight: "400", style: "normal" },
+    { path: "../fonts/source-serif/SourceSerif4-SemiBold.ttf", weight: "600", style: "normal" },
+    { path: "../fonts/source-serif/SourceSerif4-Bold.ttf", weight: "700", style: "normal" },
+  ],
+  display: "swap",
+});
 
 export default function HomePage() {
   return (
@@ -17,10 +27,10 @@ export default function HomePage() {
         />
       </div>
 
-      {/* Hero */}
+     {/* Hero */}
       <main className="flex-1 relative z-10">
         <section className="mx-auto max-w-4xl px-4 py-16 sm:py-20 text-center">
-          <h1 className="text-4xl sm:text-6xl font-extrabold leading-tight tracking-tight">
+          <h1 className={`${sourceSerif.className} text-4xl sm:text-6xl font-extrabold leading-tight tracking-tight`}>
             <span>Manage your </span>
             <RotatingText
               texts={["schedules", "teams", "classes", "projects"]}

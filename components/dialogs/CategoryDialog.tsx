@@ -101,10 +101,9 @@ export default function CategoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* Use custom z-index so it stacks above the SidePanel (z-[60]) */}
       <DialogPortal>
-        <DialogOverlay className="fixed inset-0 bg-black/50 z-[95]" />
-        <DialogContent className="sm:max-w-[720px] z-[96]">
+        <DialogOverlay className="fixed inset-0 bg-black/50 z-[180]" />
+        <DialogContent className="sm:max-w-[720px] z-[181]">
           <DialogHeader>
             <DialogTitle>Category: {category?.name ?? ""}</DialogTitle>
           </DialogHeader>

@@ -51,3 +51,40 @@ export async function GET(req: Request) {
   out.cookies.set(REFRESH, tokens.refresh ?? refresh!, withDomain({ ...baseCookie, maxAge: 60 * 60 * 24 * 7 }));
   return out;
 }
+
+// POST /api/bundles -> BACKEND /api/bundles/
+export async function POST(req: Request) {
+  const body = await req.text();
+  let r = await fetch(`${process.env.BACKEND_URL}/api/bundles/`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body,
+    cache: "no-store",
+  });
+  if (r.ok) return NextResponse.json(await r.json(), { status: r.status });
+  if (r.status !== 401) {
+    const txt = await r.text().catch(() => "");
+    let detail: any = txt; try { detail = JSON.parse(txt); } catch {}
+    return NextResponse.json(detail, { status: r.status });
+  }
+  const refreshed = await refreshTokens();
+  if ("error" in refreshed) {
+    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+    out.cookies.delete(ACCESS);
+    out.cookies.delete(REFRESH);
+    return out;
+  }
+  const { tokens, refresh } = refreshed;
+  r = await fetch(`${process.env.BACKEND_URL}/api/bundles/`, {
+    method: "POST",
+    headers: { "content-type": "application/json", Authorization: `Bearer ${tokens.access}` },
+    body,
+    cache: "no-store",
+  });
+  const text = await r.text().catch(() => "");
+  let data: any = text; try { data = JSON.parse(text); } catch {}
+  const out = NextResponse.json(data, { status: r.status });
+  out.cookies.set(ACCESS, tokens.access, withDomain({ ...baseCookie, maxAge: 60 * 15 }));
+  out.cookies.set(REFRESH, tokens.refresh ?? refresh!, withDomain({ ...baseCookie, maxAge: 60 * 60 * 24 * 7 }));
+  return out;
+}

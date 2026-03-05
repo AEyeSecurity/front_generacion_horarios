@@ -9,6 +9,7 @@ import AddRuleButton from "@/components/AddRuleButton";
 import DeleteParticipantButton from "@/components/DeleteParticipantButton";
 import EditorInviteInline from "@/components/EditorInviteInline";
 import ParticipantScheduleOverlay from "@/components/ParticipantScheduleOverlay";
+import GradualBlur from "@/components/GradualBlur";
 
 type Rule = {
   id: number;
@@ -204,7 +205,7 @@ export default async function ParticipantAvailabilityPage({
       </div>
       
       {view === "rules" && (
-        <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
+        <div className="relative border rounded-lg bg-white overflow-hidden shadow-sm">
           <div className="grid" style={{ gridTemplateColumns: `100px repeat(${DAY_COUNT}, 1fr)` }}>
             <div className="bg-gray-50 border-b h-12" />
             {days.map((d) => (
@@ -215,14 +216,28 @@ export default async function ParticipantAvailabilityPage({
           </div>
 
           <div
-            className="relative max-h-[70vh] overflow-y-auto"
+            data-schedule-scroll
+            className="relative max-h-[70vh] overflow-y-auto hide-scrollbar"
             style={{ ["--time-col" as any]: `${TIME_COL_PX}px` }}
           >
+            <div className="pointer-events-none absolute left-0 top-0 z-[2]" style={{ width: TIME_COL_PX, height: BODY_H }}>
+              <div className="absolute inset-x-0 top-1 text-center text-xs text-gray-500">{fmt(start)}</div>
+              {rows.slice(1).map((t, index) => (
+                <div
+                  key={`rules-time-axis-${t}`}
+                  className="absolute inset-x-0 -translate-y-1/2 text-center text-xs text-gray-500"
+                  style={{ top: (index + 1) * ROW_PX }}
+                >
+                  {fmt(t)}
+                </div>
+              ))}
+              <div className="absolute inset-x-0 bottom-1 text-center text-xs text-gray-500">
+                {fmt(end)}
+              </div>
+            </div>
             {rows.map((t) => (
               <div key={t} className="grid" style={{ gridTemplateColumns: `100px repeat(${DAY_COUNT}, 1fr)` }}>
-                <div className="border-r border-b h-16 flex items-center justify-center text-xs text-gray-600">
-                  {fmt(t)} - {fmt(t + grid.cell_size_min)}
-                </div>
+                <div className="h-16 border-r" />
                 {days.map((d, j) => (
                   <div key={`${t}-${d}`} className={`border-b ${j < DAY_COUNT - 1 ? "border-r" : ""} h-16`} />
                 ))}
@@ -271,11 +286,34 @@ export default async function ParticipantAvailabilityPage({
               })}
             </div>
           </div>
+          <GradualBlur
+            target="parent"
+            position="top"
+            height="2.1rem"
+            strength={2}
+            divCount={5}
+            curve="bezier"
+            exponential
+            opacity={1}
+            showWhen="not-at-start"
+            style={{ top: "3rem" }}
+          />
+          <GradualBlur
+            target="parent"
+            position="bottom"
+            height="2.1rem"
+            strength={2}
+            divCount={5}
+            curve="bezier"
+            exponential
+            opacity={1}
+            showWhen="not-at-end"
+          />
         </div>
       )}
 
       {view === "schedule" && (
-        <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
+        <div className="relative border rounded-lg bg-white overflow-hidden shadow-sm">
           <div className="grid" style={{ gridTemplateColumns: `100px repeat(${DAY_COUNT}, 1fr)` }}>
             <div className="bg-gray-50 border-b h-12" />
             {days.map((d) => (
@@ -286,14 +324,28 @@ export default async function ParticipantAvailabilityPage({
           </div>
 
           <div
-            className="relative max-h-[70vh] overflow-y-auto"
+            data-schedule-scroll
+            className="relative max-h-[70vh] overflow-y-auto hide-scrollbar"
             style={{ ["--time-col" as any]: `${TIME_COL_PX}px` }}
           >
+            <div className="pointer-events-none absolute left-0 top-0 z-[2]" style={{ width: TIME_COL_PX, height: BODY_H }}>
+              <div className="absolute inset-x-0 top-1 text-center text-xs text-gray-500">{fmt(start)}</div>
+              {rows.slice(1).map((t, index) => (
+                <div
+                  key={`schedule-time-axis-${t}`}
+                  className="absolute inset-x-0 -translate-y-1/2 text-center text-xs text-gray-500"
+                  style={{ top: (index + 1) * ROW_PX }}
+                >
+                  {fmt(t)}
+                </div>
+              ))}
+              <div className="absolute inset-x-0 bottom-1 text-center text-xs text-gray-500">
+                {fmt(end)}
+              </div>
+            </div>
             {rows.map((t) => (
               <div key={t} className="grid" style={{ gridTemplateColumns: `100px repeat(${DAY_COUNT}, 1fr)` }}>
-                <div className="border-r border-b h-16 flex items-center justify-center text-xs text-gray-600">
-                  {fmt(t)} - {fmt(t + grid.cell_size_min)}
-                </div>
+                <div className="h-16 border-r" />
                 {days.map((d, j) => (
                   <div key={`${t}-${d}`} className={`border-b ${j < DAY_COUNT - 1 ? "border-r" : ""} h-16`} />
                 ))}
@@ -307,8 +359,33 @@ export default async function ParticipantAvailabilityPage({
               rowPx={ROW_PX}
               timeColPx={TIME_COL_PX}
               bodyHeight={BODY_H}
+              dayStartMin={start}
+              slotMin={grid.cell_size_min}
             />
           </div>
+          <GradualBlur
+            target="parent"
+            position="top"
+            height="2.1rem"
+            strength={2}
+            divCount={5}
+            curve="bezier"
+            exponential
+            opacity={1}
+            showWhen="not-at-start"
+            style={{ top: "3rem" }}
+          />
+          <GradualBlur
+            target="parent"
+            position="bottom"
+            height="2.1rem"
+            strength={2}
+            divCount={5}
+            curve="bezier"
+            exponential
+            opacity={1}
+            showWhen="not-at-end"
+          />
         </div>
       )}
       
