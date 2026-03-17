@@ -8,6 +8,7 @@ import ShareInviteButton from "@/components/ShareInviteButton";
 
 export default async function GridTopBar({
   id,
+  gridCode,
   name,
   canDelete = false,
   canInvite = false,
@@ -15,6 +16,7 @@ export default async function GridTopBar({
   canConfigureSolve = false,
 }: {
   id: number;
+  gridCode?: string | null;
   name: string;
   canDelete?: boolean;
   canInvite?: boolean;
@@ -35,13 +37,14 @@ export default async function GridTopBar({
           {canInvite && (
             <ShareInviteButton
               gridId={id}
+              gridName={name}
               disabled={!canInvite}
-              roleOptions={hasSolution ? ["viewer", "supervisor"] : ["supervisor"]}
+              roleOptions={hasSolution ? ["viewer", "editor", "supervisor"] : ["supervisor"]}
             />
           )}
           {me && <UserMenu me={me} />}
           {(hasSolution || canConfigureSolve) && (
-            <GridActions gridId={id} canDelete={canDelete} canConfigureSolve={canConfigureSolve} />
+            <GridActions gridId={id} gridCode={gridCode} canDelete={canDelete} canConfigureSolve={canConfigureSolve} />
           )}
         </div>
       </div>

@@ -14,11 +14,13 @@ const CategoriesPanel   = dynamic(() => import("./panels/CategoriesPanel"),   { 
 
 export default function SidePanel({
   gridId,
+  gridCode,
   tab,
   open,
   onOpenChange,
 }: {
   gridId: number;
+  gridCode?: string | null;
   tab: "participants" | "categories";
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -58,7 +60,7 @@ export default function SidePanel({
         <div className="h-full flex flex-col pl-18 pr-4 pt-4 pb-0">
           <div className="flex-1 overflow-y-auto pb-[72px]">
             {tab === "participants" ? (
-              <ParticipantsPanel gridId={gridId} refreshKey={participantsKey} />
+              <ParticipantsPanel gridId={gridId} gridCode={gridCode} refreshKey={participantsKey} />
             ) : (
               <CategoriesPanel
                 gridId={gridId}
@@ -107,4 +109,3 @@ export default function SidePanel({
     </Sheet>
   );
 }
-

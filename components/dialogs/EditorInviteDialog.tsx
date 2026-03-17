@@ -34,18 +34,17 @@ export default function EditorInviteDialog({
     if (!email.trim()) { setErr("Email is required"); return; }
     setSaving(true);
     try {
-      // Lookup user by email first
-      const ures = await fetch(`/api/users?search=${encodeURIComponent(email.trim())}`, { cache: "no-store" });
-      if (!ures.ok) throw new Error("User lookup failed");
-      const udata = await ures.json().catch(() => ({}));
-      const list = Array.isArray(udata) ? udata : udata.results ?? [];
-      const found = list.find((u: any) => (u.email || "").toLowerCase() === email.trim().toLowerCase());
-      if (!found?.id) throw new Error("No user found with that email");
-
       const res = await fetch(`/api/invitations/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ grid: Number(gridId), to_user_id: Number(found.id), role: "editor", participant_id: Number(participantId), message }),
+        body: JSON.stringify({
+          grid: Number(gridId),
+          type: "email",
+          email: email.trim().toLowerCase(),
+          role: "editor",
+          participant_id: Number(participantId),
+          message,
+        }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));

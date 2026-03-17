@@ -1,8 +1,16 @@
 import "@/styles/globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import localFont from "next/font/local";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Shift Scheduler",
+  icons: {
+    icon: "/shift.png",
+  },
+};
 
 const googleSans = localFont({
   src: [

@@ -42,10 +42,12 @@ function DockButton({
 
 export default function SideDock({
   gridId,
+  gridCode,
   role,
   selfParticipantId,
 }: {
   gridId: number;
+  gridCode?: string | null;
   role: Role;
   selfParticipantId?: number | null;
 }) {
@@ -54,7 +56,8 @@ export default function SideDock({
   const lockRef = useRef(false);
   const pendingTabRef = useRef<Tab | null>(null);
   const router = useRouter();
-  const gotoCells = () => router.push(`/grids/${gridId}/cells`);
+  const gridBase = `/grid/${encodeURIComponent(gridCode || String(gridId))}`;
+  const gotoCells = () => router.push(`${gridBase}/cells`);
 
   const switchTo = useCallback(
     (next: Tab) => {
@@ -85,7 +88,7 @@ export default function SideDock({
   if (role === "editor") {
     const gotoSelf = () => {
       if (!selfParticipantId) return;
-      router.push(`/grids/${gridId}/participants/${selfParticipantId}`);
+      router.push(`${gridBase}/participants/${selfParticipantId}`);
     };
     return (
       <div className="pointer-events-none">
@@ -131,6 +134,7 @@ export default function SideDock({
 
       <SidePanel
         gridId={gridId}
+        gridCode={gridCode}
         tab={tab}
         open={open}
         onOpenChange={(v) => setOpen(v)}

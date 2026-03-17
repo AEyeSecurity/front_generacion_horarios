@@ -15,7 +15,7 @@ export default function LoginBox() {
       </div>
       <GoogleSignInButton context="signin" />
       <p className="text-sm text-gray-600">
-        Don’t have an account? <Link href="/register" className="underline">Create one</Link>
+        Don&apos;t have an account? <Link href="/register" className="underline">Create one</Link>
       </p>
     </div>
   );

@@ -18,7 +18,11 @@ export function proxy(req: NextRequest) {
   if (
     pathname === "/" ||
     pathname.startsWith("/login") ||
-    pathname.startsWith("/register")
+    pathname.startsWith("/register") ||
+    pathname.startsWith("/verify-email") ||
+    pathname.startsWith("/verify-code") ||
+    pathname.startsWith("/password-reset") ||
+    pathname.startsWith("/invite")
   ) {
     return NextResponse.next();
   }
@@ -36,4 +40,3 @@ export function proxy(req: NextRequest) {
 export const config = {
   matcher: ["/((?!_next|assets|favicon.ico|.*\\..*).*)"],
 };
-

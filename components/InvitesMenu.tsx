@@ -1,19 +1,53 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import Image from "next/image";
 import { MessageSquare } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
 } from "@/components/ui/dropdown-menu";
+import {
+  getAvatarDisplayName,
+  getAvatarInitials,
+  getAvatarPalette,
+  getAvatarSeed,
+  getAvatarSource,
+} from "@/lib/avatar";
 
 type Invite = any;
+
+function tokenFromInvite(inv: any): string | null {
+  const direct = inv?.token ?? inv?.invite_token ?? inv?.invitation_token ?? inv?.accept_token;
+  if (direct) return String(direct);
+
+  const rawUrl = inv?.invite_url ?? inv?.invitation_url ?? inv?.url ?? inv?.link;
+  if (!rawUrl || typeof rawUrl !== "string") return null;
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const u = new URL(rawUrl, base);
+    const token = u.searchParams.get("token");
+    if (token) return token;
+    const m = u.pathname.match(/\/invite\/([^/?#]+)/);
+    return m?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function inviteLink(inv: any): string {
+  const explicit = inv?.invite_url ?? inv?.invitation_url ?? inv?.url ?? inv?.link;
+  if (explicit && typeof explicit === "string") return explicit;
+  const token = tokenFromInvite(inv);
+  if (!token) return "";
+  return `/invite/${encodeURIComponent(token)}`;
+}
 
 export default function InvitesMenu() {
   const [items, setItems] = useState<Invite[]>([]);
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const unseen = useMemo(() => items.length > 0 && !open, [items, open]);
 
   useEffect(() => {
@@ -27,12 +61,29 @@ export default function InvitesMenu() {
         if (active) setItems(list);
       } catch {}
     })();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
 
-  async function act(id: number | string, action: "accept" | "decline") {
-    const r = await fetch(`/api/invitations/${id}/${action}/`, { method: "POST" });
-    if (r.ok) setItems((prev) => prev.filter((it: any) => String(it.id) !== String(id)));
+  async function accept(inv: Invite) {
+    setError(null);
+    const token = tokenFromInvite(inv);
+    if (!token) {
+      setError("This invitation does not expose a token.");
+      return;
+    }
+    const r = await fetch(`/api/invitations/accept/`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    if (r.ok) {
+      setItems((prev) => prev.filter((it: any) => String(it.id) !== String(inv.id)));
+      return;
+    }
+    const j = await r.json().catch(() => ({}));
+    setError(j?.error || j?.detail || "Could not accept invitation.");
   }
 
   const nameFor = (u: any) => [u?.first_name, u?.last_name].filter(Boolean).join(" ") || u?.email || "";
@@ -59,26 +110,54 @@ export default function InvitesMenu() {
                 email: inv.created_by_email,
               };
               const senderName = nameFor(sender);
-              const avatar = sender?.avatar_url || sender?.avatar || sender?.image || "/user.png";
+              const avatar = getAvatarSource(sender);
+              const fallbackName = getAvatarDisplayName(sender);
+              const initials = getAvatarInitials(fallbackName);
+              const palette = getAvatarPalette(getAvatarSeed(sender));
+              const link = inviteLink(inv);
+
               return (
                 <div key={inv.id} className="flex items-start gap-3 p-2 rounded hover:bg-gray-50">
-                  <Image src={avatar} alt="" width={28} height={28} className="w-7 h-7 rounded-full object-cover" />
+                  {!avatar ? (
+                    <div
+                      className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold leading-none"
+                      style={{ backgroundColor: palette.background, color: palette.text }}
+                      title={fallbackName}
+                    >
+                      <span className="translate-y-px">{initials}</span>
+                    </div>
+                  ) : (
+                    <img
+                      src={avatar}
+                      alt=""
+                      width={28}
+                      height={28}
+                      className="h-7 w-7 rounded-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  )}
                   <div className="flex-1">
                     <div className="text-sm font-medium">{senderName}</div>
-                    <div className="text-xs text-gray-600">{gridName} • {role}</div>
+                    <div className="text-xs text-gray-600">{gridName} - {role}</div>
                     {inv.message && <div className="mt-1 text-sm text-gray-800 whitespace-pre-wrap">{inv.message}</div>}
                     <div className="mt-2 flex items-center gap-2">
-                      <button className="px-2.5 py-1.5 rounded bg-black text-white text-xs" onClick={() => act(inv.id, "accept")}>Accept</button>
-                      <button className="px-2.5 py-1.5 rounded border text-xs" onClick={() => act(inv.id, "decline")}>Decline</button>
+                      <button className="px-2.5 py-1.5 rounded bg-black text-white text-xs" onClick={() => accept(inv)}>
+                        Accept
+                      </button>
+                      {link && (
+                        <Link className="px-2.5 py-1.5 rounded border text-xs" href={link}>
+                          Open
+                        </Link>
+                      )}
                     </div>
                   </div>
                 </div>
               );
             })}
+            {error && <div className="text-xs text-red-600 p-2">{error}</div>}
           </div>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
-

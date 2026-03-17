@@ -31,7 +31,7 @@ export default async function DashboardPage() {
         <div className="max-w-6xl mx-auto px-6 pt-4 pb-8">
           <h2 className="text-lg font-semibold mb-8">Create a project</h2>
           <Link
-            href="/grids/new"
+            href="/grid/new"
             className="block w-[9rem] h-[10.5rem] bg-white rounded-xl border shadow-sm hover:shadow-md transition-shadow"
           >
             <div className="w-full h-full flex flex-col items-center justify-center gap-2">

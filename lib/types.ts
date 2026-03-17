@@ -18,6 +18,7 @@ export interface GridMembership {
 
 export type Grid = {
   id: number;
+  grid_code?: string | null;
   name: string;
   description: string;
   day_start: string;         // "08:00:00"

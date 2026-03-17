@@ -41,11 +41,19 @@ export default function LoginForm() {
       )}
       <div>
         <label className="block text-sm">Email</label>
-        <input className="border rounded w-full p-2" type="email" value={email} onChange={e=>setEmail(e.target.value)} />
+        <input suppressHydrationWarning className="border rounded w-full p-2" type="email" value={email} onChange={e=>setEmail(e.target.value)} />
       </div>
       <div>
         <label className="block text-sm">Password</label>
-        <input className="border rounded w-full p-2" type="password" value={password} onChange={e=>setP(e.target.value)} />
+        <input suppressHydrationWarning className="border rounded w-full p-2" type="password" value={password} onChange={e=>setP(e.target.value)} />
+        <div className="mt-1 text-right leading-none">
+          <Link
+            href={email ? `/password-reset?email=${encodeURIComponent(email)}` : "/password-reset"}
+            className="text-[11px] text-gray-500 underline hover:text-gray-800"
+          >
+            Forgot password?
+          </Link>
+        </div>
       </div>
       {error && <div className="text-red-600 text-sm">{error}</div>}
       <button className="px-4 py-2 rounded bg-black text-white">Login</button>

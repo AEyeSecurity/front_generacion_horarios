@@ -13,7 +13,7 @@ import {
 
 type Participant = { id: number; name: string; surname?: string; tier?: Tier };
 
-export default function ParticipantsPanel({ gridId, refreshKey = 0 }: { gridId: number; refreshKey?: number }) {
+export default function ParticipantsPanel({ gridId, gridCode, refreshKey = 0 }: { gridId: number; gridCode?: string | null; refreshKey?: number }) {
   const [list, setList] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -47,6 +47,7 @@ export default function ParticipantsPanel({ gridId, refreshKey = 0 }: { gridId: 
       ),
     [list, q, tierFilter]
   );
+  const gridBase = `/grid/${encodeURIComponent(gridCode || String(gridId))}`;
 
   return (
     <div className="flex flex-col h-full space-y-3">
@@ -102,7 +103,7 @@ export default function ParticipantsPanel({ gridId, refreshKey = 0 }: { gridId: 
             {filtered.map((p) => (
               <li key={p.id}>
                 <button
-                  onClick={() => router.push(`/grids/${gridId}/participants/${p.id}`)}
+                  onClick={() => router.push(`${gridBase}/participants/${p.id}`)}
                   className="w-full overflow-hidden rounded border p-3 text-left text-sm hover:bg-gray-50"
                 >
                   <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3">

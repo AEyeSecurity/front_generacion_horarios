@@ -3,7 +3,15 @@
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 
-export default function DeleteParticipantButton({ gridId, participantId }: { gridId: number | string; participantId: number | string; }) {
+export default function DeleteParticipantButton({
+  gridId,
+  gridCode,
+  participantId,
+}: {
+  gridId: number | string;
+  gridCode?: string | null;
+  participantId: number | string;
+}) {
   const router = useRouter();
 
   async function onDelete() {
@@ -19,7 +27,7 @@ export default function DeleteParticipantButton({ gridId, participantId }: { gri
       alert(`Failed to delete participant (${res.status}). ${txt}`);
       return;
     }
-    router.push(`/grids/${gridId}`);
+    router.push(`/grid/${encodeURIComponent(gridCode || String(gridId))}`);
     router.refresh();
   }
 
@@ -33,4 +41,3 @@ export default function DeleteParticipantButton({ gridId, participantId }: { gri
     </button>
   );
 }
-

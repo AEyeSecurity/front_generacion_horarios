@@ -14,7 +14,8 @@ const cookieOptions = {
 };
 
 export async function POST(req: Request) {
-  const out = NextResponse.redirect(new URL('/login', req.url));
+  // 303 after POST ensures browser follows redirect with GET
+  const out = NextResponse.redirect(new URL('/login', req.url), 303);
   // Delete cookies using same attributes as when they were set
   out.cookies.set(ACCESS, "", { ...cookieOptions, maxAge: 0 });
   out.cookies.set(REFRESH, "", { ...cookieOptions, maxAge: 0 });

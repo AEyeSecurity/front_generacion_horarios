@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { List as ListIcon, Grid as GridIcon, ArrowDownAZ, Clock4, Search, User } from "lucide-react";
 import type { Grid } from "@/lib/types";
+import { getAvatarInitials, getAvatarPalette, getAvatarSeed } from "@/lib/avatar";
 
 const EN_DAY = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 
@@ -16,13 +17,6 @@ function toDisplayName(first: string, last: string, fallback: string) {
   return name || fallback;
 }
 
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
-  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
-}
-
 function AvatarStack({ members }: { members: Member[] }) {
   if (!members.length) return null;
   const visible = members.slice(0, 3);
@@ -31,27 +25,37 @@ function AvatarStack({ members }: { members: Member[] }) {
   return (
     <div className="ml-2 flex items-center shrink-0">
       {visible.map((m, idx) => (
-        <div
-          key={m.id}
-          className={`relative h-6 w-6 rounded-full border border-white bg-gray-200 ${idx === 0 ? "" : "-ml-2"}`}
-          title={m.name}
-        >
-          {m.avatarUrl ? (
-            <img
-              src={m.avatarUrl}
-              alt={m.name}
-              className="h-full w-full rounded-full object-cover"
-              referrerPolicy="no-referrer"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src = "/user.png";
-              }}
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center rounded-full bg-gray-300 text-[10px] font-semibold text-gray-700">
-              {initials(m.name)}
+        (() => {
+          const palette = getAvatarPalette(getAvatarSeed({ id: m.id, name: m.name }));
+          return (
+            <div
+              key={m.id}
+              className={`relative h-6 w-6 rounded-full border border-white bg-gray-200 ${idx === 0 ? "" : "-ml-2"}`}
+              title={m.name}
+            >
+              {m.avatarUrl ? (
+                <img
+                  src={m.avatarUrl}
+                  alt={m.name}
+                  className="h-full w-full rounded-full object-cover"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    const target = e.currentTarget as HTMLImageElement;
+                    target.style.display = "none";
+                    const fallback = target.nextElementSibling as HTMLElement | null;
+                    if (fallback) fallback.style.display = "flex";
+                  }}
+                />
+              ) : null}
+              <div
+                className={`hidden h-full w-full items-center justify-center rounded-full text-[10px] font-semibold ${m.avatarUrl ? "" : "!flex"}`}
+                style={{ backgroundColor: palette.background, color: palette.text }}
+              >
+                {getAvatarInitials(m.name)}
+              </div>
             </div>
-          )}
-        </div>
+          );
+        })()
       ))}
       {overflow > 0 && (
         <div className="ml-1 flex h-6 w-6 items-center justify-center rounded-full border border-gray-300 bg-white text-xs font-semibold text-gray-600">
@@ -170,6 +174,8 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
   }, [items, meId]);
 
   const shouldWrapWeekends = !isSingleColumn;
+  const hrefForGrid = (g: Grid) =>
+    `/grid/${encodeURIComponent(g.grid_code || String(g.id))}`;
 
   useEffect(() => {
     if (!canShowListToggle && view === "list") {
@@ -270,7 +276,7 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
           {items.map((g) => (
             <Link
               key={g.id}
-              href={`/grids/${g.id}`}
+              href={hrefForGrid(g)}
               className="bg-white rounded-xl border shadow-sm hover:shadow-md transition-shadow p-3 flex flex-col justify-between min-h-[142px]"
             >
               <div className="flex items-start justify-between gap-2">
@@ -298,7 +304,7 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
           </div>
           <div className="divide-y">
             {items.map((g) => (
-              <Link key={g.id} href={`/grids/${g.id}`} className="grid grid-cols-12 items-center px-3 py-3 hover:bg-gray-50 text-sm">
+              <Link key={g.id} href={hrefForGrid(g)} className="grid grid-cols-12 items-center px-3 py-3 hover:bg-gray-50 text-sm">
                 <div className="col-span-6 min-w-0">
                   <div className="truncate" title={g.name}>{g.name}</div>
                   <DayBadges days={g.days_enabled || []} align="left" />

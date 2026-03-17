@@ -11,9 +11,9 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 
-type Props = { gridId: number | string; canDelete?: boolean; canConfigureSolve?: boolean };
+type Props = { gridId: number | string; gridCode?: string | null; canDelete?: boolean; canConfigureSolve?: boolean };
 
-export default function GridActions({ gridId, canDelete = false, canConfigureSolve = false }: Props) {
+export default function GridActions({ gridId, gridCode, canDelete = false, canConfigureSolve = false }: Props) {
   const router = useRouter();
   const [latestSolutionId, setLatestSolutionId] = useState<string | null>(null);
   const [loadingSolutions, setLoadingSolutions] = useState(true);
@@ -69,12 +69,12 @@ export default function GridActions({ gridId, canDelete = false, canConfigureSol
   }
 
   const goTimeRanges = () => {
-    const id = String(gridId);
-    router.push(`/grids/${encodeURIComponent(id)}/time-ranges`);
+    const codeOrId = gridCode || String(gridId);
+    router.push(`/grid/${encodeURIComponent(codeOrId)}/time-ranges`);
   };
   const goSettings = () => {
-    const id = String(gridId);
-    router.push(`/grids/${encodeURIComponent(id)}/settings`);
+    const codeOrId = gridCode || String(gridId);
+    router.push(`/grid/${encodeURIComponent(codeOrId)}/settings`);
   };
   const exportSchedule = () => {
     if (!latestSolutionId) return;
