@@ -10,6 +10,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import type { User } from "@/lib/types";
+import { canChangePassword } from "@/lib/account";
 import {
   getAvatarDisplayName,
   getAvatarInitials,
@@ -28,12 +29,13 @@ function displayName(me: User): string {
 export default function UserMenu({ me }: { me: User }) {
   const small = 32; // px
   const large = 64; // px
-  const src = getAvatarSource(me as any) || "";
+  const src = getAvatarSource(me) || "";
   const [smallBroken, setSmallBroken] = useState(false);
   const [largeBroken, setLargeBroken] = useState(false);
-  const fallbackName = useMemo(() => getAvatarDisplayName(me as any), [me]);
+  const fallbackName = useMemo(() => getAvatarDisplayName(me), [me]);
   const initials = useMemo(() => getAvatarInitials(fallbackName), [fallbackName]);
-  const palette = useMemo(() => getAvatarPalette(getAvatarSeed(me as any)), [me]);
+  const palette = useMemo(() => getAvatarPalette(getAvatarSeed(me)), [me]);
+  const allowPasswordChange = useMemo(() => canChangePassword(me), [me]);
 
   const SmallAvatar = (
     <div
@@ -100,12 +102,16 @@ export default function UserMenu({ me }: { me: User }) {
           <div className="text-base font-semibold">{displayName(me)}</div>
         </div>
         <div className="pt-2">
-          <DropdownMenuItem asChild className="cursor-pointer justify-center">
-            <Link href="/password-change">
-              Change Password
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
+          {allowPasswordChange && (
+            <>
+              <DropdownMenuItem asChild className="cursor-pointer justify-center">
+                <Link href="/password-change">
+                  Change Password
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
           <form action="/api/auth/logout" method="post" className="w-full">
             <button
               type="submit"

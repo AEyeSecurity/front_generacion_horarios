@@ -38,6 +38,7 @@ export default async function GridOverview({
     );
   }
   const id = String(grid.id);
+  const me = await getCurrentUser();
 
   const toMin = (hhmmss: string) => {
     const [h, m] = hhmmss.split(":").map(Number);
@@ -72,35 +73,32 @@ export default async function GridOverview({
   // Resolve my role and (if editor) my participant id in this grid
   let role: Role = "viewer";
   let selfPid: number | null = null;
-  try {
-    const me = await getCurrentUser();
-    if (me) {
-      // Role
+  if (me) {
+    // Role
+    try {
+      const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
+      const list = Array.isArray(data) ? data : data.results ?? [];
+      const mine = list.find(
+        (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
+      );
+      role = (mine?.role ?? "viewer") as Role;
+    } catch {}
+    // Self participant id
+    try {
+      let plist: any[] = [];
       try {
-        const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
-        const list = Array.isArray(data) ? data : data.results ?? [];
-        const mine = list.find(
-          (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
-        );
-        role = (mine?.role ?? "viewer") as Role;
-      } catch {}
-      // Self participant id
-      try {
-        let plist: any[] = [];
-        try {
-          const pdata = await backendFetchJSON<any>(`/api/participants/?grid=${id}`);
-          plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
-        } catch {
-          const pdata = await backendFetchJSON<any>(`/api/participants?grid=${id}`);
-          plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
-        }
-        const myp = plist.find(
-          (p: any) => (p.user_id ?? (typeof p.user === "number" ? p.user : p.user?.id)) === me.id
-        );
-        if (myp?.id != null) selfPid = Number(myp.id);
-      } catch {}
-    }
-  } catch {}
+        const pdata = await backendFetchJSON<any>(`/api/participants/?grid=${id}`);
+        plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
+      } catch {
+        const pdata = await backendFetchJSON<any>(`/api/participants?grid=${id}`);
+        plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
+      }
+      const myp = plist.find(
+        (p: any) => (p.user_id ?? (typeof p.user === "number" ? p.user : p.user?.id)) === me.id
+      );
+      if (myp?.id != null) selfPid = Number(myp.id);
+    } catch {}
+  }
 
   // Minimal onboarding: require at least one participant, category, and cell
   let participantsCount = 0;

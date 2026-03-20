@@ -12,6 +12,7 @@ export default async function GridByCodeLayout({
   params: Promise<{ code: string }>;
 }) {
   const { code } = await params;
+  const me = await getCurrentUser();
 
   let gridId = 0;
   let gridName = "Grid";
@@ -26,17 +27,14 @@ export default async function GridByCodeLayout({
     gridCode = grid.grid_code ?? code;
   } catch {}
 
-  if (gridId) {
+  if (gridId && me) {
     try {
-      const me = await getCurrentUser();
-      if (me) {
-        const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${gridId}`);
-        const list = Array.isArray(data) ? data : data.results ?? [];
-        const mine = list.find(
-          (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
-        );
-        role = (mine?.role ?? "viewer") as Role;
-      }
+      const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${gridId}`);
+      const list = Array.isArray(data) ? data : data.results ?? [];
+      const mine = list.find(
+        (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
+      );
+      role = (mine?.role ?? "viewer") as Role;
     } catch {}
 
     try {

@@ -10,7 +10,6 @@ export default function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const sp = useSearchParams();
   const router = useRouter();
-  const next = sp.get("next") || "/dashboard";
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,6 +24,18 @@ export default function LoginForm() {
       setError(error || "Login failed");
       return;
     }
+    const nextFromQuery = sp.get("next") || "";
+    const nextFromStorage = (() => {
+      try {
+        return window.sessionStorage.getItem("auth_next") || "";
+      } catch {
+        return "";
+      }
+    })();
+    const next = nextFromQuery || nextFromStorage || "/dashboard";
+    try {
+      window.sessionStorage.removeItem("auth_next");
+    } catch {}
     // Navigate and force a re-render so server components (NavBar)
     // pick up the new auth cookies without a manual refresh
     router.replace(next);

@@ -2,8 +2,8 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import LandingPage from "@/components/site/LandingPage";
 
-export default async function RootEntryPage() {
+export default async function HomeLandingPage() {
   const me = await getCurrentUser();
-  if (me) redirect("/dashboard");
+  if (!me) redirect("/");
   return <LandingPage />;
 }

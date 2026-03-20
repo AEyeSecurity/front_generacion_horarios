@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 declare global {
   interface Window { google?: any }
@@ -13,6 +13,8 @@ export default function GoogleSignInButton({ label = "Sign in with Google", cont
   const [rendered, setRendered] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const router = useRouter();
+  const sp = useSearchParams();
+  const next = sp.get("next") || "/dashboard";
 
   useEffect(() => {
     if (window.google) { setReady(true); return; }
@@ -56,7 +58,7 @@ export default function GoogleSignInButton({ label = "Sign in with Google", cont
             setErr(String(code));
             return;
           }
-          router.replace("/dashboard");
+          router.replace(next);
           router.refresh();
         },
       });
@@ -72,7 +74,7 @@ export default function GoogleSignInButton({ label = "Sign in with Google", cont
     } catch (e: any) {
       setErr(e?.message || "Google init failed");
     }
-  }, [ready, router]);
+  }, [next, ready, router]);
 
   return (
     <div className="space-y-2">

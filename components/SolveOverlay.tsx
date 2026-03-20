@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Lightbulb } from "lucide-react";
+import { Lightbulb, LightbulbOff } from "lucide-react";
 import { formatSlotRange } from "@/lib/schedule";
 import {
   buildSolverParamsPayload,
@@ -87,6 +87,8 @@ type Solution = {
   status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE" | "ERROR";
   error_message?: string;
   runtime_ms?: number;
+  created_at?: string;
+  updated_at?: string;
   schedule?: Array<{
     cell_id: string;
     source_cell_id?: string | number;
@@ -136,8 +138,112 @@ export default function SolveOverlay({
   const [staffMembersByStaffId, setStaffMembersByStaffId] = useState<Record<string, string[]>>({});
   const [staffNameById, setStaffNameById] = useState<Record<string, string>>({});
   const [participantNameById, setParticipantNameById] = useState<Record<string, string>>({});
+  const [inputSignature, setInputSignature] = useState<string | null>(null);
+  const [isInputSignatureLoading, setIsInputSignatureLoading] = useState(false);
 
   const canSolve = role === "supervisor";
+  const solveSignatureStorageKey = `grid:${gridId}:last-solve-signature`;
+
+  const parseTimestamp = (value: unknown) => {
+    if (typeof value !== "string") return 0;
+    const t = new Date(value).getTime();
+    return Number.isFinite(t) ? t : 0;
+  };
+
+  const stableStringify = (value: any): string => {
+    if (value === null || value === undefined) return JSON.stringify(value);
+    if (typeof value !== "object") return JSON.stringify(value);
+    if (Array.isArray(value)) return `[${value.map((v) => stableStringify(v)).join(",")}]`;
+    const obj = value as Record<string, unknown>;
+    const keys = Object.keys(obj).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
+  };
+
+  const sortByStableString = <T,>(items: T[]) =>
+    items
+      .map((item) => ({ item, key: stableStringify(item) }))
+      .sort((a, b) => a.key.localeCompare(b.key))
+      .map((x) => x.item);
+
+  const getList = (raw: any): any[] => (Array.isArray(raw) ? raw : raw?.results ?? []);
+
+  const stripForSignature = (value: any): any => {
+    if (Array.isArray(value)) return sortByStableString(value.map((v) => stripForSignature(v)));
+    if (value && typeof value === "object") {
+      const out: Record<string, unknown> = {};
+      for (const key of Object.keys(value).sort()) {
+        if (key === "created_at" || key === "updated_at") continue;
+        out[key] = stripForSignature((value as Record<string, unknown>)[key]);
+      }
+      return out;
+    }
+    return value;
+  };
+
+  const getMaxUpdatedAt = (items: any[]) =>
+    items.reduce((max, item) => {
+      if (!item || typeof item !== "object") return max;
+      const updatedAt = parseTimestamp((item as any).updated_at);
+      const createdAt = parseTimestamp((item as any).created_at);
+      return Math.max(max, updatedAt, createdAt);
+    }, 0);
+
+  const computeCurrentSolveInputSignature = async () => {
+    const settingsKey = getGridSolverSettingsKey(gridId);
+    const parsedSettings = parseGridSolverSettings(window.localStorage.getItem(settingsKey));
+    const solverParams = buildSolverParamsPayload(parsedSettings);
+
+    const urls = [
+      `/api/cells?grid=${gridId}`,
+      `/api/participants?grid=${gridId}`,
+      `/api/time_ranges?grid=${gridId}`,
+      `/api/bundles?grid=${gridId}`,
+      `/api/staffs?grid=${gridId}`,
+      `/api/staff-members?grid=${gridId}`,
+      `/api/availability_rules?grid=${gridId}`,
+    ];
+
+    const results = await Promise.all(
+      urls.map(async (url) => {
+        try {
+          const res = await fetch(url, { cache: "no-store" });
+          if (!res.ok) return [];
+          const json = await res.json().catch(() => ([]));
+          return getList(json);
+        } catch {
+          return [];
+        }
+      }),
+    );
+
+    const [cells, participants, timeRanges, bundles, staffs, staffMembers, availabilityRules] = results;
+    const maxUpdatedAt = Math.max(
+      getMaxUpdatedAt(cells),
+      getMaxUpdatedAt(participants),
+      getMaxUpdatedAt(timeRanges),
+      getMaxUpdatedAt(bundles),
+      getMaxUpdatedAt(staffs),
+      getMaxUpdatedAt(staffMembers),
+      getMaxUpdatedAt(availabilityRules),
+    );
+
+    const signaturePayload = {
+      solver_params: stripForSignature(solverParams),
+      cells: stripForSignature(cells),
+      participants: stripForSignature(participants),
+      time_ranges: stripForSignature(timeRanges),
+      bundles: stripForSignature(bundles),
+      staffs: stripForSignature(staffs),
+      staff_members: stripForSignature(staffMembers),
+      availability_rules: stripForSignature(availabilityRules),
+    };
+
+    return {
+      signature: stableStringify(signaturePayload),
+      solverParams,
+      maxUpdatedAt,
+    };
+  };
 
   useEffect(() => {
     let active = true;
@@ -247,20 +353,57 @@ export default function SolveOverlay({
     return () => window.clearInterval(id);
   }, [isSolving]);
 
+  useEffect(() => {
+    if (!canSolve) {
+      setInputSignature(null);
+      return;
+    }
+    let active = true;
+    (async () => {
+      setIsInputSignatureLoading(true);
+      try {
+        const { signature, maxUpdatedAt } = await computeCurrentSolveInputSignature();
+        if (!active) return;
+        const saved = window.localStorage.getItem(solveSignatureStorageKey);
+        let baseline = saved;
+        if (!baseline && solution?.state === "DONE" && (solution.status === "OPTIMAL" || solution.status === "FEASIBLE")) {
+          const solutionUpdatedAt = Math.max(parseTimestamp(solution.updated_at), parseTimestamp(solution.created_at));
+          if (solutionUpdatedAt > 0 && maxUpdatedAt <= solutionUpdatedAt) {
+            baseline = signature;
+            window.localStorage.setItem(solveSignatureStorageKey, signature);
+          }
+        }
+        setInputSignature(baseline && baseline === signature ? signature : null);
+      } catch {
+        if (active) setInputSignature(null);
+      } finally {
+        if (active) setIsInputSignatureLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [canSolve, gridId, hasCells, solution?.id, solution?.state, solution?.status, solution?.updated_at, solution?.created_at]);
+
   const solveElapsedMs = useMemo(() => {
     if (!solveStartedAt) return 0;
     return Date.now() - solveStartedAt;
   }, [solveStartedAt, tick]);
 
   async function runSolve() {
-    setIsSolving(true);
-    setSolveStartedAt(Date.now());
-    setError(null);
-    setSolution(null);
     try {
-      const settingsKey = getGridSolverSettingsKey(gridId);
-      const parsedSettings = parseGridSolverSettings(window.localStorage.getItem(settingsKey));
-      const solverParams = buildSolverParamsPayload(parsedSettings);
+      const { signature, solverParams } = await computeCurrentSolveInputSignature();
+      const saved = window.localStorage.getItem(solveSignatureStorageKey);
+      if (saved && saved === signature) {
+        setError("Input is unchanged from the latest solved solution.");
+        return;
+      }
+
+      setIsSolving(true);
+      setSolveStartedAt(Date.now());
+      setError(null);
+      setSolution(null);
+
       const r = await fetch(`/api/grids/${gridId}/solve/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -276,6 +419,9 @@ export default function SolveOverlay({
         setError("No feasible solution");
       } else if (data.state === "FAILED" || data.status === "ERROR") {
         setError(data.error_message || "Solver error");
+      } else {
+        window.localStorage.setItem(solveSignatureStorageKey, signature);
+        setInputSignature(signature);
       }
     } catch (e: any) {
       setError(e?.message || "Solver error");
@@ -293,7 +439,19 @@ export default function SolveOverlay({
     ? schedule.filter((s: any) => Array.isArray(s.units) && s.units.map(String).includes(String(selectedUnitId)))
     : schedule;
 
-  const canUseSolve = canSolve && hasCells && !isSolving;
+  const isInputUnchanged = Boolean(inputSignature);
+  const canUseSolve = canSolve && hasCells && !isSolving && !isInputUnchanged && !isInputSignatureLoading;
+  const solveDisabledReason = !canSolve
+    ? "Solve unavailable"
+    : !hasCells
+    ? "Create cells to enable solve"
+    : isInputUnchanged
+    ? "Input is unchanged from the latest solved solution"
+    : isInputSignatureLoading
+    ? "Checking if changes were made..."
+    : isSolving
+    ? "Solving..."
+    : "Solve";
 
   return (
     <>
@@ -354,26 +512,34 @@ export default function SolveOverlay({
       )}
 
       {/* Right-side solve dock */}
-      <div className="fixed right-4 top-1/2 -translate-y-1/2 z-[140] pointer-events-none">
-        <button
-          type="button"
-          title={canSolve ? (hasCells ? "Solve" : "Create cells to enable solve") : "Solve unavailable"}
-          onClick={() => {
-            if (canUseSolve) runSolve();
-          }}
-          disabled={!canUseSolve}
-          className="w-12 h-12 rounded-full bg-black shadow-md border border-gray-800 flex items-center justify-center pointer-events-auto disabled:cursor-not-allowed"
-          aria-disabled={!canUseSolve}
-        >
-          <Lightbulb className={`w-5 h-5 ${canUseSolve ? "text-white" : "text-gray-500"}`} />
-        </button>
-        {error && <div className="mt-2 w-40 text-xs text-red-600 text-right">{error}</div>}
-        {isSolving && (
-          <div className="mt-1 w-40 text-xs text-gray-600 text-right">
-            Solving... {Math.round(solveElapsedMs / 100) / 10}s
-          </div>
-        )}
-      </div>
+      {canSolve && (
+        <div className="fixed right-4 top-1/2 -translate-y-1/2 z-[140] pointer-events-none">
+          <button
+            type="button"
+            title={solveDisabledReason}
+            onClick={() => {
+              if (canUseSolve) runSolve();
+            }}
+            disabled={!canUseSolve}
+            className={`w-12 h-12 rounded-full shadow-md border flex items-center justify-center pointer-events-auto disabled:cursor-not-allowed transition-colors ${
+              canUseSolve ? "bg-black border-gray-800" : "bg-gray-700 border-gray-600"
+            }`}
+            aria-disabled={!canUseSolve}
+          >
+            {canUseSolve ? (
+              <Lightbulb className="w-5 h-5 text-amber-300" />
+            ) : (
+              <LightbulbOff className="w-5 h-5 text-gray-300" />
+            )}
+          </button>
+          {error && <div className="mt-2 w-48 text-xs text-red-600 text-right">{error}</div>}
+          {isSolving && (
+            <div className="mt-1 w-48 text-xs text-gray-600 text-right">
+              Solving... {Math.round(solveElapsedMs / 100) / 10}s
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }

@@ -24,11 +24,12 @@ export default async function GridTopBar({
   canConfigureSolve?: boolean;
 }) {
   const me = await getCurrentUser();
+  const homeHref = me ? "/dashboard" : "/";
   return (
     <div className="w-full border-b bg-white">
       <div className="max-w-5xl mx-auto flex items-center justify-between px-4 h-14">
         <div className="flex items-center gap-3 min-w-0">
-          <Link href="/dashboard" className="flex items-center gap-2 shrink-0" title="Back to dashboard">
+          <Link href={homeHref} className="flex items-center gap-2 shrink-0" title="Back to dashboard">
             <Image src="/shift_min.png" alt="Shift logo" width={20} height={20} className="h-5 w-5 object-contain" priority />
           </Link>
           <span className="font-medium truncate" title={name}>{name}</span>

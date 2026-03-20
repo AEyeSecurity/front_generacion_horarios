@@ -11,6 +11,23 @@ const EN_DAY = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 type View = "grid" | "list";
 type Sort = "chrono" | "alpha";
 type Member = { id: number; name: string; avatarUrl: string | null };
+type MembershipLite = {
+  role?: string | null;
+  user_id?: number | string | null;
+  user?: {
+    id?: number | string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    email?: string | null;
+    avatar_url?: string | null;
+    avatar?: string | null;
+    image?: string | null;
+  } | number | null;
+  user_first_name?: string | null;
+  user_last_name?: string | null;
+  user_email?: string | null;
+  user_avatar_url?: string | null;
+};
 
 function toDisplayName(first: string, last: string, fallback: string) {
   const name = [first, last].filter(Boolean).join(" ").trim();
@@ -101,7 +118,8 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
       list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }
     return list;
-  }, [initialItems, query, sort, mineOnly]);
+  }, [initialItems, query, sort, mineOnly, meId]);
+  const hasAnyGrid = initialItems.length > 0;
 
   useEffect(() => {
     // Resolve creators + collaborators shown in cards/list
@@ -116,7 +134,7 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
             const r = await fetch(`/api/grid_memberships/?grid=${gridId}`, { cache: "no-store", signal: abort.signal });
             if (!r.ok) return;
             const data = await r.json();
-            const list = Array.isArray(data) ? data : data.results ?? [];
+            const list = (Array.isArray(data) ? data : data.results ?? []) as MembershipLite[];
 
             const byUserId = new Map<number, Member>();
             for (const m of list) {
@@ -151,7 +169,7 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
             if (creator) {
               ownerUpdates[gridId] = creator.name;
             } else {
-              const sup = list.find((m: any) => m.role === "supervisor");
+              const sup = list.find((m) => m.role === "supervisor");
               if (sup) {
                 const fn = sup.user_first_name ?? sup.user?.first_name ?? "";
                 const ln = sup.user_last_name ?? sup.user?.last_name ?? "";
@@ -177,11 +195,7 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
   const hrefForGrid = (g: Grid) =>
     `/grid/${encodeURIComponent(g.grid_code || String(g.id))}`;
 
-  useEffect(() => {
-    if (!canShowListToggle && view === "list") {
-      setView("grid");
-    }
-  }, [canShowListToggle, view]);
+  const effectiveView: View = canShowListToggle ? view : "grid";
 
   const DayBadges = ({
     days,
@@ -271,7 +285,11 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
       </div>
 
       {/* Content */}
-      {view === "grid" ? (
+      {items.length === 0 ? (
+        <div className="rounded-xl border bg-white px-4 py-8 text-center text-sm text-gray-600">
+          {hasAnyGrid ? "No grids match your current filters." : "No grids created yet."}
+        </div>
+      ) : effectiveView === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {items.map((g) => (
             <Link

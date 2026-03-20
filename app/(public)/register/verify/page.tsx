@@ -21,6 +21,7 @@ function formatSeconds(value: number) {
 export default function RegisterVerifyPage() {
   const sp = useSearchParams();
   const initialEmail = useMemo(() => sp.get("email") || "", [sp]);
+  const next = useMemo(() => sp.get("next") || "", [sp]);
 
   const [email, setEmail] = useState(initialEmail);
   const [loading, setLoading] = useState(false);
@@ -34,6 +35,13 @@ export default function RegisterVerifyPage() {
     }, 1000);
     return () => window.clearInterval(id);
   }, [cooldownRemaining]);
+
+  useEffect(() => {
+    if (!next) return;
+    try {
+      window.sessionStorage.setItem("auth_next", next);
+    } catch {}
+  }, [next]);
 
   async function resend(e: React.FormEvent) {
     e.preventDefault();
@@ -101,7 +109,10 @@ export default function RegisterVerifyPage() {
       </form>
 
       <p className="text-sm text-gray-600">
-        Already verified? <Link href="/login" className="underline">Log in</Link>
+        Already verified?{" "}
+        <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} className="underline">
+          Log in
+        </Link>
       </p>
     </div>
   );

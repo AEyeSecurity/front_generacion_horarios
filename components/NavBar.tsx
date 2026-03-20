@@ -19,6 +19,7 @@ const sourceSerif = localFont({
 
 export default async function NavBar() {
   const me = await getCurrentUser();
+  const logoHref = me ? "/dashboard" : "/";
 
   return (
     <nav className="w-full border-b bg-white">
@@ -26,7 +27,7 @@ export default async function NavBar() {
         <div className="flex items-center gap-2">
           <Image src="/shift_min.png" alt="Shift logo" width={28} height={28} className="h-7 w-7 object-contain" priority />
           <Link
-            href="/dashboard"
+            href={logoHref}
             className={`${sourceSerif.className} text-xl font-bold`}
           >
             Shift
@@ -35,7 +36,7 @@ export default async function NavBar() {
         <div className="flex items-center gap-4">
           {me ? (
             <>
-              <InvitesMenu />
+              <InvitesMenu me={me} />
               <UserMenu me={me} />
             </>
           ) : (

@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import LoginForm from "@/components/forms/LoginForm";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
 
 export default function LoginBox() {
+  const sp = useSearchParams();
+  const next = sp.get("next");
+  const registerHref = next ? `/register?next=${encodeURIComponent(next)}` : "/register";
+
   return (
     <div className="space-y-4">
       <LoginForm />
@@ -15,7 +20,7 @@ export default function LoginBox() {
       </div>
       <GoogleSignInButton context="signin" />
       <p className="text-sm text-gray-600">
-        Don&apos;t have an account? <Link href="/register" className="underline">Create one</Link>
+        Don&apos;t have an account? <Link href={registerHref} className="underline">Create one</Link>
       </p>
     </div>
   );

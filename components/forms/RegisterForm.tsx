@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export default function RegisterForm() {
   const [firstName, setFirst] = useState("");
@@ -11,11 +11,16 @@ export default function RegisterForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const sp = useSearchParams();
+  const next = sp.get("next");
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
+    try {
+      window.sessionStorage.removeItem("invite_auto_join_token");
+    } catch {}
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
@@ -34,10 +39,12 @@ export default function RegisterForm() {
         return;
       }
 
-      router.replace(`/register/verify?email=${encodeURIComponent(email)}`);
+      const q = new URLSearchParams({ email });
+      if (next) q.set("next", next);
+      router.replace(`/register/verify?${q.toString()}`);
       router.refresh();
-    } catch (e: any) {
-      setError(e?.message || "Registration failed");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Registration failed");
     } finally {
       setLoading(false);
     }

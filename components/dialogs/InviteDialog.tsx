@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { ArrowLeft, Link2, X } from "lucide-react";
+import { toast } from "sonner";
 import { TIER_STYLES, type Tier } from "@/components/TierBadge";
 import {
   Dialog,
@@ -16,7 +17,6 @@ import {
 
 type Role = "viewer" | "editor" | "supervisor";
 type InviteType = "email" | "link";
-type LinkKind = "infinite" | "single_use";
 type ViewMode = "overview" | "compose";
 
 type AccessUser = {
@@ -35,7 +35,7 @@ function getTokenFromInvite(inv: any): string | null {
   const direct = inv?.token ?? inv?.invite_token ?? inv?.invitation_token ?? inv?.accept_token;
   if (direct) return String(direct);
 
-  const rawUrl = inv?.invite_url ?? inv?.invitation_url ?? inv?.url ?? inv?.link;
+  const rawUrl = inv?.link_url ?? inv?.invite_url ?? inv?.invitation_url ?? inv?.url ?? inv?.link;
   if (!rawUrl || typeof rawUrl !== "string") return null;
 
   try {
@@ -51,7 +51,7 @@ function getTokenFromInvite(inv: any): string | null {
 }
 
 function getShareUrl(inv: any): string {
-  const explicit = inv?.invite_url ?? inv?.invitation_url ?? inv?.url ?? inv?.link;
+  const explicit = inv?.link_url ?? inv?.invite_url ?? inv?.invitation_url ?? inv?.url ?? inv?.link;
   if (explicit && typeof explicit === "string") return explicit;
   const token = getTokenFromInvite(inv);
   if (!token) return "";
@@ -96,7 +96,7 @@ export default function InviteDialog({
 
   const [accessList, setAccessList] = React.useState<AccessUser[]>([]);
   const [viewerLinks, setViewerLinks] = React.useState<any[]>([]);
-  const [generalAccessKind, setGeneralAccessKind] = React.useState<LinkKind>("single_use");
+  const [generalAccessEnabled, setGeneralAccessEnabled] = React.useState(false);
   const [generalAccessUrl, setGeneralAccessUrl] = React.useState("");
 
   React.useEffect(() => {
@@ -184,15 +184,12 @@ export default function InviteDialog({
       });
       setViewerLinks(activeViewerLinks);
 
-      const selected =
-        activeViewerLinks.find((inv: any) => (inv?.link_kind || "single_use") === "single_use") ||
-        activeViewerLinks[0] ||
-        null;
+      const selected = activeViewerLinks[0] || null;
       if (selected) {
-        const kind = (selected?.link_kind || "single_use") as LinkKind;
-        setGeneralAccessKind(kind);
+        setGeneralAccessEnabled(true);
         setGeneralAccessUrl(getShareUrl(selected));
       } else {
+        setGeneralAccessEnabled(false);
         setGeneralAccessUrl("");
       }
     } catch {
@@ -211,7 +208,10 @@ export default function InviteDialog({
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
-    } catch {}
+      toast.success("Link copied");
+    } catch {
+      toast.error("Could not copy link");
+    }
   }
 
   function addEmail(raw: string) {
@@ -261,18 +261,57 @@ export default function InviteDialog({
     setSavingGeneral(true);
     setError(null);
     try {
-      const existing = viewerLinks.find((inv) => (inv?.link_kind || "single_use") === generalAccessKind);
+      const activeViewerLinks = viewerLinks.filter((inv) => {
+        const status = String(inv?.status || "").toLowerCase();
+        return inv?.active !== false && status !== "cancelled" && status !== "expired";
+      });
+
+      if (!generalAccessEnabled) {
+        if (activeViewerLinks.length === 0) {
+          setGeneralAccessUrl("");
+          return;
+        }
+
+        const cancelResults = await Promise.allSettled(
+          activeViewerLinks
+            .map((inv) => inv?.id)
+            .filter((id) => id !== null && id !== undefined)
+            .map((id) =>
+              fetch(`/api/invitations/${encodeURIComponent(String(id))}/cancel/`, { method: "POST" })
+            )
+        );
+
+        const failedCancel = cancelResults.find(
+          (r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.ok)
+        );
+        if (failedCancel) {
+          throw new Error("Could not deactivate general access.");
+        }
+
+        setViewerLinks((prev) =>
+          prev.map((inv) => {
+            const id = inv?.id;
+            const isCancelled = activeViewerLinks.some((a) => String(a?.id) === String(id));
+            if (!isCancelled) return inv;
+            return { ...inv, active: false, status: "cancelled" };
+          })
+        );
+        setGeneralAccessUrl("");
+        return;
+      }
+
+      const existing = activeViewerLinks[0];
       if (existing) {
         setGeneralAccessUrl(getShareUrl(existing));
         return;
       }
+
       const res = await fetch(`/api/invitations/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           grid: gridId,
           type: "link" as InviteType,
-          link_kind: generalAccessKind,
           role: "viewer",
         }),
       });
@@ -282,6 +321,7 @@ export default function InviteDialog({
       }
       const url = getShareUrl(body);
       setGeneralAccessUrl(url);
+      setGeneralAccessEnabled(true);
       setViewerLinks((prev) => [...prev, body]);
     } catch (e: any) {
       setError(e?.message || "Could not save general access.");
@@ -469,15 +509,28 @@ export default function InviteDialog({
 
                 <div className="rounded border p-3">
                   <div className="text-base font-semibold mb-2">General access</div>
-                  <div className="flex items-center gap-3">
-                    <select
-                      className="h-10 rounded border px-3 text-sm"
-                      value={generalAccessKind}
-                      onChange={(e) => setGeneralAccessKind(e.target.value as LinkKind)}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium">
+                        {generalAccessEnabled ? "Anyone with the link" : "General link disabled"}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {generalAccessEnabled
+                          ? "Viewer access through the link is active."
+                          : "No public viewer link is currently active."}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className={`h-9 rounded px-3 text-sm border ${
+                        generalAccessEnabled
+                          ? "border-red-300 text-red-700 hover:bg-red-50"
+                          : "border-green-300 text-green-700 hover:bg-green-50"
+                      }`}
+                      onClick={() => setGeneralAccessEnabled((v) => !v)}
                     >
-                      <option value="single_use">Single use (viewer)</option>
-                      <option value="infinite">Infinite use (viewer)</option>
-                    </select>
+                      {generalAccessEnabled ? "Deactivate URL" : "Activate URL"}
+                    </button>
                   </div>
                 </div>
               </>
@@ -489,9 +542,10 @@ export default function InviteDialog({
               <div className="flex items-center justify-between">
                 <button
                   type="button"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded border text-sm"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded text-sm hover:bg-gray-100 disabled:opacity-50"
                   onClick={() => copy(generalAccessUrl)}
                   title="Copy URL"
+                  disabled={!generalAccessUrl}
                 >
                   <Link2 className="h-4 w-4" />
                 </button>
@@ -517,10 +571,11 @@ export default function InviteDialog({
               <div className="flex items-center justify-between">
                 <button
                   type="button"
-                  className="px-3 py-2 rounded border text-sm disabled:opacity-50"
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded border text-sm disabled:opacity-50"
                   disabled={!generalAccessUrl}
                   onClick={() => copy(generalAccessUrl)}
                 >
+                  <Link2 className="h-4 w-4" />
                   Copy URL
                 </button>
                 <div className="flex items-center gap-2">

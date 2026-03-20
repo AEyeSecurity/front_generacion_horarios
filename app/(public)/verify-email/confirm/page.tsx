@@ -12,8 +12,19 @@ export default function VerifyEmailConfirmPage() {
   const uid = useMemo(() => sp.get("uid") || "", [sp]);
   const token = useMemo(() => sp.get("token") || "", [sp]);
   const verifyCode = useMemo(() => sp.get("verify_code") || sp.get("code") || "", [sp]);
+  const nextFromQuery = useMemo(() => sp.get("next") || "", [sp]);
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
+  const nextTarget =
+    nextFromQuery ||
+    (() => {
+      if (typeof window === "undefined") return "/dashboard";
+      try {
+        return window.sessionStorage.getItem("auth_next") || "/dashboard";
+      } catch {
+        return "/dashboard";
+      }
+    })();
 
   useEffect(() => {
     let cancelled = false;
@@ -47,20 +58,23 @@ export default function VerifyEmailConfirmPage() {
         }
         if (!cancelled) {
           setStatus("ok");
-          router.replace("/dashboard");
+          try {
+            window.sessionStorage.removeItem("auth_next");
+          } catch {}
+          router.replace(nextTarget);
           router.refresh();
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!cancelled) {
           setStatus("error");
-          setError(err?.message || "Verification failed");
+          setError(err instanceof Error ? err.message : "Verification failed");
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [router, token, uid, verifyCode]);
+  }, [nextTarget, router, token, uid, verifyCode]);
 
   return (
     <div className="max-w-md mx-auto mt-16 bg-white p-6 rounded-lg shadow space-y-4">
@@ -74,7 +88,10 @@ export default function VerifyEmailConfirmPage() {
             You can request another link from <Link href="/register/verify" className="underline">verification page</Link>.
           </p>
           <p className="text-sm text-gray-600">
-            Or go to <Link href="/login" className="underline">Log in</Link>.
+            Or go to{" "}
+            <Link href={nextTarget ? `/login?next=${encodeURIComponent(nextTarget)}` : "/login"} className="underline">
+              Log in
+            </Link>.
           </p>
         </>
       )}
