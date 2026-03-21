@@ -3,12 +3,12 @@ import { backendFetchJSON } from "@/lib/backend";
 import { getCurrentUser } from "@/lib/auth";
 import type { Grid, Role } from "@/lib/types";
 import SideDock from "@/components/SideDock";
-import UnitTabs from "@/components/UnitTabs";
 import { Users, Tags, LayoutGrid, Clock4 } from "lucide-react";
 import GlassIcons from "@/components/GlassIcons";
 import SolveOverlay from "@/components/SolveOverlay";
 import DeleteGridBubble from "@/components/DeleteGridBubble";
-import GradualBlur from "@/components/GradualBlur";
+import GridSchedulePanel from "@/components/GridSchedulePanel";
+import { isSolvedSolution, pickDisplaySolution } from "@/lib/solution-utils";
 import { resolveGridByCode } from "./_helpers";
 
 const EN_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -49,12 +49,6 @@ export default async function GridOverview({
     for (let t = a; t < b; t += s) out.push(t);
     return out;
   };
-  const fmt = (mins: number) => {
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-  };
-
   const start = toMin(grid.day_start);
   const end = toMin(grid.day_end);
   const gridBase = `/grid/${encodeURIComponent(grid.grid_code || code)}`;
@@ -127,15 +121,8 @@ export default async function GridOverview({
   try {
     const sdata = await backendFetchJSON<any>(`/api/grids/${id}/solutions/`);
     const list = Array.isArray(sdata) ? sdata : sdata.results ?? [];
-    if (list.length > 0) {
-      const sorted = list.slice().sort((a: any, b: any) => {
-        const ta = new Date(a.created_at || 0).getTime();
-        const tb = new Date(b.created_at || 0).getTime();
-        return tb - ta;
-      });
-      const latest = sorted[0] || list[list.length - 1];
-      hasSolved = latest?.state === "DONE" && (latest?.status === "OPTIMAL" || latest?.status === "FEASIBLE");
-    }
+    const displaySolution = pickDisplaySolution(list);
+    hasSolved = isSolvedSolution(displaySolution);
   } catch {}
 
   return (
@@ -201,84 +188,17 @@ export default async function GridOverview({
             </div>
           ) : (
             <div className="relative border rounded-lg bg-white overflow-hidden shadow-sm">
-              <>
-                  <div className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-                    <div className="bg-gray-50 border-b h-12" />
-                    {days.map((d) => (
-                      <div key={d} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
-                        {d}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div
-                    data-schedule-scroll
-                    className="relative max-h-[70vh] overflow-y-auto hide-scrollbar"
-                    style={{ ["--time-col" as any]: `${TIME_COL_PX}px` }}
-                  >
-                    <div className="pointer-events-none absolute left-0 top-0 z-[2]" style={{ width: TIME_COL_PX, height: BODY_H }}>
-                      <div className="absolute inset-x-0 top-1 text-center text-xs text-gray-500">{fmt(start)}</div>
-                      {rows.slice(1).map((t, index) => (
-                        <div
-                          key={`time-axis-${t}`}
-                          className="absolute inset-x-0 -translate-y-1/2 text-center text-xs text-gray-500"
-                          style={{ top: (index + 1) * ROW_PX }}
-                        >
-                          {fmt(t)}
-                        </div>
-                      ))}
-                      <div className="absolute inset-x-0 bottom-1 text-center text-xs text-gray-500">
-                        {fmt(end)}
-                      </div>
-                    </div>
-                    {rows.map((t) => (
-                      <div key={t} className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-                        <div className="h-16 border-r" />
-                        {days.map((d, j) => (
-                          <div
-                            key={`${t}-${d}`}
-                            className={`border-b ${j < days.length - 1 ? "border-r" : ""} h-16 hover:bg-gray-50`}
-                          />
-                        ))}
-                      </div>
-                    ))}
-
-                    <UnitTabs
-                      gridId={Number(grid.id)}
-                      role={role}
-                      units={units}
-                      daysCount={days.length}
-                      rowPx={ROW_PX}
-                      timeColPx={TIME_COL_PX}
-                      bodyHeight={BODY_H}
-                      dayStartMin={start}
-                      slotMin={grid.cell_size_min}
-                    />
-                  </div>
-                  <GradualBlur
-                    target="parent"
-                    position="top"
-                    height="2.1rem"
-                    strength={2}
-                    divCount={5}
-                    curve="bezier"
-                    exponential
-                    opacity={1}
-                    showWhen="not-at-start"
-                    style={{ top: "3rem" }}
-                  />
-                  <GradualBlur
-                    target="parent"
-                    position="bottom"
-                    height="2.1rem"
-                    strength={2}
-                    divCount={5}
-                    curve="bezier"
-                    exponential
-                    opacity={1}
-                    showWhen="not-at-end"
-                  />
-              </>
+              <GridSchedulePanel
+                gridId={Number(grid.id)}
+                role={role}
+                units={units}
+                days={days}
+                dayStartMin={start}
+                dayEndMin={end}
+                slotMin={grid.cell_size_min}
+                rowPx={ROW_PX}
+                timeColPx={TIME_COL_PX}
+              />
             </div>
           )}
         </div>

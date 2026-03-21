@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { formatSlotRange } from "@/lib/schedule";
+import { pickDisplaySolution } from "@/lib/solution-utils";
 
 const COLOR_OPTIONS = [
   "#E7180B",
@@ -129,12 +130,8 @@ export default function ParticipantScheduleOverlay({
         const data = await r.json().catch(() => ([]));
         const list = Array.isArray(data) ? data : data.results ?? [];
         if (list.length === 0) return;
-        const sorted = list.slice().sort((a: any, b: any) => {
-          const ta = new Date(a.created_at || 0).getTime();
-          const tb = new Date(b.created_at || 0).getTime();
-          return tb - ta;
-        });
-        const latest = sorted[0] || list[list.length - 1];
+        const latest = pickDisplaySolution(list) as Solution | null;
+        if (!latest) return;
         if (active) setSolution(latest);
       } catch {}
     })();

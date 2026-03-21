@@ -8,6 +8,7 @@ import {
   getGridSolverSettingsKey,
   parseGridSolverSettings,
 } from "@/lib/grid-solver-settings";
+import { pickDisplaySolution } from "@/lib/solution-utils";
 
 const COLOR_OPTIONS = [
   "#E7180B",
@@ -112,6 +113,7 @@ type Props = {
   slotMin: number;
   selectedUnitId?: string | null;
   topOffset?: number;
+  hideScheduleOverlay?: boolean;
 };
 
 export default function SolveOverlay({
@@ -125,6 +127,7 @@ export default function SolveOverlay({
   slotMin,
   selectedUnitId,
   topOffset = 0,
+  hideScheduleOverlay = false,
 }: Props) {
   const [hasCells, setHasCells] = useState(false);
   const [isSolving, setIsSolving] = useState(false);
@@ -268,12 +271,8 @@ export default function SolveOverlay({
         const data = await r.json().catch(() => ([]));
         const list = Array.isArray(data) ? data : data.results ?? [];
         if (list.length === 0) return;
-        const sorted = list.slice().sort((a: any, b: any) => {
-          const ta = new Date(a.created_at || 0).getTime();
-          const tb = new Date(b.created_at || 0).getTime();
-          return tb - ta;
-        });
-        const latest = sorted[0] || list[list.length - 1];
+        const latest = pickDisplaySolution(list) as Solution | null;
+        if (!latest) return;
         if (active) {
           setSolution(latest);
           if (latest.state === "DONE" && latest.status === "INFEASIBLE") {
@@ -414,12 +413,20 @@ export default function SolveOverlay({
         throw new Error(txt || `Solve failed (${r.status})`);
       }
       const data = (await r.json()) as Solution;
-      setSolution(data);
       if (data.state === "DONE" && data.status === "INFEASIBLE") {
-        setError("No feasible solution");
+        const lres = await fetch(`/api/grids/${gridId}/solutions/`, { cache: "no-store" });
+        if (lres.ok) {
+          const ljson = await lres.json().catch(() => ([]));
+          const llist = Array.isArray(ljson) ? ljson : ljson.results ?? [];
+          const display = pickDisplaySolution(llist) as Solution | null;
+          if (display) setSolution(display);
+        }
+        setError("No feasible solution. Showing the last optimal solution.");
       } else if (data.state === "FAILED" || data.status === "ERROR") {
+        setSolution(data);
         setError(data.error_message || "Solver error");
       } else {
+        setSolution(data);
         window.localStorage.setItem(solveSignatureStorageKey, signature);
         setInputSignature(signature);
       }
@@ -456,7 +463,7 @@ export default function SolveOverlay({
   return (
     <>
       {/* Schedule overlay */}
-      {filteredSchedule.length > 0 && (
+      {!hideScheduleOverlay && filteredSchedule.length > 0 && (
         <div className="pointer-events-none absolute inset-x-0" style={{ top: topOffset, height: bodyHeight }}>
           {filteredSchedule.map((s, idx) => {
             const col = s.day_index;

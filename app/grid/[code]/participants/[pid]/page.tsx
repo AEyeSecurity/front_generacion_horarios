@@ -9,6 +9,7 @@ import AddRuleButton from "@/components/AddRuleButton";
 import DeleteParticipantButton from "@/components/DeleteParticipantButton";
 import EditorInviteInline from "@/components/EditorInviteInline";
 import ParticipantScheduleOverlay from "@/components/ParticipantScheduleOverlay";
+import ParticipantViewTabs from "@/components/ParticipantViewTabs";
 import GradualBlur from "@/components/GradualBlur";
 import { resolveGridByCode } from "../../_helpers";
 
@@ -179,20 +180,12 @@ export default async function ParticipantAvailabilityPage({
           {!participantLinked && view === "rules" && (
             <EditorInviteInline gridId={id} participantId={pid} />
           )}
-          <div className="flex items-center gap-2">
-            <Link
-              href={`${gridBase}/participants/${pid}`}
-              className={`px-3 py-1.5 rounded-full text-sm border ${view === "rules" ? "bg-black text-white" : "bg-white"}`}
-            >
-              Availability
-            </Link>
-            <Link
-              href={`${gridBase}/participants/${pid}?view=schedule`}
-              className={`px-3 py-1.5 rounded-full text-sm border ${view === "schedule" ? "bg-black text-white" : "bg-white"}`}
-            >
-              Schedule
-            </Link>
-          </div>
+          <ParticipantViewTabs
+            gridId={Number(id)}
+            gridBase={gridBase}
+            participantId={pid}
+            view={view}
+          />
         </div>
       </div>
       
