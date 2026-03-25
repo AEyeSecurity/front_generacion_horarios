@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Lightbulb, LightbulbOff } from "lucide-react";
+import { Lightbulb, LightbulbOff, Loader2, Pin, PinOff } from "lucide-react";
 import { formatSlotRange } from "@/lib/schedule";
 import {
   buildSolverParamsPayload,
@@ -82,6 +82,14 @@ const shadeHex = (hex: string, amt: number) => {
   return `#${nr.toString(16).padStart(2, "0")}${ng.toString(16).padStart(2, "0")}${nb.toString(16).padStart(2, "0")}`;
 };
 
+const hexToRgba = (hex: string, alpha: number) => {
+  if (!/^#([0-9a-f]{6})$/i.test(hex)) return `rgba(31, 41, 55, ${alpha})`;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 type Solution = {
   id: number;
   state: "RUNNING" | "DONE" | "FAILED";
@@ -102,6 +110,12 @@ type Solution = {
   }>;
 };
 
+type CellPinMeta = {
+  pin_day_index: number | null;
+  pin_start_slot: number | null;
+  bundles: Array<number | string>;
+};
+
 type Props = {
   gridId: number;
   role: "viewer" | "editor" | "supervisor";
@@ -114,6 +128,7 @@ type Props = {
   selectedUnitId?: string | null;
   topOffset?: number;
   hideScheduleOverlay?: boolean;
+  enablePinning?: boolean;
 };
 
 export default function SolveOverlay({
@@ -128,6 +143,7 @@ export default function SolveOverlay({
   selectedUnitId,
   topOffset = 0,
   hideScheduleOverlay = false,
+  enablePinning = false,
 }: Props) {
   const [hasCells, setHasCells] = useState(false);
   const [isSolving, setIsSolving] = useState(false);
@@ -141,6 +157,11 @@ export default function SolveOverlay({
   const [staffMembersByStaffId, setStaffMembersByStaffId] = useState<Record<string, string[]>>({});
   const [staffNameById, setStaffNameById] = useState<Record<string, string>>({});
   const [participantNameById, setParticipantNameById] = useState<Record<string, string>>({});
+  const [cellPinMetaById, setCellPinMetaById] = useState<Record<string, CellPinMeta>>({});
+  const [bundleUnitsById, setBundleUnitsById] = useState<Record<string, string[]>>({});
+  const [pinBusyKey, setPinBusyKey] = useState<string | null>(null);
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [pinAnimatingKey, setPinAnimatingKey] = useState<string | null>(null);
   const [inputSignature, setInputSignature] = useState<string | null>(null);
   const [isInputSignatureLoading, setIsInputSignatureLoading] = useState(false);
 
@@ -292,12 +313,30 @@ export default function SolveOverlay({
     let active = true;
     (async () => {
       try {
-        const rc = await fetch(`/api/cells?grid=${gridId}`, { cache: "no-store" });
+        const [rc, rb, rsm, rs, rp] = await Promise.all([
+          fetch(`/api/cells?grid=${gridId}`, { cache: "no-store" }),
+          fetch(`/api/bundles?grid=${gridId}`, { cache: "no-store" }),
+          fetch(`/api/staff-members?grid=${gridId}`, { cache: "no-store" }),
+          fetch(`/api/staffs?grid=${gridId}`, { cache: "no-store" }),
+          fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" }),
+        ]);
+
         const cdata = await rc.json().catch(() => ([]));
+        const bdata = await rb.json().catch(() => ([]));
+        const smdata = await rsm.json().catch(() => ([]));
+        const sdata = await rs.json().catch(() => ([]));
+        const pdata = await rp.json().catch(() => ([]));
+
         const clist = Array.isArray(cdata) ? cdata : cdata.results ?? [];
+        const blist = Array.isArray(bdata) ? bdata : bdata.results ?? [];
+        const smlist = Array.isArray(smdata) ? smdata : smdata.results ?? [];
+        const slist = Array.isArray(sdata) ? sdata : sdata.results ?? [];
+        const plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
+
         const cmap: Record<string, string> = {};
         const cstaffs: Record<string, string[]> = {};
         const ccolors: Record<string, string> = {};
+        const cpins: Record<string, CellPinMeta> = {};
         for (const c of clist) {
           if (c?.id != null) {
             const cid = String(c.id);
@@ -307,11 +346,35 @@ export default function SolveOverlay({
             if (Array.isArray(c.staffs)) {
               cstaffs[cid] = c.staffs.map((s: any) => String(s));
             }
+            cpins[cid] = {
+              pin_day_index:
+                typeof c.pin_day_index === "number" ? c.pin_day_index : null,
+              pin_start_slot:
+                typeof c.pin_start_slot === "number" ? c.pin_start_slot : null,
+              bundles: Array.isArray(c.bundles) ? c.bundles : [],
+            };
           }
         }
-        const rsm = await fetch(`/api/staff-members?grid=${gridId}`, { cache: "no-store" });
-        const smdata = await rsm.json().catch(() => ([]));
-        const smlist = Array.isArray(smdata) ? smdata : smdata.results ?? [];
+
+        const bundleUnitsMap: Record<string, string[]> = {};
+        for (const b of blist) {
+          if (b?.id == null) continue;
+          const unitIds = Array.isArray(b.units)
+            ? b.units
+                .map((u: unknown) => {
+                  if (u == null) return null;
+                  if (typeof u === "number" || typeof u === "string") return String(u);
+                  if (typeof u === "object" && "id" in u && (u as { id?: number | string }).id != null) {
+                    return String((u as { id?: number | string }).id);
+                  }
+                  return null;
+                })
+                .filter((v): v is string => Boolean(v))
+                .sort()
+            : [];
+          bundleUnitsMap[String(b.id)] = unitIds;
+        }
+
         const smm: Record<string, string[]> = {};
         for (const m of smlist) {
           const sid = String(m.staff);
@@ -319,16 +382,10 @@ export default function SolveOverlay({
           if (!smm[sid]) smm[sid] = [];
           smm[sid].push(pid);
         }
-        const rs = await fetch(`/api/staffs?grid=${gridId}`, { cache: "no-store" });
-        const sdata = await rs.json().catch(() => ([]));
-        const slist = Array.isArray(sdata) ? sdata : sdata.results ?? [];
         const snames: Record<string, string> = {};
         for (const s of slist) {
           if (s?.id != null) snames[String(s.id)] = s.name || `Staff ${s.id}`;
         }
-        const rp = await fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" });
-        const pdata = await rp.json().catch(() => ([]));
-        const plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
         const pmap: Record<string, string> = {};
         for (const p of plist) {
           if (p?.id != null) pmap[String(p.id)] = `${p.name}${p.surname ? " " + p.surname : ""}`;
@@ -337,6 +394,8 @@ export default function SolveOverlay({
           setCellNameById(cmap);
           setCellStaffsById(cstaffs);
           setCellColorById(ccolors);
+          setCellPinMetaById(cpins);
+          setBundleUnitsById(bundleUnitsMap);
           setStaffMembersByStaffId(smm);
           setStaffNameById(snames);
           setParticipantNameById(pmap);
@@ -448,6 +507,87 @@ export default function SolveOverlay({
 
   const isInputUnchanged = Boolean(inputSignature);
   const canUseSolve = canSolve && hasCells && !isSolving && !isInputUnchanged && !isInputSignatureLoading;
+  const canPinCards = enablePinning && role === "supervisor";
+
+  const arraysEqual = (a: string[], b: string[]) =>
+    a.length === b.length && a.every((x, i) => x === b[i]);
+
+  const resolveBundleIdsForPatch = (sourceCellId: string, scheduleUnitIds: string[]) => {
+    const pinMeta = cellPinMetaById[sourceCellId];
+    const cellBundles = Array.isArray(pinMeta?.bundles) ? pinMeta!.bundles!.map(String) : [];
+    if (cellBundles.length <= 1) return cellBundles;
+    if (scheduleUnitIds.length > 0) {
+      const matched = cellBundles.find((bundleId) =>
+        arraysEqual(bundleUnitsById[bundleId] || [], scheduleUnitIds),
+      );
+      if (matched) return [matched];
+    }
+    return [cellBundles[0]];
+  };
+
+  const togglePin = async (
+    sourceCellId: string,
+    dayIndex: number,
+    startSlot: number,
+    scheduleUnitIds: string[],
+    cardKey: string,
+  ) => {
+    if (!canPinCards || pinBusyKey) return;
+    const pinMeta = cellPinMetaById[sourceCellId];
+    const currentDay = pinMeta?.pin_day_index ?? null;
+    const currentStart = pinMeta?.pin_start_slot ?? null;
+    const isPinnedHere = currentDay === dayIndex && currentStart === startSlot;
+    const nextDay = isPinnedHere ? null : dayIndex;
+    const nextStart = isPinnedHere ? null : startSlot;
+    const isPinAction = !isPinnedHere;
+
+    if (isPinAction) setPinAnimatingKey(cardKey);
+
+    const bundleIds = resolveBundleIdsForPatch(sourceCellId, scheduleUnitIds).map((bundleId) =>
+      /^\d+$/.test(bundleId) ? Number(bundleId) : bundleId,
+    );
+
+    const payload: Record<string, unknown> = {
+      pin_day_index: nextDay,
+      pin_start_slot: nextStart,
+    };
+    if (bundleIds.length > 0) payload.bundles = bundleIds;
+
+    setPinError(null);
+    setPinBusyKey(cardKey);
+    try {
+      const res = await fetch(`/api/cells/${encodeURIComponent(sourceCellId)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || `Failed to update pin (${res.status})`);
+      }
+      setCellPinMetaById((prev) => ({
+        ...prev,
+        [sourceCellId]: {
+          pin_day_index: nextDay,
+          pin_start_slot: nextStart,
+          bundles: bundleIds.length > 0 ? bundleIds : prev[sourceCellId]?.bundles || [],
+        },
+      }));
+    } catch (e: unknown) {
+      setPinError(e instanceof Error ? e.message : "Could not update pin.");
+      setPinAnimatingKey((prev) => (prev === cardKey ? null : prev));
+    } finally {
+      if (isPinnedHere) {
+        setPinAnimatingKey((prev) => (prev === cardKey ? null : prev));
+      } else {
+        window.setTimeout(() => {
+          setPinAnimatingKey((prev) => (prev === cardKey ? null : prev));
+        }, 700);
+      }
+      setPinBusyKey(null);
+    }
+  };
+
   const solveDisabledReason = !canSolve
     ? "Solve unavailable"
     : !hasCells
@@ -465,16 +605,23 @@ export default function SolveOverlay({
       {/* Schedule overlay */}
       {!hideScheduleOverlay && filteredSchedule.length > 0 && (
         <div className="pointer-events-none absolute inset-x-0" style={{ top: topOffset, height: bodyHeight }}>
+          {pinError && (
+            <div className="absolute left-3 top-3 z-[20] rounded border border-red-200 bg-red-50 px-2.5 py-1 text-xs text-red-600">
+              {pinError}
+            </div>
+          )}
           {filteredSchedule.map((s, idx) => {
             const col = s.day_index;
             if (col < 0 || col >= daysCount) return null;
             const sourceCellId = String(s.source_cell_id ?? s.cell_id);
+            const cardKey = `${sourceCellId}-${s.day_index}-${s.start_slot}-${idx}`;
             const top = s.start_slot * rowPx;
             const height = Math.max(6, (s.end_slot - s.start_slot) * rowPx);
             const left = `calc(${timeColPx}px + ${col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
             const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`;
             const cellName = cellNameById[sourceCellId] || `Cell ${sourceCellId}`;
             const timeLabel = formatSlotRange(dayStartMin, slotMin, s.start_slot, s.end_slot);
+            const scheduleUnitIds = Array.isArray(s.units) ? s.units.map(String).sort() : [];
             const staffIds = cellStaffsById[sourceCellId] || [];
             const bg = cellColorById[sourceCellId] || "";
             const colorIdx = COLOR_OPTIONS.findIndex((c) => c.toLowerCase() === bg.toLowerCase());
@@ -482,6 +629,17 @@ export default function SolveOverlay({
             const textDark = useColor ? COLOR_TEXT_DARK[colorIdx] : "#1f2937";
             const textLight = useColor ? COLOR_TEXT_LIGHT[colorIdx] : "#111827";
             const border = useColor ? shadeHex(bg, -0.35) : "#e5e7eb";
+            const pinBase = textDark;
+            const pinMid = shadeHex(textDark, 0.18);
+            const pinLight = shadeHex(textDark, 0.52);
+            const pinShadow = hexToRgba(textDark, 0.22);
+            const pinLineLight = textLight;
+            const pinLineDark = shadeHex(textLight, -0.3);
+            const isPinnedHere =
+              (cellPinMetaById[sourceCellId]?.pin_day_index ?? null) === s.day_index &&
+              (cellPinMetaById[sourceCellId]?.pin_start_slot ?? null) === s.start_slot;
+            const shouldShowPinnedMarker =
+              isPinnedHere || (pinAnimatingKey === cardKey && pinBusyKey === cardKey);
             const assignedParticipantIds = Array.isArray(s.assigned_participants)
               ? s.assigned_participants.map(String).sort()
               : Array.isArray(s.participants)
@@ -500,11 +658,74 @@ export default function SolveOverlay({
               }
             }
             return (
-              <div key={`${s.cell_id}-${idx}`} className="absolute" style={{ top, left, width, height }}>
+              <div key={cardKey} className="absolute pointer-events-auto" style={{ top, left, width, height }}>
                 <div
-                  className="w-full h-full rounded-md border px-2 py-2 text-[11px]"
+                  className="group relative w-full h-full rounded-md border px-2 py-2 text-[11px]"
                   style={{ backgroundColor: bg || "#f3f4f6", borderColor: border, color: textDark }}
                 >
+                  {canPinCards && (
+                    <>
+                      {!isPinnedHere && pinBusyKey !== cardKey && (
+                        <button
+                          type="button"
+                          className="absolute right-1.5 top-1.5 z-10 p-1 opacity-0 transition-[opacity,transform] hover:scale-110 group-hover:opacity-100 focus-visible:opacity-100"
+                          style={{ color: pinBase }}
+                          title="Pin placement"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            void togglePin(sourceCellId, s.day_index, s.start_slot, scheduleUnitIds, cardKey);
+                          }}
+                          disabled={Boolean(pinBusyKey)}
+                        >
+                          <Pin className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+
+                      {isPinnedHere && (
+                        <button
+                          type="button"
+                          className="absolute right-1.5 top-1.5 z-10 p-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                          style={{ color: pinBase }}
+                          title="Unpin placement"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            void togglePin(sourceCellId, s.day_index, s.start_slot, scheduleUnitIds, cardKey);
+                          }}
+                          disabled={Boolean(pinBusyKey)}
+                        >
+                          <PinOff className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+
+                      {pinBusyKey === cardKey && !shouldShowPinnedMarker && (
+                        <div className="absolute right-2 top-2 z-10">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: pinBase }} />
+                        </div>
+                      )}
+
+                      {shouldShowPinnedMarker && (
+                        <div
+                          className={`pin-3d ${pinAnimatingKey === cardKey ? "pin-3d--drop" : ""}`}
+                          style={{ filter: `drop-shadow(0 2px 3px ${pinShadow})` }}
+                        >
+                          <span
+                            className="pin-3d-head"
+                            style={{
+                              background: `radial-gradient(circle at 34% 28%, ${pinLight} 0%, ${pinMid} 46%, ${pinBase} 100%)`,
+                            }}
+                          />
+                          <span
+                            className="pin-3d-stem"
+                            style={{
+                              background: `linear-gradient(150deg, ${pinLineLight} 0%, ${pinLineDark} 100%)`,
+                            }}
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
                   <div className="flex h-full flex-col items-center justify-center text-center leading-tight">
                     <div className="font-semibold" style={{ color: textLight }}>{cellName}</div>
                     {assignmentLabel && <div className="px-1">{assignmentLabel}</div>}
@@ -517,6 +738,83 @@ export default function SolveOverlay({
           })}
         </div>
       )}
+
+      <style jsx>{`
+        .pin-3d {
+          position: absolute;
+          top: -5px;
+          left: 50%;
+          z-index: 9;
+          width: 18px;
+          height: 22px;
+          transform: translateX(-50%);
+          transform-style: preserve-3d;
+          pointer-events: none;
+        }
+
+        .pin-3d-head {
+          position: absolute;
+          left: 50%;
+          top: 0;
+          width: 12px;
+          height: 12px;
+          border-radius: 999px;
+          transform: translateX(-50%);
+          box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.22);
+        }
+
+        .pin-3d-stem {
+          position: absolute;
+          left: 50%;
+          top: 12px;
+          width: 3px;
+          height: 10px;
+          border-radius: 999px;
+          transform: translateX(-50%);
+          box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.18);
+        }
+
+        .pin-3d-stem::before {
+          content: "";
+          position: absolute;
+          left: 50%;
+          top: 0;
+          width: 6px;
+          height: 4px;
+          border-radius: 999px;
+          transform: translate(-50%, -38%);
+          background: radial-gradient(
+            circle at 50% 50%,
+            rgba(0, 0, 0, 0.2) 0%,
+            rgba(0, 0, 0, 0.08) 65%,
+            rgba(0, 0, 0, 0) 100%
+          );
+          pointer-events: none;
+        }
+
+        .pin-3d--drop {
+          animation: pinDrop3d 700ms cubic-bezier(0.2, 0.9, 0.2, 1);
+        }
+
+        @keyframes pinDrop3d {
+          0% {
+            transform: translateX(-50%) translateY(-85px) scale(2.1) rotate(-28deg) rotateX(70deg);
+            opacity: 0;
+            filter: blur(2px);
+          }
+          40% {
+            opacity: 1;
+          }
+          72% {
+            transform: translateX(-50%) translateY(-2px) scale(1.08) rotate(4deg) rotateX(18deg);
+            filter: blur(0);
+          }
+          100% {
+            transform: translateX(-50%) translateY(0) scale(1) rotate(0deg) rotateX(0deg);
+            opacity: 1;
+          }
+        }
+      `}</style>
 
       {/* Right-side solve dock */}
       {canSolve && (

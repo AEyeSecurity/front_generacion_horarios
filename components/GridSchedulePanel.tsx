@@ -26,6 +26,9 @@ type Cell = {
   name?: string;
   colorHex?: string;
   color_hex?: string;
+  bundles?: Array<number | string>;
+  pin_day_index?: number | null;
+  pin_start_slot?: number | null;
 };
 
 type SolutionScheduleItem = {
@@ -36,6 +39,7 @@ type SolutionScheduleItem = {
   end_slot: number;
   assigned_participants?: Array<string | number>;
   participants?: Array<string | number>;
+  units?: Array<string | number>;
 };
 
 type Solution = {
@@ -199,6 +203,7 @@ export default function GridSchedulePanel({
 
   const entriesByParticipantDay = useMemo(() => {
     const out: Record<string, Record<number, ParticipantCellEntry[]>> = {};
+
     for (const item of schedule) {
       const assigned = Array.isArray(item.assigned_participants)
         ? item.assigned_participants
@@ -210,6 +215,7 @@ export default function GridSchedulePanel({
       const cellName = cell?.name || `Cell ${sourceCellId}`;
       const color = cell?.colorHex || cell?.color_hex || undefined;
       const timeLabel = formatSlotRange(dayStartMin, slotMin, item.start_slot, item.end_slot);
+
       for (const rawPid of assigned) {
         const pid = String(rawPid);
         if (!out[pid]) out[pid] = {};
@@ -290,6 +296,7 @@ export default function GridSchedulePanel({
             bodyHeight={bodyHeight}
             dayStartMin={dayStartMin}
             slotMin={slotMin}
+            enablePinning={role === "supervisor"}
           />
         </div>
 
@@ -359,7 +366,7 @@ export default function GridSchedulePanel({
                       {entries.map((entry) => (
                         <div
                           key={entry.key}
-                          className="rounded-md border px-2 py-1 text-xs leading-tight"
+                          className="relative rounded-md border px-2 py-1 text-xs leading-tight"
                           style={{
                             backgroundColor: entry.color || "#f9fafb",
                             borderColor: "#e5e7eb",

@@ -16,6 +16,7 @@ export default function UnitTabs({
   dayStartMin,
   slotMin,
   topOffset = 0,
+  enablePinning = false,
 }: {
   gridId: number;
   role: "viewer" | "editor" | "supervisor";
@@ -27,6 +28,7 @@ export default function UnitTabs({
   dayStartMin: number;
   slotMin: number;
   topOffset?: number;
+  enablePinning?: boolean;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const tabs = useMemo(
@@ -55,6 +57,7 @@ export default function UnitTabs({
         slotMin={slotMin}
         selectedUnitId={effectiveSelected}
         topOffset={topOffset}
+        enablePinning={enablePinning}
       />
 
       {tabs.length > 0 && (
