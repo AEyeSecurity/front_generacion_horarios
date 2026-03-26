@@ -46,7 +46,6 @@ type Cell = {
 };
 
 const COLOR_OPTIONS = [
-  "#E7180B",
   "#FF692A",
   "#FE9A37",
   "#FDC745",
@@ -160,7 +159,7 @@ export default function EditCellDialog({
   const [headcount, setHeadcount] = React.useState<number>(1);
   const [daysDivision, setDaysDivision] = React.useState<number>(1);
   const [timeRangeId, setTimeRangeId] = React.useState<string>("");
-  const [colorHex, setColorHex] = React.useState<string | null>(COLOR_OPTIONS[0]);
+  const [colorHex, setColorHex] = React.useState<string | null>(null);
   const [colorMenuOpen, setColorMenuOpen] = React.useState(false);
   const [unitIds, setUnitIds] = React.useState<string[]>([]);
   const [bundleUnitSets, setBundleUnitSets] = React.useState<string[][]>([]);
@@ -219,7 +218,7 @@ export default function EditCellDialog({
     setDescription(cell.description || "");
     setDaysDivision(Number(cell.division_days) || 1);
     setTimeRangeId(cell.time_range != null ? String(cell.time_range) : "");
-    setColorHex((cell.colorHex || cell.color_hex || COLOR_OPTIONS[0]) as string);
+    setColorHex((cell.colorHex || cell.color_hex || null) as string | null);
     setColorMenuOpen(false);
     setUnitIds([]);
     setEditingBundleIndex(null);
@@ -406,7 +405,7 @@ export default function EditCellDialog({
         duration_min: Number(durationCells) * Math.max(1, cellMin),
         division_days: Number(daysDivision) || 1,
         time_range: Number(timeRangeId),
-        colorHex: colorHex || undefined,
+        colorHex: colorHex ?? null,
         headcount,
         tier_counts: tierCounts,
         tier_pools: tierPools,
@@ -530,14 +529,25 @@ export default function EditCellDialog({
                 <div>
                   <label className="block text-sm mb-1">Color</label>
                   <div className="relative">
-                    <button type="button" onClick={() => setColorMenuOpen((v) => !v)} className="h-10 w-10 rounded-full border border-gray-300 shadow-sm" style={{ backgroundColor: colorHex || "#ffffff" }} />
+                    <button
+                      type="button"
+                      onClick={() => setColorMenuOpen((v) => !v)}
+                      className="h-10 w-10 rounded-full border border-gray-300 shadow-sm flex items-center justify-center text-gray-500"
+                      style={{ backgroundColor: colorHex || "#ffffff" }}
+                      aria-label="Select color"
+                    >
+                      {!colorHex ? <span className="text-base leading-none">/</span> : null}
+                    </button>
                     {colorMenuOpen && (
                       <div className="absolute left-1/2 -translate-x-1/2 z-10 mt-2 rounded-md border bg-white p-2 shadow-lg">
                         <div className="flex items-center gap-2 overflow-x-auto max-w-[360px]">
-                          <button type="button" onClick={() => { setColorHex(null); setColorMenuOpen(false); }} className="h-8 w-8 rounded-full border border-gray-300 flex items-center justify-center text-gray-500">
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-                              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                            </svg>
+                          <button
+                            type="button"
+                            onClick={() => { setColorHex(null); setColorMenuOpen(false); }}
+                            className={`h-8 w-8 rounded-full border flex items-center justify-center text-gray-500 ${colorHex === null ? "ring-2 ring-black border-black" : "border-gray-300"}`}
+                            aria-label="No color"
+                          >
+                            <span className="text-sm leading-none">/</span>
                           </button>
                           {COLOR_OPTIONS.map((hex) => (
                             <button key={hex} type="button" onClick={() => { setColorHex(hex); setColorMenuOpen(false); }} className={`h-8 w-8 rounded-full border ${colorHex === hex ? "ring-2 ring-black border-black" : "border-gray-300"}`} style={{ backgroundColor: hex }} />

@@ -24,7 +24,6 @@ type TimeRange = { id: number; name: string; start_time: string; end_time: strin
 type Unit = { id: number; name: string };
 
 const COLOR_OPTIONS = [
-  "#E7180B",
   "#FF692A",
   "#FE9A37",
   "#FDC745",
@@ -118,7 +117,7 @@ export default function CreateCellDialog({
   const [headcount, setHeadcount] = React.useState<number>(1);
   const [daysDivision, setDaysDivision] = React.useState<number>(1);
   const [timeRangeId, setTimeRangeId] = React.useState<string>("");
-  const [colorHex, setColorHex] = React.useState<string | null>(COLOR_OPTIONS[0]);
+  const [colorHex, setColorHex] = React.useState<string | null>(null);
   const [colorMenuOpen, setColorMenuOpen] = React.useState(false);
   const [unitIds, setUnitIds] = React.useState<string[]>([]);
   const [bundleUnitSets, setBundleUnitSets] = React.useState<string[][]>([]);
@@ -164,7 +163,7 @@ export default function CreateCellDialog({
     setDaysDivision(1);
     setHeadcount(1);
     setTimeRangeId("");
-    setColorHex(COLOR_OPTIONS[0]);
+    setColorHex(null);
     setColorMenuOpen(false);
     setUnitIds([]);
     setBundleUnitSets([]);
@@ -255,7 +254,7 @@ export default function CreateCellDialog({
         duration_min: Number(durationCells) * Math.max(1, cellMin),
         division_days: Number(daysDivision) || 1,
         time_range: Number(timeRangeId),
-        colorHex: colorHex || undefined,
+        colorHex: colorHex ?? undefined,
         headcount,
         tier_counts: tierCounts,
         tier_pools: tierPools,
@@ -334,14 +333,25 @@ export default function CreateCellDialog({
                   <div>
                     <label className="block text-sm mb-1">Color</label>
                     <div className="relative">
-                      <button type="button" onClick={() => setColorMenuOpen((v) => !v)} className="h-10 w-10 rounded-full border border-gray-300 shadow-sm" style={{ backgroundColor: colorHex || "#ffffff" }} />
+                      <button
+                        type="button"
+                        onClick={() => setColorMenuOpen((v) => !v)}
+                        className="h-10 w-10 rounded-full border border-gray-300 shadow-sm flex items-center justify-center text-gray-500"
+                        style={{ backgroundColor: colorHex || "#ffffff" }}
+                        aria-label="Select color"
+                      >
+                        {!colorHex ? <span className="text-base leading-none">/</span> : null}
+                      </button>
                       {colorMenuOpen && (
                         <div className="absolute left-1/2 -translate-x-1/2 z-10 mt-2 rounded-md border bg-white p-2 shadow-lg">
                           <div className="flex items-center gap-2 overflow-x-auto max-w-[360px]">
-                            <button type="button" onClick={() => { setColorHex(null); setColorMenuOpen(false); }} className="h-8 w-8 rounded-full border border-gray-300 flex items-center justify-center text-gray-500">
-                              <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-                                <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                              </svg>
+                            <button
+                              type="button"
+                              onClick={() => { setColorHex(null); setColorMenuOpen(false); }}
+                              className={`h-8 w-8 rounded-full border flex items-center justify-center text-gray-500 ${colorHex === null ? "ring-2 ring-black border-black" : "border-gray-300"}`}
+                              aria-label="No color"
+                            >
+                              <span className="text-sm leading-none">/</span>
                             </button>
                             {COLOR_OPTIONS.map((hex) => (
                               <button key={hex} type="button" onClick={() => { setColorHex(hex); setColorMenuOpen(false); }} className={`h-8 w-8 rounded-full border ${colorHex === hex ? "ring-2 ring-black border-black" : "border-gray-300"}`} style={{ backgroundColor: hex }} />

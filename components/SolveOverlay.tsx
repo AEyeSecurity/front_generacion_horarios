@@ -1,8 +1,23 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Lightbulb, LightbulbOff, Loader2, Pin, PinOff } from "lucide-react";
+import {
+  Eye,
+  Lightbulb,
+  LightbulbOff,
+  Loader2,
+  MessageSquarePlus,
+  Pin,
+  PinOff,
+} from "lucide-react";
 import { formatSlotRange } from "@/lib/schedule";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   buildSolverParamsPayload,
   getGridSolverSettingsKey,
@@ -101,6 +116,8 @@ type Solution = {
   schedule?: Array<{
     cell_id: string;
     source_cell_id?: string | number;
+    bundle_id?: string | number;
+    bundle?: string | number;
     day_index: number;
     start_slot: number;
     end_slot: number;
@@ -115,6 +132,38 @@ type CellPinMeta = {
   pin_start_slot: number | null;
   bundles: Array<number | string>;
 };
+
+type PlacementComment = {
+  id: number | string;
+  solution: number | string;
+  source_cell_id: number | string;
+  bundle: number | string;
+  day_index: number;
+  start_slot: number;
+  message: string;
+  created_at?: string;
+  author_name?: string;
+};
+
+type CommentAnchor = {
+  solutionId: number;
+  sourceCellId: string;
+  bundleId: number | string;
+  dayIndex: number;
+  startSlot: number;
+  cellName: string;
+  timeLabel: string;
+};
+
+function buildPlacementKey(
+  solutionId: number | string,
+  sourceCellId: number | string,
+  bundleId: number | string,
+  dayIndex: number,
+  startSlot: number,
+) {
+  return `${solutionId}|${sourceCellId}|${bundleId}|${dayIndex}|${startSlot}`;
+}
 
 type Props = {
   gridId: number;
@@ -162,6 +211,14 @@ export default function SolveOverlay({
   const [pinBusyKey, setPinBusyKey] = useState<string | null>(null);
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinAnimatingKey, setPinAnimatingKey] = useState<string | null>(null);
+  const [placementComments, setPlacementComments] = useState<PlacementComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentDialogOpen, setCommentDialogOpen] = useState(false);
+  const [commentDialogMode, setCommentDialogMode] = useState<"view" | "add">("view");
+  const [commentAnchor, setCommentAnchor] = useState<CommentAnchor | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [commentBusy, setCommentBusy] = useState(false);
+  const [commentError, setCommentError] = useState<string | null>(null);
   const [inputSignature, setInputSignature] = useState<string | null>(null);
   const [isInputSignatureLoading, setIsInputSignatureLoading] = useState(false);
 
@@ -282,6 +339,72 @@ export default function SolveOverlay({
     })();
     return () => { active = false; };
   }, [gridId]);
+
+  useEffect(() => {
+    const solutionId = solution?.id;
+    if (role !== "supervisor" || !solutionId) {
+      setPlacementComments([]);
+      return;
+    }
+    let active = true;
+    (async () => {
+      setCommentsLoading(true);
+      try {
+        const r = await fetch(
+          `/api/placement-comments/?solution=${encodeURIComponent(String(solutionId))}&grid=${encodeURIComponent(String(gridId))}`,
+          { cache: "no-store" },
+        );
+        if (!r.ok) throw new Error(`Failed to load comments (${r.status})`);
+        const data = await r.json().catch(() => ([]));
+        const list = Array.isArray(data) ? data : data.results ?? [];
+        const normalized: PlacementComment[] = list
+          .map((raw: any) => {
+            const bundleRaw =
+              typeof raw.bundle === "object" && raw.bundle?.id != null ? raw.bundle.id : raw.bundle;
+            const message =
+              raw.message ??
+              raw.text ??
+              raw.comment ??
+              "";
+            if (
+              raw?.id == null ||
+              raw?.solution == null ||
+              raw?.source_cell_id == null ||
+              bundleRaw == null ||
+              raw?.day_index == null ||
+              raw?.start_slot == null
+            ) {
+              return null;
+            }
+            return {
+              id: raw.id,
+              solution: raw.solution,
+              source_cell_id: raw.source_cell_id,
+              bundle: bundleRaw,
+              day_index: Number(raw.day_index),
+              start_slot: Number(raw.start_slot),
+              message: String(message),
+              created_at: raw.created_at,
+              author_name:
+                raw.author_name ??
+                raw.author?.full_name ??
+                raw.author?.name ??
+                raw.author?.email ??
+                undefined,
+            } as PlacementComment;
+          })
+          .filter(Boolean) as PlacementComment[];
+        if (active) setPlacementComments(normalized);
+      } catch {
+        if (active) setPlacementComments([]);
+      } finally {
+        if (active) setCommentsLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [gridId, role, solution?.id]);
 
   useEffect(() => {
     let active = true;
@@ -508,6 +631,7 @@ export default function SolveOverlay({
   const isInputUnchanged = Boolean(inputSignature);
   const canUseSolve = canSolve && hasCells && !isSolving && !isInputUnchanged && !isInputSignatureLoading;
   const canPinCards = enablePinning && role === "supervisor";
+  const canCommentCards = role === "supervisor" && Boolean(solution?.id);
 
   const arraysEqual = (a: string[], b: string[]) =>
     a.length === b.length && a.every((x, i) => x === b[i]);
@@ -523,6 +647,106 @@ export default function SolveOverlay({
       if (matched) return [matched];
     }
     return [cellBundles[0]];
+  };
+
+  const resolveBundleIdForCard = (entry: Solution["schedule"] extends Array<infer T> ? T : never) => {
+    const directBundle = (entry as any).bundle_id ?? (entry as any).bundle;
+    if (directBundle != null) return directBundle as number | string;
+    const sourceCellId = String(entry.source_cell_id ?? entry.cell_id);
+    const scheduleUnitIds = Array.isArray(entry.units) ? entry.units.map(String).sort() : [];
+    const fallback = resolveBundleIdsForPatch(sourceCellId, scheduleUnitIds)[0];
+    if (fallback == null) return null;
+    return /^\d+$/.test(String(fallback)) ? Number(fallback) : fallback;
+  };
+
+  const commentCountByPlacement = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const c of placementComments) {
+      const key = buildPlacementKey(
+        c.solution,
+        c.source_cell_id,
+        c.bundle,
+        Number(c.day_index),
+        Number(c.start_slot),
+      );
+      map[key] = (map[key] || 0) + 1;
+    }
+    return map;
+  }, [placementComments]);
+
+  const openCommentDialog = (
+    mode: "view" | "add",
+    anchor: CommentAnchor,
+  ) => {
+    setCommentDialogMode(mode);
+    setCommentAnchor(anchor);
+    setCommentError(null);
+    setCommentDraft("");
+    setCommentDialogOpen(true);
+  };
+
+  const activePlacementComments = useMemo(() => {
+    if (!commentAnchor) return [];
+    return placementComments.filter((c) => {
+      return (
+        Number(c.solution) === Number(commentAnchor.solutionId) &&
+        String(c.source_cell_id) === String(commentAnchor.sourceCellId) &&
+        String(c.bundle) === String(commentAnchor.bundleId) &&
+        Number(c.day_index) === Number(commentAnchor.dayIndex) &&
+        Number(c.start_slot) === Number(commentAnchor.startSlot)
+      );
+    });
+  }, [commentAnchor, placementComments]);
+
+  const submitPlacementComment = async () => {
+    if (!commentAnchor || !commentDraft.trim()) return;
+    setCommentBusy(true);
+    setCommentError(null);
+    try {
+      const payload = {
+        solution: commentAnchor.solutionId,
+        source_cell_id: commentAnchor.sourceCellId,
+        bundle: commentAnchor.bundleId,
+        day_index: commentAnchor.dayIndex,
+        start_slot: commentAnchor.startSlot,
+        message: commentDraft.trim(),
+      };
+      const res = await fetch("/api/placement-comments/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || `Failed to add comment (${res.status})`);
+      }
+      const raw = await res.json().catch(() => ({}));
+      const bundleRaw =
+        typeof raw.bundle === "object" && raw.bundle?.id != null ? raw.bundle.id : raw.bundle;
+      const next: PlacementComment = {
+        id: raw.id,
+        solution: raw.solution ?? commentAnchor.solutionId,
+        source_cell_id: raw.source_cell_id ?? commentAnchor.sourceCellId,
+        bundle: bundleRaw ?? commentAnchor.bundleId,
+        day_index: Number(raw.day_index ?? commentAnchor.dayIndex),
+        start_slot: Number(raw.start_slot ?? commentAnchor.startSlot),
+        message: String(raw.message ?? commentDraft.trim()),
+        created_at: raw.created_at,
+        author_name:
+          raw.author_name ??
+          raw.author?.full_name ??
+          raw.author?.name ??
+          raw.author?.email ??
+          undefined,
+      };
+      setPlacementComments((prev) => [next, ...prev]);
+      setCommentDraft("");
+      setCommentDialogMode("view");
+    } catch (e: unknown) {
+      setCommentError(e instanceof Error ? e.message : "Could not add comment.");
+    } finally {
+      setCommentBusy(false);
+    }
   };
 
   const togglePin = async (
@@ -640,6 +864,16 @@ export default function SolveOverlay({
               (cellPinMetaById[sourceCellId]?.pin_start_slot ?? null) === s.start_slot;
             const shouldShowPinnedMarker =
               isPinnedHere || (pinAnimatingKey === cardKey && pinBusyKey === cardKey);
+            const resolvedBundleId = resolveBundleIdForCard(s);
+            const canAnchorComment =
+              canCommentCards &&
+              solution?.id != null &&
+              resolvedBundleId != null;
+            const placementKey = canAnchorComment
+              ? buildPlacementKey(solution!.id, sourceCellId, resolvedBundleId!, s.day_index, s.start_slot)
+              : null;
+            const placementCommentCount =
+              placementKey != null ? commentCountByPlacement[placementKey] || 0 : 0;
             const assignedParticipantIds = Array.isArray(s.assigned_participants)
               ? s.assigned_participants.map(String).sort()
               : Array.isArray(s.participants)
@@ -663,6 +897,58 @@ export default function SolveOverlay({
                   className="group relative w-full h-full rounded-md border px-2 py-2 text-[11px]"
                   style={{ backgroundColor: bg || "#f3f4f6", borderColor: border, color: textDark }}
                 >
+                  {canAnchorComment && (
+                    <div className="absolute left-1.5 top-1.5 z-10 flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                      <button
+                        type="button"
+                        className="relative rounded p-1"
+                        style={{ color: textDark }}
+                        title="View comments"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          openCommentDialog("view", {
+                            solutionId: solution!.id,
+                            sourceCellId,
+                            bundleId: resolvedBundleId!,
+                            dayIndex: s.day_index,
+                            startSlot: s.start_slot,
+                            cellName,
+                            timeLabel,
+                          });
+                        }}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        {placementCommentCount > 0 && (
+                          <span className="absolute -right-1 -top-1 rounded-full bg-black px-1 text-[10px] leading-4 text-white">
+                            {placementCommentCount}
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded p-1"
+                        style={{ color: textDark }}
+                        title="Add comment"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          openCommentDialog("add", {
+                            solutionId: solution!.id,
+                            sourceCellId,
+                            bundleId: resolvedBundleId!,
+                            dayIndex: s.day_index,
+                            startSlot: s.start_slot,
+                            cellName,
+                            timeLabel,
+                          });
+                        }}
+                      >
+                        <MessageSquarePlus className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+
                   {canPinCards && (
                     <>
                       {!isPinnedHere && pinBusyKey !== cardKey && (
@@ -738,6 +1024,85 @@ export default function SolveOverlay({
           })}
         </div>
       )}
+
+      <Dialog
+        open={commentDialogOpen}
+        onOpenChange={(open) => {
+          setCommentDialogOpen(open);
+          if (!open) {
+            setCommentAnchor(null);
+            setCommentDraft("");
+            setCommentError(null);
+            setCommentBusy(false);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[560px] z-[170]">
+          <DialogHeader>
+            <DialogTitle>
+              {commentDialogMode === "add" ? "Add placement comment" : "Placement comments"}
+            </DialogTitle>
+            <DialogDescription>
+              {commentAnchor
+                ? `${commentAnchor.cellName} • ${commentAnchor.timeLabel}`
+                : "Placement details"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {commentsLoading ? (
+              <div className="text-sm text-gray-500">Loading comments...</div>
+            ) : activePlacementComments.length === 0 ? (
+              <div className="text-sm text-gray-500">No comments for this placement.</div>
+            ) : (
+              <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
+                {activePlacementComments.map((c) => (
+                  <div key={String(c.id)} className="rounded border p-2">
+                    <div className="text-xs text-gray-500 mb-1">
+                      {c.author_name || "Supervisor"}
+                      {c.created_at ? ` • ${new Date(c.created_at).toLocaleString()}` : ""}
+                    </div>
+                    <div className="text-sm text-gray-900 whitespace-pre-wrap">
+                      {c.message}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {commentDialogMode === "add" && (
+              <div className="space-y-2">
+                <textarea
+                  className="w-full border rounded px-3 py-2 text-sm min-h-[96px]"
+                  placeholder="Write a comment for this specific placement..."
+                  value={commentDraft}
+                  onChange={(e) => setCommentDraft(e.target.value)}
+                  disabled={commentBusy}
+                />
+                {commentError && <div className="text-xs text-red-600">{commentError}</div>}
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    className="h-9 px-3 rounded border text-sm"
+                    onClick={() => setCommentDialogMode("view")}
+                    disabled={commentBusy}
+                  >
+                    View comments
+                  </button>
+                  <button
+                    type="button"
+                    className="h-9 px-3 rounded bg-black text-white text-sm disabled:opacity-60"
+                    onClick={() => void submitPlacementComment()}
+                    disabled={commentBusy || !commentDraft.trim() || !commentAnchor}
+                  >
+                    {commentBusy ? "Saving..." : "Add comment"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <style jsx>{`
         .pin-3d {
