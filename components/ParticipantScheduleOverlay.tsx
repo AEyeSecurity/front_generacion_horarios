@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatSlotRange } from "@/lib/schedule";
-import { pickDisplaySolution } from "@/lib/solution-utils";
+import { isSolvedSolution, pickDisplaySolution } from "@/lib/solution-utils";
 
 const COLOR_OPTIONS = [
   "#E7180B",
@@ -78,8 +78,7 @@ const shadeHex = (hex: string, amt: number) => {
 
 type Solution = {
   id: number;
-  state: "RUNNING" | "DONE" | "FAILED";
-  status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE" | "ERROR";
+  status?: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE" | "ERROR";
   schedule?: Array<{
     cell_id: string;
     source_cell_id?: string | number;
@@ -182,9 +181,7 @@ export default function ParticipantScheduleOverlay({
   }, [gridId]);
 
   const schedule =
-    solution &&
-    solution.state === "DONE" &&
-    (solution.status === "OPTIMAL" || solution.status === "FEASIBLE")
+    isSolvedSolution(solution)
       ? solution.schedule || []
       : [];
 

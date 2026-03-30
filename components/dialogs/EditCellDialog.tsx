@@ -6,7 +6,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   CellStaffingEditor,
@@ -65,15 +64,13 @@ const COLOR_OPTIONS = [
 ];
 
 function buildStaffingError(
-  headcount: number,
   tierCounts: TierCounts,
   tierPools: TierPools,
   staffGroups: StaffOption[],
   participantMap: Record<string, Participant>
 ) {
+  const headcount = TIERS.reduce((sum, tier) => sum + Math.max(0, Number(tierCounts[tier] || 0)), 0);
   if (headcount < 1) return "Headcount must be at least 1.";
-  const total = TIERS.reduce((sum, tier) => sum + tierCounts[tier], 0);
-  if (total !== headcount) return "Tier counts must add up exactly to headcount.";
 
   const poolIds = new Set<string>();
   for (const tier of TIERS) {
@@ -131,6 +128,32 @@ function bundleKeyFromUnitIds(ids: Array<string | number>) {
   return normalizeUnitSet(ids).join(",");
 }
 
+function extractStaffMemberIds(staff: any): string[] {
+  const raw = Array.isArray(staff?.members)
+    ? staff.members
+    : Array.isArray(staff?.participant_ids)
+    ? staff.participant_ids
+    : Array.isArray(staff?.participants)
+    ? staff.participants
+    : [];
+  const ids = raw
+    .map((item: any) => {
+      if (item == null) return "";
+      if (typeof item === "string" || typeof item === "number") return String(item);
+      if (typeof item === "object") {
+        if (item.id != null) return String(item.id);
+        if (item.participant_id != null) return String(item.participant_id);
+        if (item.participant != null) {
+          if (typeof item.participant === "string" || typeof item.participant === "number") return String(item.participant);
+          if (typeof item.participant === "object" && item.participant.id != null) return String(item.participant.id);
+        }
+      }
+      return "";
+    })
+    .filter((value: string): value is string => Boolean(value));
+  return Array.from(new Set<string>(ids)).sort();
+}
+
 export default function EditCellDialog({
   gridId,
   cell,
@@ -156,7 +179,6 @@ export default function EditCellDialog({
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [durationCells, setDurationCells] = React.useState<number>(1);
-  const [headcount, setHeadcount] = React.useState<number>(1);
   const [daysDivision, setDaysDivision] = React.useState<number>(1);
   const [timeRangeId, setTimeRangeId] = React.useState<string>("");
   const [colorHex, setColorHex] = React.useState<string | null>(null);
@@ -178,6 +200,11 @@ export default function EditCellDialog({
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
+  const stepCircleBase = "w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-semibold transition-colors";
+  const inferredHeadcount = React.useMemo(
+    () => TIERS.reduce((sum, tier) => sum + Math.max(0, Number(tierCounts[tier] || 0)), 0),
+    [tierCounts]
+  );
   const participantMap = React.useMemo(
     () => Object.fromEntries(participants.map((p) => [String(p.id), p])) as Record<string, Participant>,
     [participants]
@@ -225,9 +252,39 @@ export default function EditCellDialog({
 
     (async () => {
       try {
-        const seriesCells = cell.seriesCells?.length ? cell.seriesCells : [cell];
+        let latestCellById: Cell | null = null;
+        try {
+          const rCell = await fetch(`/api/cells/${cell.id}`, { cache: "no-store" });
+          if (rCell.ok) {
+            latestCellById = (await rCell.json().catch(() => null)) as Cell | null;
+          }
+        } catch {}
+
+        let latestCellsById = new Map<string, Cell>();
+        try {
+          const rc = await fetch(`/api/cells?grid=${gridId}`, { cache: "no-store" });
+          const cdata = await rc.json().catch(() => []);
+          const list = Array.isArray(cdata) ? cdata : cdata.results ?? [];
+          latestCellsById = new Map<string, Cell>(
+            list
+              .filter((entry: any) => entry?.id != null)
+              .map((entry: any) => [String(entry.id), entry as Cell])
+          );
+        } catch {}
+
+        const sourceSeriesCells = cell.seriesCells?.length ? cell.seriesCells : [cell];
+        const seriesCells = sourceSeriesCells.map((seriesCell) => latestCellsById.get(String(seriesCell.id)) ?? seriesCell);
+        const baseCell = latestCellById ?? latestCellsById.get(String(cell.id)) ?? cell;
+
+        setName(stripBundleSuffix(baseCell.name) || "");
+        setDescription(baseCell.description || "");
+        setDaysDivision(Number(baseCell.division_days) || 1);
+        setTimeRangeId(baseCell.time_range != null ? String(baseCell.time_range) : "");
+        setColorHex((baseCell.colorHex || baseCell.color_hex || null) as string | null);
+
         let gridCellMin = 1;
         let bundlesList: Bundle[] = [];
+        let staffMembersById: Record<string, string[]> = {};
 
         try {
           let g: any = null;
@@ -239,7 +296,7 @@ export default function EditCellDialog({
           if (g?.cell_size_min) {
             gridCellMin = Number(g.cell_size_min);
             setCellMin(gridCellMin);
-            const dur = Number(cell.duration_min) || gridCellMin;
+            const dur = Number(baseCell.duration_min) || gridCellMin;
             setDurationCells(Math.max(1, Math.round(dur / gridCellMin)));
           }
         } catch {}
@@ -269,6 +326,37 @@ export default function EditCellDialog({
           setBundles(bundlesList);
         } catch {}
 
+        try {
+          const rsm = await fetch(`/api/staff-members?grid=${gridId}`, { cache: "no-store" });
+          const smdata = await rsm.json().catch(() => []);
+          const staffMembersList = Array.isArray(smdata) ? smdata : smdata.results ?? [];
+          const byStaff: Record<string, string[]> = {};
+          for (const row of staffMembersList) {
+            const sid = row?.staff != null ? String(row.staff) : "";
+            const pid = row?.participant != null ? String(row.participant) : "";
+            if (!sid || !pid) continue;
+            if (!byStaff[sid]) byStaff[sid] = [];
+            byStaff[sid].push(pid);
+          }
+          for (const sid of Object.keys(byStaff)) {
+            byStaff[sid] = Array.from(new Set(byStaff[sid])).sort();
+          }
+          staffMembersById = byStaff;
+        } catch {}
+
+        try {
+          const rs = await fetch(`/api/staffs?grid=${gridId}`, { cache: "no-store" });
+          const sdata = await rs.json().catch(() => []);
+          const staffList = Array.isArray(sdata) ? sdata : sdata.results ?? [];
+          for (const staff of staffList) {
+            if (staff?.id == null) continue;
+            const sid = String(staff.id);
+            if (Array.isArray(staffMembersById[sid]) && staffMembersById[sid].length > 0) continue;
+            const extracted = extractStaffMemberIds(staff);
+            if (extracted.length > 0) staffMembersById[sid] = extracted;
+          }
+        } catch {}
+
         const bundlesById = new Map<string, Bundle>(
           bundlesList.map((bundle) => [String(bundle.id), bundle])
         );
@@ -288,15 +376,33 @@ export default function EditCellDialog({
 
         setBundleUnitSets(initialSets);
         setInitialBundleSetsSerialized(serializeUnitSets(initialSets));
-        const nextHeadcount = Math.max(1, Number(cell.headcount) || 1);
-        setHeadcount(nextHeadcount);
-        setTierCounts({
-          PRIMARY: Number(cell.tier_counts?.PRIMARY || 0),
-          SECONDARY: Number(cell.tier_counts?.SECONDARY || 0),
-          TERTIARY: Number(cell.tier_counts?.TERTIARY || 0),
-        });
-        setTierPools(normalizeTierPools(cell.tier_pools));
-        const resolvedGroups = normalizeStaffGroups(cell.staff_options_resolved);
+        const nextTierCounts: TierCounts = {
+          PRIMARY: Number(baseCell.tier_counts?.PRIMARY || 0),
+          SECONDARY: Number(baseCell.tier_counts?.SECONDARY || 0),
+          TERTIARY: Number(baseCell.tier_counts?.TERTIARY || 0),
+        };
+        const nextTierTotal = TIERS.reduce((sum, tier) => sum + nextTierCounts[tier], 0);
+        if (nextTierTotal < 1) {
+          nextTierCounts.PRIMARY = Math.max(1, Number(baseCell.headcount) || 1);
+        }
+        setTierCounts(nextTierCounts);
+        setTierPools(normalizeTierPools(baseCell.tier_pools));
+        let resolvedGroups = normalizeStaffGroups(baseCell.staff_options_resolved);
+        if (resolvedGroups.length === 0) {
+          for (const seriesCell of [baseCell, ...seriesCells]) {
+            const staffIds = Array.isArray(seriesCell.staffs) ? seriesCell.staffs.map(String) : [];
+            if (staffIds.length === 0) continue;
+            const fromStaffs = normalizeStaffGroups(
+              staffIds.map((staffId) => ({
+                members: staffMembersById[staffId] ?? [],
+              }))
+            );
+            if (fromStaffs.length > 0) {
+              resolvedGroups = fromStaffs;
+              break;
+            }
+          }
+        }
         setStaffGroups(resolvedGroups);
         setInitialStaffGroupsSerialized(serializeStaffGroups(resolvedGroups));
       } catch (e: any) {
@@ -307,16 +413,9 @@ export default function EditCellDialog({
     })();
   }, [open, gridId, cell]);
 
-  const stepOneReady = Boolean(name.trim() && timeRangeId && durationCells >= 1 && headcount >= 1 && activeBundleSets.length > 0);
-  const staffingError = buildStaffingError(headcount, tierCounts, tierPools, staffGroups, participantMap);
+  const stepOneReady = Boolean(name.trim() && timeRangeId && durationCells >= 1 && activeBundleSets.length > 0);
+  const staffingError = buildStaffingError(tierCounts, tierPools, staffGroups, participantMap);
   const canSubmit = stepOneReady && !staffingError && !bundleSetsError;
-
-  const onHeadcountChange = (value: number) => {
-    setHeadcount(Math.max(1, value));
-    setTierCounts({ ...EMPTY_TIER_COUNTS });
-    setTierPools({ ...EMPTY_TIER_POOLS });
-    setStaffGroups([]);
-  };
 
   const onMultiChange = (e: React.ChangeEvent<HTMLSelectElement>, setFn: (v: string[]) => void) => {
     const vals = Array.from(e.target.selectedOptions).map((o) => o.value);
@@ -406,7 +505,7 @@ export default function EditCellDialog({
         division_days: Number(daysDivision) || 1,
         time_range: Number(timeRangeId),
         colorHex: colorHex ?? null,
-        headcount,
+        headcount: inferredHeadcount,
         tier_counts: tierCounts,
         tier_pools: tierPools,
       };
@@ -490,9 +589,36 @@ export default function EditCellDialog({
             <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
         </button>
-        <DialogHeader>
+        <DialogHeader className="relative min-h-9 pr-8">
           <DialogTitle>{isSeriesEdit ? "Edit Cell Series" : "Edit Cell"}</DialogTitle>
-          <DialogDescription>Step {step} of 2</DialogDescription>
+          <div className="absolute left-1/2 top-0 -translate-x-1/2 flex items-center justify-center gap-2 select-none">
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className={`${stepCircleBase} ${
+                  step === 1
+                    ? "bg-black text-white border-black shadow-[0_0_0_3px_rgba(0,0,0,0.18)]"
+                    : "bg-black text-white border-black"
+                }`}
+                aria-label="Go to step 1"
+              >
+                1
+              </button>
+              <div className={`h-0.5 w-12 ${step === 2 ? "bg-black" : "bg-gray-300"}`} />
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                disabled={!stepOneReady}
+                className={`${stepCircleBase} ${
+                  step === 2
+                    ? "bg-black text-white border-black shadow-[0_0_0_3px_rgba(0,0,0,0.18)]"
+                    : "bg-white text-gray-500 border-gray-300"
+                } disabled:opacity-40`}
+                aria-label="Go to step 2"
+              >
+                2
+              </button>
+          </div>
         </DialogHeader>
 
         {err && <div className="text-sm text-red-600 mb-2 whitespace-pre-wrap">{err}</div>}
@@ -500,33 +626,32 @@ export default function EditCellDialog({
         <form onSubmit={submit} className="space-y-4">
           {step === 1 ? (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                <div className="sm:col-span-4">
                   <label className="block text-sm mb-1">Name *</label>
                   <input className="w-full border rounded px-3 py-2 text-sm" value={name} onChange={(e) => setName(e.target.value)} required />
                 </div>
-                <div>
+                <div className="sm:col-span-2">
                   <label className="block text-sm mb-1">Duration (in cells) *</label>
                   <input className="w-full border rounded px-3 py-2 text-sm" type="number" min={1} step={1} value={durationCells} onChange={(e) => setDurationCells(Number(e.target.value))} required />
                   <div className="text-xs text-gray-500 mt-1">Total minutes: {durationCells * cellMin}</div>
                 </div>
-                <div>
-                  <label className="block text-sm mb-1">Headcount *</label>
-                  <input
-                    className="w-full border rounded px-3 py-2 text-sm"
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={headcount}
-                    onChange={(e) => onHeadcountChange(Number(e.target.value) || 1)}
-                    required
-                  />
-                </div>
-                <div>
+                <div className="sm:col-span-1">
                   <label className="block text-sm mb-1">Division in days</label>
                   <input className="w-full border rounded px-3 py-2 text-sm" type="number" min={1} value={daysDivision} onChange={(e) => setDaysDivision(Number(e.target.value) || 1)} />
                 </div>
-                <div>
+                <div className="sm:col-span-4">
+                  <label className="block text-sm mb-1">Time Range *</label>
+                  <select className="w-full border rounded px-3 py-2 text-sm" value={timeRangeId} onChange={(e) => setTimeRangeId(e.target.value)} required>
+                    <option value="">Select...</option>
+                    {timeRanges.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.start_time}-{t.end_time})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="sm:col-span-1">
                   <label className="block text-sm mb-1">Color</label>
                   <div className="relative">
                     <button
@@ -566,17 +691,6 @@ export default function EditCellDialog({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm mb-1">Time Range *</label>
-                  <select className="w-full border rounded px-3 py-2 text-sm" value={timeRangeId} onChange={(e) => setTimeRangeId(e.target.value)} required>
-                    <option value="">Select...</option>
-                    {timeRanges.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name} ({t.start_time}-{t.end_time})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
                   <label className="block text-sm mb-1">Units *</label>
                   <select multiple className="w-full border rounded px-3 py-2 text-sm h-28" value={unitIds} onChange={(e) => onMultiChange(e, setUnitIds)} required={bundleUnitSets.length === 0}>
                     {units.map((u) => {
@@ -612,8 +726,11 @@ export default function EditCellDialog({
                       <div className="text-xs text-gray-500">Save each bundle/unit set. Bundle sets cannot share units.</div>
                     </div>
                   {bundleSetsError && <div className="text-xs text-red-600 mt-2">{bundleSetsError}</div>}
+                </div>
+                <div>
+                  <label className="block text-sm mb-1">Saved bundles</label>
                   {bundleUnitSets.length > 0 && (
-                    <div className="mt-3 space-y-2">
+                    <div className="space-y-2">
                       {bundleUnitSets.map((set, index) => (
                         <div key={set.join(",")} className="flex items-center justify-between gap-3 rounded border px-3 py-2 text-sm">
                           <button
@@ -664,6 +781,11 @@ export default function EditCellDialog({
                       ))}
                     </div>
                   )}
+                  {bundleUnitSets.length === 0 && (
+                    <div className="rounded border border-dashed px-3 py-4 text-xs text-gray-500">
+                      No bundle sets saved yet.
+                    </div>
+                  )}
                 </div>
               </div>
             </>
@@ -671,7 +793,6 @@ export default function EditCellDialog({
             <>
               <CellStaffingEditor
                 participants={participants}
-                headcount={headcount}
                 tierCounts={tierCounts}
                 onTierCountsChange={setTierCounts}
                 tierPools={tierPools}
@@ -685,44 +806,34 @@ export default function EditCellDialog({
             </>
           )}
 
-          <div className="flex justify-between gap-2">
-            <div>
-              {step === 2 && (
+            <div className="flex justify-between gap-2">
+              <div>
                 <button
                   type="button"
-                  className="px-3 py-2 rounded border text-sm"
+                  className="h-9 w-9 rounded-full border text-sm flex items-center justify-center hover:bg-gray-50"
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    setStep(1);
+                    setStep(step === 1 ? 2 : 1);
                   }}
+                  aria-label={step === 1 ? "Go to Staffing" : "Go to Basic Data"}
                 >
-                  Back
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+                    {step === 1 ? (
+                      <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    ) : (
+                      <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    )}
+                  </svg>
                 </button>
-              )}
-            </div>
+              </div>
             <div className="flex gap-2">
               <button type="button" className="px-3 py-2 rounded border text-sm" onClick={requestClose}>
                 Cancel
               </button>
-              {step === 1 ? (
-                <button
-                  type="button"
-                  className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50"
-                  disabled={!stepOneReady || loading || Boolean(bundleSetsError)}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setStep(2);
-                  }}
-                >
-                  Next
-                </button>
-              ) : (
-                <button type="submit" className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50" disabled={saving || !canSubmit || loading}>
-                  {saving ? "Saving..." : "Save"}
-                </button>
-              )}
+              <button type="submit" className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50" disabled={saving || !canSubmit || loading}>
+                {saving ? "Saving..." : "Save"}
+              </button>
             </div>
           </div>
         </form>

@@ -61,7 +61,6 @@ export function buildParticipantsByTier(participants: Participant[]) {
 
 type StaffingEditorProps = {
   participants: Participant[];
-  headcount: number;
   tierCounts: TierCounts;
   onTierCountsChange: (value: TierCounts) => void;
   tierPools: TierPools;
@@ -80,11 +79,9 @@ function countMembersByTier(ids: string[], participantMap: Record<string, Partic
 }
 
 function TierCountControls({
-  headcount,
   tierCounts,
   onTierCountsChange,
 }: {
-  headcount: number;
   tierCounts: TierCounts;
   onTierCountsChange: (value: TierCounts) => void;
 }) {
@@ -92,8 +89,6 @@ function TierCountControls({
 
   const updateTierCount = (tier: Tier, next: number) => {
     const safe = Math.max(0, next);
-    const others = TIERS.reduce((sum, key) => (key === tier ? sum : sum + tierCounts[key]), 0);
-    if (safe + others > headcount) return;
     onTierCountsChange({ ...tierCounts, [tier]: safe });
   };
 
@@ -117,9 +112,8 @@ function TierCountControls({
               <div className="min-w-[2rem] text-center text-sm">{tierCounts[tier]}</div>
               <button
                 type="button"
-                className="w-8 h-8 rounded border disabled:opacity-40"
+                className="w-8 h-8 rounded border"
                 onClick={() => updateTierCount(tier, tierCounts[tier] + 1)}
-                disabled={currentTotal >= headcount}
               >
                 +
               </button>
@@ -128,7 +122,7 @@ function TierCountControls({
         ))}
       </div>
       <div className="text-xs text-gray-500 mt-2">
-        Total selected: {currentTotal} / {headcount}
+        Inferred headcount: {currentTotal}
       </div>
     </div>
   );
@@ -136,7 +130,6 @@ function TierCountControls({
 
 export function CellStaffingEditor({
   participants,
-  headcount,
   tierCounts,
   onTierCountsChange,
   tierPools,
@@ -171,8 +164,8 @@ export function CellStaffingEditor({
     }
   }, []);
 
-  const tierTotal = React.useMemo(() => TIERS.reduce((sum, tier) => sum + tierCounts[tier], 0), [tierCounts]);
-  const canBuildGroups = headcount > 1 && tierTotal === headcount;
+  const headcount = React.useMemo(() => TIERS.reduce((sum, tier) => sum + tierCounts[tier], 0), [tierCounts]);
+  const canBuildGroups = headcount > 1;
   const draftCounts = React.useMemo(() => countMembersByTier(groupDraft, participantMap), [groupDraft, participantMap]);
   const memberGroupIndex = React.useMemo(() => {
     const out = new Map<string, number>();
@@ -191,7 +184,7 @@ export function CellStaffingEditor({
       if (tierCounts[participant.tier] <= 0) return false;
       return true;
     },
-    [canBuildGroups, headcount, lockedIds, tierCounts]
+    [canBuildGroups, lockedIds, tierCounts]
   );
 
   React.useEffect(() => {
@@ -321,13 +314,17 @@ export function CellStaffingEditor({
 
   return (
     <div className="space-y-5">
-      <TierCountControls headcount={headcount} tierCounts={tierCounts} onTierCountsChange={onTierCountsChange} />
+      <TierCountControls tierCounts={tierCounts} onTierCountsChange={onTierCountsChange} />
 
       <div className="rounded border p-3 space-y-4">
         <div className="flex items-start justify-between gap-4">
             <div className="text-sm font-medium">Participants board</div>
         </div>
-
+        {headcount > 1 && !groupMode && (
+          <div className="text-xs text-gray-500">
+            Long-press a participant chip to start building a staff group.
+          </div>
+        )}
         {groupMode && headcount > 1 && (
           <div className="rounded border bg-gray-50 p-3 space-y-3">
             <div className="flex items-center justify-between gap-3">

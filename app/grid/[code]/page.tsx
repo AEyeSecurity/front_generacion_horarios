@@ -177,6 +177,7 @@ export default async function GridOverview({
                   gridId={Number(grid.id)}
                   role={role}
                   daysCount={days.length}
+                  dayLabels={days}
                   rowPx={ROW_PX}
                   timeColPx={TIME_COL_PX}
                   bodyHeight={BODY_H}

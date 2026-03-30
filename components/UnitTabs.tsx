@@ -10,6 +10,7 @@ export default function UnitTabs({
   role,
   units,
   daysCount,
+  dayLabels,
   rowPx,
   timeColPx,
   bodyHeight,
@@ -22,6 +23,7 @@ export default function UnitTabs({
   role: "viewer" | "editor" | "supervisor";
   units: Unit[];
   daysCount: number;
+  dayLabels?: string[];
   rowPx: number;
   timeColPx: number;
   bodyHeight: number;
@@ -50,6 +52,7 @@ export default function UnitTabs({
         gridId={gridId}
         role={role}
         daysCount={daysCount}
+        dayLabels={dayLabels}
         rowPx={rowPx}
         timeColPx={timeColPx}
         bodyHeight={bodyHeight}

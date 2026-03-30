@@ -43,7 +43,6 @@ type SolutionScheduleItem = {
 };
 
 type Solution = {
-  state?: string;
   status?: string;
   schedule?: SolutionScheduleItem[];
 };
@@ -291,6 +290,7 @@ export default function GridSchedulePanel({
             role={role}
             units={units}
             daysCount={days.length}
+            dayLabels={days}
             rowPx={rowPx}
             timeColPx={timeColPx}
             bodyHeight={bodyHeight}
@@ -388,6 +388,7 @@ export default function GridSchedulePanel({
           gridId={gridId}
           role={role}
           daysCount={days.length}
+          dayLabels={days}
           rowPx={rowPx}
           timeColPx={timeColPx}
           bodyHeight={bodyHeight}
