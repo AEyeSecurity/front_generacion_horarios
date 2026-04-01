@@ -1,7 +1,7 @@
 import { backendFetchJSON } from "@/lib/backend";
 import type { Role } from "@/lib/types";
 import { getCurrentUser } from "@/lib/auth";
-import ParticipantsHeader from "@/components/ParticipantsHeader";
+import { ParticipantsHeader } from "@/components/grid/headers";
 import Link from "next/link";
 import { resolveGridByCode } from "../_helpers";
 

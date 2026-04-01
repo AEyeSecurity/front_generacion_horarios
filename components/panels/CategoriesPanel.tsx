@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import PanelShell from "@/components/panels/PanelShell";
+import PanelScrollArea from "@/components/panels/PanelScrollArea";
 
 type Category = { id: number; name: string; parent: number | null };
 
@@ -33,18 +35,20 @@ export default function CategoriesPanel({
       const items = Array.isArray(data) ? data : data.results ?? [];
       setList(items);
       onParents?.(items.map((c: Category) => ({ id: c.id, name: c.name })));
-    } catch (e: any) {
-      setErr(e.message || "Error");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Error");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { load(); }, [gridId, refreshKey]);
+  useEffect(() => {
+    load();
+  }, [gridId, refreshKey]);
 
   const filtered = useMemo(
-    () => list.filter(c => c.name.toLowerCase().includes(q.toLowerCase())),
-    [list, q]
+    () => list.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())),
+    [list, q],
   );
   const parentNameById = useMemo(
     () =>
@@ -52,13 +56,11 @@ export default function CategoriesPanel({
         acc[item.id] = item.name;
         return acc;
       }, {}),
-    [list]
+    [list],
   );
 
   return (
-    <div className="flex flex-col h-full space-y-3">
-      <h2 className="text-lg font-semibold">Categories</h2>
-
+    <PanelShell title="Categories" error={err}>
       <input
         className="w-full border rounded px-3 py-2 text-sm"
         placeholder="Search..."
@@ -66,40 +68,37 @@ export default function CategoriesPanel({
         onChange={(e) => setQ(e.target.value)}
       />
 
-      {err && <div className="text-sm text-red-600">{err}</div>}
+      <PanelScrollArea loading={loading} empty={filtered.length === 0} emptyLabel="No categories found">
+        <ul className="grid gap-2">
+          {filtered.map((c) => (
+            <li key={c.id}>
+              <button
+                className="w-full text-left border rounded p-2 text-sm hover:bg-gray-50"
+                onClick={() => {
+                  setSelected(c);
+                  setShowDialog(true);
+                }}
+              >
+                <div className="font-medium">{c.name}</div>
+                {c.parent !== null && (
+                  <div className="text-xs text-gray-500">Parent: {parentNameById[c.parent] ?? c.parent}</div>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </PanelScrollArea>
 
-      {/* Box principal igual que en Participants */}
-      <div className="flex-1 border rounded bg-white p-2 overflow-y-auto">
-        {loading ? (
-          <div className="text-sm text-gray-500 p-3">Loading…</div>
-        ) : filtered.length === 0 ? (
-          <div className="text-sm text-gray-500 p-3">No categories found</div>
-        ) : (
-          <ul className="grid gap-2">
-            {filtered.map((c) => (
-              <li key={c.id}>
-                <button
-                  className="w-full text-left border rounded p-2 text-sm hover:bg-gray-50"
-                  onClick={() => { setSelected(c); setShowDialog(true); }}
-                >
-                  <div className="font-medium">{c.name}</div>
-                  {c.parent !== null && (
-                    <div className="text-xs text-gray-500">Parent: {parentNameById[c.parent] ?? c.parent}</div>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {/* Category details dialog */}
       <CategoryDialog
         category={selected}
         open={showDialog}
         onOpenChange={setShowDialog}
-        onDeleted={() => { setShowDialog(false); setSelected(null); /* refresh */ (async () => await load())(); }}
+        onDeleted={() => {
+          setShowDialog(false);
+          setSelected(null);
+          void load();
+        }}
       />
-    </div>
+    </PanelShell>
   );
 }

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { ChevronDown } from "lucide-react";
-import { TierBadge, type Tier } from "@/components/TierBadge";
+import { TierBadge, type Tier } from "@/components/badges/TierBadge";
 import {
   Dialog,
   DialogPortal,

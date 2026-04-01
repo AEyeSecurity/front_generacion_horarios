@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { formatSlotRange } from "@/lib/schedule";
-import { isSolvedSolution, pickDisplaySolution } from "@/lib/solution-utils";
 
 const COLOR_OPTIONS = [
   "#E7180B",
@@ -76,19 +75,14 @@ const shadeHex = (hex: string, amt: number) => {
   return `#${nr.toString(16).padStart(2, "0")}${ng.toString(16).padStart(2, "0")}${nb.toString(16).padStart(2, "0")}`;
 };
 
-type Solution = {
-  id: number;
-  status?: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE" | "ERROR";
-  schedule?: Array<{
-    cell_id: string;
-    source_cell_id?: string | number;
-    day_index: number;
-    start_slot: number;
-    end_slot: number;
-    assigned_participants?: Array<string | number>;
-    participants?: Array<string | number>;
-  }>;
-  created_at?: string;
+type SchedulePlacement = {
+  id: number | string;
+  source_cell?: string | number | null;
+  bundle?: string | number | null;
+  day_index: number;
+  start_slot: number;
+  end_slot: number;
+  assigned_participants?: Array<string | number>;
 };
 
 type Props = {
@@ -114,9 +108,8 @@ export default function ParticipantScheduleOverlay({
   slotMin,
   topOffset = 0,
 }: Props) {
-  const [solution, setSolution] = useState<Solution | null>(null);
+  const [schedulePlacements, setSchedulePlacements] = useState<SchedulePlacement[]>([]);
   const [cellNameById, setCellNameById] = useState<Record<string, string>>({});
-  const [cellBundlesById, setCellBundlesById] = useState<Record<string, Array<string | number>>>({});
   const [cellColorById, setCellColorById] = useState<Record<string, string>>({});
   const [bundleNameById, setBundleNameById] = useState<Record<string, string>>({});
 
@@ -124,14 +117,14 @@ export default function ParticipantScheduleOverlay({
     let active = true;
     (async () => {
       try {
-        const r = await fetch(`/api/grids/${gridId}/solutions/`, { cache: "no-store" });
-        if (!r.ok) return;
-        const data = await r.json().catch(() => ([]));
-        const list = Array.isArray(data) ? data : data.results ?? [];
-        if (list.length === 0) return;
-        const latest = pickDisplaySolution(list) as Solution | null;
-        if (!latest) return;
-        if (active) setSolution(latest);
+        const r = await fetch(`/api/grids/${gridId}/schedule/`, { cache: "no-store" });
+        if (!r.ok) {
+          if (active) setSchedulePlacements([]);
+          return;
+        }
+        const data = await r.json().catch(() => ({}));
+        const placements = Array.isArray(data?.placements) ? data.placements : [];
+        if (active) setSchedulePlacements(placements);
       } catch {}
     })();
     return () => {
@@ -147,13 +140,11 @@ export default function ParticipantScheduleOverlay({
         const cdata = await rc.json().catch(() => ([]));
         const clist = Array.isArray(cdata) ? cdata : cdata.results ?? [];
         const cmap: Record<string, string> = {};
-        const cbundles: Record<string, Array<string | number>> = {};
         const ccolors: Record<string, string> = {};
         for (const c of clist) {
           if (c?.id != null) {
             const cid = String(c.id);
             cmap[cid] = c.name || `Cell ${c.id}`;
-            cbundles[cid] = Array.isArray(c.bundles) ? c.bundles : [];
             if (c?.colorHex) ccolors[cid] = c.colorHex;
             else if (c?.color_hex) ccolors[cid] = c.color_hex;
           }
@@ -169,7 +160,6 @@ export default function ParticipantScheduleOverlay({
 
         if (active) {
           setCellNameById(cmap);
-          setCellBundlesById(cbundles);
           setCellColorById(ccolors);
           setBundleNameById(bmap);
         }
@@ -180,17 +170,8 @@ export default function ParticipantScheduleOverlay({
     };
   }, [gridId]);
 
-  const schedule =
-    isSolvedSolution(solution)
-      ? solution.schedule || []
-      : [];
-
-  const filteredSchedule = schedule.filter((s) => {
-    const assigned = Array.isArray(s.assigned_participants)
-      ? s.assigned_participants
-      : Array.isArray(s.participants)
-      ? s.participants
-      : [];
+  const filteredSchedule = schedulePlacements.filter((s) => {
+    const assigned = Array.isArray(s.assigned_participants) ? s.assigned_participants : [];
     return assigned.map(String).includes(String(participantId));
   });
 
@@ -201,14 +182,14 @@ export default function ParticipantScheduleOverlay({
       {filteredSchedule.map((s, idx) => {
         const col = s.day_index;
         if (col < 0 || col >= daysCount) return null;
-        const sourceCellId = String(s.source_cell_id ?? s.cell_id);
+        const sourceCellId = String(s.source_cell ?? s.id);
         const top = s.start_slot * rowPx;
         const height = Math.max(6, (s.end_slot - s.start_slot) * rowPx);
         const left = `calc(${timeColPx}px + ${col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
         const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`;
         const cellName = cellNameById[sourceCellId] || `Cell ${sourceCellId}`;
         const timeLabel = formatSlotRange(dayStartMin, slotMin, s.start_slot, s.end_slot);
-        const bundleIds = cellBundlesById[sourceCellId] || [];
+        const bundleIds = s.bundle != null ? [s.bundle] : [];
         const bundleNames = bundleIds.map((b) => bundleNameById[String(b)] || `Bundle ${b}`);
         const bundlesLabel = bundleNames.join(" + ");
         const bg = cellColorById[sourceCellId] || "";
@@ -218,7 +199,7 @@ export default function ParticipantScheduleOverlay({
         const textLight = useColor ? COLOR_TEXT_LIGHT[colorIdx] : "#111827";
         const border = useColor ? shadeHex(bg, -0.35) : "#e5e7eb";
         return (
-          <div key={`${s.cell_id}-${idx}`} className="absolute" style={{ top, left, width, height }}>
+          <div key={`${s.id}-${idx}`} className="absolute" style={{ top, left, width, height }}>
             <div
               className="w-full h-full rounded-md border px-2 py-2 text-[11px]"
               style={{ backgroundColor: bg || "#f3f4f6", borderColor: border, color: textDark }}

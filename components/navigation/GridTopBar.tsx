@@ -2,9 +2,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
-import GridActions from "@/components/GridActions";
-import UserMenu from "@/components/UserMenu";
-import ShareInviteButton from "@/components/ShareInviteButton";
+import GridActions from "@/components/grid/GridActions";
+import UserMenu from "@/components/navigation/UserMenu";
+import ShareInviteButton from "@/components/invitations/ShareInviteButton";
 
 export default async function GridTopBar({
   id,

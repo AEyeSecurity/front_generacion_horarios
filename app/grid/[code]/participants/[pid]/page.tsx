@@ -4,13 +4,10 @@ import { getCurrentUser } from "@/lib/auth";
 import type { Role } from "@/lib/types";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import RuleBubble from "@/components/RuleBubble";
-import AddRuleButton from "@/components/AddRuleButton";
-import DeleteParticipantButton from "@/components/DeleteParticipantButton";
-import EditorInviteInline from "@/components/EditorInviteInline";
-import ParticipantScheduleOverlay from "@/components/ParticipantScheduleOverlay";
-import ParticipantViewTabs from "@/components/ParticipantViewTabs";
-import GradualBlur from "@/components/GradualBlur";
+import { AddRuleButton, DeleteParticipantButton, RuleBubble } from "@/components/actions";
+import { EditorInviteInline } from "@/components/invitations";
+import { ParticipantScheduleOverlay, ParticipantViewTabs } from "@/components/participants";
+import { GradualBlur } from "@/components/animations";
 import { resolveGridByCode } from "../../_helpers";
 
 type Rule = {

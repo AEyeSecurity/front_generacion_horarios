@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2 } from "lucide-react";
 import dynamic from "next/dynamic";
-const EditRuleDialog = dynamic(() => import("./dialogs/EditRuleDialog"), { ssr: false });
+const EditRuleDialog = dynamic(() => import("@/components/dialogs/EditRuleDialog"), { ssr: false });
 
 export default function RuleBubble({
   id,

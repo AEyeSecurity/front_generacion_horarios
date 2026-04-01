@@ -2,7 +2,7 @@
 import { backendFetchJSON } from "@/lib/backend";
 import type { Role } from "@/lib/types";
 import { getCurrentUser } from "@/lib/auth";
-import TimeRangesEditor from "@/components/TimeRangesEditor";
+import TimeRangesEditor from "@/components/grid/TimeRangesEditor";
 import { resolveGridByCode } from "../_helpers";
 
 export default async function TimeRangesPage({ params }: { params: Promise<{ code: string }> }) {

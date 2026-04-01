@@ -1,7 +1,7 @@
 import { backendFetchJSON } from "@/lib/backend";
 import type { Role } from "@/lib/types";
 import { getCurrentUser } from "@/lib/auth";
-import CategoriesHeader from "@/components/CategoriesHeader";
+import { CategoriesHeader } from "@/components/grid/headers";
 import { resolveGridByCode } from "../_helpers";
 
 export default async function CategoriesPage({ params }: { params: Promise<{ code: string }> }) {

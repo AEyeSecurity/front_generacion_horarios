@@ -1,8 +1,8 @@
 import { backendFetchJSON } from "@/lib/backend";
 import { getCurrentUser } from "@/lib/auth";
 import type { Role } from "@/lib/types";
-import CellsCardSwap from "@/components/CellsCardSwap";
-import CellsHeader from "@/components/CellsHeader";
+import CellsCardSwap from "@/components/grid/CellsCardSwap";
+import { CellsHeader } from "@/components/grid/headers";
 import { resolveGridByCode } from "../_helpers";
 
 const EN_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];

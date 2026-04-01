@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import RegisterForm from "@/components/forms/RegisterForm";
-import GoogleSignInButton from "@/components/GoogleSignInButton";
+import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
 
 export default function RegisterBox() {
   const sp = useSearchParams();

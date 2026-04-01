@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -13,6 +13,7 @@ import {
   Lock,
   Loader2,
   MessageSquarePlus,
+  Trash2,
   Users,
   Unlock,
   X,
@@ -30,7 +31,7 @@ import {
   getGridSolverSettingsKey,
   parseGridSolverSettings,
 } from "@/lib/grid-solver-settings";
-import { isSolvedSolution, pickDisplaySolution } from "@/lib/solution-utils";
+import type { ScheduleViewMode } from "@/lib/schedule-view";
 
 const COLOR_OPTIONS = [
   "#E7180B",
@@ -104,28 +105,39 @@ const shadeHex = (hex: string, amt: number) => {
   return `#${nr.toString(16).padStart(2, "0")}${ng.toString(16).padStart(2, "0")}${nb.toString(16).padStart(2, "0")}`;
 };
 
-type Solution = {
+type ScheduleResource = {
   id: number;
-  status?: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE" | "ERROR";
-  error_message?: string;
+  status?: string;
+  source_run?: number | null;
+  source_candidate_index?: number | null;
   runtime_ms?: number;
   created_at?: string;
   updated_at?: string;
-  schedule?: Array<{
-    cell_id: string;
-    source_cell_id?: string | number;
-    bundle_id?: string | number;
-    bundle?: string | number;
+  placements?: Array<{
+    id: number | string;
+    source_cell?: string | number | null;
+    bundle?: string | number | null;
     day_index: number;
     start_slot: number;
     end_slot: number;
     assigned_participants?: Array<string | number>;
-    participants?: string[];
-    units?: Array<string | number>;
+    locked?: boolean;
   }>;
 };
 
-type ScheduleRow = NonNullable<Solution["schedule"]>[number];
+type ScheduleRow = {
+  cell_id: string;
+  source_cell_id?: string | number;
+  bundle_id?: string | number;
+  bundle?: string | number;
+  day_index: number;
+  start_slot: number;
+  end_slot: number;
+  assigned_participants?: Array<string | number>;
+  participants?: Array<string | number>;
+  units?: Array<string | number>;
+  locked?: boolean;
+};
 
 type CandidateStatus = "OPTIMAL" | "FEASIBLE" | "INFEASIBLE" | "ERROR";
 
@@ -135,7 +147,7 @@ type SolveCandidate = {
   status?: CandidateStatus;
   objective_value?: number | null;
   runtime_ms?: number | null;
-  schedule?: Solution["schedule"];
+  schedule?: ScheduleRow[];
   violations?: unknown[];
   solver_stats?: Record<string, unknown>;
   weights?: Record<string, unknown>;
@@ -175,18 +187,19 @@ type CellPinMeta = {
 
 type PlacementComment = {
   id: number | string;
-  solution: number | string;
+  schedule: number | string;
   source_cell_id: number | string;
   bundle: number | string;
   day_index: number;
   start_slot: number;
-  message: string;
+  text: string;
   created_at?: string;
+  author_id?: number | string;
   author_name?: string;
 };
 
 type CommentAnchor = {
-  solutionId: number;
+  scheduleId: number;
   sourceCellId: string;
   bundleId: number | string;
   dayIndex: number;
@@ -196,13 +209,13 @@ type CommentAnchor = {
 };
 
 function buildPlacementKey(
-  solutionId: number | string,
+  scheduleId: number | string,
   sourceCellId: number | string,
   bundleId: number | string,
   dayIndex: number,
   startSlot: number,
 ) {
-  return `${solutionId}|${sourceCellId}|${bundleId}|${dayIndex}|${startSlot}`;
+  return `${scheduleId}|${sourceCellId}|${bundleId}|${dayIndex}|${startSlot}`;
 }
 
 const DAY_LABEL_TO_INDEX: Record<string, number> = {
@@ -223,6 +236,30 @@ const parseClockToMin = (value: string) => {
   return hour * 60 + minute;
 };
 
+const extractAuthorId = (author: unknown): string | number | undefined => {
+  if (author == null) return undefined;
+  if (typeof author === "number" || typeof author === "string") return author;
+  if (typeof author === "object" && "id" in author) {
+    const id = (author as { id?: string | number }).id;
+    if (id != null) return id;
+  }
+  return undefined;
+};
+
+const extractAuthorName = (raw: any): string | undefined => {
+  const direct = raw.author_name;
+  if (typeof direct === "string" && direct.trim()) return direct;
+  const author = raw.author;
+  if (author && typeof author === "object") {
+    const candidate =
+      author.full_name ??
+      author.name ??
+      author.email;
+    if (typeof candidate === "string" && candidate.trim()) return candidate;
+  }
+  return undefined;
+};
+
 type Props = {
   gridId: number;
   role: "viewer" | "editor" | "supervisor";
@@ -237,6 +274,24 @@ type Props = {
   topOffset?: number;
   hideScheduleOverlay?: boolean;
   enablePinning?: boolean;
+  scheduleViewMode?: ScheduleViewMode;
+};
+
+type DragState = {
+  cardKey: string;
+  placementId: string;
+  sourceCellId: string;
+  cellName: string;
+  originalDayIndex: number;
+  originalStartSlot: number;
+  durationSlots: number;
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  offsetX: number;
+  offsetY: number;
+  grabOffsetX: number;
+  grabOffsetY: number;
 };
 
 export default function SolveOverlay({
@@ -253,13 +308,14 @@ export default function SolveOverlay({
   topOffset = 0,
   hideScheduleOverlay = false,
   enablePinning = false,
+  scheduleViewMode = "draft",
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const [hasCells, setHasCells] = useState(false);
   const [isSolving, setIsSolving] = useState(false);
   const [solveStartedAt, setSolveStartedAt] = useState<number | null>(null);
-  const [solution, setSolution] = useState<Solution | null>(null);
+  const [currentSchedule, setCurrentSchedule] = useState<ScheduleResource | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [cellNameById, setCellNameById] = useState<Record<string, string>>({});
@@ -269,9 +325,16 @@ export default function SolveOverlay({
   const [staffNameById, setStaffNameById] = useState<Record<string, string>>({});
   const [participantNameById, setParticipantNameById] = useState<Record<string, string>>({});
   const [cellPinMetaById, setCellPinMetaById] = useState<Record<string, CellPinMeta>>({});
+  const [cellTimeRangeById, setCellTimeRangeById] = useState<Record<string, string>>({});
   const [bundleUnitsById, setBundleUnitsById] = useState<Record<string, string[]>>({});
   const [bundleNameById, setBundleNameById] = useState<Record<string, string>>({});
   const [unitNameById, setUnitNameById] = useState<Record<string, string>>({});
+  const [timeRangeMetaById, setTimeRangeMetaById] = useState<
+    Record<string, { name: string; startSlot: number; endSlot: number }>
+  >({});
+  const [availabilityRulesByParticipant, setAvailabilityRulesByParticipant] = useState<
+    Record<string, AvailabilityRule[]>
+  >({});
   const [previewParticipantRules, setPreviewParticipantRules] = useState<AvailabilityRule[]>([]);
   const [pinBusyKey, setPinBusyKey] = useState<string | null>(null);
   const [pinError, setPinError] = useState<string | null>(null);
@@ -303,6 +366,14 @@ export default function SolveOverlay({
   const [previewSelectedUnitId, setPreviewSelectedUnitId] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState<"candidate" | "participant">("candidate");
   const [previewParticipantsQuery, setPreviewParticipantsQuery] = useState("");
+  const [pinOptimisticByCard, setPinOptimisticByCard] = useState<Record<string, boolean>>({});
+  const [isJiggleMode, setIsJiggleMode] = useState(false);
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [isDeleteDropActive, setIsDeleteDropActive] = useState(false);
+  const [unassignedFocusIndex, setUnassignedFocusIndex] = useState(0);
+  const longPressTimerRef = useRef<number | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const deleteDropRef = useRef<HTMLDivElement | null>(null);
 
   const canSolve = role === "supervisor";
   const solveSignatureStorageKey = `grid:${gridId}:last-solve-signature`;
@@ -425,6 +496,21 @@ export default function SolveOverlay({
     };
   };
 
+  const fetchCurrentSchedule = useCallback(async (): Promise<ScheduleResource | null> => {
+    const r = await fetch(
+      `/api/grids/${gridId}/schedule/?status=${encodeURIComponent(scheduleViewMode)}`,
+      { cache: "no-store" },
+    );
+    if (r.status === 404) return null;
+    if (!r.ok) {
+      const txt = await r.text().catch(() => "");
+      throw new Error(txt || `Failed to load schedule (${r.status})`);
+    }
+    const raw = (await r.json().catch(() => ({}))) as ScheduleResource;
+    if (raw?.id == null) return null;
+    return raw;
+  }, [gridId, scheduleViewMode]);
+
   useEffect(() => {
     let active = true;
     (async () => {
@@ -440,8 +526,8 @@ export default function SolveOverlay({
   }, [gridId]);
 
   useEffect(() => {
-    const solutionId = solution?.id;
-    if (role !== "supervisor" || !solutionId) {
+    const scheduleId = currentSchedule?.id;
+    if (!scheduleId) {
       setPlacementComments([]);
       return;
     }
@@ -450,7 +536,7 @@ export default function SolveOverlay({
       setCommentsLoading(true);
       try {
         const r = await fetch(
-          `/api/placement-comments/?solution=${encodeURIComponent(String(solutionId))}&grid=${encodeURIComponent(String(gridId))}`,
+          `/api/placement-comments/?schedule=${encodeURIComponent(String(scheduleId))}&grid=${encodeURIComponent(String(gridId))}`,
           { cache: "no-store" },
         );
         if (!r.ok) throw new Error(`Failed to load comments (${r.status})`);
@@ -467,7 +553,7 @@ export default function SolveOverlay({
               "";
             if (
               raw?.id == null ||
-              raw?.solution == null ||
+              raw?.schedule == null ||
               raw?.source_cell_id == null ||
               bundleRaw == null ||
               raw?.day_index == null ||
@@ -477,19 +563,15 @@ export default function SolveOverlay({
             }
             return {
               id: raw.id,
-              solution: raw.solution,
+              schedule: raw.schedule,
               source_cell_id: raw.source_cell_id,
               bundle: bundleRaw,
               day_index: Number(raw.day_index),
               start_slot: Number(raw.start_slot),
-              message: String(message),
+              text: String(message),
               created_at: raw.created_at,
-              author_name:
-                raw.author_name ??
-                raw.author?.full_name ??
-                raw.author?.name ??
-                raw.author?.email ??
-                undefined,
+              author_id: raw.author_id ?? extractAuthorId(raw.author),
+              author_name: extractAuthorName(raw),
             } as PlacementComment;
           })
           .filter(Boolean) as PlacementComment[];
@@ -503,45 +585,34 @@ export default function SolveOverlay({
     return () => {
       active = false;
     };
-  }, [gridId, role, solution?.id]);
+  }, [gridId, currentSchedule?.id]);
 
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        const r = await fetch(`/api/grids/${gridId}/solutions/`, { cache: "no-store" });
-        if (!r.ok) return;
-        const data = await r.json().catch(() => ([]));
-        const list = Array.isArray(data) ? data : data.results ?? [];
-        if (list.length === 0) return;
-        const latest = pickDisplaySolution(list) as Solution | null;
-        if (!latest) return;
+        const schedule = await fetchCurrentSchedule();
         if (active) {
-          setSolution(latest);
-          if (latest.status === "INFEASIBLE") {
-            setError("No feasible solution");
-          } else if (latest.status === "ERROR") {
-            setError(latest.error_message || "Solver error");
-          } else {
-            setError(null);
-          }
+          setCurrentSchedule(schedule);
         }
       } catch {}
     })();
     return () => { active = false; };
-  }, [gridId]);
+  }, [fetchCurrentSchedule]);
 
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        const [rc, rb, rsm, rs, rp, ru] = await Promise.all([
+        const [rc, rb, rsm, rs, rp, ru, rtr, rar] = await Promise.all([
           fetch(`/api/cells?grid=${gridId}`, { cache: "no-store" }),
           fetch(`/api/bundles?grid=${gridId}`, { cache: "no-store" }),
           fetch(`/api/staff-members?grid=${gridId}`, { cache: "no-store" }),
           fetch(`/api/staffs?grid=${gridId}`, { cache: "no-store" }),
           fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" }),
           fetch(`/api/units?grid=${gridId}`, { cache: "no-store" }),
+          fetch(`/api/time_ranges?grid=${gridId}`, { cache: "no-store" }),
+          fetch(`/api/availability_rules?grid=${gridId}`, { cache: "no-store" }),
         ]);
 
         const cdata = await rc.json().catch(() => ([]));
@@ -550,6 +621,8 @@ export default function SolveOverlay({
         const sdata = await rs.json().catch(() => ([]));
         const pdata = await rp.json().catch(() => ([]));
         const udata = await ru.json().catch(() => ([]));
+        const trdata = await rtr.json().catch(() => ([]));
+        const ardata = await rar.json().catch(() => ([]));
 
         const clist = Array.isArray(cdata) ? cdata : cdata.results ?? [];
         const blist = Array.isArray(bdata) ? bdata : bdata.results ?? [];
@@ -557,11 +630,14 @@ export default function SolveOverlay({
         const slist = Array.isArray(sdata) ? sdata : sdata.results ?? [];
         const plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
         const ulist = Array.isArray(udata) ? udata : udata.results ?? [];
+        const trlist = Array.isArray(trdata) ? trdata : trdata.results ?? [];
+        const arlist = Array.isArray(ardata) ? ardata : ardata.results ?? [];
 
         const cmap: Record<string, string> = {};
         const cstaffs: Record<string, string[]> = {};
         const ccolors: Record<string, string> = {};
         const cpins: Record<string, CellPinMeta> = {};
+        const ctrange: Record<string, string> = {};
         for (const c of clist) {
           if (c?.id != null) {
             const cid = String(c.id);
@@ -578,7 +654,43 @@ export default function SolveOverlay({
                 typeof c.pin_start_slot === "number" ? c.pin_start_slot : null,
               bundles: Array.isArray(c.bundles) ? c.bundles : [],
             };
+            const trRaw =
+              c?.time_range != null && typeof c.time_range === "object" && c.time_range?.id != null
+                ? c.time_range.id
+                : c?.time_range;
+            if (trRaw != null) ctrange[cid] = String(trRaw);
           }
+        }
+
+        const trmap: Record<string, { name: string; startSlot: number; endSlot: number }> = {};
+        for (const tr of trlist) {
+          if (tr?.id == null) continue;
+          const startMin = parseClockToMin(String(tr.start_time || "00:00"));
+          const endMin = parseClockToMin(String(tr.end_time || "00:00"));
+          trmap[String(tr.id)] = {
+            name: String(tr.name || `Time range ${tr.id}`),
+            startSlot: Math.round((startMin - dayStartMin) / slotMin),
+            endSlot: Math.round((endMin - dayStartMin) / slotMin),
+          };
+        }
+
+        const rulesByParticipant: Record<string, AvailabilityRule[]> = {};
+        for (const rule of arlist) {
+          const participantRaw =
+            typeof rule?.participant === "object" && rule?.participant?.id != null
+              ? rule.participant.id
+              : rule?.participant;
+          if (participantRaw == null) continue;
+          const pid = String(participantRaw);
+          if (!rulesByParticipant[pid]) rulesByParticipant[pid] = [];
+          rulesByParticipant[pid].push({
+            id: rule?.id ?? `${pid}-${rule?.day_of_week}-${rule?.start_time}-${rule?.end_time}`,
+            participant: participantRaw,
+            day_of_week: Number(rule?.day_of_week ?? 0),
+            start_time: String(rule?.start_time ?? ""),
+            end_time: String(rule?.end_time ?? ""),
+            preference: String(rule?.preference ?? "flexible"),
+          });
         }
 
         const bundleUnitsMap: Record<string, string[]> = {};
@@ -595,7 +707,7 @@ export default function SolveOverlay({
                   }
                   return null;
                 })
-                .filter((v): v is string => Boolean(v))
+                .filter((v: string | null): v is string => Boolean(v))
                 .sort()
             : [];
           bundleUnitsMap[String(b.id)] = unitIds;
@@ -626,9 +738,12 @@ export default function SolveOverlay({
           setCellStaffsById(cstaffs);
           setCellColorById(ccolors);
           setCellPinMetaById(cpins);
+          setCellTimeRangeById(ctrange);
           setBundleUnitsById(bundleUnitsMap);
           setBundleNameById(bundleNamesMap);
           setUnitNameById(umap);
+          setTimeRangeMetaById(trmap);
+          setAvailabilityRulesByParticipant(rulesByParticipant);
           setStaffMembersByStaffId(smm);
           setStaffNameById(snames);
           setParticipantNameById(pmap);
@@ -636,7 +751,7 @@ export default function SolveOverlay({
       } catch {}
     })();
     return () => { active = false; };
-  }, [gridId]);
+  }, [dayStartMin, gridId, slotMin]);
 
   useEffect(() => {
     if (!isSolving) return;
@@ -657,9 +772,12 @@ export default function SolveOverlay({
         if (!active) return;
         const saved = window.localStorage.getItem(solveSignatureStorageKey);
         let baseline = saved;
-        if (!baseline && isSolvedSolution(solution)) {
-          const solutionUpdatedAt = Math.max(parseTimestamp(solution.updated_at), parseTimestamp(solution.created_at));
-          if (solutionUpdatedAt > 0 && maxUpdatedAt <= solutionUpdatedAt) {
+        if (!baseline && currentSchedule && Array.isArray(currentSchedule.placements) && currentSchedule.placements.length > 0) {
+          const scheduleUpdatedAt = Math.max(
+            parseTimestamp(currentSchedule.updated_at),
+            parseTimestamp(currentSchedule.created_at),
+          );
+          if (scheduleUpdatedAt > 0 && maxUpdatedAt <= scheduleUpdatedAt) {
             baseline = signature;
             window.localStorage.setItem(solveSignatureStorageKey, signature);
           }
@@ -674,7 +792,7 @@ export default function SolveOverlay({
     return () => {
       active = false;
     };
-  }, [canSolve, gridId, hasCells, solution?.id, solution?.status, solution?.updated_at, solution?.created_at]);
+  }, [canSolve, gridId, hasCells, currentSchedule?.id, currentSchedule?.updated_at, currentSchedule?.created_at]);
 
   const solveElapsedMs = useMemo(() => {
     if (!solveStartedAt) return 0;
@@ -776,21 +894,22 @@ export default function SolveOverlay({
         const txt = await res.text().catch(() => "");
         throw new Error(txt || `Failed to choose candidate (${res.status})`);
       }
-      const chosen = (await res.json()) as Solution;
-      setSolution(chosen);
+      const chosen = (await res.json().catch(() => ({}))) as {
+        schedule?: ScheduleResource;
+        detail?: string;
+      };
+      const materializedSchedule =
+        chosen?.schedule && chosen.schedule.id != null
+          ? chosen.schedule
+          : await fetchCurrentSchedule();
+      setCurrentSchedule(materializedSchedule);
       setCandidateDialogOpen(false);
       setPreviewCandidateIndex(null);
       setPreviewParticipantsOpen(false);
       setPreviewParticipantId(null);
       setPreviewSelectedUnitId(null);
-      setError(
-        chosen.status === "ERROR"
-          ? chosen.error_message || "Solver error"
-          : chosen.status === "INFEASIBLE"
-          ? "Selected candidate is infeasible."
-          : null,
-      );
-      if (isSolvedSolution(chosen) && pendingSolveSignature) {
+      setError(null);
+      if (pendingSolveSignature) {
         window.localStorage.setItem(solveSignatureStorageKey, pendingSolveSignature);
         setInputSignature(pendingSolveSignature);
       }
@@ -845,19 +964,329 @@ export default function SolveOverlay({
     [selectableCandidateIndexes],
   );
 
-  const schedule =
-    isSolvedSolution(solution)
-      ? (solution.schedule || [])
-      : [];
+  const schedule = useMemo<ScheduleRow[]>(() => {
+    const placements = Array.isArray(currentSchedule?.placements) ? currentSchedule.placements : [];
+    return placements.map((placement) => {
+      const bundleId = placement.bundle ?? undefined;
+      return {
+        cell_id: String(placement.id),
+        source_cell_id: placement.source_cell ?? String(placement.id),
+        bundle_id: bundleId,
+        bundle: bundleId,
+        day_index: Number(placement.day_index),
+        start_slot: Number(placement.start_slot),
+        end_slot: Number(placement.end_slot),
+        assigned_participants: Array.isArray(placement.assigned_participants)
+          ? placement.assigned_participants
+          : [],
+        participants: Array.isArray(placement.assigned_participants)
+          ? placement.assigned_participants
+          : [],
+        units:
+          bundleId != null
+            ? (bundleUnitsById[String(bundleId)] || []).map(String)
+            : [],
+        locked: Boolean(placement.locked),
+      };
+    });
+  }, [currentSchedule, bundleUnitsById]);
 
   const filteredSchedule = selectedUnitId
     ? schedule.filter((s: any) => Array.isArray(s.units) && s.units.map(String).includes(String(selectedUnitId)))
     : schedule;
 
+  const unassignedCells = useMemo(() => {
+    const assignedSourceIds = new Set(
+      schedule.map((row) => String(row.source_cell_id ?? row.cell_id)),
+    );
+    return Object.entries(cellNameById)
+      .filter(([cellId]) => !assignedSourceIds.has(String(cellId)))
+      .map(([cellId, name]) => ({
+        id: String(cellId),
+        name,
+        color: cellColorById[String(cellId)] || "",
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [cellColorById, cellNameById, schedule]);
+
+  useEffect(() => {
+    setUnassignedFocusIndex((prev) => {
+      if (unassignedCells.length <= 1) return 0;
+      return Math.max(0, Math.min(unassignedCells.length - 1, prev));
+    });
+  }, [unassignedCells.length]);
+
   const isInputUnchanged = Boolean(inputSignature);
   const canUseSolve = canSolve && hasCells && !isSolving && !isInputUnchanged && !isInputSignatureLoading;
-  const canPinCards = enablePinning && role === "supervisor";
-  const canCommentCards = role === "supervisor" && Boolean(solution?.id);
+  const canPinCards = enablePinning && role === "supervisor" && scheduleViewMode === "draft";
+  const canManualEditCards = role === "supervisor" && scheduleViewMode === "draft";
+  const canCommentCards = Boolean(currentSchedule?.id);
+
+  const dayIndexByColumn = useMemo(
+    () =>
+      Array.from({ length: daysCount }).map((_, idx) => {
+        const label = String(dayLabels?.[idx] ?? "").trim().slice(0, 3).toLowerCase();
+        return typeof DAY_LABEL_TO_INDEX[label] === "number" ? DAY_LABEL_TO_INDEX[label] : idx;
+      }),
+    [dayLabels, daysCount],
+  );
+
+  const dragPreview = useMemo(() => {
+    if (!dragState) return null;
+    const overlay = overlayRef.current;
+    if (!overlay) return null;
+    const rect = overlay.getBoundingClientRect();
+    const dayWidth = (rect.width - timeColPx) / daysCount;
+    if (!Number.isFinite(dayWidth) || dayWidth <= 0) return null;
+    const cardLeft = dragState.clientX - rect.left - timeColPx - dragState.grabOffsetX;
+    const cardTop = dragState.clientY - rect.top - dragState.grabOffsetY;
+    if (!Number.isFinite(cardLeft) || !Number.isFinite(cardTop)) return null;
+    const cardContentWidth = Math.max(1, dayWidth - 12);
+    const cardCenterX = cardLeft + cardContentWidth / 2;
+    const dayIndex = Math.max(0, Math.min(daysCount - 1, Math.floor(cardCenterX / dayWidth)));
+    const slotCount = Math.max(0, Math.round(bodyHeight / rowPx));
+    const rawStart = Math.round(cardTop / rowPx);
+    const maxStart = Math.max(0, slotCount - dragState.durationSlots);
+    const startSlot = Math.max(0, Math.min(maxStart, rawStart));
+    return {
+      dayIndex,
+      startSlot,
+      top: startSlot * rowPx,
+      height: Math.max(6, dragState.durationSlots * rowPx),
+      left: `calc(${timeColPx}px + ${dayIndex} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`,
+      width: `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`,
+      cellName: dragState.cellName,
+      sourceCellId: dragState.sourceCellId,
+    };
+  }, [bodyHeight, daysCount, dragState, rowPx, timeColPx]);
+
+  const dragTimeRangeGuide = useMemo(() => {
+    if (!dragPreview) return null;
+    const trId = cellTimeRangeById[dragPreview.sourceCellId];
+    if (!trId) return null;
+    const meta = timeRangeMetaById[trId];
+    if (!meta) return null;
+    const slotCount = Math.max(0, Math.round(bodyHeight / rowPx));
+    const startSlot = Math.max(0, Math.min(slotCount, meta.startSlot));
+    const endSlot = Math.max(0, Math.min(slotCount, meta.endSlot));
+    if (endSlot <= startSlot) return null;
+    return {
+      startTop: startSlot * rowPx,
+      endTop: endSlot * rowPx,
+      name: meta.name,
+    };
+  }, [bodyHeight, cellTimeRangeById, dragPreview, rowPx, timeRangeMetaById]);
+
+  const dragConstraintContext = useMemo(() => {
+    if (!dragState || !dragPreview) return null;
+    const draggedRow = schedule.find((row) => String(row.cell_id) === dragState.placementId);
+    if (!draggedRow) return null;
+    const participantIds = Array.isArray(draggedRow.assigned_participants)
+      ? draggedRow.assigned_participants.map(String)
+      : Array.isArray(draggedRow.participants)
+      ? draggedRow.participants.map(String)
+      : [];
+    const sourceCellId = String(draggedRow.source_cell_id ?? draggedRow.cell_id);
+    const bundleId = (draggedRow as { bundle_id?: string | number; bundle?: string | number }).bundle_id
+      ?? (draggedRow as { bundle_id?: string | number; bundle?: string | number }).bundle;
+    const bundleUnitIds = Array.isArray(draggedRow.units) && draggedRow.units.length > 0
+      ? draggedRow.units.map(String)
+      : bundleId != null
+      ? (bundleUnitsById[String(bundleId)] || []).map(String)
+      : [];
+    return {
+      draggedRow,
+      sourceCellId,
+      participantIds,
+      bundleUnitIds,
+      targetDayIndex: dragPreview.dayIndex,
+      targetStartSlot: dragPreview.startSlot,
+      targetEndSlot: dragPreview.startSlot + dragState.durationSlots,
+    };
+  }, [bundleUnitsById, dragPreview, dragState, schedule]);
+
+  const dragAvailabilityZones = useMemo(() => {
+    if (!dragConstraintContext) return [];
+    const slotCount = Math.max(1, Math.round(bodyHeight / rowPx));
+    const normalizedRules = dragConstraintContext.participantIds.flatMap((pid) =>
+      (availabilityRulesByParticipant[pid] || [])
+        .map((rule) => {
+          const startMin = parseClockToMin(rule.start_time);
+          const endMin = parseClockToMin(rule.end_time);
+          const startSlot = Math.round((startMin - dayStartMin) / slotMin);
+          const endSlot = Math.round((endMin - dayStartMin) / slotMin);
+          return {
+            day: Number(rule.day_of_week),
+            startSlot,
+            endSlot,
+            preference: String(rule.preference || "").toLowerCase(),
+          };
+        })
+        .filter((rule) => rule.endSlot > rule.startSlot),
+    );
+
+    if (normalizedRules.length === 0) return [];
+
+    type ZoneKind = "impossible" | "flexible" | "preferred" | "preferred-strong";
+    const zones: Array<{ col: number; startSlot: number; endSlot: number; kind: ZoneKind }> = [];
+
+    for (let col = 0; col < daysCount; col += 1) {
+      const day = dayIndexByColumn[col];
+      const statuses: Array<ZoneKind | "none"> = Array.from({ length: slotCount }, () => "none");
+
+      for (let slot = 0; slot < slotCount; slot += 1) {
+        const nextSlot = slot + 1;
+        const matches = normalizedRules.filter(
+          (rule) => rule.day === day && rule.startSlot < nextSlot && rule.endSlot > slot,
+        );
+        if (matches.length === 0) continue;
+        const hasImpossible = matches.some((rule) => rule.preference === "impossible");
+        if (hasImpossible) {
+          statuses[slot] = "impossible";
+          continue;
+        }
+        const preferredCount = matches.filter((rule) => rule.preference === "preferred").length;
+        const flexibleCount = matches.filter((rule) => rule.preference === "flexible").length;
+        const allPreferred = preferredCount > 0 && preferredCount === matches.length && flexibleCount === 0;
+        if (allPreferred) {
+          statuses[slot] = preferredCount > 1 ? "preferred-strong" : "preferred";
+          continue;
+        }
+        statuses[slot] = "flexible";
+      }
+
+      let start = 0;
+      while (start < slotCount) {
+        const kind = statuses[start];
+        if (kind === "none") {
+          start += 1;
+          continue;
+        }
+        let end = start + 1;
+        while (end < slotCount && statuses[end] === kind) end += 1;
+        zones.push({ col, startSlot: start, endSlot: end, kind });
+        start = end;
+      }
+    }
+
+    return zones;
+  }, [availabilityRulesByParticipant, bodyHeight, dayIndexByColumn, dayStartMin, daysCount, dragConstraintContext, rowPx, slotMin]);
+
+  const dragCollisionCards = useMemo(() => {
+    if (!dragConstraintContext) return [];
+    const overlap = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
+      aStart < bEnd && bStart < aEnd;
+
+    type CollisionCategory = "active-unit" | "bundle-unit" | "participants";
+    type CollisionCard = {
+      key: string;
+      category: CollisionCategory;
+      col: number;
+      cellName: string;
+      unitName?: string;
+      participantName?: string;
+      startSlot: number;
+      endSlot: number;
+      timeLabel: string;
+    };
+
+    const selectedUnit = selectedUnitId ? String(selectedUnitId) : null;
+    const targetDay = dragConstraintContext.targetDayIndex;
+    const targetStart = dragConstraintContext.targetStartSlot;
+    const targetEnd = dragConstraintContext.targetEndSlot;
+    const bundleUnits = dragConstraintContext.bundleUnitIds;
+    const participantIds = new Set(dragConstraintContext.participantIds);
+
+    const byCategory: Record<CollisionCategory, CollisionCard[]> = {
+      "active-unit": [],
+      "bundle-unit": [],
+      participants: [],
+    };
+
+    for (const row of schedule) {
+      if (String(row.cell_id) === String(dragConstraintContext.draggedRow.cell_id)) continue;
+      const rowDay = Number(row.day_index);
+      if (rowDay !== Number(targetDay)) continue;
+      if (!overlap(Number(row.start_slot), Number(row.end_slot), targetStart, targetEnd)) continue;
+
+      const rowCol = dayIndexByColumn.indexOf(rowDay);
+      if (rowCol < 0 || rowCol >= daysCount) continue;
+
+      const rowSourceCellId = String(row.source_cell_id ?? row.cell_id);
+      const rowCellName = cellNameById[rowSourceCellId] || `Cell ${rowSourceCellId}`;
+      const rowBundleId = (row as { bundle_id?: string | number; bundle?: string | number }).bundle_id
+        ?? (row as { bundle_id?: string | number; bundle?: string | number }).bundle;
+      const rowUnits = Array.isArray(row.units) && row.units.length > 0
+        ? row.units.map(String)
+        : rowBundleId != null
+        ? (bundleUnitsById[String(rowBundleId)] || []).map(String)
+        : [];
+      const rowParticipants = Array.isArray(row.assigned_participants)
+        ? row.assigned_participants.map(String)
+        : Array.isArray(row.participants)
+        ? row.participants.map(String)
+        : [];
+      const startSlot = Number(row.start_slot);
+      const endSlot = Number(row.end_slot);
+      const base = {
+        key: `${row.cell_id}-${rowDay}-${startSlot}-${endSlot}`,
+        col: rowCol,
+        cellName: rowCellName,
+        startSlot,
+        endSlot,
+        timeLabel: formatSlotRange(dayStartMin, slotMin, startSlot, endSlot),
+      };
+
+      if (selectedUnit && rowUnits.includes(selectedUnit)) {
+        byCategory["active-unit"].push({
+          ...base,
+          category: "active-unit",
+          unitName: unitNameById[selectedUnit] || `Unit ${selectedUnit}`,
+        });
+        continue;
+      }
+
+      const bundleMatch = rowUnits.find(
+        (unitId) => bundleUnits.includes(unitId) && (!selectedUnit || unitId !== selectedUnit),
+      );
+      if (bundleMatch) {
+        byCategory["bundle-unit"].push({
+          ...base,
+          category: "bundle-unit",
+          unitName: unitNameById[bundleMatch] || `Unit ${bundleMatch}`,
+        });
+        continue;
+      }
+
+      const participantMatch = rowParticipants.find((pid) => participantIds.has(pid));
+      if (participantMatch) {
+        byCategory.participants.push({
+          ...base,
+          category: "participants",
+          participantName: participantNameById[participantMatch] || `#${participantMatch}`,
+        });
+      }
+    }
+
+    const categoryOrder: CollisionCategory[] = ["active-unit", "bundle-unit", "participants"];
+    const activeCategory = categoryOrder.find((category) => byCategory[category].length > 0);
+    if (!activeCategory) return [];
+    return byCategory[activeCategory].sort(
+      (a, b) => a.startSlot - b.startSlot || a.endSlot - b.endSlot || a.cellName.localeCompare(b.cellName),
+    );
+  }, [
+    bundleUnitsById,
+    cellNameById,
+    dayIndexByColumn,
+    dayStartMin,
+    daysCount,
+    dragConstraintContext,
+    participantNameById,
+    schedule,
+    selectedUnitId,
+    slotMin,
+    unitNameById,
+  ]);
 
   const arraysEqual = (a: string[], b: string[]) =>
     a.length === b.length && a.every((x, i) => x === b[i]);
@@ -889,7 +1318,7 @@ export default function SolveOverlay({
     const map: Record<string, number> = {};
     for (const c of placementComments) {
       const key = buildPlacementKey(
-        c.solution,
+        c.schedule,
         c.source_cell_id,
         c.bundle,
         Number(c.day_index),
@@ -915,7 +1344,7 @@ export default function SolveOverlay({
     if (!commentAnchor) return [];
     return placementComments.filter((c) => {
       return (
-        Number(c.solution) === Number(commentAnchor.solutionId) &&
+        Number(c.schedule) === Number(commentAnchor.scheduleId) &&
         String(c.source_cell_id) === String(commentAnchor.sourceCellId) &&
         String(c.bundle) === String(commentAnchor.bundleId) &&
         Number(c.day_index) === Number(commentAnchor.dayIndex) &&
@@ -930,12 +1359,12 @@ export default function SolveOverlay({
     setCommentError(null);
     try {
       const payload = {
-        solution: commentAnchor.solutionId,
+        schedule: commentAnchor.scheduleId,
         source_cell_id: commentAnchor.sourceCellId,
         bundle: commentAnchor.bundleId,
         day_index: commentAnchor.dayIndex,
         start_slot: commentAnchor.startSlot,
-        message: commentDraft.trim(),
+        text: commentDraft.trim(),
       };
       const res = await fetch("/api/placement-comments/", {
         method: "POST",
@@ -951,19 +1380,15 @@ export default function SolveOverlay({
         typeof raw.bundle === "object" && raw.bundle?.id != null ? raw.bundle.id : raw.bundle;
       const next: PlacementComment = {
         id: raw.id,
-        solution: raw.solution ?? commentAnchor.solutionId,
+        schedule: raw.schedule ?? commentAnchor.scheduleId,
         source_cell_id: raw.source_cell_id ?? commentAnchor.sourceCellId,
         bundle: bundleRaw ?? commentAnchor.bundleId,
         day_index: Number(raw.day_index ?? commentAnchor.dayIndex),
         start_slot: Number(raw.start_slot ?? commentAnchor.startSlot),
-        message: String(raw.message ?? commentDraft.trim()),
+        text: String(raw.text ?? raw.message ?? commentDraft.trim()),
         created_at: raw.created_at,
-        author_name:
-          raw.author_name ??
-          raw.author?.full_name ??
-          raw.author?.name ??
-          raw.author?.email ??
-          undefined,
+        author_id: raw.author_id ?? extractAuthorId(raw.author),
+        author_name: extractAuthorName(raw),
       };
       setPlacementComments((prev) => [next, ...prev]);
       setCommentDraft("");
@@ -1000,6 +1425,10 @@ export default function SolveOverlay({
     if (bundleIds.length > 0) payload.bundles = bundleIds;
 
     setPinError(null);
+    setPinOptimisticByCard((prev) => ({
+      ...prev,
+      [cardKey]: !isPinnedHere,
+    }));
     setPinBusyKey(cardKey);
     try {
       const res = await fetch(`/api/cells/${encodeURIComponent(sourceCellId)}`, {
@@ -1022,9 +1451,274 @@ export default function SolveOverlay({
     } catch (e: unknown) {
       setPinError(e instanceof Error ? e.message : "Could not update pin.");
     } finally {
+      setPinOptimisticByCard((prev) => {
+        if (!(cardKey in prev)) return prev;
+        const next = { ...prev };
+        delete next[cardKey];
+        return next;
+      });
       setPinBusyKey(null);
     }
   };
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current != null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const isInsideDeleteDropTarget = useCallback((clientX: number, clientY: number) => {
+    const el = deleteDropRef.current;
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  }, []);
+
+  const deleteSchedulePlacement = useCallback(
+    async (placementId: string) => {
+      if (!currentSchedule?.placements) return;
+      const previousPlacements = currentSchedule.placements;
+      if (!previousPlacements.some((placement) => String(placement.id) === placementId)) return;
+      const nextPlacements = previousPlacements.filter((placement) => String(placement.id) !== placementId);
+
+      setCurrentSchedule((prev) =>
+        prev
+          ? {
+              ...prev,
+              placements: nextPlacements,
+            }
+          : prev,
+      );
+      try {
+        const res = await fetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(txt || `Could not remove placement (${res.status})`);
+        }
+      } catch (error: unknown) {
+        setCurrentSchedule((prev) =>
+          prev
+            ? {
+                ...prev,
+                placements: previousPlacements,
+              }
+            : prev,
+        );
+        setPinError(error instanceof Error ? error.message : "Could not remove placement.");
+      }
+    },
+    [currentSchedule],
+  );
+
+  const patchPlacementPosition = useCallback(
+    async (placementId: string, nextDayIndex: number, nextStartSlot: number, durationSlots: number) => {
+      if (!currentSchedule?.placements) return;
+      const targetPlacement = currentSchedule.placements.find((placement) => String(placement.id) === placementId);
+      if (!targetPlacement) return;
+      const targetSourceCellId = String(targetPlacement.source_cell ?? targetPlacement.id);
+      const pinMeta = cellPinMetaById[targetSourceCellId];
+      const pinnedHere =
+        (pinMeta?.pin_day_index ?? null) === Number(targetPlacement.day_index) &&
+        (pinMeta?.pin_start_slot ?? null) === Number(targetPlacement.start_slot);
+      if (targetPlacement.locked) {
+        setPinError("Locked placements cannot be moved.");
+        return;
+      }
+      if (pinnedHere) {
+        setPinError("Pinned placements cannot be moved.");
+        return;
+      }
+      const nextEndSlot = nextStartSlot + durationSlots;
+      const previousPlacements = currentSchedule.placements;
+      const updatedPlacements = previousPlacements.map((placement) =>
+        String(placement.id) === placementId
+          ? {
+              ...placement,
+              day_index: nextDayIndex,
+              start_slot: nextStartSlot,
+              end_slot: nextEndSlot,
+            }
+          : placement,
+      );
+      setCurrentSchedule((prev) =>
+        prev
+          ? {
+              ...prev,
+              placements: updatedPlacements,
+            }
+          : prev,
+      );
+      try {
+        const res = await fetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            day_index: nextDayIndex,
+            start_slot: nextStartSlot,
+            end_slot: nextEndSlot,
+          }),
+        });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(txt || `Could not move placement (${res.status})`);
+        }
+      } catch (error: unknown) {
+        setCurrentSchedule((prev) =>
+          prev
+            ? {
+                ...prev,
+                placements: previousPlacements,
+              }
+            : prev,
+        );
+        setPinError(error instanceof Error ? error.message : "Could not move placement.");
+      }
+    },
+    [cellPinMetaById, currentSchedule],
+  );
+
+  useEffect(() => {
+    return () => clearLongPressTimer();
+  }, []);
+
+  useEffect(() => {
+    if (!dragState) return;
+    const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== dragState.pointerId) return;
+      const isInsideDelete = isInsideDeleteDropTarget(event.clientX, event.clientY);
+      setIsDeleteDropActive((prev) => (prev === isInsideDelete ? prev : isInsideDelete));
+      setDragState((prev) =>
+        prev && prev.pointerId === event.pointerId
+          ? {
+              ...prev,
+              clientX: event.clientX,
+              clientY: event.clientY,
+            }
+          : prev,
+      );
+    };
+
+    const onPointerUp = (event: PointerEvent) => {
+      if (event.pointerId !== dragState.pointerId) return;
+      const activeDrag = dragState;
+      setDragState(null);
+      const droppedOnDelete = isInsideDeleteDropTarget(event.clientX, event.clientY);
+      setIsDeleteDropActive(false);
+      if (droppedOnDelete) {
+        void deleteSchedulePlacement(activeDrag.placementId);
+        return;
+      }
+
+      const overlay = overlayRef.current;
+      if (!overlay) return;
+
+      const rect = overlay.getBoundingClientRect();
+      const dayWidth = (rect.width - timeColPx) / daysCount;
+      const cardLeft = event.clientX - rect.left - timeColPx - activeDrag.grabOffsetX;
+      const cardTop = event.clientY - rect.top - activeDrag.grabOffsetY;
+      const cardContentWidth = Math.max(1, dayWidth - 12);
+      const cardCenterX = cardLeft + cardContentWidth / 2;
+      if (
+        !Number.isFinite(cardCenterX) ||
+        !Number.isFinite(cardTop) ||
+        cardCenterX < 0 ||
+        cardCenterX >= dayWidth * daysCount
+      ) {
+        return;
+      }
+
+      const droppedDay = Math.max(0, Math.min(daysCount - 1, Math.floor(cardCenterX / dayWidth)));
+      const slotCount = Math.max(0, Math.round(bodyHeight / rowPx));
+      const rawStartSlot = Math.round(cardTop / rowPx);
+      const maxStartSlot = Math.max(0, slotCount - activeDrag.durationSlots);
+      const droppedStart = Math.max(0, Math.min(maxStartSlot, rawStartSlot));
+      if (droppedDay === activeDrag.originalDayIndex && droppedStart === activeDrag.originalStartSlot) {
+        return;
+      }
+      void patchPlacementPosition(activeDrag.placementId, droppedDay, droppedStart, activeDrag.durationSlots);
+    };
+
+    const onPointerCancel = (event: PointerEvent) => {
+      if (event.pointerId !== dragState.pointerId) return;
+      setDragState(null);
+      setIsDeleteDropActive(false);
+    };
+
+    window.addEventListener("pointermove", onPointerMove, { passive: true });
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+    };
+  }, [bodyHeight, daysCount, deleteSchedulePlacement, dragState, isInsideDeleteDropTarget, patchPlacementPosition, rowPx, timeColPx]);
+
+  useEffect(() => {
+    if (dragState) return;
+    setIsDeleteDropActive(false);
+  }, [dragState]);
+
+  useEffect(() => {
+    if (!isJiggleMode) return;
+    const dock = document.getElementById("sidedock");
+    const prevOpacity = dock?.style.opacity ?? "";
+    const prevPointerEvents = dock?.style.pointerEvents ?? "";
+    if (dock) {
+      dock.style.opacity = "0";
+      dock.style.pointerEvents = "none";
+      dock.style.transition = "opacity 140ms ease";
+    }
+    return () => {
+      if (!dock) return;
+      dock.style.opacity = prevOpacity;
+      dock.style.pointerEvents = prevPointerEvents;
+    };
+  }, [isJiggleMode]);
+
+  useEffect(() => {
+    if (!isJiggleMode) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setDragState(null);
+      clearLongPressTimer();
+      setIsJiggleMode(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isJiggleMode]);
+
+  useEffect(() => {
+    if (canManualEditCards) return;
+    setIsJiggleMode(false);
+    clearLongPressTimer();
+    setDragState(null);
+  }, [canManualEditCards]);
+
+  useEffect(() => {
+    if (!isJiggleMode) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest("[data-schedule-scroll]")) return;
+      if (target.closest("[data-unit-tabs]")) return;
+      if (target.closest("[data-jiggle-delete-drop]")) return;
+      if (target.closest("[data-jiggle-unassigned]")) return;
+      setIsJiggleMode(false);
+      clearLongPressTimer();
+      setDragState(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [isJiggleMode]);
 
   const solveDisabledReason = !canSolve
     ? "Solve unavailable"
@@ -1349,10 +2043,149 @@ export default function SolveOverlay({
     <>
       {/* Schedule overlay */}
       {!hideScheduleOverlay && filteredSchedule.length > 0 && (
-        <div className="pointer-events-none absolute inset-x-0" style={{ top: topOffset, height: bodyHeight }}>
+        <div
+          ref={overlayRef}
+          className="pointer-events-none absolute inset-x-0"
+          style={{ top: topOffset, height: bodyHeight }}
+        >
           {pinError && (
             <div className="absolute left-3 top-3 z-[20] rounded border border-red-200 bg-red-50 px-2.5 py-1 text-xs text-red-600">
               {pinError}
+            </div>
+          )}
+          {dragCollisionCards.map((item, idx) => {
+            const top = item.startSlot * rowPx + 4;
+            const height = Math.max(10, (item.endSlot - item.startSlot) * rowPx - 8);
+            const left = `calc(${timeColPx}px + ${item.col} * ((100% - ${timeColPx}px) / ${daysCount}) + 8px)`;
+            const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 16px)`;
+            const borderColor = item.category === "active-unit"
+              ? "rgba(71, 85, 105, 0.8)"
+              : item.category === "bundle-unit"
+              ? "rgba(79, 70, 229, 0.75)"
+              : "rgba(14, 116, 144, 0.75)";
+            const bgColor = item.category === "active-unit"
+              ? "rgba(241, 245, 249, 0.96)"
+              : item.category === "bundle-unit"
+              ? "rgba(238, 242, 255, 0.94)"
+              : "rgba(236, 254, 255, 0.94)";
+            return (
+              <div
+                key={`${item.key}-${item.category}-${idx}`}
+                className="absolute pointer-events-none z-[44] rounded-md border shadow-sm"
+                style={{
+                  top,
+                  left,
+                  width,
+                  height,
+                  borderColor,
+                  backgroundColor: bgColor,
+                }}
+              >
+                <div className="flex h-full w-full flex-col items-center justify-center px-2 text-center leading-tight">
+                  <div className="max-w-full truncate text-[10px] font-semibold text-gray-800">{item.cellName}</div>
+                  {item.unitName && (
+                    <div className="max-w-full truncate text-[10px] text-gray-700">Unit: {item.unitName}</div>
+                  )}
+                  {item.participantName && (
+                    <div className="max-w-full truncate text-[10px] text-gray-700">Participant: {item.participantName}</div>
+                  )}
+                  <div className="mt-1 text-[10px] font-medium text-gray-800">{item.timeLabel}</div>
+                </div>
+              </div>
+            );
+          })}
+          {dragAvailabilityZones.map((zone, index) => {
+            const top = zone.startSlot * rowPx + 3;
+            const height = Math.max(6, (zone.endSlot - zone.startSlot) * rowPx - 6);
+            const left = `calc(${timeColPx}px + ${zone.col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
+            const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`;
+            const isPreferredStrong = zone.kind === "preferred-strong";
+            const isPreferred = zone.kind === "preferred" || isPreferredStrong;
+            const isImpossible = zone.kind === "impossible";
+            const borderColor = isPreferredStrong
+              ? "rgba(21, 128, 61, 0.62)"
+              : isPreferred
+              ? "rgba(22, 163, 74, 0.45)"
+              : isImpossible
+              ? "rgba(220, 38, 38, 0.45)"
+              : "rgba(217, 119, 6, 0.45)";
+            const bgColor = isPreferredStrong
+              ? "rgba(21, 128, 61, 0.12)"
+              : isPreferred
+              ? "rgba(34, 197, 94, 0.06)"
+              : isImpossible
+              ? "rgba(239, 68, 68, 0.06)"
+              : "rgba(245, 158, 11, 0.06)";
+
+            return (
+              <div
+                key={`drag-rule-zone-${zone.col}-${zone.startSlot}-${zone.endSlot}-${zone.kind}-${index}`}
+                className="absolute pointer-events-none z-[43] rounded-md border-2"
+                style={{
+                  top,
+                  left,
+                  width,
+                  height,
+                  borderColor,
+                  backgroundColor: bgColor,
+                  borderStyle: "dotted",
+                }}
+              />
+            );
+          })}
+          {dragTimeRangeGuide && (
+            <>
+              <div
+                className="absolute pointer-events-none z-[44]"
+                style={{
+                  top: dragTimeRangeGuide.startTop,
+                  left: timeColPx,
+                  width: `calc(100% - ${timeColPx}px)`,
+                }}
+              >
+                <div className="flex items-center">
+                  <span className="h-px flex-1 bg-gray-500/75" />
+                  <span className="px-2 text-[10px] font-medium text-gray-600 whitespace-nowrap">
+                    {dragTimeRangeGuide.name}
+                  </span>
+                  <span className="h-px flex-1 bg-gray-500/75" />
+                </div>
+              </div>
+              <div
+                className="absolute pointer-events-none z-[44]"
+                style={{
+                  top: dragTimeRangeGuide.endTop,
+                  left: timeColPx,
+                  width: `calc(100% - ${timeColPx}px)`,
+                }}
+              >
+                <div className="flex items-center">
+                  <span className="h-px flex-1 bg-gray-500/75" />
+                  <span className="px-2 text-[10px] font-medium text-gray-600 whitespace-nowrap">
+                    {dragTimeRangeGuide.name}
+                  </span>
+                  <span className="h-px flex-1 bg-gray-500/75" />
+                </div>
+              </div>
+            </>
+          )}
+          {dragPreview && (
+            <div
+              className="absolute pointer-events-none z-[45]"
+              style={{
+                top: dragPreview.top,
+                left: dragPreview.left,
+                width: dragPreview.width,
+                height: dragPreview.height,
+              }}
+            >
+              <div className="relative h-full w-full rounded-md border border-dashed border-gray-400/90 bg-gray-100/20 shadow-[0_6px_18px_rgba(0,0,0,0.12)]">
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="px-2 text-[10px] font-semibold text-gray-700 whitespace-nowrap">
+                    {dragPreview.cellName}
+                  </span>
+                </div>
+              </div>
             </div>
           )}
           {filteredSchedule.map((s, idx) => {
@@ -1360,6 +2193,7 @@ export default function SolveOverlay({
             if (col < 0 || col >= daysCount) return null;
             const sourceCellId = String(s.source_cell_id ?? s.cell_id);
             const cardKey = `${sourceCellId}-${s.day_index}-${s.start_slot}-${idx}`;
+            const placementId = String(s.cell_id ?? "");
             const top = s.start_slot * rowPx;
             const height = Math.max(6, (s.end_slot - s.start_slot) * rowPx);
             const left = `calc(${timeColPx}px + ${col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
@@ -1377,27 +2211,32 @@ export default function SolveOverlay({
             const isPinnedHere =
               (cellPinMetaById[sourceCellId]?.pin_day_index ?? null) === s.day_index &&
               (cellPinMetaById[sourceCellId]?.pin_start_slot ?? null) === s.start_slot;
+            const isPlacementLocked = Boolean(s.locked || isPinnedHere);
+            const isCardBusy = pinBusyKey === cardKey;
+            const optimisticPinned = pinOptimisticByCard[cardKey];
+            const isPinnedVisual =
+              typeof optimisticPinned === "boolean" ? optimisticPinned : isPinnedHere;
             const pinColor = textDark;
-            const pinTrackBg = isPinnedHere
+            const pinTrackBg = isPinnedVisual
               ? useColor
-                ? shadeHex(bg, 0.58)
-                : "#d1d5db"
+                ? shadeHex(bg, 0.28)
+                : "#cfd4dc"
               : useColor
-              ? shadeHex(bg, 0.78)
-              : "#e5e7eb";
-            const pinTrackBorder = useColor ? shadeHex(bg, -0.18) : "#9ca3af";
-            const pinKnobBg = useColor ? shadeHex(bg, 0.96) : "#f9fafb";
-            const pinTrackInsetDark = useColor ? shadeHex(bg, -0.22) : "#b8b9c0";
-            const pinTrackInsetLight = useColor ? shadeHex(bg, 0.22) : "#ffffff";
-            const pinKnobBorder = useColor ? shadeHex(bg, 0.3) : "#d1d5db";
-            const pinKnobTranslatePx = isPinnedHere ? 16 : 0;
+              ? shadeHex(bg, 0.18)
+              : "#dce1e8";
+            const pinTrackBorder = useColor ? shadeHex(bg, -0.12) : "#8f96a3";
+            const pinKnobBg = useColor ? shadeHex(bg, 0.42) : "#e7ebf1";
+            const pinTrackInsetDark = useColor ? shadeHex(bg, -0.24) : "#aeb4c0";
+            const pinTrackInsetLight = useColor ? shadeHex(bg, 0.1) : "#edf1f6";
+            const pinKnobBorder = useColor ? shadeHex(bg, -0.08) : "#b8bfc9";
+            const pinKnobTranslatePx = isPinnedVisual ? 16 : 0;
             const resolvedBundleId = resolveBundleIdForCard(s);
             const canAnchorComment =
               canCommentCards &&
-              solution?.id != null &&
+              currentSchedule?.id != null &&
               resolvedBundleId != null;
             const placementKey = canAnchorComment
-              ? buildPlacementKey(solution!.id, sourceCellId, resolvedBundleId!, s.day_index, s.start_slot)
+              ? buildPlacementKey(currentSchedule!.id, sourceCellId, resolvedBundleId!, s.day_index, s.start_slot)
               : null;
             const placementCommentCount =
               placementKey != null ? commentCountByPlacement[placementKey] || 0 : 0;
@@ -1418,11 +2257,77 @@ export default function SolveOverlay({
                 assignmentLabel = staffNameById[matchedStaffId] || `Staff ${matchedStaffId}`;
               }
             }
+            const isDraggingCard = dragState?.cardKey === cardKey;
+            const dragTranslateX = isDraggingCard ? dragState.clientX - dragState.offsetX : 0;
+            const dragTranslateY = isDraggingCard ? dragState.clientY - dragState.offsetY : 0;
+            const durationSlots = Math.max(1, s.end_slot - s.start_slot);
             return (
-              <div key={cardKey} className="absolute pointer-events-auto" style={{ top, left, width, height }}>
+              <div
+                key={cardKey}
+                className={`absolute pointer-events-auto ${
+                  canManualEditCards
+                    ? isPlacementLocked
+                      ? "cursor-not-allowed"
+                      : isDraggingCard
+                      ? "cursor-grabbing"
+                      : "cursor-grab"
+                    : ""
+                }`}
+                style={{
+                  top,
+                  left,
+                  width,
+                  height,
+                  transform: isDraggingCard ? `translate(${dragTranslateX}px, ${dragTranslateY}px)` : undefined,
+                  zIndex: isDraggingCard ? 50 : undefined,
+                }}
+                onPointerDown={(event) => {
+                  if (!canManualEditCards || isCardBusy || isPlacementLocked || !placementId) return;
+                  clearLongPressTimer();
+                  const cardRect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+                  const startDrag = () => {
+                    setPinError(null);
+                    setDragState({
+                      cardKey,
+                      placementId,
+                      sourceCellId,
+                      cellName,
+                      originalDayIndex: s.day_index,
+                      originalStartSlot: s.start_slot,
+                      durationSlots,
+                      pointerId: event.pointerId,
+                      clientX: event.clientX,
+                      clientY: event.clientY,
+                      offsetX: event.clientX,
+                      offsetY: event.clientY,
+                      grabOffsetX: event.clientX - cardRect.left,
+                      grabOffsetY: event.clientY - cardRect.top,
+                    });
+                  };
+                  if (isJiggleMode) {
+                    startDrag();
+                    return;
+                  }
+                  longPressTimerRef.current = window.setTimeout(() => {
+                    setIsJiggleMode(true);
+                    startDrag();
+                    longPressTimerRef.current = null;
+                  }, 360);
+                }}
+                onPointerUp={() => clearLongPressTimer()}
+                onPointerCancel={() => clearLongPressTimer()}
+                onPointerLeave={() => clearLongPressTimer()}
+              >
                 <div
-                  className="group relative w-full h-full rounded-md border px-2 py-2 text-[11px]"
-                  style={{ backgroundColor: bg || "#f3f4f6", borderColor: border, color: textDark }}
+                  className={`group relative w-full h-full rounded-md border px-2 py-2 text-[11px] ${
+                    isJiggleMode && !isPlacementLocked ? "shift-jiggle" : ""
+                  }`}
+                  style={{
+                    backgroundColor: bg || "#f3f4f6",
+                    borderColor: border,
+                    color: textDark,
+                    animationDelay: `${(idx % 6) * 35}ms`,
+                  }}
                 >
                   {canAnchorComment && (
                     <div className="absolute left-1.5 top-1.5 z-10 flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
@@ -1431,11 +2336,15 @@ export default function SolveOverlay({
                         className="relative rounded p-1"
                         style={{ color: textDark }}
                         title="View comments"
+                        onPointerDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
                         onClick={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
                           openCommentDialog("view", {
-                            solutionId: solution!.id,
+                            scheduleId: currentSchedule!.id,
                             sourceCellId,
                             bundleId: resolvedBundleId!,
                             dayIndex: s.day_index,
@@ -1457,11 +2366,15 @@ export default function SolveOverlay({
                         className="rounded p-1"
                         style={{ color: textDark }}
                         title="Add comment"
+                        onPointerDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
                         onClick={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
                           openCommentDialog("add", {
-                            solutionId: solution!.id,
+                            scheduleId: currentSchedule!.id,
                             sourceCellId,
                             bundleId: resolvedBundleId!,
                             dayIndex: s.day_index,
@@ -1477,54 +2390,52 @@ export default function SolveOverlay({
                   )}
 
                   {canPinCards && (
-                    <>
-                      {pinBusyKey !== cardKey && (
-                        <button
-                          type="button"
-                          className="absolute left-2 bottom-2 z-10 h-6 w-10 rounded-full border p-0 opacity-0 transition-[opacity,transform] duration-200 hover:scale-[1.02] group-hover:opacity-100 focus-visible:opacity-100"
-                          style={{
-                            color: pinColor,
-                            backgroundColor: pinTrackBg,
-                            borderColor: pinTrackBorder,
-                            boxShadow: `inset 2px 2px 4px ${pinTrackInsetDark}, inset -2px -2px 4px ${pinTrackInsetLight}, 0 1px 2px rgba(0,0,0,0.14)`,
-                          }}
-                          title={isPinnedHere ? "Unlock placement" : "Lock placement"}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            void togglePin(sourceCellId, s.day_index, s.start_slot, scheduleUnitIds, cardKey);
-                          }}
-                          disabled={Boolean(pinBusyKey)}
-                        >
-                          <span
-                            className={`pointer-events-none absolute top-1/2 -translate-y-1/2 transition-all duration-200 ${
-                              isPinnedHere ? "left-1.5" : "right-1.5"
-                            }`}
-                          >
-                            {isPinnedHere ? (
-                              <Lock className="h-3 w-3" style={{ opacity: 0.85 }} />
-                            ) : (
-                              <Unlock className="h-3 w-3" style={{ opacity: 0.85 }} />
-                            )}
-                          </span>
-                          <span
-                            className="pointer-events-none absolute left-1 top-1 h-4 w-4 rounded-full border transition-transform duration-200 ease-out"
-                            style={{
-                              backgroundColor: pinKnobBg,
-                              borderColor: pinKnobBorder,
-                              boxShadow: "0 1px 3px rgba(0,0,0,0.24), inset 0 1px 1px rgba(255,255,255,0.72)",
-                              transform: `translateX(${pinKnobTranslatePx}px)`,
-                            }}
-                          />
-                        </button>
-                      )}
-
-                      {pinBusyKey === cardKey && (
-                        <div className="absolute left-4 bottom-[11px] z-10">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: pinColor }} />
-                        </div>
-                      )}
-                    </>
+                    <button
+                      type="button"
+                      className={`absolute left-2 bottom-2 z-10 h-6 w-10 rounded-full border p-0 transition-all duration-200 hover:scale-[1.02] ${
+                        isCardBusy ? "animate-pulse" : ""
+                      }`}
+                      style={{
+                        color: pinColor,
+                        backgroundColor: pinTrackBg,
+                        borderColor: pinTrackBorder,
+                        boxShadow: `inset 1.5px 1.5px 3px ${pinTrackInsetDark}, inset -1.5px -1.5px 3px ${pinTrackInsetLight}, 0 1px 3px rgba(0,0,0,0.16)`,
+                        opacity: isCardBusy ? 0.92 : 1,
+                      }}
+                      title={isPinnedVisual ? "Unlock placement" : "Lock placement"}
+                      aria-busy={isCardBusy}
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        void togglePin(sourceCellId, s.day_index, s.start_slot, scheduleUnitIds, cardKey);
+                      }}
+                      disabled={Boolean(pinBusyKey)}
+                    >
+                      <span
+                        className={`pointer-events-none absolute top-1/2 -translate-y-1/2 transition-all duration-200 ${
+                          isPinnedVisual ? "left-1.5" : "right-1.5"
+                        }`}
+                      >
+                        {isPinnedVisual ? (
+                          <Lock className="h-3 w-3" style={{ opacity: 0.85 }} />
+                        ) : (
+                          <Unlock className="h-3 w-3" style={{ opacity: 0.85 }} />
+                        )}
+                      </span>
+                      <span
+                        className="pointer-events-none absolute left-1 top-1 h-4 w-4 rounded-full border transition-transform duration-200 ease-out"
+                        style={{
+                          backgroundColor: pinKnobBg,
+                          borderColor: pinKnobBorder,
+                          boxShadow: "0 1px 3px rgba(0,0,0,0.2), inset 0 1px 1px rgba(255,255,255,0.3)",
+                          transform: `translateX(${pinKnobTranslatePx}px)`,
+                        }}
+                      />
+                    </button>
                   )}
                   <div className="flex h-full flex-col items-center justify-center text-center leading-tight">
                     <div className="font-semibold" style={{ color: textLight }}>{cellName}</div>
@@ -1573,11 +2484,11 @@ export default function SolveOverlay({
                 {activePlacementComments.map((c) => (
                   <div key={String(c.id)} className="rounded border p-2">
                     <div className="text-xs text-gray-500 mb-1">
-                      {c.author_name || "Supervisor"}
+                      {c.author_name || "User"}
                       {c.created_at ? ` • ${new Date(c.created_at).toLocaleString()}` : ""}
                     </div>
                     <div className="text-sm text-gray-900 whitespace-pre-wrap">
-                      {c.message}
+                      {c.text}
                     </div>
                   </div>
                 ))}
@@ -2097,7 +3008,7 @@ export default function SolveOverlay({
       )}
 
       {/* Right-side solve dock */}
-      {canSolve && (
+      {canSolve && !isJiggleMode && (
         <div className="fixed right-4 top-1/2 -translate-y-1/2 z-[140] pointer-events-none">
           <button
             type="button"
@@ -2125,6 +3036,124 @@ export default function SolveOverlay({
           )}
         </div>
       )}
+
+      {canManualEditCards && isJiggleMode && (
+        <div className="fixed left-4 top-1/2 -translate-y-1/2 z-[165] pointer-events-none">
+          <div
+            ref={deleteDropRef}
+            data-jiggle-delete-drop
+            className={`relative isolate w-12 h-12 rounded-full border shadow-md pointer-events-auto transition-all duration-150 flex items-center justify-center ${
+              isDeleteDropActive
+                ? "bg-red-600 border-red-700 scale-110"
+                : "bg-white border-gray-300"
+            }`}
+            title="Drop here to remove placement from schedule"
+          >
+            <Trash2 className={`w-5 h-5 ${isDeleteDropActive ? "text-white" : "text-red-600"}`} />
+            <div
+              className={`absolute left-full top-1/2 -translate-y-1/2 ml-[-22px] h-44 w-9 overflow-hidden pointer-events-none transition-all duration-150 -z-10 ${
+                isDeleteDropActive ? "opacity-100 scale-100" : "opacity-0 scale-95"
+              }`}
+            >
+              <div
+                className="absolute top-1/2 left-0 h-[220px] w-[220px] -translate-y-1/2 -translate-x-[190px] rounded-full border-[6px] border-red-500/85 shadow-[0_0_34px_rgba(239,68,68,0.34)]"
+                style={{ background: "transparent" }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {canManualEditCards && isJiggleMode && (
+        <div className="fixed right-4 top-1/2 -translate-y-1/2 z-[165] pointer-events-none" data-jiggle-unassigned>
+          <div className="w-[228px] pointer-events-auto">
+            <div className="mb-2 pr-1 text-right text-[11px] font-semibold text-gray-700">
+              Not Assigned Cells ({unassignedCells.length})
+            </div>
+            <div
+              className="relative h-[312px] pr-2 overflow-hidden"
+              onWheel={(event) => {
+                if (unassignedCells.length <= 1) return;
+                event.preventDefault();
+                const dir = event.deltaY > 0 ? 1 : event.deltaY < 0 ? -1 : 0;
+                if (!dir) return;
+                setUnassignedFocusIndex((prev) =>
+                  Math.max(0, Math.min(unassignedCells.length - 1, prev + dir)),
+                );
+              }}
+            >
+              {unassignedCells.length === 0 ? (
+                <div className="rounded-xl border border-gray-200 bg-white/95 px-2 py-2 text-[11px] text-gray-500 shadow-sm">
+                  All cells are currently assigned.
+                </div>
+              ) : (
+                unassignedCells.map((cell, index) => {
+                  const distance = index - unassignedFocusIndex;
+                  if (Math.abs(distance) > 2) return null;
+                  const colorIdx = COLOR_OPTIONS.findIndex(
+                    (color) => color.toLowerCase() === (cell.color || "").toLowerCase(),
+                  );
+                  const useColor = Boolean(cell.color && colorIdx >= 0);
+                  const bg = useColor ? cell.color : "#9CA3AF";
+                  const textDark = useColor ? COLOR_TEXT_DARK[colorIdx] : "#111827";
+                  const textLight = useColor ? COLOR_TEXT_LIGHT[colorIdx] : "#F9FAFB";
+                  const border = useColor ? shadeHex(bg, -0.33) : "#6B7280";
+                  const absDistance = Math.abs(distance);
+                  const scale = absDistance === 0 ? 1 : absDistance === 1 ? 0.78 : 0.62;
+                  const opacity = absDistance === 0 ? 1 : absDistance === 1 ? 0.92 : 0.82;
+                  const cardHeight = absDistance === 0 ? 86 : 52;
+                  const y = 156 + distance * 52;
+                  const z = 120 - absDistance * 20;
+                  return (
+                    <div
+                      key={`unassigned-cell-${cell.id}`}
+                      className="absolute left-0 right-2 rounded-xl border px-3 py-2 shadow-[0_12px_18px_-14px_rgba(0,0,0,0.55)] transition-transform duration-150"
+                      style={{
+                        top: `${y - cardHeight / 2}px`,
+                        height: `${cardHeight}px`,
+                        backgroundColor: bg,
+                        borderColor: border,
+                        transform: `scale(${scale})`,
+                        opacity,
+                        zIndex: z,
+                      }}
+                    >
+                      <div className="flex h-full w-full items-center justify-center text-center">
+                        <div className="min-w-0">
+                          <div
+                            className="truncate text-xs font-semibold"
+                            style={{ color: textLight }}
+                            title={cell.name}
+                          >
+                            {cell.name}
+                          </div>
+                          {absDistance === 0 && (
+                            <div className="mt-1 text-[10px] font-medium" style={{ color: textDark }}>
+                              Unassigned
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style jsx global>{`
+        @keyframes shift-jiggle {
+          0% { transform: rotate(-1.4deg); }
+          50% { transform: rotate(1.4deg); }
+          100% { transform: rotate(-1.4deg); }
+        }
+        .shift-jiggle {
+          transform-origin: center;
+          animation: shift-jiggle 170ms ease-in-out infinite;
+        }
+      `}</style>
     </>
   );
 }

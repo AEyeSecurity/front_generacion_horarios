@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import CardSwap, { Card } from "@/components/CardSwap";
+import CardSwap, { Card } from "@/components/animations/CardSwap";
 import EditCellDialog from "@/components/dialogs/EditCellDialog";
 import { ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
 

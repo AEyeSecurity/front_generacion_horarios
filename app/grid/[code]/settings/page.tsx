@@ -1,4 +1,4 @@
-import GridSolverSettingsForm from "@/components/GridSolverSettingsForm";
+import GridSolverSettingsForm from "@/components/grid/GridSolverSettingsForm";
 import { backendFetchJSON } from "@/lib/backend";
 import { getCurrentUser } from "@/lib/auth";
 import { resolveGridByCode } from "../_helpers";

@@ -36,3 +36,30 @@ export type ApiList<T> = {
   previous: string | null;
   results: T[];
 };
+
+export type SchedulePlacement = {
+  id: number;
+  schedule: number;
+  source_cell: number | null;
+  bundle: number | null;
+  day_index: number;
+  start_slot: number;
+  end_slot: number;
+  assigned_participants: number[];
+  locked: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GridSchedule = {
+  id: number;
+  grid: number;
+  status: string;
+  source_run: number | null;
+  source_candidate_index: number | null;
+  created_by: number | null;
+  updated_by: number | null;
+  created_at: string;
+  updated_at: string;
+  placements: SchedulePlacement[];
+};

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { ArrowLeft, Link2, X } from "lucide-react";
 import { toast } from "sonner";
-import { TIER_STYLES, type Tier } from "@/components/TierBadge";
+import { TIER_STYLES, type Tier } from "@/components/badges/TierBadge";
 import {
   Dialog,
   DialogPortal,

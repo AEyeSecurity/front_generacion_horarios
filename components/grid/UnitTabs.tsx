@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import SolveOverlay from "@/components/SolveOverlay";
+import SolveOverlay from "@/components/grid/SolveOverlay";
+import type { ScheduleViewMode } from "@/lib/schedule-view";
 
 type Unit = { id: number | string; name: string };
 
@@ -18,6 +19,7 @@ export default function UnitTabs({
   slotMin,
   topOffset = 0,
   enablePinning = false,
+  scheduleViewMode = "draft",
 }: {
   gridId: number;
   role: "viewer" | "editor" | "supervisor";
@@ -31,6 +33,7 @@ export default function UnitTabs({
   slotMin: number;
   topOffset?: number;
   enablePinning?: boolean;
+  scheduleViewMode?: ScheduleViewMode;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const tabs = useMemo(
@@ -61,10 +64,11 @@ export default function UnitTabs({
         selectedUnitId={effectiveSelected}
         topOffset={topOffset}
         enablePinning={enablePinning}
+        scheduleViewMode={scheduleViewMode}
       />
 
       {tabs.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-[40] pointer-events-none">
+        <div data-unit-tabs className="fixed bottom-0 left-0 right-0 z-[40] pointer-events-none">
           <div className="max-w-5xl mx-auto flex items-end gap-2 px-4 pt-2 pb-0 overflow-x-auto overflow-y-hidden pointer-events-auto">
             {tabs.map((t) => (
               <button

@@ -3,17 +3,27 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
-import { AllTierLabel, TierBadge, TierFilterChip, type Tier } from "@/components/TierBadge";
+import { AllTierLabel, TierBadge, TierFilterChip, type Tier } from "@/components/badges/TierBadge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import PanelShell from "@/components/panels/PanelShell";
+import PanelScrollArea from "@/components/panels/PanelScrollArea";
 
 type Participant = { id: number; name: string; surname?: string; tier?: Tier };
 
-export default function ParticipantsPanel({ gridId, gridCode, refreshKey = 0 }: { gridId: number; gridCode?: string | null; refreshKey?: number }) {
+export default function ParticipantsPanel({
+  gridId,
+  gridCode,
+  refreshKey = 0,
+}: {
+  gridId: number;
+  gridCode?: string | null;
+  refreshKey?: number;
+}) {
   const [list, setList] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -30,29 +40,30 @@ export default function ParticipantsPanel({ gridId, gridCode, refreshKey = 0 }: 
       const data = await res.json();
       const items = Array.isArray(data) ? data : data.results ?? [];
       setList(items);
-    } catch (e: any) {
-      setErr(e.message || "Error");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Error");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { load(); }, [gridId, refreshKey]);
+  useEffect(() => {
+    load();
+  }, [gridId, refreshKey]);
 
   const filtered = useMemo(
     () =>
-      list.filter((p) =>
-        `${p.name} ${p.surname ?? ""}`.toLowerCase().includes(q.toLowerCase()) &&
-        (tierFilter === "ALL" || p.tier === tierFilter)
+      list.filter(
+        (p) =>
+          `${p.name} ${p.surname ?? ""}`.toLowerCase().includes(q.toLowerCase()) &&
+          (tierFilter === "ALL" || p.tier === tierFilter),
       ),
-    [list, q, tierFilter]
+    [list, q, tierFilter],
   );
   const gridBase = `/grid/${encodeURIComponent(gridCode || String(gridId))}`;
 
   return (
-    <div className="flex flex-col h-full space-y-3">
-      <h2 className="text-lg font-semibold">Participants</h2>
-
+    <PanelShell title="Participants" error={err}>
       <div className="grid w-full grid-cols-[minmax(0,1fr)_80px] gap-2">
         <input
           className="w-full min-w-0 border rounded px-3 py-2 text-sm"
@@ -90,38 +101,29 @@ export default function ParticipantsPanel({ gridId, gridCode, refreshKey = 0 }: 
         </DropdownMenu>
       </div>
 
-      {err && <div className="text-sm text-red-600">{err}</div>}
-
-      {/* Lista que ocupa todo el panel; scroll si se llena */}
-      <div className="flex-1 border rounded bg-white p-2 overflow-y-auto">
-        {loading ? (
-          <div className="text-sm text-gray-500 p-3">Loading…</div>
-        ) : filtered.length === 0 ? (
-          <div className="text-sm text-gray-500 p-3">No participants found</div>
-        ) : (
-          <ul className="grid gap-2">
-            {filtered.map((p) => (
-              <li key={p.id}>
-                <button
-                  onClick={() => router.push(`${gridBase}/participants/${p.id}`)}
-                  className="w-full overflow-hidden rounded border p-3 text-left text-sm hover:bg-gray-50"
-                >
-                  <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-                    <div className="min-w-0">
-                      <div className="font-medium truncate">
-                        {p.name} {p.surname ?? ""}
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-end">
-                      <TierBadge tier={p.tier} />
+      <PanelScrollArea loading={loading} empty={filtered.length === 0} emptyLabel="No participants found">
+        <ul className="grid gap-2">
+          {filtered.map((p) => (
+            <li key={p.id}>
+              <button
+                onClick={() => router.push(`${gridBase}/participants/${p.id}`)}
+                className="w-full overflow-hidden rounded border p-3 text-left text-sm hover:bg-gray-50"
+              >
+                <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">
+                      {p.name} {p.surname ?? ""}
                     </div>
                   </div>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
+                  <div className="flex items-center justify-end">
+                    <TierBadge tier={p.tier} />
+                  </div>
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </PanelScrollArea>
+    </PanelShell>
   );
 }

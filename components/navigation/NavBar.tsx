@@ -3,16 +3,16 @@ import Image from "next/image";
 import Link from "next/link";
 import localFont from "next/font/local";
 import { getCurrentUser } from "@/lib/auth";
-import UserMenu from "@/components/UserMenu";
-import InvitesMenu from "@/components/InvitesMenu";
+import UserMenu from "@/components/navigation/UserMenu";
+import InvitesMenu from "@/components/invitations/InvitesMenu";
 
 export const dynamic = "force-dynamic";
 
 const sourceSerif = localFont({
   src: [
-    { path: "../app/fonts/source-serif/SourceSerif4-Regular.ttf", weight: "400", style: "normal" },
-    { path: "../app/fonts/source-serif/SourceSerif4-SemiBold.ttf", weight: "600", style: "normal" },
-    { path: "../app/fonts/source-serif/SourceSerif4-Bold.ttf", weight: "700", style: "normal" },
+    { path: "../../app/fonts/source-serif/SourceSerif4-Regular.ttf", weight: "400", style: "normal" },
+    { path: "../../app/fonts/source-serif/SourceSerif4-SemiBold.ttf", weight: "600", style: "normal" },
+    { path: "../../app/fonts/source-serif/SourceSerif4-Bold.ttf", weight: "700", style: "normal" },
   ],
   display: "swap",
 });

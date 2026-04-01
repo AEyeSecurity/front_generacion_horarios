@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import LoginForm from "@/components/forms/LoginForm";
-import GoogleSignInButton from "@/components/GoogleSignInButton";
+import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
 
 export default function LoginBox() {
   const sp = useSearchParams();

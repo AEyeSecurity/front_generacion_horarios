@@ -9,8 +9,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 
-const ParticipantsPanel = dynamic(() => import("./panels/ParticipantsPanel"), { ssr: false });
-const CategoriesPanel   = dynamic(() => import("./panels/CategoriesPanel"),   { ssr: false });
+const ParticipantsPanel = dynamic(() => import("@/components/panels/ParticipantsPanel"), { ssr: false });
+const CategoriesPanel = dynamic(() => import("@/components/panels/CategoriesPanel"), { ssr: false });
 
 export default function SidePanel({
   gridId,
@@ -31,8 +31,8 @@ export default function SidePanel({
   const [participantsKey, setParticipantsKey] = useState(0);
   const [categoriesKey, setCategoriesKey] = useState(0);
 
-  const AddParticipantDialog = dynamic(() => import("./dialogs/AddParticipantDialog"), { ssr: false });
-  const AddCategoryDialog   = dynamic(() => import("./dialogs/AddCategoryDialog"),   { ssr: false });
+  const AddParticipantDialog = dynamic(() => import("@/components/dialogs/AddParticipantDialog"), { ssr: false });
+  const AddCategoryDialog = dynamic(() => import("@/components/dialogs/AddCategoryDialog"), { ssr: false });
 
   // Evitar que un click en el dock sea considerado "outside" por el Sheet
   const ignoreDockOutside = (e: any) => {

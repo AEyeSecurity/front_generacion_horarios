@@ -1,7 +1,6 @@
 // components/GridActions.tsx
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MoreVertical, Trash2, Clock4, FileDown, Settings } from "lucide-react";
 import {
@@ -15,39 +14,6 @@ type Props = { gridId: number | string; gridCode?: string | null; canDelete?: bo
 
 export default function GridActions({ gridId, gridCode, canDelete = false, canConfigureSolve = false }: Props) {
   const router = useRouter();
-  const [latestSolutionId, setLatestSolutionId] = useState<string | null>(null);
-  const [loadingSolutions, setLoadingSolutions] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const id = String(gridId);
-        const res = await fetch(`/api/grids/${encodeURIComponent(id)}/solutions/`, { cache: "no-store" });
-        if (!res.ok) return;
-        const data = await res.json().catch(() => ([]));
-        const list = Array.isArray(data) ? data : data.results ?? [];
-        if (!active) return;
-        if (!list.length) {
-          setLatestSolutionId(null);
-          return;
-        }
-        const sorted = list.slice().sort((a: any, b: any) => {
-          const ta = new Date(a.created_at || 0).getTime();
-          const tb = new Date(b.created_at || 0).getTime();
-          return tb - ta;
-        });
-        const latest = sorted[0] || list[list.length - 1];
-        setLatestSolutionId(latest?.id != null ? String(latest.id) : null);
-      } catch {
-      } finally {
-        if (active) setLoadingSolutions(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [gridId]);
 
   async function onDelete() {
     const id = String(gridId);
@@ -76,11 +42,6 @@ export default function GridActions({ gridId, gridCode, canDelete = false, canCo
     const codeOrId = gridCode || String(gridId);
     router.push(`/grid/${encodeURIComponent(codeOrId)}/settings`);
   };
-  const exportSchedule = () => {
-    if (!latestSolutionId) return;
-    window.location.assign(`/api/solutions/${encodeURIComponent(latestSolutionId)}/export/`);
-  };
-
   if (!canDelete && !canConfigureSolve) return null;
 
   return (
@@ -101,9 +62,9 @@ export default function GridActions({ gridId, gridCode, canDelete = false, canCo
           <Clock4 className="w-4 h-4 mr-2" />
           Time Ranges
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={exportSchedule} disabled={!latestSolutionId || loadingSolutions}>
+        <DropdownMenuItem disabled>
           <FileDown className="w-4 h-4 mr-2" />
-          Export Schedule (.xlsx)
+          Export Schedule (.xlsx) - unavailable
         </DropdownMenuItem>
         {canDelete && (
         <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-700">

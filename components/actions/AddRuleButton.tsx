@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
-import AddAvailabilityRuleDialog from "./dialogs/AddRuleDialog";
+import AddAvailabilityRuleDialog from "@/components/dialogs/AddRuleDialog";
 
 export default function AddRuleButton({
   participantId,

@@ -1,9 +1,8 @@
-import GridTopBar from "@/components/GridTopBar";
+import { GridTopBar } from "@/components/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { backendFetchJSON } from "@/lib/backend";
 import type { Role } from "@/lib/types";
-import { isSolvedSolution, pickDisplaySolution } from "@/lib/solution-utils";
-import { resolveGridByCode } from "./_helpers";
+import { resolveGridByCode, resolveScheduleByGridId } from "./_helpers";
 
 export default async function GridByCodeLayout({
   children,
@@ -39,10 +38,8 @@ export default async function GridByCodeLayout({
     } catch {}
 
     try {
-      const sdata = await backendFetchJSON<any>(`/api/grids/${gridId}/solutions/`);
-      const list = Array.isArray(sdata) ? sdata : sdata.results ?? [];
-      const displaySolution = pickDisplaySolution(list);
-      hasSolved = isSolvedSolution(displaySolution);
+      const schedule = await resolveScheduleByGridId(gridId);
+      hasSolved = Array.isArray(schedule?.placements) && schedule.placements.length > 0;
     } catch {}
   }
 

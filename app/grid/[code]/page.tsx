@@ -2,14 +2,13 @@
 import { backendFetchJSON } from "@/lib/backend";
 import { getCurrentUser } from "@/lib/auth";
 import type { Grid, Role } from "@/lib/types";
-import SideDock from "@/components/SideDock";
+import SideDock from "@/components/layout/SideDock";
 import { Users, Tags, LayoutGrid, Clock4 } from "lucide-react";
-import GlassIcons from "@/components/GlassIcons";
-import SolveOverlay from "@/components/SolveOverlay";
-import DeleteGridBubble from "@/components/DeleteGridBubble";
-import GridSchedulePanel from "@/components/GridSchedulePanel";
-import { isSolvedSolution, pickDisplaySolution } from "@/lib/solution-utils";
-import { resolveGridByCode } from "./_helpers";
+import GlassIcons from "@/components/animations/GlassIcons";
+import SolveOverlay from "@/components/grid/SolveOverlay";
+import { DeleteGridBubble } from "@/components/actions";
+import GridSchedulePanel from "@/components/grid/GridSchedulePanel";
+import { resolveGridByCode, resolveScheduleByGridCode } from "./_helpers";
 
 const EN_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -119,10 +118,8 @@ export default async function GridOverview({
   // Determine if there is a solved solution to show schedule view
   let hasSolved = false;
   try {
-    const sdata = await backendFetchJSON<any>(`/api/grids/${id}/solutions/`);
-    const list = Array.isArray(sdata) ? sdata : sdata.results ?? [];
-    const displaySolution = pickDisplaySolution(list);
-    hasSolved = isSolvedSolution(displaySolution);
+    const schedule = await resolveScheduleByGridCode(grid.grid_code || code);
+    hasSolved = Array.isArray(schedule?.placements) && schedule.placements.length > 0;
   } catch {}
 
   return (

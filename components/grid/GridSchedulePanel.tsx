@@ -1,16 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import UnitTabs from "@/components/UnitTabs";
-import SolveOverlay from "@/components/SolveOverlay";
-import GradualBlur from "@/components/GradualBlur";
+import UnitTabs from "@/components/grid/UnitTabs";
+import SolveOverlay from "@/components/grid/SolveOverlay";
+import GradualBlur from "@/components/animations/GradualBlur";
 import { formatSlotRange } from "@/lib/schedule";
 import {
   DEFAULT_UNIT_NOOVERLAP_ENABLED,
   getGridSolverSettingsKey,
   parseGridSolverSettings,
 } from "@/lib/grid-solver-settings";
-import { isSolvedSolution, pickDisplaySolution } from "@/lib/solution-utils";
+import {
+  getGridScheduleViewModeKey,
+  readGridScheduleViewMode,
+  SCHEDULE_VIEW_MODE_EVENT,
+  type ScheduleViewMode,
+} from "@/lib/schedule-view";
 
 type Unit = { id: number | string; name: string };
 
@@ -31,20 +36,14 @@ type Cell = {
   pin_start_slot?: number | null;
 };
 
-type SolutionScheduleItem = {
-  cell_id: string;
-  source_cell_id?: string | number;
+type SchedulePlacement = {
+  id: number | string;
+  source_cell?: string | number | null;
+  bundle?: string | number | null;
   day_index: number;
   start_slot: number;
   end_slot: number;
   assigned_participants?: Array<string | number>;
-  participants?: Array<string | number>;
-  units?: Array<string | number>;
-};
-
-type Solution = {
-  status?: string;
-  schedule?: SolutionScheduleItem[];
 };
 
 type Props = {
@@ -97,9 +96,10 @@ export default function GridSchedulePanel({
   const bodyHeight = rows.length * rowPx;
 
   const [unitNoOverlapEnabled, setUnitNoOverlapEnabled] = useState(DEFAULT_UNIT_NOOVERLAP_ENABLED);
+  const [scheduleViewMode, setScheduleViewMode] = useState<ScheduleViewMode>("draft");
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [cellById, setCellById] = useState<Record<string, Cell>>({});
-  const [schedule, setSchedule] = useState<SolutionScheduleItem[]>([]);
+  const [schedulePlacements, setSchedulePlacements] = useState<SchedulePlacement[]>([]);
 
   useEffect(() => {
     const readSettings = () => {
@@ -131,6 +131,33 @@ export default function GridSchedulePanel({
   }, [gridId]);
 
   useEffect(() => {
+    const syncFromStorage = () => {
+      setScheduleViewMode(readGridScheduleViewMode(gridId));
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== getGridScheduleViewModeKey(gridId)) return;
+      syncFromStorage();
+    };
+
+    const onModeChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<{ gridId?: string; mode?: ScheduleViewMode }>;
+      if (customEvent.detail?.gridId !== String(gridId)) return;
+      setScheduleViewMode(customEvent.detail?.mode === "published" ? "published" : "draft");
+    };
+
+    syncFromStorage();
+    window.addEventListener("focus", syncFromStorage);
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(SCHEDULE_VIEW_MODE_EVENT, onModeChanged as EventListener);
+    return () => {
+      window.removeEventListener("focus", syncFromStorage);
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(SCHEDULE_VIEW_MODE_EVENT, onModeChanged as EventListener);
+    };
+  }, [gridId]);
+
+  useEffect(() => {
     if (unitNoOverlapEnabled) return;
     let active = true;
     (async () => {
@@ -138,7 +165,7 @@ export default function GridSchedulePanel({
         const [participantsRes, cellsRes, solutionsRes] = await Promise.all([
           fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" }),
           fetch(`/api/cells?grid=${gridId}`, { cache: "no-store" }),
-          fetch(`/api/grids/${gridId}/solutions/`, { cache: "no-store" }),
+          fetch(`/api/grids/${gridId}/schedule/?status=${encodeURIComponent(scheduleViewMode)}`, { cache: "no-store" }),
         ]);
 
         const participantsJson = participantsRes.ok ? await participantsRes.json().catch(() => ([])) : [];
@@ -154,26 +181,21 @@ export default function GridSchedulePanel({
           cellMap[String(cell.id)] = cell;
         }
 
-        const solutionsJson = solutionsRes.ok ? await solutionsRes.json().catch(() => ([])) : [];
-        const solutionsList = Array.isArray(solutionsJson)
-          ? solutionsJson
-          : solutionsJson?.results ?? [];
-        const displaySolution = pickDisplaySolution(solutionsList) as Solution | null;
-        const scheduleList =
-          isSolvedSolution(displaySolution) && Array.isArray(displaySolution?.schedule)
-            ? displaySolution!.schedule!
-            : [];
+        const scheduleJson = solutionsRes.ok ? await solutionsRes.json().catch(() => ({})) : {};
+        const scheduleList = Array.isArray(scheduleJson?.placements)
+          ? scheduleJson.placements
+          : [];
 
         if (active) {
           setParticipants(participantsList);
           setCellById(cellMap);
-          setSchedule(scheduleList);
+          setSchedulePlacements(scheduleList);
         }
       } catch {
         if (active) {
           setParticipants([]);
           setCellById({});
-          setSchedule([]);
+          setSchedulePlacements([]);
         }
       }
     })();
@@ -181,7 +203,7 @@ export default function GridSchedulePanel({
     return () => {
       active = false;
     };
-  }, [gridId, unitNoOverlapEnabled]);
+  }, [gridId, unitNoOverlapEnabled, scheduleViewMode]);
 
   const orderedParticipants = useMemo(() => {
     return participants
@@ -203,13 +225,9 @@ export default function GridSchedulePanel({
   const entriesByParticipantDay = useMemo(() => {
     const out: Record<string, Record<number, ParticipantCellEntry[]>> = {};
 
-    for (const item of schedule) {
-      const assigned = Array.isArray(item.assigned_participants)
-        ? item.assigned_participants
-        : Array.isArray(item.participants)
-          ? item.participants
-          : [];
-      const sourceCellId = String(item.source_cell_id ?? item.cell_id);
+    for (const item of schedulePlacements) {
+      const assigned = Array.isArray(item.assigned_participants) ? item.assigned_participants : [];
+      const sourceCellId = String(item.source_cell ?? item.id);
       const cell = cellById[sourceCellId];
       const cellName = cell?.name || `Cell ${sourceCellId}`;
       const color = cell?.colorHex || cell?.color_hex || undefined;
@@ -235,7 +253,7 @@ export default function GridSchedulePanel({
     }
 
     return out;
-  }, [schedule, cellById, dayStartMin, slotMin]);
+  }, [schedulePlacements, cellById, dayStartMin, slotMin]);
 
   const fmt = (mins: number) => {
     const h = Math.floor(mins / 60);
@@ -296,7 +314,8 @@ export default function GridSchedulePanel({
             bodyHeight={bodyHeight}
             dayStartMin={dayStartMin}
             slotMin={slotMin}
-            enablePinning={role === "supervisor"}
+            scheduleViewMode={scheduleViewMode}
+            enablePinning={role === "supervisor" && scheduleViewMode === "draft"}
           />
         </div>
 
@@ -396,6 +415,7 @@ export default function GridSchedulePanel({
           slotMin={slotMin}
           selectedUnitId={null}
           hideScheduleOverlay
+          scheduleViewMode={scheduleViewMode}
         />
       </div>
 

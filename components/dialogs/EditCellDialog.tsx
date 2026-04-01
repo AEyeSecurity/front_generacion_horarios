@@ -20,6 +20,8 @@ import {
   type TierCounts,
   type TierPools,
 } from "@/components/dialogs/cell-staffing";
+import TwoStepIndicator from "@/components/dialogs/TwoStepIndicator";
+import StepNavButton from "@/components/dialogs/StepNavButton";
 
 type TimeRange = { id: number; name: string; start_time: string; end_time: string };
 type Unit = { id: number; name: string };
@@ -199,8 +201,6 @@ export default function EditCellDialog({
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
-
-  const stepCircleBase = "w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-semibold transition-colors";
   const inferredHeadcount = React.useMemo(
     () => TIERS.reduce((sum, tier) => sum + Math.max(0, Number(tierCounts[tier] || 0)), 0),
     [tierCounts]
@@ -591,34 +591,12 @@ export default function EditCellDialog({
         </button>
         <DialogHeader className="relative min-h-9 pr-8">
           <DialogTitle>{isSeriesEdit ? "Edit Cell Series" : "Edit Cell"}</DialogTitle>
-          <div className="absolute left-1/2 top-0 -translate-x-1/2 flex items-center justify-center gap-2 select-none">
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className={`${stepCircleBase} ${
-                  step === 1
-                    ? "bg-black text-white border-black shadow-[0_0_0_3px_rgba(0,0,0,0.18)]"
-                    : "bg-black text-white border-black"
-                }`}
-                aria-label="Go to step 1"
-              >
-                1
-              </button>
-              <div className={`h-0.5 w-12 ${step === 2 ? "bg-black" : "bg-gray-300"}`} />
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                disabled={!stepOneReady}
-                className={`${stepCircleBase} ${
-                  step === 2
-                    ? "bg-black text-white border-black shadow-[0_0_0_3px_rgba(0,0,0,0.18)]"
-                    : "bg-white text-gray-500 border-gray-300"
-                } disabled:opacity-40`}
-                aria-label="Go to step 2"
-              >
-                2
-              </button>
-          </div>
+          <TwoStepIndicator
+            step={step}
+            canGoStep2={stepOneReady}
+            onStepChange={setStep}
+            className="absolute left-1/2 top-0 -translate-x-1/2"
+          />
         </DialogHeader>
 
         {err && <div className="text-sm text-red-600 mb-2 whitespace-pre-wrap">{err}</div>}
@@ -808,24 +786,10 @@ export default function EditCellDialog({
 
             <div className="flex justify-between gap-2">
               <div>
-                <button
-                  type="button"
-                  className="h-9 w-9 rounded-full border text-sm flex items-center justify-center hover:bg-gray-50"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setStep(step === 1 ? 2 : 1);
-                  }}
-                  aria-label={step === 1 ? "Go to Staffing" : "Go to Basic Data"}
-                >
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-                    {step === 1 ? (
-                      <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    ) : (
-                      <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    )}
-                  </svg>
-                </button>
+                <StepNavButton
+                  step={step}
+                  onToggle={() => setStep(step === 1 ? 2 : 1)}
+                />
               </div>
             <div className="flex gap-2">
               <button type="button" className="px-3 py-2 rounded border text-sm" onClick={requestClose}>

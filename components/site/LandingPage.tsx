@@ -2,8 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import localFont from "next/font/local";
 import { CalendarDays, Users, Clock } from "lucide-react";
-import RotatingText from "@/components/RotatingText";
-import Squares from "@/components/Squares";
+import RotatingText from "@/components/animations/RotatingText";
+import Squares from "@/components/animations/Squares";
 
 const sourceSerif = localFont({
   src: [
