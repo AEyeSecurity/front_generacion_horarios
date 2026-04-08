@@ -7,9 +7,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
   const { code } = await params;
   const access = await getAccessToken();
   if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-  const qs = req.nextUrl.search || "";
+  const forwardUrl = new URL(req.nextUrl);
+  const mode = forwardUrl.searchParams.get("status");
+  forwardUrl.searchParams.delete("status");
+  const qs = forwardUrl.searchParams.toString();
+  const qsSuffix = qs ? `?${qs}` : "";
+  const backendPath =
+    mode === "published"
+      ? `/api/grids/code/${encodeURIComponent(code)}/published-schedule/${qsSuffix}`
+      : `/api/grids/code/${encodeURIComponent(code)}/schedule/${qsSuffix}`;
 
-  const res = await fetch(`${B}/api/grids/code/${encodeURIComponent(code)}/schedule/${qs}`, {
+  const res = await fetch(`${B}${backendPath}`, {
     headers: {
       Authorization: `Bearer ${access}`,
       cookie: req.headers.get("cookie") || "",

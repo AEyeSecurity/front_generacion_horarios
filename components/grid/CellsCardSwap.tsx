@@ -5,66 +5,7 @@ import { useRouter } from "next/navigation";
 import CardSwap, { Card } from "@/components/animations/CardSwap";
 import EditCellDialog from "@/components/dialogs/EditCellDialog";
 import { ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
-
-const COLOR_OPTIONS = [
-  "#E7180B",
-  "#FF692A",
-  "#FE9A37",
-  "#FDC745",
-  "#7CCF35",
-  "#31C950",
-  "#37BC7D",
-  "#36BBA7",
-  "#3BB8DB",
-  "#34A6F4",
-  "#2B7FFF",
-  "#615FFF",
-  "#8E51FF",
-  "#AD46FF",
-  "#E12AFB",
-  "#F6339A",
-  "#FF2056",
-];
-
-const COLOR_TEXT_DARK = [
-  "#460809",
-  "#441306",
-  "#461901",
-  "#432004",
-  "#192E03",
-  "#032E15",
-  "#012C22",
-  "#022F2E",
-  "#053345",
-  "#052F4A",
-  "#162456",
-  "#1E1A4D",
-  "#2F0D68",
-  "#3C0366",
-  "#4B004F",
-  "#510424",
-  "#4D0218",
-];
-
-const COLOR_TEXT_LIGHT = [
-  "#FFE2E2",
-  "#FFEDD4",
-  "#FEF3C6",
-  "#FEFCE8",
-  "#F7FEE7",
-  "#DCFCE7",
-  "#D0FAE5",
-  "#CBFBF1",
-  "#CEFAFE",
-  "#DFF2FE",
-  "#DBEAFE",
-  "#E0E7FF",
-  "#EDE9FE",
-  "#F3E8FF",
-  "#FAE8FF",
-  "#FCE7F3",
-  "#FFE4E6",
-];
+import { CELL_COLOR_OPTIONS, CELL_TEXT_DARK, CELL_TEXT_LIGHT } from "@/lib/cell-colors";
 
 const shadeHex = (hex: string, amt: number) => {
   if (!/^#([0-9a-f]{6})$/i.test(hex)) return hex;
@@ -270,10 +211,10 @@ export default function CellsCardSwap({
             {currentCells.map((group) => {
               const cell = group.cell;
               const color = (cell.colorHex || cell.color_hex || "") as string;
-              const colorIdx = COLOR_OPTIONS.findIndex((c) => c.toLowerCase() === color.toLowerCase());
+              const colorIdx = CELL_COLOR_OPTIONS.findIndex((c) => c.toLowerCase() === color.toLowerCase());
               const useColor = Boolean(color && colorIdx >= 0);
-              const textDark = useColor ? COLOR_TEXT_DARK[colorIdx] : "";
-              const textLight = useColor ? COLOR_TEXT_LIGHT[colorIdx] : "";
+              const textDark = useColor ? CELL_TEXT_DARK[colorIdx] : "";
+              const textLight = useColor ? CELL_TEXT_LIGHT[colorIdx] : "";
               const border = useColor ? shadeHex(color, -0.35) : "";
               const staffIds = [...new Set(
                 group.cells.flatMap((entry) => (Array.isArray(entry.staffs) ? entry.staffs.map((s) => String(s)) : []))

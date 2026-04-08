@@ -25,12 +25,20 @@ export async function resolveScheduleByGridCode(code: string): Promise<GridSched
   const encoded = encodeURIComponent(code);
   const withSlash = await getSchedule(`/api/grids/code/${encoded}/schedule/`);
   if (withSlash) return withSlash;
-  return getSchedule(`/api/grids/code/${encoded}/schedule`);
+  const withoutSlash = await getSchedule(`/api/grids/code/${encoded}/schedule`);
+  if (withoutSlash) return withoutSlash;
+  const latestPublished = await getSchedule(`/api/grids/code/${encoded}/published-schedule/`);
+  if (latestPublished) return latestPublished;
+  return getSchedule(`/api/grids/code/${encoded}/published-schedule`);
 }
 
 export async function resolveScheduleByGridId(gridId: number | string): Promise<GridSchedule | null> {
   const encoded = encodeURIComponent(String(gridId));
   const withSlash = await getSchedule(`/api/grids/${encoded}/schedule/`);
   if (withSlash) return withSlash;
-  return getSchedule(`/api/grids/${encoded}/schedule`);
+  const withoutSlash = await getSchedule(`/api/grids/${encoded}/schedule`);
+  if (withoutSlash) return withoutSlash;
+  const latestPublished = await getSchedule(`/api/grids/${encoded}/published-schedule/`);
+  if (latestPublished) return latestPublished;
+  return getSchedule(`/api/grids/${encoded}/published-schedule`);
 }

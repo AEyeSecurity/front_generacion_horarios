@@ -8,6 +8,9 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 
 type Props = { gridId: number | string; gridCode?: string | null; canDelete?: boolean; canConfigureSolve?: boolean };
@@ -42,6 +45,44 @@ export default function GridActions({ gridId, gridCode, canDelete = false, canCo
     const codeOrId = gridCode || String(gridId);
     router.push(`/grid/${encodeURIComponent(codeOrId)}/settings`);
   };
+
+  const fileNameFromDisposition = (disposition: string | null, fallback: string) => {
+    if (!disposition) return fallback;
+    const utf8 = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8?.[1]) return decodeURIComponent(utf8[1]).replace(/[/\\]/g, "_");
+    const simple = disposition.match(/filename=\"?([^\";]+)\"?/i);
+    if (simple?.[1]) return simple[1].replace(/[/\\]/g, "_");
+    return fallback;
+  };
+
+  const downloadScheduleExport = async (view: "draft" | "published") => {
+    const id = String(gridId);
+    if (!id || id === "undefined") {
+      alert("Could not resolve grid id - export aborted.");
+      return;
+    }
+    const res = await fetch(`/api/grids/${encodeURIComponent(id)}/schedule/export?view=${view}`, {
+      method: "GET",
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      alert(`Failed to export ${view} schedule (${res.status}). ${txt || ""}`);
+      return;
+    }
+
+    const blob = await res.blob();
+    const fallbackName = `grid-${id}-${view}-schedule.xlsx`;
+    const filename = fileNameFromDisposition(res.headers.get("content-disposition"), fallbackName);
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
   if (!canDelete && !canConfigureSolve) return null;
 
   return (
@@ -62,10 +103,20 @@ export default function GridActions({ gridId, gridCode, canDelete = false, canCo
           <Clock4 className="w-4 h-4 mr-2" />
           Time Ranges
         </DropdownMenuItem>
-        <DropdownMenuItem disabled>
-          <FileDown className="w-4 h-4 mr-2" />
-          Export Schedule (.xlsx) - unavailable
-        </DropdownMenuItem>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            <FileDown className="w-4 h-4 mr-2" />
+            Export Schedule (.xlsx)
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            <DropdownMenuItem onClick={() => void downloadScheduleExport("draft")}>
+              Draft schedule
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void downloadScheduleExport("published")}>
+              Published schedule
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
         {canDelete && (
         <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-700">
           <Trash2 className="w-4 h-4 mr-2" />

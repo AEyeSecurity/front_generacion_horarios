@@ -20,28 +20,10 @@ import {
 } from "@/components/dialogs/cell-staffing";
 import TwoStepIndicator from "@/components/dialogs/TwoStepIndicator";
 import StepNavButton from "@/components/dialogs/StepNavButton";
+import { CELL_COLOR_OPTIONS_NO_RED as COLOR_OPTIONS } from "@/lib/cell-colors";
 
 type TimeRange = { id: number; name: string; start_time: string; end_time: string };
 type Unit = { id: number; name: string };
-
-const COLOR_OPTIONS = [
-  "#FF692A",
-  "#FE9A37",
-  "#FDC745",
-  "#7CCF35",
-  "#31C950",
-  "#37BC7D",
-  "#36BBA7",
-  "#3BB8DB",
-  "#34A6F4",
-  "#2B7FFF",
-  "#615FFF",
-  "#8E51FF",
-  "#AD46FF",
-  "#E12AFB",
-  "#F6339A",
-  "#FF2056",
-];
 
 function buildStaffingError(
   tierCounts: TierCounts,

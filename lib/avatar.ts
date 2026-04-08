@@ -1,3 +1,5 @@
+import { CELL_COLOR_OPTIONS, CELL_TEXT_DARK } from "@/lib/cell-colors";
+
 type AvatarUserLike = {
   id?: number | string | null;
   email?: string | null;
@@ -9,46 +11,6 @@ type AvatarUserLike = {
   image?: string | null;
   avatarUrl?: string | null;
 };
-
-const CELL_BG_COLORS = [
-  "#E7180B",
-  "#FF692A",
-  "#FE9A37",
-  "#FDC745",
-  "#7CCF35",
-  "#31C950",
-  "#37BC7D",
-  "#36BBA7",
-  "#3BB8DB",
-  "#34A6F4",
-  "#2B7FFF",
-  "#615FFF",
-  "#8E51FF",
-  "#AD46FF",
-  "#E12AFB",
-  "#F6339A",
-  "#FF2056",
-] as const;
-
-const CELL_TEXT_DARK = [
-  "#460809",
-  "#441306",
-  "#461901",
-  "#432004",
-  "#192E03",
-  "#032E15",
-  "#012C22",
-  "#022F2E",
-  "#053345",
-  "#052F4A",
-  "#162456",
-  "#1E1A4D",
-  "#2F0D68",
-  "#3C0366",
-  "#4B004F",
-  "#510424",
-  "#4D0218",
-] as const;
 
 function hashString(input: string) {
   let hash = 0;
@@ -70,9 +32,9 @@ export function getAvatarSeed(user: AvatarUserLike) {
 }
 
 export function getAvatarPalette(seed: string) {
-  const idx = hashString(seed) % CELL_BG_COLORS.length;
+  const idx = hashString(seed) % CELL_COLOR_OPTIONS.length;
   return {
-    background: CELL_BG_COLORS[idx],
+    background: CELL_COLOR_OPTIONS[idx],
     text: CELL_TEXT_DARK[idx],
   };
 }

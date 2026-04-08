@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,10 @@ type Props = {
   gridEnd: string;   // "HH:MM"
   allowedDays?: number[]; // restrict selectable days (0..6)
   minMinutes?: number;    // minimum block length (>= grid.cell_size_min)
+  initialDay?: number;
+  initialStart?: string;
+  initialEnd?: string;
+  initialPreference?: "preferred" | "impossible";
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onCreated?: () => void;
@@ -26,6 +30,7 @@ const PREFS = [
   { value: "preferred", label: "Preferred" },
   { value: "impossible", label: "Impossible" },
 ] as const;
+type PreferenceValue = (typeof PREFS)[number]["value"];
 
 const DAYS = [
   { value: 0, label: "Mon" },
@@ -42,22 +47,66 @@ function toMin(hhmm: string) {
   return h * 60 + m;
 }
 
+function toHHMM(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+}
+
+function overlapsOrTouches(aStart: number, aEnd: number, bStart: number, bEnd: number) {
+  return aStart <= bEnd && bStart <= aEnd;
+}
+
+type ExistingRule = {
+  id: number;
+  day: number;
+  preference: PreferenceValue;
+  startMin: number;
+  endMin: number;
+  startHHMM: string;
+  endHHMM: string;
+};
+
 export default function AddAvailabilityRuleDialog({
   participantId,
   gridStart,
   gridEnd,
   allowedDays,
   minMinutes,
+  initialDay,
+  initialStart,
+  initialEnd,
+  initialPreference,
   open,
   onOpenChange,
   onCreated,
 }: Props) {
-  const [preference, setPreference] = useState<(typeof PREFS)[number]["value"]>("preferred");
-  const [day, setDay] = useState<number>(0);
-  const [start, setStart] = useState(gridStart);
-  const [end, setEnd] = useState(gridEnd);
+  const initialAllowedDay = allowedDays?.[0] ?? 0;
+  const [preference, setPreference] = useState<PreferenceValue>(initialPreference ?? "preferred");
+  const [day, setDay] = useState<number>(typeof initialDay === "number" ? initialDay : initialAllowedDay);
+  const [start, setStart] = useState(initialStart ?? gridStart);
+  const [end, setEnd] = useState(initialEnd ?? gridEnd);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setErr(null);
+    setLoading(false);
+    setPreference(initialPreference ?? "preferred");
+    setDay(typeof initialDay === "number" ? initialDay : initialAllowedDay);
+    setStart(initialStart ?? gridStart);
+    setEnd(initialEnd ?? gridEnd);
+  }, [
+    open,
+    initialPreference,
+    initialDay,
+    initialAllowedDay,
+    initialStart,
+    initialEnd,
+    gridStart,
+    gridEnd,
+  ]);
 
   const validate = () => {
     const gs = toMin(gridStart);
@@ -78,23 +127,162 @@ export default function AddAvailabilityRuleDialog({
     if (v) { setErr(v); return; }
     setErr(null); setLoading(true);
     try {
+      const payload = {
+        participant: participantId,
+        day_of_week: day,
+        start_time: start, // HH:MM
+        end_time: end,
+        preference,
+      };
       const res = await fetch("/api/availability_rules", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          participant: participantId,
-          day_of_week: day,
-          start_time: start, // HH:MM
-          end_time: end,
-          preference,
-        }),
+        body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const rawError = await res.text().catch(() => "");
+        if (res.status !== 400) throw new Error(rawError || `Error creating rule (${res.status})`);
+
+        const rulesRes = await fetch(`/api/availability_rules?participant=${participantId}`, { cache: "no-store" });
+        if (!rulesRes.ok) throw new Error(rawError || `Error creating rule (${res.status})`);
+        const rulesData = await rulesRes.json().catch(() => ([]));
+        const rulesList = Array.isArray(rulesData) ? rulesData : rulesData.results ?? [];
+
+        const existingRules: ExistingRule[] = rulesList
+          .map((rawRule: unknown) => {
+            const rule = (rawRule ?? {}) as Record<string, unknown>;
+            const id = Number(rule.id);
+            const ruleDay = Number(rule.day_of_week);
+            const rulePreference = String(rule.preference ?? "").toLowerCase();
+            const startHHMM = String(rule.start_time ?? "").slice(0, 5);
+            const endHHMM = String(rule.end_time ?? "").slice(0, 5);
+            const startMin = toMin(startHHMM);
+            const endMin = toMin(endHHMM);
+            if (!Number.isFinite(id) || !Number.isFinite(ruleDay)) return null;
+            if (rulePreference !== "preferred" && rulePreference !== "impossible") return null;
+            if (!Number.isFinite(startMin) || !Number.isFinite(endMin) || endMin <= startMin) return null;
+            return {
+              id,
+              day: ruleDay,
+              preference: rulePreference,
+              startMin,
+              endMin,
+              startHHMM,
+              endHHMM,
+            } satisfies ExistingRule;
+          })
+          .filter((rule: ExistingRule | null): rule is ExistingRule => Boolean(rule))
+          .filter((rule) => rule.day === day && rule.preference === preference);
+
+        let mergedStart = toMin(start);
+        let mergedEnd = toMin(end);
+        const toMerge = new Map<number, ExistingRule>();
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const rule of existingRules) {
+            if (toMerge.has(rule.id)) continue;
+            if (!overlapsOrTouches(mergedStart, mergedEnd, rule.startMin, rule.endMin)) continue;
+            toMerge.set(rule.id, rule);
+            mergedStart = Math.min(mergedStart, rule.startMin);
+            mergedEnd = Math.max(mergedEnd, rule.endMin);
+            changed = true;
+          }
+        }
+
+        if (toMerge.size === 0) {
+          throw new Error(rawError || "Could not create rule.");
+        }
+
+        const sortedToMerge = [...toMerge.values()].sort(
+          (a, b) => a.startMin - b.startMin || a.endMin - b.endMin || a.id - b.id,
+        );
+        const keep = sortedToMerge[0];
+        const redundant = sortedToMerge.slice(1);
+        const targetStart = toHHMM(mergedStart);
+        const targetEnd = toHHMM(mergedEnd);
+
+        const deleteRule = async (id: number) => {
+          const deleteRes = await fetch(`/api/availability_rules/${id}`, { method: "DELETE" });
+          return deleteRes.ok || deleteRes.status === 204;
+        };
+        const recreateRule = async (rule: ExistingRule) => {
+          await fetch("/api/availability_rules", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              participant: participantId,
+              day_of_week: rule.day,
+              start_time: rule.startHHMM,
+              end_time: rule.endHHMM,
+              preference: rule.preference,
+            }),
+          });
+        };
+
+        const requiresPatch = keep.startHHMM !== targetStart || keep.endHHMM !== targetEnd;
+        let mergedOk = false;
+
+        if (requiresPatch) {
+          const patchBeforeDelete = await fetch(`/api/availability_rules/${keep.id}`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              start_time: targetStart,
+              end_time: targetEnd,
+            }),
+          });
+          if (patchBeforeDelete.ok) {
+            for (const rule of redundant) await deleteRule(rule.id);
+            mergedOk = true;
+          }
+        }
+
+        if (!mergedOk) {
+          const deletedRules: ExistingRule[] = [];
+          let deletedAll = true;
+          for (const rule of redundant) {
+            const deleted = await deleteRule(rule.id);
+            if (deleted) {
+              deletedRules.push(rule);
+            } else {
+              deletedAll = false;
+              break;
+            }
+          }
+
+          if (!deletedAll) {
+            for (const deletedRule of deletedRules) await recreateRule(deletedRule);
+            throw new Error(rawError || "Could not merge with adjacent rule.");
+          }
+
+          if (requiresPatch) {
+            const patchAfterDelete = await fetch(`/api/availability_rules/${keep.id}`, {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                start_time: targetStart,
+                end_time: targetEnd,
+              }),
+            });
+            if (!patchAfterDelete.ok) {
+              for (const deletedRule of deletedRules) await recreateRule(deletedRule);
+              throw new Error(rawError || "Could not merge with adjacent rule.");
+            }
+          }
+
+          mergedOk = true;
+        }
+
+        if (!mergedOk) {
+          throw new Error(rawError || "Could not create rule.");
+        }
+      }
       toast("Availability rule created");
       onOpenChange(false);
       onCreated?.();
-    } catch (e: any) {
-      setErr(e?.message || "Error creating rule");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Error creating rule");
     } finally {
       setLoading(false);
     }
@@ -114,7 +302,7 @@ export default function AddAvailabilityRuleDialog({
             <select
               className="border rounded px-3 py-2 w-full"
               value={preference}
-              onChange={(e) => setPreference(e.target.value as any)}
+              onChange={(e) => setPreference(e.target.value as PreferenceValue)}
             >
               {PREFS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>

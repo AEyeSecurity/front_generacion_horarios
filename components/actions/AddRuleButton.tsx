@@ -12,6 +12,7 @@ export default function AddRuleButton({
   allowedDays,
   minMinutes,
   disabled = false,
+  onCreated,
 }: {
   participantId: number;
   gridStart: string; // "HH:MM"
@@ -19,6 +20,7 @@ export default function AddRuleButton({
   allowedDays?: number[];
   minMinutes?: number;
   disabled?: boolean;
+  onCreated?: () => void | Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
@@ -44,7 +46,10 @@ export default function AddRuleButton({
         open={open}
         onOpenChange={setOpen}
         onCreated={() => {
-          // vuelve a pedir los datos del server component
+          if (onCreated) {
+            void onCreated();
+            return;
+          }
           router.refresh();
         }}
       />

@@ -16,6 +16,7 @@ import {
   SCHEDULE_VIEW_MODE_EVENT,
   type ScheduleViewMode,
 } from "@/lib/schedule-view";
+import { fetchGridScreenContext, getContextList } from "@/lib/screen-context";
 
 type Unit = { id: number | string; name: string };
 
@@ -39,11 +40,18 @@ type Cell = {
 type SchedulePlacement = {
   id: number | string;
   source_cell?: string | number | null;
+  source_cell_id?: string | number | null;
   bundle?: string | number | null;
+  bundle_id?: string | number | null;
   day_index: number;
   start_slot: number;
   end_slot: number;
   assigned_participants?: Array<string | number>;
+};
+
+type ScreenContextSchedule = {
+  placements?: SchedulePlacement[];
+  schedule?: SchedulePlacement[];
 };
 
 type Props = {
@@ -98,6 +106,7 @@ export default function GridSchedulePanel({
   const [unitNoOverlapEnabled, setUnitNoOverlapEnabled] = useState(DEFAULT_UNIT_NOOVERLAP_ENABLED);
   const [scheduleViewMode, setScheduleViewMode] = useState<ScheduleViewMode>("draft");
   const [participants, setParticipants] = useState<Participant[]>([]);
+  const [participantsLoading, setParticipantsLoading] = useState(true);
   const [cellById, setCellById] = useState<Record<string, Cell>>({});
   const [schedulePlacements, setSchedulePlacements] = useState<SchedulePlacement[]>([]);
 
@@ -158,32 +167,28 @@ export default function GridSchedulePanel({
   }, [gridId]);
 
   useEffect(() => {
-    if (unitNoOverlapEnabled) return;
+    if (unitNoOverlapEnabled) {
+      setParticipantsLoading(false);
+      return;
+    }
     let active = true;
+    setParticipantsLoading(true);
     (async () => {
       try {
-        const [participantsRes, cellsRes, solutionsRes] = await Promise.all([
-          fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" }),
-          fetch(`/api/cells?grid=${gridId}`, { cache: "no-store" }),
-          fetch(`/api/grids/${gridId}/schedule/?status=${encodeURIComponent(scheduleViewMode)}`, { cache: "no-store" }),
-        ]);
-
-        const participantsJson = participantsRes.ok ? await participantsRes.json().catch(() => ([])) : [];
-        const participantsList = Array.isArray(participantsJson)
-          ? participantsJson
-          : participantsJson?.results ?? [];
-
-        const cellsJson = cellsRes.ok ? await cellsRes.json().catch(() => ([])) : [];
-        const cellsList = Array.isArray(cellsJson) ? cellsJson : cellsJson?.results ?? [];
+        const contextJson = await fetchGridScreenContext(gridId, scheduleViewMode);
+        const participantsList = getContextList<Participant>(contextJson?.participants);
+        const cellsList = getContextList<Cell>(contextJson?.cells);
         const cellMap: Record<string, Cell> = {};
         for (const cell of cellsList) {
           if (cell?.id == null) continue;
           cellMap[String(cell.id)] = cell;
         }
 
-        const scheduleJson = solutionsRes.ok ? await solutionsRes.json().catch(() => ({})) : {};
-        const scheduleList = Array.isArray(scheduleJson?.placements)
-          ? scheduleJson.placements
+        const scheduleCandidate = (contextJson?.schedule ?? null) as ScreenContextSchedule | null;
+        const scheduleList = Array.isArray(scheduleCandidate?.placements)
+          ? scheduleCandidate.placements
+          : Array.isArray(scheduleCandidate?.schedule)
+          ? scheduleCandidate.schedule
           : [];
 
         if (active) {
@@ -197,6 +202,8 @@ export default function GridSchedulePanel({
           setCellById({});
           setSchedulePlacements([]);
         }
+      } finally {
+        if (active) setParticipantsLoading(false);
       }
     })();
 
@@ -227,7 +234,7 @@ export default function GridSchedulePanel({
 
     for (const item of schedulePlacements) {
       const assigned = Array.isArray(item.assigned_participants) ? item.assigned_participants : [];
-      const sourceCellId = String(item.source_cell ?? item.id);
+      const sourceCellId = String(item.source_cell ?? item.source_cell_id ?? item.id);
       const cell = cellById[sourceCellId];
       const cellName = cell?.name || `Cell ${sourceCellId}`;
       const color = cell?.colorHex || cell?.color_hex || undefined;
@@ -358,7 +365,32 @@ export default function GridSchedulePanel({
       </div>
 
       <div data-schedule-scroll className="relative max-h-[70vh] overflow-y-auto hide-scrollbar">
-        {orderedParticipants.length === 0 && (
+        {participantsLoading && (
+          <div className="px-3 py-3 space-y-2">
+            <div className="text-xs text-gray-500 px-1">Loading participants...</div>
+            {Array.from({ length: 4 }).map((_, rowIndex) => (
+              <div
+                key={`participants-skeleton-${rowIndex}`}
+                className="grid animate-pulse"
+                style={{ gridTemplateColumns: `220px repeat(${days.length}, 1fr)` }}
+              >
+                <div className="border-r border-b px-3 py-3 bg-white">
+                  <div className="h-4 w-32 rounded bg-gray-200" />
+                  <div className="mt-2 h-3 w-20 rounded bg-gray-100" />
+                </div>
+                {days.map((day, dayIndex) => (
+                  <div
+                    key={`participants-skeleton-${rowIndex}-${day}`}
+                    className={`border-b ${dayIndex < days.length - 1 ? "border-r" : ""} min-h-[80px] p-2`}
+                  >
+                    <div className="h-full w-full rounded bg-gray-100" />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+        {!participantsLoading && orderedParticipants.length === 0 && (
           <div className="px-4 py-6 text-sm text-gray-500">No participants found for this grid.</div>
         )}
         {orderedParticipants.map((participant) => {
@@ -445,3 +477,6 @@ export default function GridSchedulePanel({
     </>
   );
 }
+
+
+
