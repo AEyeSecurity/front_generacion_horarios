@@ -20,6 +20,8 @@ export default function UnitTabs({
   topOffset = 0,
   enablePinning = false,
   scheduleViewMode = "draft",
+  externalRefreshTick = 0,
+  onDraftMutated,
 }: {
   gridId: number;
   role: "viewer" | "editor" | "supervisor";
@@ -34,6 +36,8 @@ export default function UnitTabs({
   topOffset?: number;
   enablePinning?: boolean;
   scheduleViewMode?: ScheduleViewMode;
+  externalRefreshTick?: number;
+  onDraftMutated?: () => void;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const tabs = useMemo(
@@ -65,6 +69,8 @@ export default function UnitTabs({
         topOffset={topOffset}
         enablePinning={enablePinning}
         scheduleViewMode={scheduleViewMode}
+        externalRefreshTick={externalRefreshTick}
+        onDraftMutated={onDraftMutated}
       />
 
       {tabs.length > 0 && (
@@ -77,7 +83,7 @@ export default function UnitTabs({
                 onClick={() => setSelected(t.id)}
                 className={[
                   "px-4 py-2 text-sm border rounded-t-xl rounded-b-none origin-bottom",
-                  "transition-[background-color,box-shadow,color,transform] duration-150 ease-out",
+                  "transition-colors transition-shadow transition-transform duration-150 ease-out",
                   effectiveSelected === t.id
                     ? "bg-white text-black shadow-lg border-gray-300"
                     : "bg-gray-100 text-gray-700 shadow-md hover:shadow-lg hover:bg-white hover:scale-[1.02]",

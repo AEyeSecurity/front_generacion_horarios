@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ArrowLeft, BadgeCheck, Trash2 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { toast } from "sonner";
 import type { Role } from "@/lib/types";
 import { AddRuleButton, DeleteParticipantButton, RuleBubble } from "@/components/actions";
 import { AddRuleDialog } from "@/components/dialogs";
@@ -56,6 +57,75 @@ const toMinutes = (hhmm: string) => {
   return h * 60 + m;
 };
 
+const normalizeRulePreference = (value: unknown): Rule["preference"] => {
+  const raw = typeof value === "string" ? value.toLowerCase() : "";
+  if (raw === "preferred" || raw === "flexible" || raw === "impossible") return raw;
+  return "flexible";
+};
+
+const normalizeRuleRecord = (rawRule: unknown): Rule | null => {
+  const rule = (rawRule ?? {}) as Record<string, unknown>;
+  const id = Number(rule.id);
+  const participant = Number(rule.participant);
+  const day = Number(rule.day_of_week);
+  const start = String(rule.start_time ?? "").slice(0, 5);
+  const end = String(rule.end_time ?? "").slice(0, 5);
+  if (!Number.isFinite(id) || !Number.isFinite(day)) return null;
+  if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) return null;
+  return {
+    id,
+    participant: Number.isFinite(participant) ? participant : 0,
+    day_of_week: day,
+    start_time: start,
+    end_time: end,
+    preference: normalizeRulePreference(rule.preference),
+  };
+};
+
+const collectErrorMessages = (value: unknown): string[] => {
+  if (value == null) return [];
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap((item) => collectErrorMessages(item));
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).flatMap((item) => collectErrorMessages(item));
+  }
+  return [String(value)];
+};
+
+const humanizeAvailabilityRuleError = (raw: unknown, fallback: string): string => {
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    const text = raw.trim();
+    if (!text) return fallback;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = text;
+    }
+  }
+
+  const message = collectErrorMessages(parsed)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" ");
+  if (!message) return fallback;
+
+  const normalized = message.toLowerCase();
+  if (normalized.includes("overlapping availability rule already exists")) {
+    return "This rule overlaps another rule for this participant and day. Try moving or resizing it.";
+  }
+  if (normalized.includes("end") && normalized.includes("start")) {
+    return "End time must be later than start time.";
+  }
+  if (normalized.includes("grid bounds") || normalized.includes("within grid bounds")) {
+    return "The rule must stay inside the grid time range.";
+  }
+  if (normalized.includes("required")) {
+    return "Please complete all required rule fields.";
+  }
+  return message;
+};
+
 export default function ParticipantDetailContent({
   gridId,
   gridCode,
@@ -74,9 +144,9 @@ export default function ParticipantDetailContent({
   rules,
   initialView = "rules",
 }: Props) {
-  const router = useRouter();
   const [showScheduleTab, setShowScheduleTab] = useState(DEFAULT_UNIT_NOOVERLAP_ENABLED);
   const [view, setView] = useState<"rules" | "schedule">(initialView);
+  const [rulesState, setRulesState] = useState<Rule[]>(rules);
   const [inlineAddOpen, setInlineAddOpen] = useState(false);
   const [inlineAddDay, setInlineAddDay] = useState<number>(daysIdx[0] ?? 0);
   const [inlineAddStart, setInlineAddStart] = useState(dayStartHHMM);
@@ -111,6 +181,7 @@ export default function ParticipantDetailContent({
   const movePointerRef = useRef<{ x: number; y: number } | null>(null);
   const [isRuleDeleteDropActive, setIsRuleDeleteDropActive] = useState(false);
   const moveHoldTimerRef = useRef<number | null>(null);
+  const lastAutoMergeSignatureRef = useRef<string | null>(null);
   const pendingMovePressRef = useRef<{
     ruleId: number;
     pointerId: number;
@@ -157,6 +228,24 @@ export default function ParticipantDetailContent({
     }
   }, [daysIdx]);
 
+  useEffect(() => {
+    setRulesState(rules);
+  }, [rules]);
+
+  const fetchParticipantRules = useCallback(async (): Promise<Rule[]> => {
+    const res = await fetch(`/api/availability_rules?participant=${participantId}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`Failed to fetch rules (${res.status})`);
+    const data = await res.json().catch(() => ([]));
+    const list = Array.isArray(data) ? data : data.results ?? [];
+    return list.map(normalizeRuleRecord).filter((value: Rule | null): value is Rule => Boolean(value));
+  }, [participantId]);
+
+  const reloadParticipantRules = useCallback(async () => {
+    const nextRules = await fetchParticipantRules();
+    setRulesState(nextRules);
+    return nextRules;
+  }, [fetchParticipantRules]);
+
   const rows = useMemo(() => {
     const out: number[] = [];
     for (let t = dayStartMin; t < dayEndMin; t += cellSizeMin) out.push(t);
@@ -177,11 +266,9 @@ export default function ParticipantDetailContent({
   useEffect(() => () => clearMoveHoldTimer(), [clearMoveHoldTimer]);
 
   const mergeAdjacentSameTypeRules = useCallback(async () => {
-    if (!canManageRules) return;
-    const res = await fetch(`/api/availability_rules?participant=${participantId}`, { cache: "no-store" });
-    if (!res.ok) return;
-    const data = await res.json().catch(() => ([]));
-    const list = Array.isArray(data) ? data : data.results ?? [];
+    if (!canManageRules) return false;
+    const list = await fetchParticipantRules();
+    let changed = false;
 
     type MergeRule = {
       id: number;
@@ -193,21 +280,15 @@ export default function ParticipantDetailContent({
       endHHMM: string;
     };
 
-    const parsed: MergeRule[] = list
-      .map((rawRule: unknown) => {
-        const rule = (rawRule ?? {}) as Record<string, unknown>;
-        const id = Number(rule.id);
-        const day = Number(rule.day_of_week);
-        const pref = String(rule.preference ?? "");
-        const startHHMM = String(rule.start_time ?? "").slice(0, 5);
-        const endHHMM = String(rule.end_time ?? "").slice(0, 5);
-        const startMin = toMinutes(startHHMM);
-        const endMin = toMinutes(endHHMM);
-        if (!Number.isFinite(id) || !Number.isFinite(day) || !pref) return null;
-        if (!Number.isFinite(startMin) || !Number.isFinite(endMin) || endMin <= startMin) return null;
-        return { id, day, pref, startMin, endMin, startHHMM, endHHMM };
-      })
-      .filter((value: MergeRule | null): value is MergeRule => Boolean(value));
+    const parsed: MergeRule[] = list.map((rule: Rule) => ({
+      id: rule.id,
+      day: rule.day_of_week,
+      pref: rule.preference,
+      startMin: toMinutes(rule.start_time),
+      endMin: toMinutes(rule.end_time),
+      startHHMM: rule.start_time,
+      endHHMM: rule.end_time,
+    }));
 
     const grouped = new Map<string, MergeRule[]>();
     for (const rule of parsed) {
@@ -273,7 +354,8 @@ export default function ParticipantDetailContent({
 
         if (!requiresPatch) {
           for (const redundantId of redundantIds) {
-            await deleteRule(redundantId);
+            const deleted = await deleteRule(redundantId);
+            if (deleted) changed = true;
           }
           continue;
         }
@@ -287,8 +369,10 @@ export default function ParticipantDetailContent({
           }),
         });
         if (patchBeforeDelete.ok) {
+          changed = true;
           for (const redundantId of redundantIds) {
-            await deleteRule(redundantId);
+            const deleted = await deleteRule(redundantId);
+            if (deleted) changed = true;
           }
           continue;
         }
@@ -325,10 +409,16 @@ export default function ParticipantDetailContent({
           for (const deletedRule of deletedRules) {
             await recreateRule(deletedRule);
           }
+        } else {
+          changed = true;
         }
       }
     }
-  }, [canManageRules, participantId]);
+    if (changed) {
+      await reloadParticipantRules();
+    }
+    return changed;
+  }, [canManageRules, fetchParticipantRules, participantId, reloadParticipantRules]);
 
   const openAddRuleFromCell = (dayColumnIndex: number, startMin: number) => {
     if (!canManageRules) return;
@@ -414,36 +504,65 @@ export default function ParticipantDetailContent({
         startMin: ruleResize.originalStartMin,
         endMin: ruleResize.originalEndMin,
       };
-      setRuleResize(null);
-      resizePointerYRef.current = null;
-      setRuleDraftBoundsById((prev) => {
-        const next = { ...prev };
-        delete next[ruleResize.ruleId];
-        return next;
-      });
+      const nextStart = formatMinutes(draft.startMin);
+      const nextEnd = formatMinutes(draft.endMin);
+      const originalStart = formatMinutes(ruleResize.originalStartMin);
+      const originalEnd = formatMinutes(ruleResize.originalEndMin);
       if (
         draft.startMin === ruleResize.originalStartMin
         && draft.endMin === ruleResize.originalEndMin
-      ) return;
+      ) {
+        setRuleResize(null);
+        resizePointerYRef.current = null;
+        setRuleDraftBoundsById((prev) => {
+          const next = { ...prev };
+          delete next[ruleResize.ruleId];
+          return next;
+        });
+        return;
+      }
+
+      // Keep the card locked at the released position (no snap-back) while syncing backend.
+      setRuleResize(null);
+      resizePointerYRef.current = null;
+      setRulesState((prev) =>
+        prev.map((rule) =>
+          rule.id === ruleResize.ruleId
+            ? { ...rule, start_time: nextStart, end_time: nextEnd }
+            : rule,
+        ),
+      );
       setRuleResizeBusy(true);
       try {
         const res = await fetch(`/api/availability_rules/${ruleResize.ruleId}`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            start_time: formatMinutes(draft.startMin),
-            end_time: formatMinutes(draft.endMin),
+            start_time: nextStart,
+            end_time: nextEnd,
           }),
         });
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
-          throw new Error(txt || `Failed to update rule (${res.status})`);
+          throw new Error(humanizeAvailabilityRuleError(txt || `Failed to update rule (${res.status})`, "Could not resize rule."));
         }
         await mergeAdjacentSameTypeRules();
-        router.refresh();
+        await reloadParticipantRules();
       } catch (e: unknown) {
-        alert(e instanceof Error ? e.message : "Could not resize rule.");
+        setRulesState((prev) =>
+          prev.map((rule) =>
+            rule.id === ruleResize.ruleId
+              ? { ...rule, start_time: originalStart, end_time: originalEnd }
+              : rule,
+          ),
+        );
+        toast.error(humanizeAvailabilityRuleError(e instanceof Error ? e.message : "", "Could not resize rule."));
       } finally {
+        setRuleDraftBoundsById((prev) => {
+          const next = { ...prev };
+          delete next[ruleResize.ruleId];
+          return next;
+        });
         setRuleResizeBusy(false);
       }
     };
@@ -478,7 +597,7 @@ export default function ParticipantDetailContent({
     cellSizeMin,
     dayEndMin,
     mergeAdjacentSameTypeRules,
-    router,
+    reloadParticipantRules,
     ruleDraftBoundsById,
     ruleResize,
     dayStartMin,
@@ -581,11 +700,11 @@ export default function ParticipantDetailContent({
           const res = await fetch(`/api/availability_rules/${ruleMove.ruleId}`, { method: "DELETE" });
           if (!res.ok && res.status !== 204) {
             const txt = await res.text().catch(() => "");
-            throw new Error(txt || `Failed to delete rule (${res.status})`);
+            throw new Error(humanizeAvailabilityRuleError(txt || `Failed to delete rule (${res.status})`, "Could not delete rule."));
           }
-          router.refresh();
+          await reloadParticipantRules();
         } catch (e: unknown) {
-          alert(e instanceof Error ? e.message : "Could not delete rule.");
+          toast.error(humanizeAvailabilityRuleError(e instanceof Error ? e.message : "", "Could not delete rule."));
         } finally {
           setRuleResizeBusy(false);
         }
@@ -606,12 +725,12 @@ export default function ParticipantDetailContent({
         });
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
-          throw new Error(txt || `Failed to move rule (${res.status})`);
+          throw new Error(humanizeAvailabilityRuleError(txt || `Failed to move rule (${res.status})`, "Could not move rule."));
         }
         await mergeAdjacentSameTypeRules();
-        router.refresh();
+        await reloadParticipantRules();
       } catch (e: unknown) {
-        alert(e instanceof Error ? e.message : "Could not move rule.");
+        toast.error(humanizeAvailabilityRuleError(e instanceof Error ? e.message : "", "Could not move rule."));
       } finally {
         setRuleResizeBusy(false);
       }
@@ -659,7 +778,7 @@ export default function ParticipantDetailContent({
     days.length,
     daysIdx,
     mergeAdjacentSameTypeRules,
-    router,
+    reloadParticipantRules,
     rows.length,
     ruleDraftBoundsById,
     ruleDraftDayById,
@@ -696,8 +815,8 @@ export default function ParticipantDetailContent({
   };
 
   const visibleRules = useMemo(
-    () => rules.filter((r) => daysIdx.includes(r.day_of_week)),
-    [daysIdx, rules],
+    () => rulesState.filter((r) => daysIdx.includes(r.day_of_week)),
+    [daysIdx, rulesState],
   );
 
   const hasMergeCandidates = useMemo(() => {
@@ -708,7 +827,7 @@ export default function ParticipantDetailContent({
       endMin: number;
     };
     const grouped = new Map<string, CompactRule[]>();
-    for (const rule of rules) {
+    for (const rule of rulesState) {
       const startMin = toMinutes(String(rule.start_time ?? "").slice(0, 5));
       const endMin = toMinutes(String(rule.end_time ?? "").slice(0, 5));
       if (!Number.isFinite(startMin) || !Number.isFinite(endMin) || endMin <= startMin) continue;
@@ -727,17 +846,27 @@ export default function ParticipantDetailContent({
       }
     }
     return false;
-  }, [rules]);
+  }, [rulesState]);
+
+  const autoMergeSignature = useMemo(
+    () =>
+      rulesState
+        .map((rule) => `${rule.id}:${rule.day_of_week}:${rule.preference}:${rule.start_time}-${rule.end_time}`)
+        .sort()
+        .join("|"),
+    [rulesState],
+  );
 
   useEffect(() => {
     if (!canManageRules || autoMergeBusy || ruleResizeBusy) return;
     if (!hasMergeCandidates) return;
+    if (lastAutoMergeSignatureRef.current === autoMergeSignature) return;
+    lastAutoMergeSignatureRef.current = autoMergeSignature;
     let cancelled = false;
     (async () => {
       setAutoMergeBusy(true);
       try {
         await mergeAdjacentSameTypeRules();
-        if (!cancelled) router.refresh();
       } finally {
         if (!cancelled) setAutoMergeBusy(false);
       }
@@ -745,7 +874,7 @@ export default function ParticipantDetailContent({
     return () => {
       cancelled = true;
     };
-  }, [autoMergeBusy, canManageRules, hasMergeCandidates, mergeAdjacentSameTypeRules, router, ruleResizeBusy]);
+  }, [autoMergeBusy, autoMergeSignature, canManageRules, hasMergeCandidates, mergeAdjacentSameTypeRules, ruleResizeBusy]);
 
   return (
     <div className="w-[80%] mx-auto space-y-4">
@@ -804,7 +933,7 @@ export default function ParticipantDetailContent({
               disabled={!canManageRules}
               onCreated={async () => {
                 await mergeAdjacentSameTypeRules();
-                router.refresh();
+                await reloadParticipantRules();
               }}
             />
           )}
@@ -862,6 +991,7 @@ export default function ParticipantDetailContent({
             ))}
 
             <div className="pointer-events-none absolute inset-0" style={{ height: BODY_H }}>
+              <AnimatePresence initial={false}>
               {visibleRules.map((r) => {
                 const renderDay = ruleDraftDayById[r.id] ?? r.day_of_week;
                 const cIdx = daysIdx.indexOf(renderDay);
@@ -924,9 +1054,11 @@ export default function ParticipantDetailContent({
                 const canStartMoveFromHandle = Boolean(ruleMoveHoverHandleById[r.id]);
 
                 return (
-                  <div
+                  <motion.div
                     key={r.id}
-                    className={`absolute pointer-events-auto ${isDraggingRule ? "overflow-visible" : "overflow-hidden"}`}
+                    className={`absolute pointer-events-auto ${isDraggingRule ? "overflow-visible" : "overflow-hidden"} ${
+                      isDraggingRule || ruleResize?.ruleId === r.id ? "" : "transition-[top,height] duration-150 ease-out"
+                    }`}
                     style={{
                       top,
                       left,
@@ -940,6 +1072,14 @@ export default function ParticipantDetailContent({
                           : canManageRules && canStartMoveFromHandle
                           ? "grab"
                           : "default",
+                    }}
+                    layout={isDraggingRule ? false : "position"}
+                    initial={false}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{
+                      opacity: { duration: 0.12, ease: "easeOut" },
+                      layout: { type: "spring", stiffness: 360, damping: 30, mass: 0.72 },
                     }}
                     onPointerMove={(event) => {
                       if (isDraggingRule || ruleResize?.ruleId === r.id) return;
@@ -1048,9 +1188,10 @@ export default function ParticipantDetailContent({
                         onEdit={() => setEditingRuleId(r.id)}
                       />
                     )}
-                  </div>
+                  </motion.div>
                 );
               })}
+              </AnimatePresence>
             </div>
 
             <ParticipantScheduleOverlay
@@ -1218,7 +1359,7 @@ export default function ParticipantDetailContent({
         onCreated={async () => {
           await mergeAdjacentSameTypeRules();
           setInlineAddOpen(false);
-          router.refresh();
+          await reloadParticipantRules();
         }}
       />
       <EditRuleDialog
@@ -1230,7 +1371,7 @@ export default function ParticipantDetailContent({
         onSaved={async () => {
           await mergeAdjacentSameTypeRules();
           setEditingRuleId(null);
-          router.refresh();
+          await reloadParticipantRules();
         }}
       />
 

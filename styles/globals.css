@@ -130,4 +130,32 @@
   .hide-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  @keyframes participant-edit-pop {
+    0% {
+      opacity: 0;
+      transform: translateY(-50%) scale(0.94);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(-50%) scale(1);
+    }
+  }
+
+  @keyframes shift-jiggle {
+    0% {
+      transform: rotate(-1.4deg);
+    }
+    50% {
+      transform: rotate(1.4deg);
+    }
+    100% {
+      transform: rotate(-1.4deg);
+    }
+  }
+
+  .shift-jiggle {
+    transform-origin: center;
+    animation: shift-jiggle 170ms ease-in-out infinite;
+  }
 }

@@ -67,6 +67,50 @@ type ExistingRule = {
   endHHMM: string;
 };
 
+const collectErrorMessages = (value: unknown): string[] => {
+  if (value == null) return [];
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap((item) => collectErrorMessages(item));
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).flatMap((item) => collectErrorMessages(item));
+  }
+  return [String(value)];
+};
+
+const toFriendlyRuleError = (raw: unknown, fallback: string): string => {
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    const text = raw.trim();
+    if (!text) return fallback;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = text;
+    }
+  }
+
+  const message = collectErrorMessages(parsed)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" ");
+  if (!message) return fallback;
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("overlapping availability rule already exists")) {
+    return "This rule overlaps another rule on the same day. Try moving or resizing it.";
+  }
+  if (normalized.includes("end") && normalized.includes("start")) {
+    return "End time must be later than start time.";
+  }
+  if (normalized.includes("grid bounds") || normalized.includes("within grid bounds")) {
+    return "The rule must stay inside the grid time range.";
+  }
+  if (normalized.includes("required")) {
+    return "Please complete all required rule fields.";
+  }
+  return message;
+};
+
 export default function AddAvailabilityRuleDialog({
   participantId,
   gridStart,
@@ -87,11 +131,9 @@ export default function AddAvailabilityRuleDialog({
   const [start, setStart] = useState(initialStart ?? gridStart);
   const [end, setEnd] = useState(initialEnd ?? gridEnd);
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setErr(null);
     setLoading(false);
     setPreference(initialPreference ?? "preferred");
     setDay(typeof initialDay === "number" ? initialDay : initialAllowedDay);
@@ -124,8 +166,11 @@ export default function AddAvailabilityRuleDialog({
 
   async function submit() {
     const v = validate();
-    if (v) { setErr(v); return; }
-    setErr(null); setLoading(true);
+    if (v) {
+      toast.error(v);
+      return;
+    }
+    setLoading(true);
     try {
       const payload = {
         participant: participantId,
@@ -141,7 +186,9 @@ export default function AddAvailabilityRuleDialog({
       });
       if (!res.ok) {
         const rawError = await res.text().catch(() => "");
-        if (res.status !== 400) throw new Error(rawError || `Error creating rule (${res.status})`);
+        if (res.status !== 400) {
+          throw new Error(toFriendlyRuleError(rawError || `Error creating rule (${res.status})`, "Could not create rule."));
+        }
 
         const rulesRes = await fetch(`/api/availability_rules?participant=${participantId}`, { cache: "no-store" });
         if (!rulesRes.ok) throw new Error(rawError || `Error creating rule (${res.status})`);
@@ -191,7 +238,7 @@ export default function AddAvailabilityRuleDialog({
         }
 
         if (toMerge.size === 0) {
-          throw new Error(rawError || "Could not create rule.");
+          throw new Error(toFriendlyRuleError(rawError || "Could not create rule.", "Could not create rule."));
         }
 
         const sortedToMerge = [...toMerge.values()].sort(
@@ -253,7 +300,7 @@ export default function AddAvailabilityRuleDialog({
 
           if (!deletedAll) {
             for (const deletedRule of deletedRules) await recreateRule(deletedRule);
-            throw new Error(rawError || "Could not merge with adjacent rule.");
+            throw new Error(toFriendlyRuleError(rawError || "Could not merge with adjacent rule.", "Could not merge with adjacent rule."));
           }
 
           if (requiresPatch) {
@@ -267,7 +314,7 @@ export default function AddAvailabilityRuleDialog({
             });
             if (!patchAfterDelete.ok) {
               for (const deletedRule of deletedRules) await recreateRule(deletedRule);
-              throw new Error(rawError || "Could not merge with adjacent rule.");
+              throw new Error(toFriendlyRuleError(rawError || "Could not merge with adjacent rule.", "Could not merge with adjacent rule."));
             }
           }
 
@@ -275,14 +322,14 @@ export default function AddAvailabilityRuleDialog({
         }
 
         if (!mergedOk) {
-          throw new Error(rawError || "Could not create rule.");
+          throw new Error(toFriendlyRuleError(rawError || "Could not create rule.", "Could not create rule."));
         }
       }
       toast("Availability rule created");
       onOpenChange(false);
       onCreated?.();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "Error creating rule");
+      toast.error(toFriendlyRuleError(e instanceof Error ? e.message : "", "Error creating rule"));
     } finally {
       setLoading(false);
     }
@@ -331,9 +378,6 @@ export default function AddAvailabilityRuleDialog({
                    value={end} onChange={(e) => setEnd(e.target.value)} />
           </div>
         </div>
-
-        {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
-
         <DialogFooter className="gap-2">
           <button type="button" className="px-3 py-2 rounded border text-sm"
                   onClick={() => onOpenChange(false)} disabled={loading}>

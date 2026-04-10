@@ -130,8 +130,9 @@ type AvailabilityRule = {
 };
 
 type CellPinMeta = {
-  pin_day_index: number | null;
-  pin_start_slot: number | null;
+  locked_day_index: number | null;
+  locked_start_slot: number | null;
+  locked_bundle_index: number | null;
   bundles: Array<number | string>;
 };
 
@@ -223,8 +224,11 @@ type Props = {
   selectedUnitId?: string | null;
   topOffset?: number;
   hideScheduleOverlay?: boolean;
+  suppressRightDock?: boolean;
   enablePinning?: boolean;
   scheduleViewMode?: ScheduleViewMode;
+  externalRefreshTick?: number;
+  onDraftMutated?: () => void;
 };
 
 type DragState = {
@@ -277,8 +281,11 @@ export default function SolveOverlay({
   selectedUnitId,
   topOffset = 0,
   hideScheduleOverlay = false,
+  suppressRightDock = false,
   enablePinning = false,
   scheduleViewMode = "draft",
+  externalRefreshTick = 0,
+  onDraftMutated,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -356,6 +363,9 @@ export default function SolveOverlay({
   const deleteDropRef = useRef<HTMLDivElement | null>(null);
 
   const canSolve = role === "supervisor";
+  const notifyDraftMutation = useCallback(() => {
+    onDraftMutated?.();
+  }, [onDraftMutated]);
   const solveSignatureStorageKey = `grid:${gridId}:last-solve-signature`;
 
   const parseTimestamp = (value: unknown) => {
@@ -603,7 +613,9 @@ export default function SolveOverlay({
         let trlist: any[] = [];
         let arlist: any[] = [];
 
-        const context = await fetchGridScreenContext(gridId, scheduleViewMode);
+        const context = await fetchGridScreenContext(gridId, scheduleViewMode, {
+          force: externalRefreshTick > 0,
+        });
         clist = getContextList(context?.cells);
         blist = getContextList(context?.bundles);
         slist = getContextList(context?.staffs);
@@ -677,11 +689,28 @@ export default function SolveOverlay({
               SECONDARY: normalizeIdArray(rawTierPools.SECONDARY),
               TERTIARY: normalizeIdArray(rawTierPools.TERTIARY),
             };
+            const lockedDayIndex =
+              typeof c.locked_day_index === "number"
+                ? c.locked_day_index
+                : typeof c.pin_day_index === "number"
+                ? c.pin_day_index
+                : null;
+            const lockedStartSlot =
+              typeof c.locked_start_slot === "number"
+                ? c.locked_start_slot
+                : typeof c.pin_start_slot === "number"
+                ? c.pin_start_slot
+                : null;
+            const lockedBundleIndex =
+              typeof c.locked_bundle_index === "number"
+                ? c.locked_bundle_index
+                : typeof c.pinned_bundle_index === "number"
+                ? c.pinned_bundle_index
+                : null;
             cpins[cid] = {
-              pin_day_index:
-                typeof c.pin_day_index === "number" ? c.pin_day_index : null,
-              pin_start_slot:
-                typeof c.pin_start_slot === "number" ? c.pin_start_slot : null,
+              locked_day_index: lockedDayIndex,
+              locked_start_slot: lockedStartSlot,
+              locked_bundle_index: lockedBundleIndex,
               bundles: Array.isArray(c.bundles)
                 ? c.bundles
                     .map((value: unknown) => readEntityId(value))
@@ -801,7 +830,7 @@ export default function SolveOverlay({
       } catch {}
     })();
     return () => { active = false; };
-  }, [dayStartMin, gridId, scheduleViewMode, slotMin]);
+  }, [dayStartMin, externalRefreshTick, gridId, scheduleViewMode, slotMin]);
 
   useEffect(() => {
     if (!isSolving) return;
@@ -1075,12 +1104,15 @@ export default function SolveOverlay({
       .map(([cellId, name]) => {
         const cellKey = String(cellId);
         const trId = cellTimeRangeById[cellKey];
-        const trName = trId ? timeRangeMetaById[trId]?.name : "";
+        const trMeta = trId ? timeRangeMetaById[trId] : undefined;
         const trDurationSlots =
-          trId && timeRangeMetaById[trId]
-            ? Math.max(1, timeRangeMetaById[trId].endSlot - timeRangeMetaById[trId].startSlot)
+          trMeta
+            ? Math.max(1, trMeta.endSlot - trMeta.startSlot)
             : null;
         const durationSlots = cellDurationSlotsById[cellKey] ?? trDurationSlots ?? 1;
+        const timeLabel = trMeta
+          ? formatSlotRange(dayStartMin, slotMin, trMeta.startSlot, trMeta.endSlot)
+          : "No time range";
         const cellBundles = (cellPinMetaById[cellKey]?.bundles || []).map(String);
         const matchingBundles = selectedUnitId
           ? cellBundles.filter((bundleId) =>
@@ -1098,7 +1130,7 @@ export default function SolveOverlay({
           id: cellKey,
           name,
           color: cellColorById[cellKey] || "",
-          timeRangeName: trName || "No time range",
+          timeLabel,
           durationSlots,
           selectedBundleId,
           unitIds,
@@ -1115,6 +1147,8 @@ export default function SolveOverlay({
     cellTimeRangeById,
     schedule,
     selectedUnitId,
+    dayStartMin,
+    slotMin,
     timeRangeMetaById,
   ]);
 
@@ -1515,56 +1549,57 @@ export default function SolveOverlay({
     }
   };
 
-  const togglePin = async (
-    sourceCellId: string,
-    dayIndex: number,
-    startSlot: number,
-    scheduleUnitIds: string[],
+  const togglePlacementLock = async (
+    placementId: string,
+    currentlyLocked: boolean,
     cardKey: string,
   ) => {
-    if (!canPinCards || pinBusyKey) return;
-    const pinMeta = cellPinMetaById[sourceCellId];
-    const currentDay = pinMeta?.pin_day_index ?? null;
-    const currentStart = pinMeta?.pin_start_slot ?? null;
-    const isPinnedHere = currentDay === dayIndex && currentStart === startSlot;
-    const nextDay = isPinnedHere ? null : dayIndex;
-    const nextStart = isPinnedHere ? null : startSlot;
-    const bundleIds = resolveBundleIdsForPatch(sourceCellId, scheduleUnitIds).map((bundleId) =>
-      /^\d+$/.test(bundleId) ? Number(bundleId) : bundleId,
+    if (!canPinCards || pinBusyKey || !currentSchedule?.placements) return;
+    const nextLocked = !currentlyLocked;
+    const previousPlacements = currentSchedule.placements;
+    const nextPlacements = previousPlacements.map((placement) =>
+      String(placement.id) === placementId
+        ? {
+            ...placement,
+            locked: nextLocked,
+          }
+        : placement,
     );
-
-    const payload: Record<string, unknown> = {
-      pin_day_index: nextDay,
-      pin_start_slot: nextStart,
-    };
-    if (bundleIds.length > 0) payload.bundles = bundleIds;
-
     setPinError(null);
     setPinOptimisticByCard((prev) => ({
       ...prev,
-      [cardKey]: !isPinnedHere,
+      [cardKey]: nextLocked,
     }));
+    setCurrentSchedule((prev) =>
+      prev
+        ? {
+            ...prev,
+            placements: nextPlacements,
+          }
+        : prev,
+    );
     setPinBusyKey(cardKey);
     try {
-      const res = await fetch(`/api/cells/${encodeURIComponent(sourceCellId)}`, {
+      const res = await fetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ locked: nextLocked }),
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || `Failed to update pin (${res.status})`);
+        throw new Error(txt || `Failed to update lock (${res.status})`);
       }
-      setCellPinMetaById((prev) => ({
-        ...prev,
-        [sourceCellId]: {
-          pin_day_index: nextDay,
-          pin_start_slot: nextStart,
-          bundles: bundleIds.length > 0 ? bundleIds : prev[sourceCellId]?.bundles || [],
-        },
-      }));
+      notifyDraftMutation();
     } catch (e: unknown) {
-      setPinError(e instanceof Error ? e.message : "Could not update pin.");
+      setCurrentSchedule((prev) =>
+        prev
+          ? {
+              ...prev,
+              placements: previousPlacements,
+            }
+          : prev,
+      );
+      setPinError(e instanceof Error ? e.message : "Could not update placement lock.");
     } finally {
       setPinOptimisticByCard((prev) => {
         if (!(cardKey in prev)) return prev;
@@ -1594,7 +1629,78 @@ export default function SolveOverlay({
     async (placementId: string) => {
       if (!currentSchedule?.placements) return;
       const previousPlacements = currentSchedule.placements;
-      if (!previousPlacements.some((placement) => String(placement.id) === placementId)) return;
+      const targetPlacement = previousPlacements.find((placement) => String(placement.id) === placementId);
+      if (!targetPlacement) return;
+
+      const participantIdToRemove =
+        previewMode === "participant" && previewParticipantId ? String(previewParticipantId) : null;
+      const assignedParticipants = normalizeIdArray(
+        (targetPlacement as { assigned_participants?: unknown }).assigned_participants,
+      );
+      const shouldRemoveOnlyParticipant =
+        participantIdToRemove != null && assignedParticipants.includes(participantIdToRemove);
+
+      if (shouldRemoveOnlyParticipant) {
+        const nextAssigned = assignedParticipants.filter((pid) => pid !== participantIdToRemove);
+        const nextAssignedApi = nextAssigned.map((pid) => (/^\d+$/.test(pid) ? Number(pid) : pid));
+        const nextPlacements =
+          nextAssigned.length === 0
+            ? previousPlacements.filter((placement) => String(placement.id) !== placementId)
+            : previousPlacements.map((placement) =>
+                String(placement.id) === placementId
+                  ? {
+                      ...placement,
+                      assigned_participants: nextAssigned,
+                    }
+                  : placement,
+              );
+
+        setCurrentSchedule((prev) =>
+          prev
+            ? {
+                ...prev,
+                placements: nextPlacements,
+              }
+            : prev,
+        );
+
+        try {
+          if (nextAssigned.length === 0) {
+            const deleteRes = await fetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+              method: "DELETE",
+            });
+            if (!deleteRes.ok) {
+              const txt = await deleteRes.text().catch(() => "");
+              throw new Error(txt || `Could not remove placement (${deleteRes.status})`);
+            }
+          } else {
+            const patchRes = await fetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                assigned_participants: nextAssignedApi,
+              }),
+            });
+            if (!patchRes.ok) {
+              const txt = await patchRes.text().catch(() => "");
+              throw new Error(txt || `Could not update placement (${patchRes.status})`);
+            }
+          }
+          notifyDraftMutation();
+        } catch (error: unknown) {
+          setCurrentSchedule((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  placements: previousPlacements,
+                }
+              : prev,
+          );
+          setPinError(error instanceof Error ? error.message : "Could not remove participant from placement.");
+        }
+        return;
+      }
+
       const nextPlacements = previousPlacements.filter((placement) => String(placement.id) !== placementId);
 
       setCurrentSchedule((prev) =>
@@ -1613,6 +1719,7 @@ export default function SolveOverlay({
           const txt = await res.text().catch(() => "");
           throw new Error(txt || `Could not remove placement (${res.status})`);
         }
+        notifyDraftMutation();
       } catch (error: unknown) {
         setCurrentSchedule((prev) =>
           prev
@@ -1625,7 +1732,7 @@ export default function SolveOverlay({
         setPinError(error instanceof Error ? error.message : "Could not remove placement.");
       }
     },
-    [currentSchedule],
+    [currentSchedule, normalizeIdArray, notifyDraftMutation, previewMode, previewParticipantId],
   );
 
   const isParticipantAvailableForPlacement = useCallback(
@@ -1920,6 +2027,7 @@ export default function SolveOverlay({
               }
             : prev,
         );
+        notifyDraftMutation();
       } catch (error: unknown) {
         setCurrentSchedule((prev) =>
           prev
@@ -1932,7 +2040,7 @@ export default function SolveOverlay({
         setPinError(error instanceof Error ? error.message : "Could not place cell.");
       }
     },
-    [currentSchedule, normalizeIdArray],
+    [currentSchedule, normalizeIdArray, notifyDraftMutation],
   );
 
   const requestUnassignedPlacement = useCallback(
@@ -2117,17 +2225,8 @@ export default function SolveOverlay({
       if (!currentSchedule?.placements) return;
       const targetPlacement = currentSchedule.placements.find((placement) => String(placement.id) === placementId);
       if (!targetPlacement) return;
-      const targetSourceCellId = String(targetPlacement.source_cell ?? targetPlacement.id);
-      const pinMeta = cellPinMetaById[targetSourceCellId];
-      const pinnedHere =
-        (pinMeta?.pin_day_index ?? null) === Number(targetPlacement.day_index) &&
-        (pinMeta?.pin_start_slot ?? null) === Number(targetPlacement.start_slot);
       if (targetPlacement.locked) {
         setPinError("Locked placements cannot be moved.");
-        return;
-      }
-      if (pinnedHere) {
-        setPinError("Pinned placements cannot be moved.");
         return;
       }
       const nextEndSlot = nextStartSlot + durationSlots;
@@ -2164,6 +2263,7 @@ export default function SolveOverlay({
           const txt = await res.text().catch(() => "");
           throw new Error(txt || `Could not move placement (${res.status})`);
         }
+        notifyDraftMutation();
       } catch (error: unknown) {
         setCurrentSchedule((prev) =>
           prev
@@ -2176,7 +2276,7 @@ export default function SolveOverlay({
         setPinError(error instanceof Error ? error.message : "Could not move placement.");
       }
     },
-    [cellPinMetaById, currentSchedule],
+    [currentSchedule, notifyDraftMutation],
   );
 
   useEffect(() => {
@@ -2706,7 +2806,7 @@ export default function SolveOverlay({
           style={{ top: topOffset, height: bodyHeight }}
         >
           {pinError && (
-            <div className="absolute left-3 top-3 z-[20] rounded border border-red-200 bg-red-50 px-2.5 py-1 text-xs text-red-600">
+            <div className="absolute left-3 top-3 z-[120] rounded border border-red-200 bg-red-50 px-2.5 py-1 text-xs text-red-600">
               {pinError}
             </div>
           )}
@@ -2857,7 +2957,6 @@ export default function SolveOverlay({
             const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`;
             const cellName = cellNameById[sourceCellId] || `Cell ${sourceCellId}`;
             const timeLabel = formatSlotRange(dayStartMin, slotMin, s.start_slot, s.end_slot);
-            const scheduleUnitIds = Array.isArray(s.units) ? s.units.map(String).sort() : [];
             const staffIds = cellStaffsById[sourceCellId] || [];
             const bg = cellColorById[sourceCellId] || "";
             const colorIdx = CELL_COLOR_OPTIONS.findIndex((c) => c.toLowerCase() === bg.toLowerCase());
@@ -2865,14 +2964,11 @@ export default function SolveOverlay({
             const textDark = useColor ? CELL_TEXT_DARK[colorIdx] : "#1f2937";
             const textLight = useColor ? CELL_TEXT_LIGHT[colorIdx] : "#111827";
             const border = useColor ? shadeHex(bg, -0.35) : "#e5e7eb";
-            const isPinnedHere =
-              (cellPinMetaById[sourceCellId]?.pin_day_index ?? null) === s.day_index &&
-              (cellPinMetaById[sourceCellId]?.pin_start_slot ?? null) === s.start_slot;
-            const isPlacementLocked = Boolean(s.locked || isPinnedHere);
+            const isPlacementLocked = Boolean(s.locked);
             const isCardBusy = pinBusyKey === cardKey;
             const optimisticPinned = pinOptimisticByCard[cardKey];
             const isPinnedVisual =
-              typeof optimisticPinned === "boolean" ? optimisticPinned : isPinnedHere;
+              typeof optimisticPinned === "boolean" ? optimisticPinned : isPlacementLocked;
             const pinColor = textDark;
             const pinTrackBg = isPinnedVisual
               ? useColor
@@ -3070,7 +3166,8 @@ export default function SolveOverlay({
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
-                        void togglePin(sourceCellId, s.day_index, s.start_slot, scheduleUnitIds, cardKey);
+                        if (!placementId) return;
+                        void togglePlacementLock(placementId, isPinnedVisual, cardKey);
                       }}
                       disabled={Boolean(pinBusyKey)}
                     >
@@ -3735,7 +3832,7 @@ export default function SolveOverlay({
                       onClick={() => setPreviewSelectedUnitId(tab.id)}
                       className={[
                         "px-4 py-2 text-sm border rounded-t-xl rounded-b-none origin-bottom",
-                        "transition-[background-color,box-shadow,color,transform] duration-150 ease-out",
+                        "transition-colors transition-shadow transition-transform duration-150 ease-out",
                         previewSelectedUnitId === tab.id
                           ? "bg-white text-black shadow-lg border-gray-300"
                           : "bg-gray-100 text-gray-700 shadow-md hover:shadow-lg hover:bg-white hover:scale-[1.02]",
@@ -3752,7 +3849,7 @@ export default function SolveOverlay({
       )}
 
       {/* Right-side solve dock */}
-      {canSolve && scheduleViewMode === "draft" && !isJiggleMode && (
+      {canSolve && scheduleViewMode === "draft" && !isJiggleMode && !suppressRightDock && (
         <div className="fixed right-4 top-1/2 -translate-y-1/2 z-[140] pointer-events-none">
           <div className="flex flex-col items-center gap-3">
             <button
@@ -3945,7 +4042,7 @@ export default function SolveOverlay({
                         </div>
                         {absDistance === 0 && (
                           <div className="mt-1 text-[10px] font-medium" style={{ color: textDark }}>
-                            {cell.timeRangeName}
+                            {cell.timeLabel}
                           </div>
                         )}
                       </div>
@@ -3958,20 +4055,6 @@ export default function SolveOverlay({
         </div>
       )}
 
-      <style jsx global>{`
-        @keyframes shift-jiggle {
-          0% { transform: rotate(-1.4deg); }
-          50% { transform: rotate(1.4deg); }
-          100% { transform: rotate(-1.4deg); }
-        }
-        .shift-jiggle {
-          transform-origin: center;
-          animation: shift-jiggle 170ms ease-in-out infinite;
-        }
-      `}</style>
     </>
   );
 }
-
-
-

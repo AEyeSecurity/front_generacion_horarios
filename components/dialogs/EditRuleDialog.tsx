@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogPortal,
@@ -29,6 +30,49 @@ const DAYS = [
   { value: 6, label: "Sun" },
 ] as const;
 
+const collectErrorMessages = (value: unknown): string[] => {
+  if (value == null) return [];
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap((item) => collectErrorMessages(item));
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).flatMap((item) => collectErrorMessages(item));
+  }
+  return [String(value)];
+};
+
+const getFriendlyRuleError = (error: unknown, fallback: string) => {
+  const raw = error instanceof Error ? error.message : "";
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    const text = raw.trim();
+    if (!text) return fallback;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = text;
+    }
+  }
+  const message = collectErrorMessages(parsed)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" ");
+  if (!message) return fallback;
+  const normalized = message.toLowerCase();
+  if (normalized.includes("overlapping availability rule already exists")) {
+    return "This rule overlaps another rule on the same day. Try moving or resizing it.";
+  }
+  if (normalized.includes("end") && normalized.includes("start")) {
+    return "End time must be later than start time.";
+  }
+  if (normalized.includes("grid bounds") || normalized.includes("within grid bounds")) {
+    return "The rule must stay inside the grid time range.";
+  }
+  if (normalized.includes("required")) {
+    return "Please complete all required rule fields.";
+  }
+  return message;
+};
+
 export default function EditRuleDialog({
   ruleId,
   open,
@@ -42,19 +86,13 @@ export default function EditRuleDialog({
 }) {
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const [err, setErr] = React.useState<string | null>(null);
   const [preference, setPreference] = React.useState<typeof PREFS[number]["value"]>("preferred");
   const [day, setDay] = React.useState<number>(0);
   const [start, setStart] = React.useState("08:00");
   const [end, setEnd] = React.useState("09:00");
-  const getErrorMessage = (error: unknown, fallback: string) => {
-    if (error instanceof Error && error.message) return error.message;
-    return fallback;
-  };
 
   React.useEffect(() => {
     if (!open) return;
-    setErr(null);
     setLoading(true);
     (async () => {
       try {
@@ -66,7 +104,7 @@ export default function EditRuleDialog({
         setStart(String(data.start_time).slice(0, 5));
         setEnd(String(data.end_time).slice(0, 5));
       } catch (e: unknown) {
-        setErr(getErrorMessage(e, "Failed to load rule"));
+        toast.error(getFriendlyRuleError(e, "Failed to load rule"));
       } finally {
         setLoading(false);
       }
@@ -76,7 +114,6 @@ export default function EditRuleDialog({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    setErr(null);
     try {
       const res = await fetch(`/api/availability_rules/${ruleId}`, {
         method: "PATCH",
@@ -88,11 +125,14 @@ export default function EditRuleDialog({
           end_time: end,
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || `Failed to update rule (${res.status})`);
+      }
       onSaved?.();
       onOpenChange(false);
     } catch (e: unknown) {
-      setErr(getErrorMessage(e, "Failed to update rule"));
+      toast.error(getFriendlyRuleError(e, "Failed to update rule"));
     } finally {
       setSaving(false);
     }
@@ -102,14 +142,16 @@ export default function EditRuleDialog({
     if (saving) return;
     if (!window.confirm("Delete this rule?")) return;
     setSaving(true);
-    setErr(null);
     try {
       const res = await fetch(`/api/availability_rules/${ruleId}`, { method: "DELETE" });
-      if (!res.ok && res.status !== 204) throw new Error(await res.text());
+      if (!res.ok && res.status !== 204) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || `Failed to delete rule (${res.status})`);
+      }
       onSaved?.();
       onOpenChange(false);
     } catch (e: unknown) {
-      setErr(getErrorMessage(e, "Failed to delete rule"));
+      toast.error(getFriendlyRuleError(e, "Failed to delete rule"));
     } finally {
       setSaving(false);
     }
@@ -124,8 +166,6 @@ export default function EditRuleDialog({
             <DialogTitle>Edit Availability Rule</DialogTitle>
             <DialogDescription>Update the rule details.</DialogDescription>
           </DialogHeader>
-
-          {err && <div className="mb-2 text-sm whitespace-pre-wrap text-red-600">{err}</div>}
 
           <form onSubmit={submit} className="space-y-4">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
