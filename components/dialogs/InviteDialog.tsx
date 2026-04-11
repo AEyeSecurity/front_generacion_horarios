@@ -18,6 +18,7 @@ import {
 type Role = "viewer" | "editor" | "supervisor";
 type InviteType = "email" | "link";
 type ViewMode = "overview" | "compose";
+type Id = number | string;
 
 type AccessUser = {
   userId: string;
@@ -28,14 +29,233 @@ type AccessUser = {
   tier?: Tier;
 };
 
+type ApiObject = Record<string, unknown>;
+
+type UserRef = {
+  id: Id | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  avatar: string | null;
+  image: string | null;
+};
+
+type ParticipantRef = {
+  id: Id | null;
+  name: string | null;
+  surname: string | null;
+};
+
+type GridRef = {
+  id: Id | null;
+  name: string | null;
+  grid_code: string | null;
+};
+
+type MembershipRecord = {
+  role: string | null;
+  user_id: Id | null;
+  user: UserRef | null;
+  user_first_name: string | null;
+  user_last_name: string | null;
+  user_email: string | null;
+};
+
+type ParticipantRecord = {
+  tier: Tier | null;
+  user_id: Id | null;
+  user: UserRef | null;
+};
+
+type GridRecord = {
+  creator: Id | null;
+};
+
+type InvitationRecord = {
+  id: Id | null;
+  token: string | null;
+  invite_token: string | null;
+  invitation_token: string | null;
+  accept_token: string | null;
+  invite_url: string | null;
+  link_url: string | null;
+  invitation_url: string | null;
+  url: string | null;
+  link: string | null;
+  type: string | null;
+  role: string | null;
+  status: string | null;
+  active: boolean | null;
+  participant_id: Id | null;
+  participant: ParticipantRef | null;
+  to_user_id: Id | null;
+  to_user: UserRef | null;
+  recipient_id: Id | null;
+  recipient: UserRef | null;
+  grid_id: Id | null;
+  grid: GridRef | null;
+};
+
 const ROLE_RANK: Record<Role, number> = { viewer: 0, editor: 1, supervisor: 2 };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function getTokenFromInvite(inv: any): string | null {
-  const direct = inv?.token ?? inv?.invite_token ?? inv?.invitation_token ?? inv?.accept_token;
+function asObject(value: unknown): ApiObject | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as ApiObject;
+}
+
+function listFromResponse(data: unknown): unknown[] {
+  if (Array.isArray(data)) return data;
+  const raw = asObject(data);
+  if (raw && Array.isArray(raw.results)) return raw.results;
+  return [];
+}
+
+function readId(value: unknown): Id | null {
+  if (typeof value === "number" || typeof value === "string") return value;
+  return null;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function readBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function normalizeUserRef(value: unknown): UserRef | null {
+  const raw = asObject(value);
+  if (!raw) return null;
+  const id = readId(raw.id);
+  const firstName = readString(raw.first_name);
+  const lastName = readString(raw.last_name);
+  const email = readString(raw.email);
+  const avatarUrl = readString(raw.avatar_url);
+  const avatar = readString(raw.avatar);
+  const image = readString(raw.image);
+  if (id == null && !firstName && !lastName && !email && !avatarUrl && !avatar && !image) return null;
+  return {
+    id,
+    first_name: firstName,
+    last_name: lastName,
+    email,
+    avatar_url: avatarUrl,
+    avatar,
+    image,
+  };
+}
+
+function normalizeParticipantRef(value: unknown): ParticipantRef | null {
+  const raw = asObject(value);
+  if (!raw) return null;
+  const id = readId(raw.id);
+  const name = readString(raw.name);
+  const surname = readString(raw.surname);
+  if (id == null && !name && !surname) return null;
+  return {
+    id,
+    name,
+    surname,
+  };
+}
+
+function normalizeGridRef(value: unknown): GridRef | null {
+  const raw = asObject(value);
+  if (!raw) return null;
+  const id = readId(raw.id);
+  const name = readString(raw.name);
+  const gridCode = readString(raw.grid_code);
+  if (id == null && !name && !gridCode) return null;
+  return {
+    id,
+    name,
+    grid_code: gridCode,
+  };
+}
+
+function normalizeMembershipList(data: unknown): MembershipRecord[] {
+  return listFromResponse(data).map((item) => {
+    const raw = asObject(item) ?? {};
+    return {
+      role: readString(raw.role),
+      user_id: readId(raw.user_id),
+      user: normalizeUserRef(raw.user),
+      user_first_name: readString(raw.user_first_name),
+      user_last_name: readString(raw.user_last_name),
+      user_email: readString(raw.user_email),
+    } satisfies MembershipRecord;
+  });
+}
+
+function normalizeParticipantList(data: unknown): ParticipantRecord[] {
+  return listFromResponse(data).map((item) => {
+    const raw = asObject(item) ?? {};
+    const tierRaw = readString(raw.tier);
+    const tier =
+      tierRaw === "PRIMARY" || tierRaw === "SECONDARY" || tierRaw === "TERTIARY"
+        ? tierRaw
+        : null;
+    return {
+      tier,
+      user_id: readId(raw.user_id),
+      user: normalizeUserRef(raw.user),
+    } satisfies ParticipantRecord;
+  });
+}
+
+function normalizeGridRecord(data: unknown): GridRecord {
+  const raw = asObject(data) ?? {};
+  return {
+    creator: readId(raw.creator),
+  };
+}
+
+function normalizeInvitation(data: unknown): InvitationRecord {
+  const raw = asObject(data) ?? {};
+  return {
+    id: readId(raw.id),
+    token: readString(raw.token),
+    invite_token: readString(raw.invite_token),
+    invitation_token: readString(raw.invitation_token),
+    accept_token: readString(raw.accept_token),
+    invite_url: readString(raw.invite_url),
+    link_url: readString(raw.link_url),
+    invitation_url: readString(raw.invitation_url),
+    url: readString(raw.url),
+    link: readString(raw.link),
+    type: readString(raw.type),
+    role: readString(raw.role),
+    status: readString(raw.status),
+    active: readBoolean(raw.active),
+    participant_id: readId(raw.participant_id),
+    participant: normalizeParticipantRef(raw.participant),
+    to_user_id: readId(raw.to_user_id),
+    to_user: normalizeUserRef(raw.to_user),
+    recipient_id: readId(raw.recipient_id),
+    recipient: normalizeUserRef(raw.recipient),
+    grid_id: readId(raw.grid_id),
+    grid: normalizeGridRef(raw.grid),
+  };
+}
+
+function normalizeInvitationList(data: unknown): InvitationRecord[] {
+  return listFromResponse(data).map((item) => normalizeInvitation(item));
+}
+
+function parseApiError(data: unknown, fallback: string): string {
+  const raw = asObject(data);
+  const error = raw ? readString(raw.error) : null;
+  const detail = raw ? readString(raw.detail) : null;
+  return error || detail || fallback;
+}
+
+function getTokenFromInvite(inv: InvitationRecord): string | null {
+  const direct = inv.token ?? inv.invite_token ?? inv.invitation_token ?? inv.accept_token;
   if (direct) return String(direct);
 
-  const rawUrl = inv?.link_url ?? inv?.invite_url ?? inv?.invitation_url ?? inv?.url ?? inv?.link;
+  const rawUrl = inv.link_url ?? inv.invite_url ?? inv.invitation_url ?? inv.url ?? inv.link;
   if (!rawUrl || typeof rawUrl !== "string") return null;
 
   try {
@@ -50,19 +270,13 @@ function getTokenFromInvite(inv: any): string | null {
   }
 }
 
-function getShareUrl(inv: any): string {
-  const explicit = inv?.link_url ?? inv?.invite_url ?? inv?.invitation_url ?? inv?.url ?? inv?.link;
+function getShareUrl(inv: InvitationRecord): string {
+  const explicit = inv.link_url ?? inv.invite_url ?? inv.invitation_url ?? inv.url ?? inv.link;
   if (explicit && typeof explicit === "string") return explicit;
   const token = getTokenFromInvite(inv);
   if (!token) return "";
   if (typeof window !== "undefined") return `${window.location.origin}/invite/${encodeURIComponent(token)}`;
   return `/invite/${encodeURIComponent(token)}`;
-}
-
-function listFromResponse(data: any): any[] {
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.results)) return data.results;
-  return [];
 }
 
 export default function InviteDialog({
@@ -95,7 +309,7 @@ export default function InviteDialog({
   const [sendingEmails, setSendingEmails] = React.useState(false);
 
   const [accessList, setAccessList] = React.useState<AccessUser[]>([]);
-  const [viewerLinks, setViewerLinks] = React.useState<any[]>([]);
+  const [viewerLinks, setViewerLinks] = React.useState<InvitationRecord[]>([]);
   const [generalAccessEnabled, setGeneralAccessEnabled] = React.useState(false);
   const [generalAccessUrl, setGeneralAccessUrl] = React.useState("");
 
@@ -120,37 +334,38 @@ export default function InviteDialog({
         fetch(`/api/invitations/?grid=${gridId}`, { cache: "no-store" }),
       ]);
 
-      const membersData = membersRes.ok ? await membersRes.json().catch(() => ({})) : {};
-      const participantsData = participantsRes.ok ? await participantsRes.json().catch(() => ({})) : {};
-      const gridData = gridRes.ok ? await gridRes.json().catch(() => ({})) : {};
-      const invitesData = invitesRes.ok ? await invitesRes.json().catch(() => ({})) : {};
+      const membersData = membersRes.ok ? await membersRes.json().catch(() => null) : null;
+      const participantsData = participantsRes.ok ? await participantsRes.json().catch(() => null) : null;
+      const gridData = gridRes.ok ? await gridRes.json().catch(() => null) : null;
+      const invitesData = invitesRes.ok ? await invitesRes.json().catch(() => null) : null;
 
-      const memberships = listFromResponse(membersData);
-      const participants = listFromResponse(participantsData);
-      const invites = listFromResponse(invitesData);
+      const memberships = normalizeMembershipList(membersData);
+      const participants = normalizeParticipantList(participantsData);
+      const invites = normalizeInvitationList(invitesData);
 
       const tierByUser = new Map<string, Tier>();
       for (const p of participants) {
-        const uidRaw = p?.user_id ?? (typeof p?.user === "number" ? p.user : p?.user?.id ?? p?.user);
+        const uidRaw = p.user_id;
         if (uidRaw === null || uidRaw === undefined) continue;
         const uid = String(uidRaw);
-        const tier = p?.tier as Tier | undefined;
+        const tier = p.tier;
         if (!tier || tierByUser.has(uid)) continue;
-        if (tier === "PRIMARY" || tier === "SECONDARY" || tier === "TERTIARY") {
-          tierByUser.set(uid, tier);
-        }
+        tierByUser.set(uid, tier);
       }
 
-      const creatorId = String(gridData?.creator ?? "");
+      const creatorIdRaw = normalizeGridRecord(gridData).creator;
+      const creatorId = creatorIdRaw == null ? "" : String(creatorIdRaw);
       const byUser = new Map<string, AccessUser>();
       for (const m of memberships) {
-        const uidRaw = m?.user_id ?? (typeof m?.user === "number" ? m.user : m?.user?.id ?? m?.user);
+        const uidRaw = m.user_id;
         if (uidRaw === null || uidRaw === undefined) continue;
         const uid = String(uidRaw);
-        const roleValue = (m?.role || "viewer") as Role;
-        const first = m?.user_first_name ?? m?.user?.first_name ?? "";
-        const last = m?.user_last_name ?? m?.user?.last_name ?? "";
-        const email = m?.user_email ?? m?.user?.email ?? "";
+        const rawRole = String(m.role ?? "").toLowerCase();
+        const roleValue: Role =
+          rawRole === "supervisor" || rawRole === "editor" || rawRole === "viewer" ? rawRole : "viewer";
+        const first = m.user_first_name ?? m.user?.first_name ?? "";
+        const last = m.user_last_name ?? m.user?.last_name ?? "";
+        const email = m.user_email ?? m.user?.email ?? "";
         const name = [first, last].filter(Boolean).join(" ").trim() || email || `User ${uid}`;
 
         const existing = byUser.get(uid);
@@ -175,11 +390,11 @@ export default function InviteDialog({
         .sort((a, b) => ROLE_RANK[b.role] - ROLE_RANK[a.role] || a.name.localeCompare(b.name));
       setAccessList(filtered);
 
-      const activeViewerLinks = invites.filter((inv: any) => {
-        const typeOk = String(inv?.type || "").toLowerCase() === "link";
-        const roleOk = String(inv?.role || "").toLowerCase() === "viewer";
-        const status = String(inv?.status || "").toLowerCase();
-        const active = inv?.active !== false && status !== "cancelled" && status !== "expired";
+      const activeViewerLinks = invites.filter((inv) => {
+        const typeOk = String(inv.type ?? "").toLowerCase() === "link";
+        const roleOk = String(inv.role ?? "").toLowerCase() === "viewer";
+        const status = String(inv.status ?? "").toLowerCase();
+        const active = inv.active !== false && status !== "cancelled" && status !== "expired";
         return typeOk && roleOk && active;
       });
       setViewerLinks(activeViewerLinks);
@@ -262,8 +477,8 @@ export default function InviteDialog({
     setError(null);
     try {
       const activeViewerLinks = viewerLinks.filter((inv) => {
-        const status = String(inv?.status || "").toLowerCase();
-        return inv?.active !== false && status !== "cancelled" && status !== "expired";
+        const status = String(inv.status ?? "").toLowerCase();
+        return inv.active !== false && status !== "cancelled" && status !== "expired";
       });
 
       if (!generalAccessEnabled) {
@@ -272,13 +487,14 @@ export default function InviteDialog({
           return;
         }
 
+        const idsToCancel = activeViewerLinks
+          .map((inv) => inv.id)
+          .filter((id): id is Id => id !== null);
+
         const cancelResults = await Promise.allSettled(
-          activeViewerLinks
-            .map((inv) => inv?.id)
-            .filter((id) => id !== null && id !== undefined)
-            .map((id) =>
-              fetch(`/api/invitations/${encodeURIComponent(String(id))}/cancel/`, { method: "POST" })
-            )
+          idsToCancel.map((id) =>
+            fetch(`/api/invitations/${encodeURIComponent(String(id))}/cancel/`, { method: "POST" })
+          )
         );
 
         const failedCancel = cancelResults.find(
@@ -290,8 +506,8 @@ export default function InviteDialog({
 
         setViewerLinks((prev) =>
           prev.map((inv) => {
-            const id = inv?.id;
-            const isCancelled = activeViewerLinks.some((a) => String(a?.id) === String(id));
+            const id = inv.id;
+            const isCancelled = id !== null && idsToCancel.some((targetId) => String(targetId) === String(id));
             if (!isCancelled) return inv;
             return { ...inv, active: false, status: "cancelled" };
           })
@@ -315,16 +531,17 @@ export default function InviteDialog({
           role: "viewer",
         }),
       });
-      const body = await res.json().catch(() => ({}));
+      const bodyRaw = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(body?.error || body?.detail || "Could not save general access.");
+        throw new Error(parseApiError(bodyRaw, "Could not save general access."));
       }
+      const body = normalizeInvitation(bodyRaw);
       const url = getShareUrl(body);
       setGeneralAccessUrl(url);
       setGeneralAccessEnabled(true);
       setViewerLinks((prev) => [...prev, body]);
-    } catch (e: any) {
-      setError(e?.message || "Could not save general access.");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not save general access.");
     } finally {
       setSavingGeneral(false);
     }
@@ -338,8 +555,17 @@ export default function InviteDialog({
     setSendingEmails(true);
     setError(null);
 
-    const payloads = emails.map((email) => {
-      const p: Record<string, any> = {
+    type EmailInvitePayload = {
+      grid: number;
+      type: "email";
+      email: string;
+      role: Role;
+      message?: string;
+      participant_tier?: Tier;
+    };
+
+    const payloads: EmailInvitePayload[] = emails.map((email) => {
+      const p: EmailInvitePayload = {
         grid: gridId,
         type: "email",
         email,
@@ -357,16 +583,18 @@ export default function InviteDialog({
           headers: { "content-type": "application/json" },
           body: JSON.stringify(p),
         }).then(async (res) => {
-          const body = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(body?.error || body?.detail || "Invite failed.");
-          return body;
+          const bodyRaw = await res.json().catch(() => null);
+          if (!res.ok) throw new Error(parseApiError(bodyRaw, "Invite failed."));
+          return normalizeInvitation(bodyRaw);
         })
       )
     );
 
-    const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+    const failed = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
     if (failed.length > 0) {
-      setError(failed[0]?.reason?.message || `${failed.length} invites failed.`);
+      const firstReason = failed[0]?.reason;
+      const reasonMessage = firstReason instanceof Error ? firstReason.message : "";
+      setError(reasonMessage || `${failed.length} invites failed.`);
       setSendingEmails(false);
       return;
     }

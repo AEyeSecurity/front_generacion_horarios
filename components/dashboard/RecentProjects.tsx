@@ -10,24 +10,84 @@ const EN_DAY = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 
 type View = "grid" | "list";
 type Sort = "chrono" | "alpha";
+type Id = number | string;
 type Member = { id: number; name: string; avatarUrl: string | null };
-type MembershipLite = {
-  role?: string | null;
-  user_id?: number | string | null;
-  user?: {
-    id?: number | string | null;
-    first_name?: string | null;
-    last_name?: string | null;
-    email?: string | null;
-    avatar_url?: string | null;
-    avatar?: string | null;
-    image?: string | null;
-  } | number | null;
-  user_first_name?: string | null;
-  user_last_name?: string | null;
-  user_email?: string | null;
-  user_avatar_url?: string | null;
+type UserSummary = {
+  id: Id | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  avatar: string | null;
+  image: string | null;
 };
+type MembershipLite = {
+  role: string | null;
+  user_id: Id | null;
+  user: UserSummary | null;
+  user_first_name: string | null;
+  user_last_name: string | null;
+  user_email: string | null;
+  user_avatar_url: string | null;
+};
+
+function asObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function readId(value: unknown): Id | null {
+  if (typeof value === "number" || typeof value === "string") return value;
+  return null;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function normalizeUserSummary(value: unknown): UserSummary | null {
+  const raw = asObject(value);
+  if (!raw) return null;
+  const id = readId(raw.id);
+  const firstName = readString(raw.first_name);
+  const lastName = readString(raw.last_name);
+  const email = readString(raw.email);
+  const avatarUrl = readString(raw.avatar_url);
+  const avatar = readString(raw.avatar);
+  const image = readString(raw.image);
+  if (id == null && !firstName && !lastName && !email && !avatarUrl && !avatar && !image) return null;
+  return {
+    id,
+    first_name: firstName,
+    last_name: lastName,
+    email,
+    avatar_url: avatarUrl,
+    avatar,
+    image,
+  };
+}
+
+function normalizeMembershipList(data: unknown): MembershipLite[] {
+  const dataObj = asObject(data);
+  const rawList = Array.isArray(data)
+    ? data
+    : dataObj && Array.isArray(dataObj.results)
+      ? dataObj.results
+      : [];
+  return rawList.map((item) => {
+    const raw = asObject(item) ?? {};
+    const user = normalizeUserSummary(raw.user);
+    return {
+      role: readString(raw.role),
+      user_id: readId(raw.user_id),
+      user,
+      user_first_name: readString(raw.user_first_name),
+      user_last_name: readString(raw.user_last_name),
+      user_email: readString(raw.user_email),
+      user_avatar_url: readString(raw.user_avatar_url),
+    } satisfies MembershipLite;
+  });
+}
 
 function toDisplayName(first: string, last: string, fallback: string) {
   const name = [first, last].filter(Boolean).join(" ").trim();
@@ -133,15 +193,12 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
             const gridId = grid.id;
             const r = await fetch(`/api/grid_memberships/?grid=${gridId}`, { cache: "no-store", signal: abort.signal });
             if (!r.ok) return;
-            const data = await r.json();
-            const list = (Array.isArray(data) ? data : data.results ?? []) as MembershipLite[];
+            const data = await r.json().catch(() => null);
+            const list = normalizeMembershipList(data);
 
             const byUserId = new Map<number, Member>();
             for (const m of list) {
-              const userId = Number(
-                m.user_id ??
-                  (typeof m.user === "number" ? m.user : m.user?.id)
-              );
+              const userId = Number(m.user_id);
               if (!Number.isFinite(userId)) continue;
               if (byUserId.has(userId)) continue;
 

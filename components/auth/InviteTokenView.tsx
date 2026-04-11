@@ -4,74 +4,57 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+type Id = number | string;
+
+type UserRef = {
+  id: Id | null;
+  email: string | null;
+};
+
+type GridRef = {
+  id: Id | null;
+  name: string | null;
+  grid_code: string | null;
+};
+
+type ParticipantRef = {
+  id: Id | null;
+  name: string | null;
+  surname: string | null;
+};
+
 type ResolveData = {
-  grid_name?: string;
-  grid?: {
-    id?: number | string;
-    name?: string;
-    grid_code?: string | null;
-  } | null;
-  grid_code?: string | null;
-  role?: string;
-  type?: string;
-  message?: string;
-  status?: string;
-  active?: boolean;
-  expires_at?: string | null;
-  email?: string | null;
-  to_email?: string | null;
-  to_user_email?: string | null;
-  recipient_email?: string | null;
-  to_user?: { email?: string | null } | null;
-  recipient?: { email?: string | null } | null;
+  grid_name: string | null;
+  grid_id: Id | null;
+  grid: GridRef | null;
+  grid_code: string | null;
+  role: string | null;
+  type: string | null;
+  message: string | null;
+  status: string | null;
+  active: boolean | null;
+  expires_at: string | null;
+  email: string | null;
+  to_email: string | null;
+  to_user_email: string | null;
+  recipient_email: string | null;
+  to_user_id: Id | null;
+  to_user: UserRef | null;
+  recipient_id: Id | null;
+  recipient: UserRef | null;
+  participant_id: Id | null;
+  participant: ParticipantRef | null;
 };
 
 type WhoAmI = {
-  id?: number | string | null;
-  email?: string | null;
-};
-
-type InviteListItem = {
-  token?: string | null;
-  invite_token?: string | null;
-  invitation_token?: string | null;
-  accept_token?: string | null;
-  invite_url?: string | null;
-  link_url?: string | null;
-  invitation_url?: string | null;
-  url?: string | null;
-  link?: string | null;
-  grid_name?: string | null;
-  grid_code?: string | null;
-  grid?: {
-    id?: number | string;
-    name?: string;
-    grid_code?: string | null;
-  } | number | string | null;
-  role?: string | null;
-  type?: string | null;
-  message?: string | null;
-  status?: string | null;
-  active?: boolean;
-  expires_at?: string | null;
-  email?: string | null;
-  to_email?: string | null;
-  to_user_email?: string | null;
-  recipient_email?: string | null;
-  to_user?: { email?: string | null } | null;
-  recipient?: { email?: string | null } | null;
+  id: Id | null;
+  email: string | null;
 };
 
 type MembershipListItem = {
-  user_id?: number | string | null;
-  user_email?: string | null;
-  user?:
-    | number
-    | {
-        id?: number | string | null;
-        email?: string | null;
-      }
-    | null;
+  user_id: Id | null;
+  user_email: string | null;
+  user: UserRef | null;
 };
 
 type StatusBadge = {
@@ -83,6 +66,61 @@ const AUTO_JOIN_STORAGE_KEY = "invite_auto_join_token";
 
 function normalizeEmail(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
+}
+
+function asObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function readId(value: unknown): Id | null {
+  if (typeof value === "number" || typeof value === "string") return value;
+  return null;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function readBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function normalizeUserRef(value: unknown): UserRef | null {
+  const raw = asObject(value);
+  if (!raw) return null;
+  const id = readId(raw.id);
+  const email = readString(raw.email);
+  if (id == null && !email) return null;
+  return { id, email };
+}
+
+function normalizeGridRef(value: unknown): GridRef | null {
+  const raw = asObject(value);
+  if (!raw) return null;
+  const id = readId(raw.id);
+  const name = readString(raw.name);
+  const gridCode = readString(raw.grid_code);
+  if (id == null && !name && !gridCode) return null;
+  return {
+    id,
+    name,
+    grid_code: gridCode,
+  };
+}
+
+function normalizeParticipantRef(value: unknown): ParticipantRef | null {
+  const raw = asObject(value);
+  if (!raw) return null;
+  const id = readId(raw.id);
+  const name = readString(raw.name);
+  const surname = readString(raw.surname);
+  if (id == null && !name && !surname) return null;
+  return {
+    id,
+    name,
+    surname,
+  };
 }
 
 function statusBadgeFromValue(status: unknown): StatusBadge {
@@ -102,63 +140,122 @@ function statusBadgeFromValue(status: unknown): StatusBadge {
   return { label: "Pending...", className: "text-gray-700 bg-gray-100 border border-gray-200" };
 }
 
-function tokenFromAnyInvite(inv: InviteListItem): string {
-  const direct = inv.token ?? inv.invite_token ?? inv.invitation_token ?? inv.accept_token;
-  if (direct) return String(direct);
-
-  const rawUrl = inv.link_url ?? inv.invite_url ?? inv.invitation_url ?? inv.url ?? inv.link;
-  if (!rawUrl || typeof rawUrl !== "string") return "";
-  try {
-    const u = new URL(rawUrl, "http://localhost");
-    const t = u.searchParams.get("token");
-    if (t) return t;
-    const m = u.pathname.match(/\/invite\/([^/?#]+)/);
-    return m?.[1] ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function listFromResponse(data: unknown): InviteListItem[] {
-  if (Array.isArray(data)) return data as InviteListItem[];
-  if (data && typeof data === "object" && Array.isArray((data as { results?: unknown[] }).results)) {
-    return (data as { results: unknown[] }).results as InviteListItem[];
-  }
-  return [];
-}
-
-function mapInviteToResolveData(inv: InviteListItem): ResolveData {
-  const gridObj = typeof inv.grid === "object" && inv.grid ? inv.grid : null;
+function normalizeResolveData(data: unknown): ResolveData {
+  const raw = asObject(data) ?? {};
+  const grid = normalizeGridRef(raw.grid);
+  const toUser = normalizeUserRef(raw.to_user);
+  const recipient = normalizeUserRef(raw.recipient);
+  const participant = normalizeParticipantRef(raw.participant);
   return {
-    grid_name: inv.grid_name ?? gridObj?.name ?? undefined,
-    grid: gridObj
+    grid_name: readString(raw.grid_name),
+    grid_id: readId(raw.grid_id),
+    grid,
+    grid_code: readString(raw.grid_code),
+    role: readString(raw.role),
+    type: readString(raw.type),
+    message: readString(raw.message),
+    status: readString(raw.status),
+    active: readBoolean(raw.active),
+    expires_at: readString(raw.expires_at),
+    email: readString(raw.email),
+    to_email: readString(raw.to_email),
+    to_user_email: readString(raw.to_user_email),
+    recipient_email: readString(raw.recipient_email),
+    to_user_id: readId(raw.to_user_id),
+    to_user: toUser,
+    recipient_id: readId(raw.recipient_id),
+    recipient,
+    participant_id: readId(raw.participant_id),
+    participant,
+  };
+}
+
+type AcceptResponse = {
+  error: string | null;
+  detail: string | null;
+  grid_code: string | null;
+  membership: {
+    grid_id: Id | null;
+    grid_code: string | null;
+  } | null;
+};
+
+function normalizeAcceptResponse(data: unknown): AcceptResponse {
+  const raw = asObject(data) ?? {};
+  const membershipRaw = asObject(raw.membership);
+  return {
+    error: readString(raw.error),
+    detail: readString(raw.detail),
+    grid_code: readString(raw.grid_code),
+    membership: membershipRaw
       ? {
-          id: gridObj.id,
-          name: gridObj.name,
-          grid_code: gridObj.grid_code ?? null,
+          grid_id: readId(membershipRaw.grid_id),
+          grid_code: readString(membershipRaw.grid_code),
         }
       : null,
-    grid_code: inv.grid_code ?? gridObj?.grid_code ?? null,
-    role: inv.role ?? undefined,
-    type: inv.type ?? undefined,
-    message: inv.message ?? undefined,
-    status: inv.status ?? (inv.active === false ? "inactive" : "pending"),
-    active: inv.active,
-    expires_at: inv.expires_at ?? null,
-    email: inv.email ?? null,
-    to_email: inv.to_email ?? null,
-    to_user_email: inv.to_user_email ?? null,
-    recipient_email: inv.recipient_email ?? null,
-    to_user: inv.to_user ?? null,
-    recipient: inv.recipient ?? null,
   };
+}
+
+function normalizeWhoAmI(data: unknown): WhoAmI {
+  const raw = asObject(data) ?? {};
+  return {
+    id: readId(raw.id),
+    email: readString(raw.email),
+  };
+}
+
+function normalizeMembershipList(data: unknown): MembershipListItem[] {
+  const dataObj = asObject(data);
+  const rawList = Array.isArray(data)
+    ? data
+    : dataObj && Array.isArray(dataObj.results)
+      ? dataObj.results
+      : [];
+  return rawList.map((item) => {
+    const raw = asObject(item) ?? {};
+    const user = normalizeUserRef(raw.user);
+    return {
+      user_id: readId(raw.user_id),
+      user_email: readString(raw.user_email),
+      user,
+    } satisfies MembershipListItem;
+  });
+}
+
+function hasRenderableResolveInfo(data: ResolveData): boolean {
+  return Boolean(
+    data.status ||
+      data.grid_name ||
+      data.grid?.name ||
+      data.role ||
+      data.type ||
+      data.message ||
+      data.expires_at,
+  );
+}
+
+function statusLowercase(value: string | null): string {
+  return String(value ?? "").toLowerCase();
+}
+
+function resolveErrorMessage(raw: unknown, fallback: string): string {
+  const obj = asObject(raw);
+  const error = obj ? readString(obj.error) : null;
+  const detail = obj ? readString(obj.detail) : null;
+  return error || detail || fallback;
+}
+
+function resolveInactiveError(raw: unknown): boolean {
+  const obj = asObject(raw);
+  const message = String((obj ? readString(obj.error) : null) ?? (obj ? readString(obj.detail) : null) ?? "").toLowerCase();
+  return message.includes("inactive");
 }
 
 function gridTargetFromResolved(data: ResolveData | null): { code: string | null; id: number | string | null } {
   if (!data) return { code: null, id: null };
   return {
     code: data.grid_code ?? data.grid?.grid_code ?? null,
-    id: data.grid?.id ?? null,
+    id: data.grid_id,
   };
 }
 
@@ -189,23 +286,15 @@ export default function InviteTokenView({ token }: { token: string }) {
     async (codeLike: string | number | null | undefined, idLike: string | number | null | undefined) => {
       let code = codeLike != null ? String(codeLike).trim() : "";
       const rawId = idLike != null ? String(idLike).trim() : "";
-      // Some backends can return grid code inside membership.grid; accept it directly.
-      if (!code && rawId && !/^\d+$/.test(rawId)) {
-        code = rawId;
-      }
       if (!code && idLike != null) {
         try {
-          // First try as numeric/id route.
           if (rawId) {
-            let r = await fetch(`/api/grids/${encodeURIComponent(rawId)}`, { cache: "no-store" });
-            if (!r.ok) {
-              // Fallback: maybe the raw value is actually a grid code.
-              r = await fetch(`/api/grids/code/${encodeURIComponent(rawId)}`, { cache: "no-store" });
-            }
+            const r = await fetch(`/api/grids/${encodeURIComponent(rawId)}`, { cache: "no-store" });
             if (r.ok) {
-              const g = await r.json().catch(() => ({}));
-              if (g?.grid_code) code = String(g.grid_code).trim();
-              else if (g?.id != null && g?.grid_code == null && rawId && !/^\d+$/.test(rawId)) code = rawId;
+              const gRaw = await r.json().catch(() => null);
+              const g = asObject(gRaw);
+              const gridCode = g ? readString(g.grid_code) : null;
+              if (gridCode) code = gridCode.trim();
             }
           }
         } catch {}
@@ -226,8 +315,8 @@ export default function InviteTokenView({ token }: { token: string }) {
         if (!cancelled) {
           setIsAuthenticated(r.ok);
           if (r.ok) {
-            const me = (await r.json().catch(() => ({}))) as WhoAmI;
-            setMeId(me?.id != null ? String(me.id) : "");
+            const me = normalizeWhoAmI(await r.json().catch(() => null));
+            setMeId(me.id != null ? String(me.id) : "");
             setMeEmail(normalizeEmail(me.email));
           }
         }
@@ -247,60 +336,40 @@ export default function InviteTokenView({ token }: { token: string }) {
       setError(null);
       try {
         const r = await fetch(`/api/invitations/resolve/?token=${encodeURIComponent(token)}`, { cache: "no-store" });
-        const j = await r.json().catch(() => ({}));
-        const status = String(j?.status ?? "").toLowerCase();
-        const gridCode = j?.grid_code ?? j?.grid?.grid_code ?? null;
-        const gridId = j?.grid?.id ?? null;
+        const resolveRaw = await r.json().catch(() => null);
+        const resolvedFromApi = normalizeResolveData(resolveRaw);
+        const status = statusLowercase(resolvedFromApi.status);
+        const gridCode = resolvedFromApi.grid_code ?? resolvedFromApi.grid?.grid_code ?? null;
+        const gridId = resolvedFromApi.grid_id ?? resolvedFromApi.grid?.id ?? null;
 
         if (status === "accepted") {
           const moved = await navigateToGrid(gridCode, gridId);
           if (!moved && !cancelled) {
-            setResolved(j as ResolveData);
+            setResolved(resolvedFromApi);
           }
           return;
         }
 
-        const hasRenderableInfo = Boolean(
-          j?.status || j?.grid_name || j?.grid?.name || j?.role || j?.type || j?.message || j?.expires_at
-        );
+        const hasRenderableInfo = hasRenderableResolveInfo(resolvedFromApi);
         if (!r.ok) {
           if (hasRenderableInfo && !cancelled) {
-            const resolvedFromResolve = j as ResolveData;
-            setResolved(resolvedFromResolve);
-            const target = gridTargetFromResolved(resolvedFromResolve);
-            if (String(resolvedFromResolve.status ?? "").toLowerCase() === "accepted" && (target.code || target.id)) {
+            setResolved(resolvedFromApi);
+            const target = gridTargetFromResolved(resolvedFromApi);
+            if (statusLowercase(resolvedFromApi.status) === "accepted" && (target.code || target.id)) {
               await navigateToGrid(target.code, target.id);
             }
             return;
           }
 
-          // Fallback: read invitation list and recover full status/details by token.
-          const listRes = await fetch("/api/invitations/?ordering=-created_at", { cache: "no-store" });
-          if (listRes.ok) {
-            const listData = await listRes.json().catch(() => ({}));
-            const list = listFromResponse(listData);
-            const found = list.find((inv) => tokenFromAnyInvite(inv) === token) ?? null;
-            if (found && !cancelled) {
-              const recovered = mapInviteToResolveData(found);
-              setResolved(recovered);
-              const target = gridTargetFromResolved(recovered);
-              if (String(recovered.status ?? "").toLowerCase() === "accepted" && (target.code || target.id)) {
-                await navigateToGrid(target.code, target.id);
-              }
-              return;
-            }
-          }
-
           // Never surface "Invitation is inactive" generic message.
-          const rawErr = String(j?.error || j?.detail || "").toLowerCase();
-          if (rawErr.includes("inactive")) {
+          if (resolveInactiveError(resolveRaw)) {
             if (!cancelled) setError("Invitation could not be loaded.");
             return;
           }
-          setError(j?.error || j?.detail || "Invitation is invalid or expired.");
+          setError(resolveErrorMessage(resolveRaw, "Invitation is invalid or expired."));
           return;
         }
-        if (!cancelled) setResolved(j as ResolveData);
+        if (!cancelled) setResolved(resolvedFromApi);
       } catch (e: unknown) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Could not resolve invitation.");
       } finally {
@@ -345,31 +414,32 @@ export default function InviteTokenView({ token }: { token: string }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ token }),
       });
-      const j = await r.json().catch(() => ({}));
+      const acceptRaw = await r.json().catch(() => null);
+      const acceptedData = normalizeAcceptResponse(acceptRaw);
       if (!r.ok) {
         if (r.status === 401) {
           router.push(`/login?next=${encodeURIComponent(`/invite/${token}`)}`);
           return;
         }
-        throw new Error(j?.error || j?.detail || "Could not accept invitation.");
+        throw new Error(acceptedData.error || acceptedData.detail || "Could not accept invitation.");
       }
       setAccepted(true);
       router.refresh();
       const gridCode =
-        j?.grid_code ??
-        j?.membership?.grid_code ??
+        acceptedData.grid_code ??
+        acceptedData.membership?.grid_code ??
         resolved?.grid_code ??
         resolved?.grid?.grid_code ??
         null;
-      const gridId = j?.membership?.grid || j?.membership?.grid_id || resolved?.grid?.id || null;
+      const gridId = acceptedData.membership?.grid_id ?? resolved?.grid_id ?? resolved?.grid?.id ?? null;
       let moved = await navigateToGrid(gridCode, gridId);
 
       if (!moved) {
         try {
           const rr = await fetch(`/api/invitations/resolve/?token=${encodeURIComponent(token)}`, { cache: "no-store" });
-          const rj = await rr.json().catch(() => ({}));
-          const rCode = rj?.grid_code ?? rj?.grid?.grid_code ?? null;
-          const rId = rj?.grid?.id ?? null;
+          const rj = normalizeResolveData(await rr.json().catch(() => null));
+          const rCode = rj.grid_code ?? rj.grid?.grid_code ?? null;
+          const rId = rj.grid_id ?? rj.grid?.id ?? null;
           moved = await navigateToGrid(rCode, rId);
         } catch {}
       }
@@ -396,14 +466,14 @@ export default function InviteTokenView({ token }: { token: string }) {
       if (cancelled) return;
       let moved = await navigateToGrid(
         resolved?.grid_code ?? resolved?.grid?.grid_code ?? null,
-        resolved?.grid?.id ?? null
+        resolved?.grid_id ?? resolved?.grid?.id ?? null
       );
       if (moved || cancelled) return;
 
       try {
         const rr = await fetch(`/api/invitations/resolve/?token=${encodeURIComponent(token)}`, { cache: "no-store" });
-        const rj = await rr.json().catch(() => ({}));
-        moved = await navigateToGrid(rj?.grid_code ?? rj?.grid?.grid_code ?? null, rj?.grid?.id ?? null);
+        const rj = normalizeResolveData(await rr.json().catch(() => null));
+        moved = await navigateToGrid(rj.grid_code ?? rj.grid?.grid_code ?? null, rj.grid_id ?? rj.grid?.id ?? null);
       } catch {}
       if (moved || cancelled) return;
 
@@ -420,7 +490,7 @@ export default function InviteTokenView({ token }: { token: string }) {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [accepted, navigateToGrid, resolved?.grid?.id, resolved?.grid?.grid_code, resolved?.grid_code, router, token]);
+  }, [accepted, navigateToGrid, resolved?.grid?.grid_code, resolved?.grid?.id, resolved?.grid_code, resolved?.grid_id, router, token]);
 
   useEffect(() => {
     if (!isLinkInvite) return;
@@ -463,15 +533,22 @@ export default function InviteTokenView({ token }: { token: string }) {
 
     let cancelled = false;
     (async () => {
-      let gridId: string | null = resolved?.grid?.id != null ? String(resolved.grid.id) : null;
+      let gridId: string | null =
+        resolved?.grid_id != null
+          ? String(resolved.grid_id)
+          : resolved?.grid?.id != null
+          ? String(resolved.grid.id)
+          : null;
       const gridCode = resolved?.grid_code ?? resolved?.grid?.grid_code ?? null;
 
       if (!gridId && gridCode) {
         try {
           const gr = await fetch(`/api/grids/code/${encodeURIComponent(String(gridCode))}`, { cache: "no-store" });
           if (gr.ok) {
-            const gj = await gr.json().catch(() => ({}));
-            if (gj?.id != null) gridId = String(gj.id);
+            const gjRaw = await gr.json().catch(() => null);
+            const gj = asObject(gjRaw);
+            const resolvedGridId = gj ? readId(gj.id) : null;
+            if (resolvedGridId != null) gridId = String(resolvedGridId);
           }
         } catch {}
       }
@@ -480,16 +557,12 @@ export default function InviteTokenView({ token }: { token: string }) {
       try {
         const mr = await fetch(`/api/grid_memberships/?grid=${encodeURIComponent(gridId)}`, { cache: "no-store" });
         if (!mr.ok || cancelled) return;
-        const mj = await mr.json().catch(() => ({}));
-        const list: MembershipListItem[] = Array.isArray(mj)
-          ? (mj as MembershipListItem[])
-          : Array.isArray(mj?.results)
-            ? (mj.results as MembershipListItem[])
-            : [];
+        const mj = await mr.json().catch(() => null);
+        const list = normalizeMembershipList(mj);
         const myEmail = meEmail;
         const mine = list.find((m) => {
-          const uid = m?.user_id ?? (typeof m?.user === "number" ? m.user : m?.user?.id);
-          const email = normalizeEmail(m?.user_email ?? m?.user?.email ?? "");
+          const uid = m.user_id;
+          const email = normalizeEmail(m.user_email ?? m.user?.email ?? "");
           if (meId && uid != null && String(uid) === meId) return true;
           if (myEmail && email && email === myEmail) return true;
           return false;

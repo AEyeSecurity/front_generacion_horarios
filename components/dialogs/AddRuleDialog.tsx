@@ -67,6 +67,50 @@ type ExistingRule = {
   endHHMM: string;
 };
 
+type AvailabilityRuleRecord = {
+  id: number;
+  day_of_week: number;
+  preference: string;
+  start_time: string;
+  end_time: string;
+};
+
+const asObject = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+};
+
+const normalizeAvailabilityRuleRecord = (value: unknown): AvailabilityRuleRecord | null => {
+  const raw = asObject(value);
+  if (!raw) return null;
+  const id = Number(raw.id);
+  const dayOfWeek = Number(raw.day_of_week);
+  const preference = String(raw.preference ?? "");
+  const startTime = String(raw.start_time ?? "");
+  const endTime = String(raw.end_time ?? "");
+  if (!Number.isFinite(id) || !Number.isFinite(dayOfWeek)) return null;
+  if (!startTime || !endTime) return null;
+  return {
+    id,
+    day_of_week: dayOfWeek,
+    preference,
+    start_time: startTime,
+    end_time: endTime,
+  };
+};
+
+const normalizeAvailabilityRulesResponse = (value: unknown): AvailabilityRuleRecord[] => {
+  const raw = asObject(value);
+  const list = Array.isArray(value)
+    ? value
+    : raw && Array.isArray(raw.results)
+      ? raw.results
+      : [];
+  return list
+    .map((item) => normalizeAvailabilityRuleRecord(item))
+    .filter((rule): rule is AvailabilityRuleRecord => Boolean(rule));
+};
+
 const collectErrorMessages = (value: unknown): string[] => {
   if (value == null) return [];
   if (typeof value === "string") return [value];
@@ -192,17 +236,16 @@ export default function AddAvailabilityRuleDialog({
 
         const rulesRes = await fetch(`/api/availability_rules?participant=${participantId}`, { cache: "no-store" });
         if (!rulesRes.ok) throw new Error(rawError || `Error creating rule (${res.status})`);
-        const rulesData = await rulesRes.json().catch(() => ([]));
-        const rulesList = Array.isArray(rulesData) ? rulesData : rulesData.results ?? [];
+        const rulesData = await rulesRes.json().catch(() => null);
+        const rulesList = normalizeAvailabilityRulesResponse(rulesData);
 
         const existingRules: ExistingRule[] = rulesList
-          .map((rawRule: unknown) => {
-            const rule = (rawRule ?? {}) as Record<string, unknown>;
-            const id = Number(rule.id);
-            const ruleDay = Number(rule.day_of_week);
-            const rulePreference = String(rule.preference ?? "").toLowerCase();
-            const startHHMM = String(rule.start_time ?? "").slice(0, 5);
-            const endHHMM = String(rule.end_time ?? "").slice(0, 5);
+          .map((rule): ExistingRule | null => {
+            const id = rule.id;
+            const ruleDay = rule.day_of_week;
+            const rulePreference = rule.preference.toLowerCase();
+            const startHHMM = rule.start_time.slice(0, 5);
+            const endHHMM = rule.end_time.slice(0, 5);
             const startMin = toMin(startHHMM);
             const endMin = toMin(endHHMM);
             if (!Number.isFinite(id) || !Number.isFinite(ruleDay)) return null;
@@ -219,7 +262,7 @@ export default function AddAvailabilityRuleDialog({
             } satisfies ExistingRule;
           })
           .filter((rule: ExistingRule | null): rule is ExistingRule => Boolean(rule))
-          .filter((rule) => rule.day === day && rule.preference === preference);
+          .filter((rule: ExistingRule) => rule.day === day && rule.preference === preference);
 
         let mergedStart = toMin(start);
         let mergedEnd = toMin(end);

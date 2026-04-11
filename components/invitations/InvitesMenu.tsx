@@ -18,68 +18,67 @@ import {
 } from "@/lib/avatar";
 
 type InviteStatus = "pending" | "accepted" | "declined" | "expired";
+type Id = number | string;
+type ApiObject = Record<string, unknown>;
 
 type InviteUser = {
-  id?: number | string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-  email?: string | null;
-  [key: string]: unknown;
+  id: Id | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
 };
 
 type InviteGrid = {
-  id?: number | string | null;
-  name?: string | null;
-  grid_code?: string | null;
-  [key: string]: unknown;
+  id: Id | null;
+  name: string | null;
+  grid_code: string | null;
+};
+
+type InviteParticipant = {
+  id: Id | null;
+  name: string | null;
+  surname: string | null;
 };
 
 type Invite = {
-  id?: number | string | null;
-  token?: string | null;
-  invite_token?: string | null;
-  invitation_token?: string | null;
-  accept_token?: string | null;
-  invite_url?: string | null;
-  link_url?: string | null;
-  invitation_url?: string | null;
-  url?: string | null;
-  link?: string | null;
-  status?: string | null;
-  active?: boolean | null;
-  expires_at?: string | null;
-  created_at?: string | null;
-  createdAt?: string | null;
-  sent_at?: string | null;
-  date?: string | null;
-  role?: string | null;
-  message?: string | null;
-  type?: string | null;
-  direction?: string | null;
-  grid?: InviteGrid | number | string | null;
-  grid_id?: number | string | null;
-  grid_name?: string | null;
-  grid_code?: string | null;
-  gridCode?: string | null;
-  email?: string | null;
-  to_email?: string | null;
-  to_user_email?: string | null;
-  recipient_email?: string | null;
-  user_id?: number | string | null;
-  to_user_id?: number | string | null;
-  recipient_id?: number | string | null;
-  to_user?: InviteUser | null;
-  recipient?: InviteUser | null;
-  created_by?: InviteUser | null;
-  created_by_id?: number | string | null;
-  created_by_first_name?: string | null;
-  created_by_last_name?: string | null;
-  created_by_email?: string | null;
-  [key: string]: unknown;
+  id: Id | null;
+  token: string | null;
+  invite_token: string | null;
+  invitation_token: string | null;
+  accept_token: string | null;
+  invite_url: string | null;
+  link_url: string | null;
+  invitation_url: string | null;
+  url: string | null;
+  link: string | null;
+  status: string | null;
+  active: boolean | null;
+  expires_at: string | null;
+  created_at: string | null;
+  role: string | null;
+  message: string | null;
+  type: string | null;
+  direction: string | null;
+  grid: InviteGrid | null;
+  grid_id: Id | null;
+  grid_name: string | null;
+  grid_code: string | null;
+  email: string | null;
+  to_email: string | null;
+  to_user_email: string | null;
+  recipient_email: string | null;
+  to_user_id: Id | null;
+  recipient_id: Id | null;
+  to_user: InviteUser | null;
+  recipient: InviteUser | null;
+  participant_id: Id | null;
+  participant: InviteParticipant | null;
+  created_by: InviteUser | null;
+  created_by_id: Id | null;
+  created_by_first_name: string | null;
+  created_by_last_name: string | null;
+  created_by_email: string | null;
 };
-
-type ApiList = { results?: unknown };
-type ApiObject = Record<string, unknown>;
 
 const MONTH_MS = 31 * 24 * 60 * 60 * 1000;
 
@@ -87,12 +86,130 @@ function normalizeEmail(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
-function listFromResponse(data: unknown): Invite[] {
-  if (Array.isArray(data)) return data as Invite[];
-  if (data && typeof data === "object" && Array.isArray((data as ApiList).results)) {
-    return (data as ApiList).results as Invite[];
-  }
+function asObject(value: unknown): ApiObject | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as ApiObject;
+}
+
+function listFromResponse(data: unknown): unknown[] {
+  if (Array.isArray(data)) return data;
+  const raw = asObject(data);
+  if (raw && Array.isArray(raw.results)) return raw.results;
   return [];
+}
+
+function readId(value: unknown): Id | null {
+  if (typeof value === "number" || typeof value === "string") return value;
+  return null;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function readBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function normalizeInviteUser(value: unknown): InviteUser | null {
+  const raw = asObject(value);
+  if (!raw) return null;
+  const id = readId(raw.id);
+  const firstName = readString(raw.first_name);
+  const lastName = readString(raw.last_name);
+  const email = readString(raw.email);
+  if (id == null && !firstName && !lastName && !email) return null;
+  return {
+    id,
+    first_name: firstName,
+    last_name: lastName,
+    email,
+  };
+}
+
+function normalizeInviteGrid(value: unknown): InviteGrid | null {
+  const raw = asObject(value);
+  if (!raw) return null;
+  const id = readId(raw.id);
+  const name = readString(raw.name);
+  const gridCode = readString(raw.grid_code);
+  if (id == null && !name && !gridCode) return null;
+  return {
+    id,
+    name,
+    grid_code: gridCode,
+  };
+}
+
+function normalizeInviteParticipant(value: unknown): InviteParticipant | null {
+  const raw = asObject(value);
+  if (!raw) return null;
+  const id = readId(raw.id);
+  const name = readString(raw.name);
+  const surname = readString(raw.surname);
+  if (id == null && !name && !surname) return null;
+  return {
+    id,
+    name,
+    surname,
+  };
+}
+
+function normalizeInvite(value: unknown): Invite {
+  const raw = asObject(value) ?? {};
+  return {
+    id: readId(raw.id),
+    token: readString(raw.token),
+    invite_token: readString(raw.invite_token),
+    invitation_token: readString(raw.invitation_token),
+    accept_token: readString(raw.accept_token),
+    invite_url: readString(raw.invite_url),
+    link_url: readString(raw.link_url),
+    invitation_url: readString(raw.invitation_url),
+    url: readString(raw.url),
+    link: readString(raw.link),
+    status: readString(raw.status),
+    active: readBoolean(raw.active),
+    expires_at: readString(raw.expires_at),
+    created_at: readString(raw.created_at),
+    role: readString(raw.role),
+    message: readString(raw.message),
+    type: readString(raw.type),
+    direction: readString(raw.direction),
+    grid: normalizeInviteGrid(raw.grid),
+    grid_id: readId(raw.grid_id),
+    grid_name: readString(raw.grid_name),
+    grid_code: readString(raw.grid_code),
+    email: readString(raw.email),
+    to_email: readString(raw.to_email),
+    to_user_email: readString(raw.to_user_email),
+    recipient_email: readString(raw.recipient_email),
+    to_user_id: readId(raw.to_user_id),
+    recipient_id: readId(raw.recipient_id),
+    to_user: normalizeInviteUser(raw.to_user),
+    recipient: normalizeInviteUser(raw.recipient),
+    participant_id: readId(raw.participant_id),
+    participant: normalizeInviteParticipant(raw.participant),
+    created_by: normalizeInviteUser(raw.created_by),
+    created_by_id: readId(raw.created_by_id),
+    created_by_first_name: readString(raw.created_by_first_name),
+    created_by_last_name: readString(raw.created_by_last_name),
+    created_by_email: readString(raw.created_by_email),
+  };
+}
+
+function normalizeInviteList(data: unknown): Invite[] {
+  return listFromResponse(data).map((item) => normalizeInvite(item));
+}
+
+function mergeInvites(base: Invite, incoming: Invite): Invite {
+  const merged: Invite = { ...base };
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value !== null) {
+      merged[key as keyof Invite] = value as never;
+    }
+  }
+  return merged;
 }
 
 function tokenFromInvite(inv: Invite): string | null {
@@ -123,17 +240,14 @@ function inviteLink(inv: Invite): string {
 }
 
 function inviteKey(inv: Invite): string {
-  if (inv.id !== undefined && inv.id !== null) return `id:${String(inv.id)}`;
+  if (inv.id !== null) return `id:${String(inv.id)}`;
   const token = tokenFromInvite(inv);
   if (token) return `token:${token}`;
   return `fallback:${String(inv.email ?? "")}:${String(inv.created_at ?? "")}:${String(inv.role ?? "")}`;
 }
 
 function gridIdFromInvite(inv: Invite): string | null {
-  const raw =
-    (typeof inv.grid === "object" && inv.grid ? inv.grid.id : null) ??
-    inv.grid_id ??
-    (typeof inv.grid === "number" || typeof inv.grid === "string" ? inv.grid : null);
+  const raw = inv.grid_id ?? inv.grid?.id ?? null;
   if (raw === null || raw === undefined) return null;
   const asString = String(raw).trim();
   if (!/^\d+$/.test(asString)) return null;
@@ -141,28 +255,13 @@ function gridIdFromInvite(inv: Invite): string | null {
 }
 
 function gridCodeFromInvite(inv: Invite): string | null {
-  const explicit =
-    inv.grid_code ??
-    (typeof inv.grid === "object" && inv.grid ? inv.grid.grid_code : null) ??
-    inv.gridCode;
+  const explicit = inv.grid_code ?? inv.grid?.grid_code ?? null;
   if (explicit) return String(explicit);
-
-  if (typeof inv.grid === "string") {
-    const raw = inv.grid.trim();
-    if (raw && !/^\d+$/.test(raw)) return raw;
-  }
   return null;
 }
 
-function isLegacyInvite(inv: Invite): boolean {
-  const type = String(inv.type ?? "").toLowerCase();
-  if (type === "email" || type === "link") return false;
-  if (type === "local") return true;
-  return !tokenFromInvite(inv);
-}
-
 function createdAtFromInvite(inv: Invite): Date | null {
-  const raw = inv.created_at ?? inv.createdAt ?? inv.sent_at ?? inv.date;
+  const raw = inv.created_at;
   if (!raw) return null;
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return null;
@@ -226,13 +325,10 @@ function statusBadge(status: InviteStatus): { label: string; className: string }
 }
 
 function gridPath(inv: Invite): string | null {
-  const code = inv.grid_code ?? (typeof inv.grid === "object" && inv.grid ? inv.grid.grid_code : null) ?? inv.gridCode ?? null;
+  const code = inv.grid_code ?? inv.grid?.grid_code ?? null;
   if (code) return `/grid/${encodeURIComponent(String(code))}`;
 
-  const id =
-    (typeof inv.grid === "object" && inv.grid ? inv.grid.id : null) ??
-    inv.grid_id ??
-    (typeof inv.grid === "number" || typeof inv.grid === "string" ? inv.grid : null);
+  const id = inv.grid_id ?? inv.grid?.id ?? null;
   if (id !== null && id !== undefined) return `/grid/${encodeURIComponent(String(id))}`;
   return null;
 }
@@ -244,7 +340,6 @@ function isForCurrentUser(inv: Invite, me: User): boolean {
   const idCandidates = [
     inv.to_user_id,
     inv.to_user?.id,
-    inv.user_id,
     inv.recipient_id,
     inv.recipient?.id,
   ]
@@ -277,20 +372,42 @@ function nameFor(user: InviteUser | null | undefined): string {
 function senderFromInvite(inv: Invite): InviteUser {
   if (inv.created_by) return inv.created_by;
   return {
+    id: inv.created_by_id,
     first_name: inv.created_by_first_name,
     last_name: inv.created_by_last_name,
     email: inv.created_by_email,
   };
 }
 
-function parseJsonObject(input: string): ApiObject {
-  try {
-    const parsed = JSON.parse(input) as unknown;
-    if (parsed && typeof parsed === "object") return parsed as ApiObject;
-  } catch {
-    // ignore
-  }
-  return {};
+function parseApiError(data: unknown, fallback: string): string {
+  const raw = asObject(data);
+  const error = raw ? readString(raw.error) : null;
+  const detail = raw ? readString(raw.detail) : null;
+  return error || detail || fallback;
+}
+
+type AcceptInviteResponse = {
+  error: string | null;
+  detail: string | null;
+  grid_code: string | null;
+  membership: {
+    grid_code: string | null;
+  } | null;
+};
+
+function normalizeAcceptInviteResponse(data: unknown): AcceptInviteResponse {
+  const raw = asObject(data) ?? {};
+  const membershipRaw = asObject(raw.membership);
+  return {
+    error: readString(raw.error),
+    detail: readString(raw.detail),
+    grid_code: readString(raw.grid_code),
+    membership: membershipRaw
+      ? {
+          grid_code: readString(membershipRaw.grid_code),
+        }
+      : null,
+  };
 }
 
 export default function InvitesMenu({ me }: { me: User }) {
@@ -311,18 +428,18 @@ export default function InvitesMenu({ me }: { me: User }) {
         fetch("/api/invitations/incoming/", { cache: "no-store" }).catch(() => null),
       ]);
 
-      const allData = allRes && allRes.ok ? await allRes.json().catch(() => ({})) : {};
-      const incomingData = incomingRes && incomingRes.ok ? await incomingRes.json().catch(() => ({})) : {};
-      const all = listFromResponse(allData);
-      const incoming = listFromResponse(incomingData);
+      const allData = allRes && allRes.ok ? await allRes.json().catch(() => null) : null;
+      const incomingData = incomingRes && incomingRes.ok ? await incomingRes.json().catch(() => null) : null;
+      const all = normalizeInviteList(allData);
+      const incoming = normalizeInviteList(incomingData);
       const incomingKeys = new Set(incoming.map((inv) => inviteKey(inv)));
 
       const byKey = new Map<string, Invite>();
       for (const inv of incoming) byKey.set(inviteKey(inv), inv);
       for (const inv of all) {
         const key = inviteKey(inv);
-        const prev = byKey.get(key) ?? {};
-        byKey.set(key, { ...prev, ...inv });
+        const prev = byKey.get(key);
+        byKey.set(key, prev ? mergeInvites(prev, inv) : inv);
       }
 
       const merged = Array.from(byKey.values())
@@ -338,7 +455,7 @@ export default function InvitesMenu({ me }: { me: User }) {
       const idsNeedingName = new Set<string>();
       const codesNeedingName = new Set<string>();
       for (const inv of merged) {
-        const hasName = Boolean(inv.grid_name || (typeof inv.grid === "object" && inv.grid?.name));
+        const hasName = Boolean(inv.grid_name || inv.grid?.name);
         const gid = gridIdFromInvite(inv);
         const code = gridCodeFromInvite(inv);
         if (hasName) continue;
@@ -353,8 +470,10 @@ export default function InvitesMenu({ me }: { me: User }) {
               try {
                 const r = await fetch(`/api/grids/${encodeURIComponent(gid)}`, { cache: "no-store" });
                 if (!r.ok) return [`id:${gid}`, null] as const;
-                const j = (await r.json().catch(() => ({}))) as { name?: string };
-                return [`id:${gid}`, typeof j.name === "string" && j.name.trim() ? j.name : null] as const;
+                const jRaw = await r.json().catch(() => null);
+                const j = asObject(jRaw);
+                const name = j ? readString(j.name) : null;
+                return [`id:${gid}`, name && name.trim() ? name : null] as const;
               } catch {
                 return [`id:${gid}`, null] as const;
               }
@@ -363,8 +482,10 @@ export default function InvitesMenu({ me }: { me: User }) {
               try {
                 const r = await fetch(`/api/grids/code/${encodeURIComponent(code)}`, { cache: "no-store" });
                 if (!r.ok) return [`code:${code}`, null] as const;
-                const j = (await r.json().catch(() => ({}))) as { name?: string };
-                return [`code:${code}`, typeof j.name === "string" && j.name.trim() ? j.name : null] as const;
+                const jRaw = await r.json().catch(() => null);
+                const j = asObject(jRaw);
+                const name = j ? readString(j.name) : null;
+                return [`code:${code}`, name && name.trim() ? name : null] as const;
               } catch {
                 return [`code:${code}`, null] as const;
               }
@@ -375,7 +496,7 @@ export default function InvitesMenu({ me }: { me: User }) {
 
         const unresolvedTokens = new Set<string>();
         for (const inv of merged) {
-          const hasName = Boolean(inv.grid_name || (typeof inv.grid === "object" && inv?.grid?.name));
+          const hasName = Boolean(inv.grid_name || inv.grid?.name);
           if (hasName) continue;
           const gid = gridIdFromInvite(inv);
           const code = gridCodeFromInvite(inv);
@@ -394,10 +515,10 @@ export default function InvitesMenu({ me }: { me: User }) {
             try {
               const r = await fetch(`/api/invitations/resolve/?token=${encodeURIComponent(token)}`, { cache: "no-store" });
               if (!r.ok) return [token, null] as const;
-              const j = (await r.json().catch(() => ({}))) as { grid_name?: string; grid?: { name?: string } };
-              const name =
-                (typeof j.grid_name === "string" && j.grid_name.trim() ? j.grid_name.trim() : null) ??
-                (typeof j.grid?.name === "string" && j.grid.name.trim() ? j.grid.name.trim() : null);
+              const jRaw = await r.json().catch(() => null);
+              const j = asObject(jRaw);
+              const grid = j ? asObject(j.grid) : null;
+              const name = (j ? readString(j.grid_name) : null) ?? (grid ? readString(grid.name) : null);
               return [token, name] as const;
             } catch {
               return [token, null] as const;
@@ -407,7 +528,7 @@ export default function InvitesMenu({ me }: { me: User }) {
         const nameByToken = new Map(tokenEntries);
 
         const withGridNames = merged.map((inv) => {
-          if (inv.grid_name || (typeof inv.grid === "object" && inv.grid?.name)) return inv;
+          if (inv.grid_name || inv.grid?.name) return inv;
 
           const gid = gridIdFromInvite(inv);
           const code = gridCodeFromInvite(inv);
@@ -421,7 +542,7 @@ export default function InvitesMenu({ me }: { me: User }) {
           const resolved = fromIdOrCode || fromToken;
           if (!resolved) return inv;
 
-          if (typeof inv.grid === "object" && inv.grid) {
+          if (inv.grid) {
             return { ...inv, grid_name: resolved, grid: { ...inv.grid, name: resolved } };
           }
           return { ...inv, grid_name: resolved };
@@ -479,19 +600,15 @@ export default function InvitesMenu({ me }: { me: User }) {
       body: JSON.stringify({ token }),
     });
 
-    const raw = await r.text().catch(() => "");
-    const data = parseJsonObject(raw);
+    const data = normalizeAcceptInviteResponse(await r.json().catch(() => null));
     if (!r.ok) {
-      const detail = typeof data.detail === "string" ? data.detail : "";
-      const err = typeof data.error === "string" ? data.error : "";
-      setError(err || detail || "Could not accept invitation.");
+      setError(data.error || data.detail || "Could not accept invitation.");
       return;
     }
 
-    const membership = data.membership as ApiObject | undefined;
     const gridCodeFromResponse =
-      (typeof data.grid_code === "string" ? data.grid_code : null) ??
-      (membership && typeof membership.grid_code === "string" ? membership.grid_code : null);
+      data.grid_code ??
+      data.membership?.grid_code;
 
     setItems((prev) =>
       prev.map((it) =>
@@ -521,12 +638,9 @@ export default function InvitesMenu({ me }: { me: User }) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ token }),
     });
-    const raw = await r.text().catch(() => "");
-    const data = parseJsonObject(raw);
+    const data = asObject(await r.json().catch(() => null));
     if (!r.ok) {
-      const detail = typeof data.detail === "string" ? data.detail : "";
-      const err = typeof data.error === "string" ? data.error : "";
-      setError(err || detail || "Could not reject invitation.");
+      setError(parseApiError(data, "Could not reject invitation."));
       return;
     }
 
@@ -572,17 +686,13 @@ export default function InvitesMenu({ me }: { me: User }) {
             {items.map((inv) => {
               const status = statusFromInvite(inv);
               const statusTag = statusBadge(status);
-              const legacy = isLegacyInvite(inv);
               const sender = senderFromInvite(inv);
               const senderName = nameFor(sender);
               const avatar = getAvatarSource(sender);
               const fallbackName = getAvatarDisplayName(sender);
               const initials = getAvatarInitials(fallbackName);
               const palette = getAvatarPalette(getAvatarSeed(sender));
-              const gridName =
-                inv.grid_name ??
-                (typeof inv.grid === "object" && inv.grid ? inv.grid.name : null) ??
-                "Unknown grid";
+              const gridName = inv.grid_name ?? inv.grid?.name ?? "Unknown grid";
               const sentAgo = relativeTimeFromInvite(inv);
 
               return (
@@ -590,9 +700,7 @@ export default function InvitesMenu({ me }: { me: User }) {
                   role="button"
                   tabIndex={0}
                   key={inviteKey(inv)}
-                  className={`w-full text-left flex items-start gap-3 p-2 rounded cursor-pointer ${
-                    legacy ? "bg-gray-100 border border-gray-200 hover:bg-gray-200" : "hover:bg-gray-50"
-                  }`}
+                  className="w-full text-left flex items-start gap-3 p-2 rounded cursor-pointer hover:bg-gray-50"
                   onClick={() => openInvite(inv)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
