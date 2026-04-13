@@ -2,17 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
   Check,
-  Eye,
+  FileDown,
+  History as HistoryIcon,
   Lightbulb,
   LightbulbOff,
   Lock,
   Loader2,
-  MessageSquarePlus,
+  MessageSquare,
   Trash2,
   Upload,
   Users,
@@ -159,6 +161,13 @@ type CommentAnchor = {
   timeLabel: string;
 };
 
+type CommentPlacementOption = {
+  key: string;
+  anchor: CommentAnchor;
+  label: string;
+  count: number;
+};
+
 function buildPlacementKey(
   scheduleId: number | string,
   sourceCellId: number | string,
@@ -229,6 +238,10 @@ type Props = {
   scheduleViewMode?: ScheduleViewMode;
   externalRefreshTick?: number;
   onDraftMutated?: () => void;
+  commentsPanelOpen?: boolean;
+  onCommentsPanelOpenChange?: (open: boolean) => void;
+  historyMode?: boolean;
+  historyGridCode?: string | null;
 };
 
 type DragState = {
@@ -286,6 +299,10 @@ export default function SolveOverlay({
   scheduleViewMode = "draft",
   externalRefreshTick = 0,
   onDraftMutated,
+  commentsPanelOpen = false,
+  onCommentsPanelOpenChange,
+  historyMode = false,
+  historyGridCode = null,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -321,9 +338,8 @@ export default function SolveOverlay({
   const [pinError, setPinError] = useState<string | null>(null);
   const [placementComments, setPlacementComments] = useState<PlacementComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
-  const [commentDialogOpen, setCommentDialogOpen] = useState(false);
-  const [commentDialogMode, setCommentDialogMode] = useState<"view" | "add">("view");
   const [commentAnchor, setCommentAnchor] = useState<CommentAnchor | null>(null);
+  const [hoveredCommentPlacementKey, setHoveredCommentPlacementKey] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
@@ -358,15 +374,34 @@ export default function SolveOverlay({
   const [selectedAssignmentOptionId, setSelectedAssignmentOptionId] = useState<string | null>(null);
   const [pendingPlacementRequest, setPendingPlacementRequest] = useState<PendingPlacementRequest | null>(null);
   const [lastAssignedParticipantsByCellBundle, setLastAssignedParticipantsByCellBundle] = useState<Record<string, string[]>>({});
+  const [isClientReady, setIsClientReady] = useState(false);
+  const [publishedHistorySchedules, setPublishedHistorySchedules] = useState<
+    Array<{
+      key: string;
+      publishedVersion: number | null;
+      createdAt: string | null;
+      updatedAt: string | null;
+      schedule: ScheduleResource;
+    }>
+  >([]);
+  const [selectedHistoryKey, setSelectedHistoryKey] = useState<string>("");
+  const [historyPanelBusy, setHistoryPanelBusy] = useState(false);
+  const [historyPanelError, setHistoryPanelError] = useState<string | null>(null);
+  const [restoringHistoryVersion, setRestoringHistoryVersion] = useState(false);
+  const [exportingHistoryVersion, setExportingHistoryVersion] = useState(false);
   const longPressTimerRef = useRef<number | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const deleteDropRef = useRef<HTMLDivElement | null>(null);
 
-  const canSolve = role === "supervisor";
+  const canSolve = role === "supervisor" && !historyMode;
   const notifyDraftMutation = useCallback(() => {
     onDraftMutated?.();
   }, [onDraftMutated]);
   const solveSignatureStorageKey = `grid:${gridId}:last-solve-signature`;
+
+  useEffect(() => {
+    setIsClientReady(true);
+  }, []);
 
   const parseTimestamp = (value: unknown) => {
     if (typeof value !== "string") return 0;
@@ -505,6 +540,35 @@ export default function SolveOverlay({
     };
   };
 
+  const normalizeScheduleResource = useCallback(
+    (raw: unknown): ScheduleResource | null => {
+      const root = (raw ?? {}) as Record<string, unknown>;
+      const candidate = Array.isArray(root.results)
+        ? (root.results[0] as Record<string, unknown> | undefined)
+        : ((root.schedule ??
+            root.published_schedule ??
+            root.latest ??
+            root) as Record<string, unknown>);
+      if (!candidate || typeof candidate !== "object") return null;
+      const placementsRaw = Array.isArray((candidate as any).placements)
+        ? (candidate as any).placements
+        : Array.isArray((candidate as any).schedule)
+        ? (candidate as any).schedule
+        : Array.isArray((candidate as any).snapshot_placements)
+        ? (candidate as any).snapshot_placements
+        : [];
+      const scheduleId =
+        Number((candidate as any).id ?? (candidate as any).schedule_id ?? (candidate as any).schedule) || 0;
+      if (!scheduleId && placementsRaw.length === 0) return null;
+      return {
+        ...(candidate as Record<string, unknown>),
+        id: scheduleId || Number(gridId),
+        placements: placementsRaw,
+      } as ScheduleResource;
+    },
+    [gridId],
+  );
+
   const fetchCurrentSchedule = useCallback(async (): Promise<ScheduleResource | null> => {
     const endpoint =
       scheduleViewMode === "published"
@@ -516,29 +580,146 @@ export default function SolveOverlay({
       const txt = await r.text().catch(() => "");
       throw new Error(txt || `Failed to load schedule (${r.status})`);
     }
-    const raw = await r.json().catch(() => ({} as any));
-    const candidate = Array.isArray(raw?.results)
-      ? raw.results[0]
-      : raw?.schedule ?? raw?.published_schedule ?? raw?.latest ?? raw;
-    if (!candidate || typeof candidate !== "object") return null;
-    const placementsRaw = Array.isArray((candidate as any).placements)
-      ? (candidate as any).placements
-      : Array.isArray((candidate as any).schedule)
-      ? (candidate as any).schedule
-      : Array.isArray((candidate as any).snapshot_placements)
-      ? (candidate as any).snapshot_placements
-      : [];
-    const scheduleId =
-      Number((candidate as any).id ?? (candidate as any).schedule_id ?? (candidate as any).schedule) || 0;
-    if (!scheduleId && placementsRaw.length === 0) return null;
-    return {
-      ...(candidate as Record<string, unknown>),
-      id: scheduleId || Number(gridId),
-      placements: placementsRaw,
-    } as ScheduleResource;
-  }, [gridId, scheduleViewMode]);
+    const raw = await r.json().catch(() => ({} as Record<string, unknown>));
+    return normalizeScheduleResource(raw);
+  }, [gridId, normalizeScheduleResource, scheduleViewMode]);
+
+  const readPublishedVersion = (value: unknown): number | null => {
+    const raw = (value ?? {}) as Record<string, unknown>;
+    const candidate = Number(
+      raw.published_version ??
+        raw.version ??
+        raw.publishedVersion ??
+        ((raw.schedule as Record<string, unknown> | undefined)?.published_version ?? null),
+    );
+    return Number.isFinite(candidate) ? candidate : null;
+  };
 
   useEffect(() => {
+    if (!historyMode) {
+      setPublishedHistorySchedules([]);
+      setSelectedHistoryKey("");
+      setHistoryPanelError(null);
+      setHistoryPanelBusy(false);
+      setRestoringHistoryVersion(false);
+      setExportingHistoryVersion(false);
+      return;
+    }
+    let active = true;
+    (async () => {
+      setHistoryPanelBusy(true);
+      setHistoryPanelError(null);
+      try {
+        const res = await fetch(`/api/grids/${gridId}/published-schedules/`, { cache: "no-store" });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(txt || `Failed to load published versions (${res.status})`);
+        }
+        const payload = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        const listRaw = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload.results)
+          ? payload.results
+          : Array.isArray(payload.published_schedules)
+          ? payload.published_schedules
+          : Array.isArray(payload.schedules)
+          ? payload.schedules
+          : [];
+
+        const normalized = listRaw
+          .map((entry, index) => {
+            const entryRaw = (entry ?? {}) as Record<string, unknown>;
+            const schedule = normalizeScheduleResource(entryRaw);
+            if (!schedule) return null;
+            const publishedVersion = readPublishedVersion(entryRaw);
+            const createdAt =
+              (entryRaw.published_at as string | undefined) ??
+              (entryRaw.created_at as string | undefined) ??
+              schedule.created_at ??
+              null;
+            const updatedAt =
+              (entryRaw.updated_at as string | undefined) ??
+              schedule.updated_at ??
+              null;
+            const key =
+              publishedVersion != null
+                ? `version-${publishedVersion}`
+                : `schedule-${String(schedule.id)}-${index}`;
+            return {
+              key,
+              publishedVersion,
+              createdAt,
+              updatedAt,
+              schedule,
+            };
+          })
+          .filter((item): item is {
+            key: string;
+            publishedVersion: number | null;
+            createdAt: string | null;
+            updatedAt: string | null;
+            schedule: ScheduleResource;
+          } => Boolean(item))
+          .sort((a, b) => {
+            if (
+              typeof a.publishedVersion === "number" &&
+              typeof b.publishedVersion === "number" &&
+              a.publishedVersion !== b.publishedVersion
+            ) {
+              return b.publishedVersion - a.publishedVersion;
+            }
+            const aTs = parseTimestamp(a.createdAt ?? a.updatedAt);
+            const bTs = parseTimestamp(b.createdAt ?? b.updatedAt);
+            if (aTs !== bTs) return bTs - aTs;
+            return Number(b.schedule.id) - Number(a.schedule.id);
+          });
+
+        if (!active) return;
+        setPublishedHistorySchedules(normalized);
+        if (normalized.length === 0) {
+          setSelectedHistoryKey("");
+          setCurrentSchedule(null);
+          return;
+        }
+        setSelectedHistoryKey((prev) =>
+          normalized.some((entry) => entry.key === prev) ? prev : normalized[0].key,
+        );
+      } catch (error: unknown) {
+        if (!active) return;
+        setPublishedHistorySchedules([]);
+        setSelectedHistoryKey("");
+        setCurrentSchedule(null);
+        setHistoryPanelError(error instanceof Error ? error.message : "Could not load published versions.");
+      } finally {
+        if (active) setHistoryPanelBusy(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [externalRefreshTick, gridId, historyMode, normalizeScheduleResource]);
+
+  useEffect(() => {
+    if (!historyMode) return;
+    if (publishedHistorySchedules.length === 0) {
+      setCurrentSchedule(null);
+      return;
+    }
+    const selected =
+      publishedHistorySchedules.find((entry) => entry.key === selectedHistoryKey) ??
+      publishedHistorySchedules[0];
+    if (selected.key !== selectedHistoryKey) {
+      setSelectedHistoryKey(selected.key);
+    }
+    setCurrentSchedule(selected.schedule);
+  }, [historyMode, publishedHistorySchedules, selectedHistoryKey]);
+
+  useEffect(() => {
+    if (historyMode) {
+      setPlacementComments([]);
+      setCommentsLoading(false);
+      return;
+    }
     const scheduleId = currentSchedule?.id;
     if (!scheduleId) {
       setPlacementComments([]);
@@ -598,7 +779,7 @@ export default function SolveOverlay({
     return () => {
       active = false;
     };
-  }, [gridId, currentSchedule?.id]);
+  }, [gridId, historyMode, currentSchedule?.id]);
 
   useEffect(() => {
     let active = true;
@@ -641,7 +822,7 @@ export default function SolveOverlay({
 
         const scheduleCandidate =
           context?.schedule ?? context?.published_schedule ?? context?.latest ?? null;
-        if (active && scheduleCandidate && typeof scheduleCandidate === "object") {
+        if (!historyMode && active && scheduleCandidate && typeof scheduleCandidate === "object") {
           const placementsRaw = Array.isArray((scheduleCandidate as any).placements)
             ? (scheduleCandidate as any).placements
             : Array.isArray((scheduleCandidate as any).schedule)
@@ -830,7 +1011,7 @@ export default function SolveOverlay({
       } catch {}
     })();
     return () => { active = false; };
-  }, [dayStartMin, externalRefreshTick, gridId, scheduleViewMode, slotMin]);
+  }, [dayStartMin, externalRefreshTick, gridId, historyMode, scheduleViewMode, slotMin]);
 
   useEffect(() => {
     if (!isSolving) return;
@@ -1169,7 +1350,95 @@ export default function SolveOverlay({
     !isPublishing;
   const canPinCards = enablePinning && role === "supervisor" && scheduleViewMode === "draft";
   const canManualEditCards = role === "supervisor" && scheduleViewMode === "draft";
-  const canCommentCards = Boolean(currentSchedule?.id);
+  const canCommentCards =
+    scheduleViewMode === "published" &&
+    Boolean(currentSchedule?.id) &&
+    !historyMode;
+  const selectedHistoryEntry = useMemo(
+    () => publishedHistorySchedules.find((entry) => entry.key === selectedHistoryKey) ?? null,
+    [publishedHistorySchedules, selectedHistoryKey],
+  );
+
+  const closeHistoryView = useCallback(() => {
+    const target = `/grid/${encodeURIComponent(historyGridCode || String(gridId))}`;
+    router.push(target);
+  }, [gridId, historyGridCode, router]);
+
+  const fileNameFromDisposition = (disposition: string | null, fallback: string) => {
+    if (!disposition) return fallback;
+    const utf8 = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8?.[1]) return decodeURIComponent(utf8[1]).replace(/[/\\]/g, "_");
+    const simple = disposition.match(/filename=\"?([^\";]+)\"?/i);
+    if (simple?.[1]) return simple[1].replace(/[/\\]/g, "_");
+    return fallback;
+  };
+
+  const downloadHistoryVersionExport = async () => {
+    if (!historyMode || !selectedHistoryEntry || exportingHistoryVersion) return;
+    setExportingHistoryVersion(true);
+    setHistoryPanelError(null);
+    try {
+      const query = new URLSearchParams({ view: "published" });
+      if (typeof selectedHistoryEntry.publishedVersion === "number") {
+        query.set("published_version", String(selectedHistoryEntry.publishedVersion));
+      }
+      const res = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}/schedule/export?${query.toString()}`, {
+        method: "GET",
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || `Failed to export schedule (${res.status})`);
+      }
+      const blob = await res.blob();
+      const versionLabel =
+        typeof selectedHistoryEntry.publishedVersion === "number"
+          ? `v${selectedHistoryEntry.publishedVersion}`
+          : "published";
+      const fallbackName = `grid-${gridId}-${versionLabel}-schedule.xlsx`;
+      const filename = fileNameFromDisposition(res.headers.get("content-disposition"), fallbackName);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error: unknown) {
+      setHistoryPanelError(error instanceof Error ? error.message : "Could not export this version.");
+    } finally {
+      setExportingHistoryVersion(false);
+    }
+  };
+
+  const restoreHistoryVersionToDraft = async () => {
+    if (!historyMode || role !== "supervisor" || !selectedHistoryEntry || restoringHistoryVersion) return;
+    setRestoringHistoryVersion(true);
+    setHistoryPanelError(null);
+    try {
+      const payload: Record<string, unknown> = {};
+      if (typeof selectedHistoryEntry.publishedVersion === "number") {
+        payload.published_version = selectedHistoryEntry.publishedVersion;
+      }
+      const res = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}/schedule/restore-published/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || `Could not restore draft (${res.status})`);
+      }
+      writeGridScheduleViewMode(gridId, "draft");
+      invalidateGridScreenContext(gridId);
+      closeHistoryView();
+      router.refresh();
+    } catch (error: unknown) {
+      setHistoryPanelError(error instanceof Error ? error.message : "Could not restore this published version.");
+    } finally {
+      setRestoringHistoryVersion(false);
+    }
+  };
 
   const dayIndexByColumn = useMemo(
     () =>
@@ -1478,16 +1747,82 @@ export default function SolveOverlay({
     return map;
   }, [placementComments]);
 
-  const openCommentDialog = (
-    mode: "view" | "add",
-    anchor: CommentAnchor,
-  ) => {
-    setCommentDialogMode(mode);
-    setCommentAnchor(anchor);
+  const commentPlacementOptions = useMemo<CommentPlacementOption[]>(() => {
+    if (!canCommentCards || currentSchedule?.id == null) return [];
+    const deduped = new Map<string, CommentPlacementOption>();
+    for (const s of filteredSchedule) {
+      const sourceCellId = String(s.source_cell_id ?? s.cell_id);
+      const resolvedBundleId = resolveBundleIdForCard(s);
+      if (resolvedBundleId == null) continue;
+      const cellName = cellNameById[sourceCellId] || `Cell ${sourceCellId}`;
+      const timeLabel = formatSlotRange(dayStartMin, slotMin, s.start_slot, s.end_slot);
+      const key = buildPlacementKey(currentSchedule.id, sourceCellId, resolvedBundleId, s.day_index, s.start_slot);
+      if (deduped.has(key)) continue;
+      deduped.set(key, {
+        key,
+        label: `${cellName} • ${timeLabel}`,
+        count: commentCountByPlacement[key] || 0,
+        anchor: {
+          scheduleId: currentSchedule.id,
+          sourceCellId,
+          bundleId: resolvedBundleId,
+          dayIndex: s.day_index,
+          startSlot: s.start_slot,
+          cellName,
+          timeLabel,
+        },
+      });
+    }
+    return Array.from(deduped.values()).sort((a, b) =>
+      a.anchor.dayIndex - b.anchor.dayIndex ||
+      a.anchor.startSlot - b.anchor.startSlot ||
+      a.anchor.cellName.localeCompare(b.anchor.cellName),
+    );
+  }, [
+    canCommentCards,
+    cellNameById,
+    commentCountByPlacement,
+    currentSchedule?.id,
+    dayStartMin,
+    filteredSchedule,
+    resolveBundleIdForCard,
+    slotMin,
+  ]);
+
+  useEffect(() => {
+    if (!commentsPanelOpen) return;
+    if (commentPlacementOptions.length === 0) {
+      setCommentAnchor(null);
+      return;
+    }
+    if (!commentAnchor) {
+      setCommentAnchor(commentPlacementOptions[0].anchor);
+      return;
+    }
+    const hasCurrent = commentPlacementOptions.some(
+      (option) =>
+        Number(option.anchor.scheduleId) === Number(commentAnchor.scheduleId) &&
+        String(option.anchor.sourceCellId) === String(commentAnchor.sourceCellId) &&
+        String(option.anchor.bundleId) === String(commentAnchor.bundleId) &&
+        Number(option.anchor.dayIndex) === Number(commentAnchor.dayIndex) &&
+        Number(option.anchor.startSlot) === Number(commentAnchor.startSlot),
+    );
+    if (!hasCurrent) {
+      setCommentAnchor(commentPlacementOptions[0].anchor);
+    }
+  }, [commentAnchor, commentPlacementOptions, commentsPanelOpen]);
+
+  useEffect(() => {
+    if (commentsPanelOpen) return;
     setCommentError(null);
-    setCommentDraft("");
-    setCommentDialogOpen(true);
-  };
+    setCommentBusy(false);
+    setHoveredCommentPlacementKey(null);
+  }, [commentsPanelOpen]);
+
+  useEffect(() => {
+    if (!commentsPanelOpen || canCommentCards) return;
+    onCommentsPanelOpenChange?.(false);
+  }, [canCommentCards, commentsPanelOpen, onCommentsPanelOpenChange]);
 
   const activePlacementComments = useMemo(() => {
     if (!commentAnchor) return [];
@@ -1501,6 +1836,26 @@ export default function SolveOverlay({
       );
     });
   }, [commentAnchor, placementComments]);
+
+  const selectedCommentPlacementKey = commentAnchor
+    ? buildPlacementKey(
+        commentAnchor.scheduleId,
+        commentAnchor.sourceCellId,
+        commentAnchor.bundleId,
+        commentAnchor.dayIndex,
+        commentAnchor.startSlot,
+      )
+    : "";
+  const shouldDimScheduleForCommentFocus =
+    commentsPanelOpen && Boolean(selectedCommentPlacementKey);
+
+  const orderedActivePlacementComments = useMemo(() => {
+    return [...activePlacementComments].sort((a, b) => {
+      const aTime = parseTimestamp(a.created_at);
+      const bTime = parseTimestamp(b.created_at);
+      return bTime - aTime;
+    });
+  }, [activePlacementComments]);
 
   const submitPlacementComment = async () => {
     if (!commentAnchor || !commentDraft.trim()) return;
@@ -1541,7 +1896,6 @@ export default function SolveOverlay({
       };
       setPlacementComments((prev) => [next, ...prev]);
       setCommentDraft("");
-      setCommentDialogMode("view");
     } catch (e: unknown) {
       setCommentError(e instanceof Error ? e.message : "Could not add comment.");
     } finally {
@@ -2840,9 +3194,6 @@ export default function SolveOverlay({
               >
                 <div className="flex h-full w-full flex-col items-center justify-center px-2 text-center leading-tight">
                   <div className="max-w-full truncate text-[10px] font-semibold text-gray-800">{item.cellName}</div>
-                  {item.unitName && (
-                    <div className="max-w-full truncate text-[10px] text-gray-700">Unit: {item.unitName}</div>
-                  )}
                   {item.participantName && (
                     <div className="max-w-full truncate text-[10px] text-gray-700">Participant: {item.participantName}</div>
                   )}
@@ -2984,15 +3335,35 @@ export default function SolveOverlay({
             const pinKnobBorder = useColor ? shadeHex(bg, -0.08) : "#b8bfc9";
             const pinKnobTranslatePx = isPinnedVisual ? 16 : 0;
             const resolvedBundleId = resolveBundleIdForCard(s);
-            const canAnchorComment =
-              canCommentCards &&
-              currentSchedule?.id != null &&
-              resolvedBundleId != null;
-            const placementKey = canAnchorComment
-              ? buildPlacementKey(currentSchedule!.id, sourceCellId, resolvedBundleId!, s.day_index, s.start_slot)
+            const commentAnchorForCard =
+              canCommentCards && currentSchedule?.id != null && resolvedBundleId != null
+                ? {
+                    scheduleId: currentSchedule.id,
+                    sourceCellId,
+                    bundleId: resolvedBundleId,
+                    dayIndex: s.day_index,
+                    startSlot: s.start_slot,
+                    cellName,
+                    timeLabel,
+                  }
+                : null;
+            const cardCommentPlacementKey = commentAnchorForCard
+              ? buildPlacementKey(
+                  commentAnchorForCard.scheduleId,
+                  commentAnchorForCard.sourceCellId,
+                  commentAnchorForCard.bundleId,
+                  commentAnchorForCard.dayIndex,
+                  commentAnchorForCard.startSlot,
+                )
               : null;
-            const placementCommentCount =
-              placementKey != null ? commentCountByPlacement[placementKey] || 0 : 0;
+            const isCommentFocusedCard =
+              commentsPanelOpen &&
+              Boolean(cardCommentPlacementKey) &&
+              cardCommentPlacementKey === selectedCommentPlacementKey;
+            const isCommentHoveredCard =
+              commentsPanelOpen &&
+              Boolean(cardCommentPlacementKey) &&
+              hoveredCommentPlacementKey === cardCommentPlacementKey;
             const assignedParticipantIds = Array.isArray(s.assigned_participants)
               ? s.assigned_participants.map(String).sort()
               : Array.isArray(s.participants)
@@ -3013,28 +3384,62 @@ export default function SolveOverlay({
             const isDraggingCard = dragState?.cardKey === cardKey;
             const dragTranslateX = isDraggingCard ? dragState.clientX - dragState.offsetX : 0;
             const dragTranslateY = isDraggingCard ? dragState.clientY - dragState.offsetY : 0;
+            const commentScale =
+              commentsPanelOpen && !isDraggingCard
+                ? isCommentFocusedCard
+                  ? 1.08
+                  : isCommentHoveredCard
+                  ? 1.04
+                  : 1
+                : 1;
+            const transformParts: string[] = [];
+            if (isDraggingCard) transformParts.push(`translate(${dragTranslateX}px, ${dragTranslateY}px)`);
+            if (commentScale !== 1) transformParts.push(`scale(${commentScale})`);
+            const composedTransform = transformParts.length > 0 ? transformParts.join(" ") : undefined;
+            const cardZIndex = isDraggingCard
+              ? 70
+              : isCommentFocusedCard
+              ? 60
+              : shouldDimScheduleForCommentFocus
+              ? 40
+              : isCommentHoveredCard
+              ? 52
+              : undefined;
             const durationSlots = Math.max(1, s.end_slot - s.start_slot);
+            const cursorClass =
+              commentsPanelOpen && commentAnchorForCard
+                ? "cursor-pointer"
+                : canManualEditCards
+                ? isPlacementLocked
+                  ? "cursor-not-allowed"
+                  : isDraggingCard
+                  ? "cursor-grabbing"
+                  : "cursor-grab"
+                : "";
             return (
               <div
                 key={cardKey}
-                className={`absolute pointer-events-auto ${
-                  canManualEditCards
-                    ? isPlacementLocked
-                      ? "cursor-not-allowed"
-                      : isDraggingCard
-                      ? "cursor-grabbing"
-                      : "cursor-grab"
-                    : ""
+                className={`absolute pointer-events-auto ${cursorClass} ${
+                  isDraggingCard ? "transition-none" : "transition-transform duration-150 ease-out"
                 }`}
                 style={{
                   top,
                   left,
                   width,
                   height,
-                  transform: isDraggingCard ? `translate(${dragTranslateX}px, ${dragTranslateY}px)` : undefined,
-                  zIndex: isDraggingCard ? 50 : undefined,
+                  transform: composedTransform,
+                  zIndex: cardZIndex,
+                  transformOrigin: "center",
+                }}
+                onClick={(event) => {
+                  if (!commentsPanelOpen || !commentAnchorForCard) return;
+                  const target = event.target as HTMLElement | null;
+                  if (target?.closest("[data-card-lock-toggle]")) return;
+                  setCommentAnchor(commentAnchorForCard);
+                  setCommentError(null);
                 }}
                 onPointerDown={(event) => {
+                  if (commentsPanelOpen) return;
                   if (!canManualEditCards || isCardBusy || isPlacementLocked || !placementId) return;
                   clearLongPressTimer();
                   const cardRect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
@@ -3071,7 +3476,17 @@ export default function SolveOverlay({
                 }}
                 onPointerUp={() => clearLongPressTimer()}
                 onPointerCancel={() => clearLongPressTimer()}
-                onPointerLeave={() => clearLongPressTimer()}
+                onPointerEnter={() => {
+                  if (!commentsPanelOpen || !cardCommentPlacementKey) return;
+                  setHoveredCommentPlacementKey(cardCommentPlacementKey);
+                }}
+                onPointerLeave={() => {
+                  clearLongPressTimer();
+                  if (!cardCommentPlacementKey) return;
+                  setHoveredCommentPlacementKey((prev) =>
+                    prev === cardCommentPlacementKey ? null : prev,
+                  );
+                }}
               >
                 <div
                   className={`group relative w-full h-full rounded-md border px-2 py-2 text-[11px] ${
@@ -3084,69 +3499,22 @@ export default function SolveOverlay({
                     animationDelay: `${(idx % 6) * 35}ms`,
                   }}
                 >
-                  {canAnchorComment && (
-                    <div className="absolute left-1.5 top-1.5 z-10 flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                      <button
-                        type="button"
-                        className="relative rounded p-1"
-                        style={{ color: textDark }}
-                        title="View comments"
-                        onPointerDown={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                        }}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          openCommentDialog("view", {
-                            scheduleId: currentSchedule!.id,
-                            sourceCellId,
-                            bundleId: resolvedBundleId!,
-                            dayIndex: s.day_index,
-                            startSlot: s.start_slot,
-                            cellName,
-                            timeLabel,
-                          });
-                        }}
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                        {placementCommentCount > 0 && (
-                          <span className="absolute -right-1 -top-1 rounded-full bg-black px-1 text-[10px] leading-4 text-white">
-                            {placementCommentCount}
-                          </span>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded p-1"
-                        style={{ color: textDark }}
-                        title="Add comment"
-                        onPointerDown={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                        }}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          openCommentDialog("add", {
-                            scheduleId: currentSchedule!.id,
-                            sourceCellId,
-                            bundleId: resolvedBundleId!,
-                            dayIndex: s.day_index,
-                            startSlot: s.start_slot,
-                            cellName,
-                            timeLabel,
-                          });
-                        }}
-                      >
-                        <MessageSquarePlus className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                  {isCommentFocusedCard && (
+                    <>
+                      <span
+                        className="pointer-events-none absolute inset-0 rounded-md border-2 schedule-comment-ring"
+                        style={{ borderColor: bg || border }}
+                      />
+                      <span
+                        className="pointer-events-none absolute inset-0 rounded-md border-2 schedule-comment-ring schedule-comment-ring-delay"
+                        style={{ borderColor: bg || border }}
+                      />
+                    </>
                   )}
-
                   {canPinCards && (
                     <button
                       type="button"
+                      data-card-lock-toggle
                       className={`absolute left-2 bottom-2 z-10 h-6 w-10 rounded-full border p-0 transition-all duration-200 hover:scale-[1.02] ${
                         isCardBusy ? "animate-pulse" : ""
                       }`}
@@ -3203,6 +3571,17 @@ export default function SolveOverlay({
               </div>
             );
           })}
+          {shouldDimScheduleForCommentFocus && (
+            <div
+              className="absolute pointer-events-none z-[46] bg-slate-200/40"
+              style={{
+                top: 0,
+                left: timeColPx,
+                width: `calc(100% - ${timeColPx}px)`,
+                height: bodyHeight,
+              }}
+            />
+          )}
         </div>
       )}
 
@@ -3291,85 +3670,222 @@ export default function SolveOverlay({
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={commentDialogOpen}
-        onOpenChange={(open) => {
-          setCommentDialogOpen(open);
-          if (!open) {
-            setCommentAnchor(null);
-            setCommentDraft("");
-            setCommentError(null);
-            setCommentBusy(false);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-[560px] z-[170]">
-          <DialogHeader>
-            <DialogTitle>
-              {commentDialogMode === "add" ? "Add placement comment" : "Placement comments"}
-            </DialogTitle>
-            <DialogDescription>
-              {commentAnchor
-                ? `${commentAnchor.cellName} • ${commentAnchor.timeLabel}`
-                : "Placement details"}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3">
-            {commentsLoading ? (
-              <div className="text-sm text-gray-500">Loading comments...</div>
-            ) : activePlacementComments.length === 0 ? (
-              <div className="text-sm text-gray-500">No comments for this placement.</div>
-            ) : (
-              <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
-                {activePlacementComments.map((c) => (
-                  <div key={String(c.id)} className="rounded border p-2">
-                    <div className="text-xs text-gray-500 mb-1">
-                      {c.author_name || "User"}
-                      {c.created_at ? ` • ${new Date(c.created_at).toLocaleString()}` : ""}
-                    </div>
-                    <div className="text-sm text-gray-900 whitespace-pre-wrap">
-                      {c.text}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {commentDialogMode === "add" && (
-              <div className="space-y-2">
-                <textarea
-                  className="w-full border rounded px-3 py-2 text-sm min-h-[96px]"
-                  placeholder="Write a comment for this specific placement..."
-                  value={commentDraft}
-                  onChange={(e) => setCommentDraft(e.target.value)}
-                  disabled={commentBusy}
-                />
-                {commentError && <div className="text-xs text-red-600">{commentError}</div>}
-                <div className="flex items-center justify-end gap-2">
+      {historyMode &&
+        isClientReady &&
+        createPortal(
+          <aside
+            className="fixed right-0 z-[130] w-[340px] max-w-full border-l border-gray-200 bg-gray-50"
+            style={{ top: "56px", height: "calc(100dvh - 56px)" }}
+          >
+            <div className="flex h-full flex-col">
+              <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <HistoryIcon className="h-4 w-4 text-gray-700" />
+                  <h2 className="text-xl font-semibold text-gray-900">Version history</h2>
+                </div>
+                <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    className="h-9 px-3 rounded border text-sm"
-                    onClick={() => setCommentDialogMode("view")}
-                    disabled={commentBusy}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded text-gray-600 transition-colors hover:bg-gray-200 hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Export selected version (.xlsx)"
+                    onClick={() => void downloadHistoryVersionExport()}
+                    disabled={!selectedHistoryEntry || exportingHistoryVersion}
                   >
-                    View comments
+                    {exportingHistoryVersion ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileDown className="h-4 w-4" />
+                    )}
                   </button>
                   <button
                     type="button"
-                    className="h-9 px-3 rounded bg-black text-white text-sm disabled:opacity-60"
-                    onClick={() => void submitPlacementComment()}
-                    disabled={commentBusy || !commentDraft.trim() || !commentAnchor}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded text-gray-600 transition-colors hover:bg-gray-200 hover:text-black"
+                    title="Close history"
+                    onClick={closeHistoryView}
                   >
-                    {commentBusy ? "Saving..." : "Add comment"}
+                    <X className="h-4 w-4" />
                   </button>
                 </div>
               </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
 
+              <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+                {historyPanelBusy ? (
+                  <div className="flex items-center gap-2 rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading published versions...
+                  </div>
+                ) : publishedHistorySchedules.length === 0 ? (
+                  <div className="rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500">
+                    No published versions available.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {publishedHistorySchedules.map((entry, idx) => {
+                      const isSelected = entry.key === selectedHistoryKey;
+                      const versionLabel =
+                        typeof entry.publishedVersion === "number"
+                          ? `Version ${entry.publishedVersion}`
+                          : `Published snapshot ${publishedHistorySchedules.length - idx}`;
+                      const createdLabel = entry.createdAt
+                        ? new Date(entry.createdAt).toLocaleString()
+                        : "No timestamp";
+                      const placementsCount = Array.isArray(entry.schedule.placements)
+                        ? entry.schedule.placements.length
+                        : 0;
+                      return (
+                        <button
+                          key={entry.key}
+                          type="button"
+                          className={`w-full rounded border px-3 py-2 text-left transition-colors ${
+                            isSelected
+                              ? "border-black bg-white"
+                              : "border-gray-200 bg-white hover:bg-gray-100"
+                          }`}
+                          onClick={() => {
+                            setSelectedHistoryKey(entry.key);
+                            setCurrentSchedule(entry.schedule);
+                            setHistoryPanelError(null);
+                          }}
+                        >
+                          <div className="text-sm font-medium text-gray-900">{versionLabel}</div>
+                          <div className="mt-1 text-xs text-gray-500">{createdLabel}</div>
+                          <div className="mt-1 text-xs text-gray-600">
+                            Placements: {placementsCount}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {historyPanelError && (
+                  <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    {historyPanelError}
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-gray-200 px-4 py-3">
+                <button
+                  type="button"
+                  className="h-9 w-full rounded bg-black px-3 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => void restoreHistoryVersionToDraft()}
+                  disabled={role !== "supervisor" || !selectedHistoryEntry || restoringHistoryVersion}
+                >
+                  {restoringHistoryVersion ? "Restoring..." : "Restore draft from selected version"}
+                </button>
+                <div className="mt-2 text-xs text-gray-500">
+                  Restoring copies this published version into draft. It is not published until you upload it.
+                </div>
+              </div>
+            </div>
+          </aside>,
+          document.body,
+        )}
+
+      {!historyMode &&
+        commentsPanelOpen &&
+        isClientReady &&
+        createPortal(
+        <aside
+          className="fixed right-0 z-[130] w-[340px] max-w-full border-l border-gray-200 bg-gray-50"
+          style={{ top: "56px", height: "calc(100dvh - 56px)" }}
+        >
+          <div className="flex h-full flex-col">
+            <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-gray-700" />
+                <h2 className="text-xl font-semibold text-gray-900">Comments</h2>
+              </div>
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded text-gray-600 transition-colors hover:bg-gray-200 hover:text-black"
+                title="Close comments panel"
+                onClick={() => {
+                  onCommentsPanelOpenChange?.(false);
+                  setCommentError(null);
+                }}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+              {!canCommentCards ? (
+                <div className="text-sm text-gray-500">Comments are unavailable until a schedule is loaded.</div>
+              ) : (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-600">Placement</label>
+                    <select
+                      className="h-9 w-full rounded border border-gray-300 bg-white px-2 text-sm"
+                      value={selectedCommentPlacementKey}
+                      onChange={(event) => {
+                        const selected = commentPlacementOptions.find((option) => option.key === event.target.value);
+                        if (!selected) return;
+                        setCommentAnchor(selected.anchor);
+                        setCommentError(null);
+                      }}
+                      disabled={commentPlacementOptions.length === 0}
+                    >
+                      {commentPlacementOptions.map((option) => (
+                        <option key={option.key} value={option.key}>
+                          {option.label}
+                          {option.count > 0 ? ` (${option.count})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {commentsLoading ? (
+                    <div className="text-sm text-gray-500">Loading comments...</div>
+                  ) : orderedActivePlacementComments.length === 0 ? (
+                    <div className="rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500">
+                      No comments for this placement.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {orderedActivePlacementComments.map((c) => (
+                        <div key={String(c.id)} className="rounded border border-gray-200 bg-white p-2">
+                          <div className="mb-1 text-xs text-gray-500">
+                            {c.author_name || "User"}
+                            {c.created_at ? ` - ${new Date(c.created_at).toLocaleString()}` : ""}
+                          </div>
+                          <div className="whitespace-pre-wrap text-sm text-gray-900">{c.text}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {role === "supervisor" && (
+                    <div className="space-y-2 border-t border-gray-200 pt-3">
+                      <textarea
+                        className="min-h-[100px] w-full rounded border bg-white px-3 py-2 text-sm"
+                        placeholder="Write a comment for the selected placement..."
+                        value={commentDraft}
+                        onChange={(event) => setCommentDraft(event.target.value)}
+                        disabled={commentBusy}
+                      />
+                      {commentError && <div className="text-xs text-red-600">{commentError}</div>}
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          className="h-9 rounded bg-black px-3 text-sm text-white disabled:opacity-60"
+                          onClick={() => void submitPlacementComment()}
+                          disabled={commentBusy || !commentDraft.trim() || !commentAnchor}
+                        >
+                          {commentBusy ? "Saving..." : "Add comment"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </aside>,
+        document.body,
+      )}
       <Dialog
         open={candidateDialogOpen}
         onOpenChange={(open) => {
@@ -3848,9 +4364,40 @@ export default function SolveOverlay({
         </div>
       )}
 
+      {/* Right-side published dock */}
+      {canSolve &&
+        scheduleViewMode === "published" &&
+        !isJiggleMode &&
+        !suppressRightDock &&
+        !commentsPanelOpen &&
+        canCommentCards && (
+        <div
+          className="fixed top-1/2 -translate-y-1/2 z-[140] pointer-events-none"
+          style={{ right: "1rem" }}
+        >
+          <div className="flex flex-col items-center gap-3">
+            <button
+              type="button"
+              title="Comments"
+              onClick={() => onCommentsPanelOpenChange?.(true)}
+              className="w-12 h-12 rounded-full shadow-md border flex items-center justify-center pointer-events-auto transition-colors bg-black border-gray-800"
+            >
+              <MessageSquare className="w-5 h-5 text-white" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Right-side solve dock */}
-      {canSolve && scheduleViewMode === "draft" && !isJiggleMode && !suppressRightDock && (
-        <div className="fixed right-4 top-1/2 -translate-y-1/2 z-[140] pointer-events-none">
+      {canSolve &&
+        scheduleViewMode === "draft" &&
+        !isJiggleMode &&
+        !suppressRightDock &&
+        !commentsPanelOpen && (
+        <div
+          className="fixed top-1/2 -translate-y-1/2 z-[140] pointer-events-none"
+          style={{ right: "1rem" }}
+        >
           <div className="flex flex-col items-center gap-3">
             <button
               type="button"
@@ -4058,3 +4605,4 @@ export default function SolveOverlay({
     </>
   );
 }
+

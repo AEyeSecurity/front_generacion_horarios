@@ -189,6 +189,7 @@ export default async function GridOverview({
               <GridSchedulePanel
                 gridId={Number(grid.id)}
                 role={role}
+                selfParticipantId={selfPid}
                 units={units}
                 days={days}
                 dayStartMin={start}

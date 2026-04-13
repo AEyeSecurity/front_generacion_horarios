@@ -22,6 +22,10 @@ export default function UnitTabs({
   scheduleViewMode = "draft",
   externalRefreshTick = 0,
   onDraftMutated,
+  commentsPanelOpen = false,
+  onCommentsPanelOpenChange,
+  historyMode = false,
+  historyGridCode = null,
 }: {
   gridId: number;
   role: "viewer" | "editor" | "supervisor";
@@ -38,6 +42,10 @@ export default function UnitTabs({
   scheduleViewMode?: ScheduleViewMode;
   externalRefreshTick?: number;
   onDraftMutated?: () => void;
+  commentsPanelOpen?: boolean;
+  onCommentsPanelOpenChange?: (open: boolean) => void;
+  historyMode?: boolean;
+  historyGridCode?: string | null;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const tabs = useMemo(
@@ -71,6 +79,10 @@ export default function UnitTabs({
         scheduleViewMode={scheduleViewMode}
         externalRefreshTick={externalRefreshTick}
         onDraftMutated={onDraftMutated}
+        commentsPanelOpen={commentsPanelOpen}
+        onCommentsPanelOpenChange={onCommentsPanelOpenChange}
+        historyMode={historyMode}
+        historyGridCode={historyGridCode}
       />
 
       {tabs.length > 0 && (

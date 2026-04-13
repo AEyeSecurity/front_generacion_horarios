@@ -10,9 +10,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
 
   const viewRaw = req.nextUrl.searchParams.get("view");
   const view = viewRaw === "published" ? "published" : "draft";
+  const passthroughParams = new URLSearchParams(req.nextUrl.searchParams);
+  passthroughParams.set("view", view);
 
   const res = await fetch(
-    `${B}/api/grids/code/${encodeURIComponent(code)}/schedule/export/?view=${encodeURIComponent(view)}`,
+    `${B}/api/grids/code/${encodeURIComponent(code)}/schedule/export/?${passthroughParams.toString()}`,
     {
       headers: {
         Authorization: `Bearer ${access}`,
@@ -36,4 +38,3 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
 
   return new NextResponse(buf, { status: res.status, headers });
 }
-

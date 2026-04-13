@@ -17,6 +17,7 @@ import {
   SCHEDULE_VIEW_MODE_EVENT,
   type ScheduleViewMode,
 } from "@/lib/schedule-view";
+import { GRID_COMMENTS_PANEL_TOGGLE_EVENT } from "@/lib/grid-comments-panel";
 import { fetchGridScreenContext, getContextList, invalidateGridScreenContext } from "@/lib/screen-context";
 
 type Unit = { id: number | string; name: string };
@@ -99,6 +100,7 @@ type DraftHistory = {
 type Props = {
   gridId: number;
   role: "viewer" | "editor" | "supervisor";
+  selfParticipantId?: number | null;
   units: Unit[];
   days: string[];
   dayStartMin: number;
@@ -106,6 +108,8 @@ type Props = {
   slotMin: number;
   rowPx: number;
   timeColPx: number;
+  historyMode?: boolean;
+  historyGridCode?: string | null;
 };
 
 type ParticipantCellEntry = {
@@ -113,6 +117,7 @@ type ParticipantCellEntry = {
   placementId: string;
   sourceCellId: string;
   bundleId: string | null;
+  bundleUnitIds: string[];
   ownerParticipantId: string;
   assignedParticipantIds: string[];
   dayColumnIndex: number;
@@ -246,6 +251,7 @@ const normalizeDraftHistory = (value: unknown): DraftHistory => {
 export default function GridSchedulePanel({
   gridId,
   role,
+  selfParticipantId = null,
   units,
   days,
   dayStartMin,
@@ -253,6 +259,8 @@ export default function GridSchedulePanel({
   slotMin,
   rowPx,
   timeColPx,
+  historyMode = false,
+  historyGridCode = null,
 }: Props) {
   const rows = useMemo(() => {
     const out: number[] = [];
@@ -262,11 +270,14 @@ export default function GridSchedulePanel({
   const bodyHeight = rows.length * rowPx;
 
   const [unitNoOverlapEnabled, setUnitNoOverlapEnabled] = useState(DEFAULT_UNIT_NOOVERLAP_ENABLED);
-  const [scheduleViewMode, setScheduleViewMode] = useState<ScheduleViewMode>("draft");
+  const [scheduleViewMode, setScheduleViewMode] = useState<ScheduleViewMode>(
+    historyMode ? "published" : "draft",
+  );
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [participantsLoading, setParticipantsLoading] = useState(true);
   const [cellById, setCellById] = useState<Record<string, Cell>>({});
   const [bundleNameById, setBundleNameById] = useState<Record<string, string>>({});
+  const [bundleUnitsById, setBundleUnitsById] = useState<Record<string, string[]>>({});
   const [timeRangeMetaById, setTimeRangeMetaById] = useState<
     Record<string, { name: string; startSlot: number; endSlot: number }>
   >({});
@@ -282,13 +293,25 @@ export default function GridSchedulePanel({
   const [historyBusy, setHistoryBusy] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [contextRefreshTick, setContextRefreshTick] = useState(0);
+  const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [dragPayload, setDragPayload] = useState<ParticipantDragPayload | null>(null);
   const [dragHoverCellKey, setDragHoverCellKey] = useState<string | null>(null);
   const [isDeleteDropActive, setIsDeleteDropActive] = useState(false);
   const [catalogFocusIndex, setCatalogFocusIndex] = useState(0);
+  const [participantBoardSelectedUnitId, setParticipantBoardSelectedUnitId] = useState<string | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const participantBoardRef = useRef<HTMLDivElement | null>(null);
   const deleteDropRef = useRef<HTMLDivElement | null>(null);
+  const panelRootRef = useRef<HTMLDivElement | null>(null);
+  const scheduleShellRef = useRef<HTMLElement | null>(null);
+  const commentsOpenShellWidthPercent = 82;
+  const commentsOpenShellLeftShiftPx = 50;
+  const scheduleShellBaseStyleRef = useRef<{
+    maxWidth: string;
+    marginLeft: string;
+    marginRight: string;
+    transition: string;
+  } | null>(null);
 
   useEffect(() => {
     const readSettings = () => {
@@ -320,6 +343,10 @@ export default function GridSchedulePanel({
   }, [gridId]);
 
   useEffect(() => {
+    if (historyMode) {
+      setScheduleViewMode("published");
+      return;
+    }
     const syncFromStorage = () => {
       setScheduleViewMode(readGridScheduleViewMode(gridId));
     };
@@ -344,7 +371,83 @@ export default function GridSchedulePanel({
       window.removeEventListener("storage", onStorage);
       window.removeEventListener(SCHEDULE_VIEW_MODE_EVENT, onModeChanged as EventListener);
     };
-  }, [gridId]);
+  }, [gridId, historyMode]);
+
+  useEffect(() => {
+    if (historyMode) return;
+    const onToggleCommentsPanel = (event: Event) => {
+      const customEvent = event as CustomEvent<{ gridId?: string }>;
+      if (customEvent.detail?.gridId !== String(gridId)) return;
+      setCommentsPanelOpen((prev) => !prev);
+    };
+    window.addEventListener(GRID_COMMENTS_PANEL_TOGGLE_EVENT, onToggleCommentsPanel as EventListener);
+    return () => {
+      window.removeEventListener(GRID_COMMENTS_PANEL_TOGGLE_EVENT, onToggleCommentsPanel as EventListener);
+    };
+  }, [gridId, historyMode]);
+
+  useEffect(() => {
+    if (!historyMode) return;
+    setCommentsPanelOpen(false);
+  }, [historyMode]);
+
+  const sidePanelOpen = commentsPanelOpen || historyMode;
+
+  useEffect(() => {
+    const root = panelRootRef.current;
+    const shell = root?.parentElement as HTMLElement | null;
+    if (!shell) return;
+
+    if (scheduleShellRef.current !== shell) {
+      if (scheduleShellRef.current && scheduleShellBaseStyleRef.current) {
+        const prevShell = scheduleShellRef.current;
+        const base = scheduleShellBaseStyleRef.current;
+        prevShell.style.maxWidth = base.maxWidth;
+        prevShell.style.marginLeft = base.marginLeft;
+        prevShell.style.marginRight = base.marginRight;
+        prevShell.style.transition = base.transition;
+        prevShell.style.transform = "";
+      }
+      scheduleShellRef.current = shell;
+      scheduleShellBaseStyleRef.current = {
+        maxWidth: shell.style.maxWidth,
+        marginLeft: shell.style.marginLeft,
+        marginRight: shell.style.marginRight,
+        transition: shell.style.transition,
+      };
+    }
+
+    const base = scheduleShellBaseStyleRef.current;
+    if (!base) return;
+
+    shell.style.transition =
+      "max-width 220ms cubic-bezier(0.22,1,0.36,1), margin-left 220ms cubic-bezier(0.22,1,0.36,1), margin-right 220ms cubic-bezier(0.22,1,0.36,1)";
+    shell.style.transform = "";
+
+    if (sidePanelOpen) {
+      shell.style.maxWidth = `${commentsOpenShellWidthPercent}%`;
+      shell.style.marginLeft = `-${commentsOpenShellLeftShiftPx}px`;
+      shell.style.marginRight = "auto";
+      return;
+    }
+
+    shell.style.maxWidth = base.maxWidth;
+    shell.style.marginLeft = base.marginLeft;
+    shell.style.marginRight = base.marginRight;
+  }, [sidePanelOpen, unitNoOverlapEnabled]);
+
+  useEffect(() => {
+    return () => {
+      const shell = scheduleShellRef.current;
+      const base = scheduleShellBaseStyleRef.current;
+      if (!shell || !base) return;
+      shell.style.maxWidth = base.maxWidth;
+      shell.style.marginLeft = base.marginLeft;
+      shell.style.marginRight = base.marginRight;
+      shell.style.transition = base.transition;
+      shell.style.transform = "";
+    };
+  }, []);
 
   useEffect(() => {
     if (unitNoOverlapEnabled) {
@@ -367,10 +470,12 @@ export default function GridSchedulePanel({
           cellMap[String(cell.id)] = cell;
         }
         const bundleNameMap: Record<string, string> = {};
+        const bundleUnitsMap: Record<string, string[]> = {};
         for (const bundle of bundlesList) {
           if (bundle?.id == null) continue;
           const key = String(bundle.id);
           bundleNameMap[key] = bundle.name || `Bundle ${key}`;
+          bundleUnitsMap[key] = Array.isArray(bundle.units) ? bundle.units.map(String) : [];
         }
 
         const timeRangeMap: Record<string, { name: string; startSlot: number; endSlot: number }> = {};
@@ -423,6 +528,7 @@ export default function GridSchedulePanel({
           setParticipants(participantsList);
           setCellById(cellMap);
           setBundleNameById(bundleNameMap);
+          setBundleUnitsById(bundleUnitsMap);
           setTimeRangeMetaById(timeRangeMap);
           setAvailabilityRulesByParticipant(availabilityMap);
           setScheduleId(normalizedScheduleId);
@@ -433,6 +539,7 @@ export default function GridSchedulePanel({
           setParticipants([]);
           setCellById({});
           setBundleNameById({});
+          setBundleUnitsById({});
           setTimeRangeMetaById({});
           setAvailabilityRulesByParticipant({});
           setScheduleId(null);
@@ -464,6 +571,36 @@ export default function GridSchedulePanel({
         displayName: `${p.name || ""}${p.surname ? ` ${p.surname}` : ""}`.trim() || `Participant ${p.id}`,
       }));
   }, [participants]);
+
+  const participantBoardUnitTabs = useMemo(
+    () =>
+      units
+        .filter((unit) => {
+          const id = String(unit.id).toLowerCase();
+          const name = (unit.name || "").toLowerCase();
+          return id !== "all" && name !== "all";
+        })
+        .map((unit) => ({ id: String(unit.id), name: unit.name })),
+    [units],
+  );
+
+  useEffect(() => {
+    if (participantBoardUnitTabs.length === 0) {
+      setParticipantBoardSelectedUnitId(null);
+      return;
+    }
+    setParticipantBoardSelectedUnitId((prev) => {
+      if (prev && participantBoardUnitTabs.some((tab) => tab.id === prev)) return prev;
+      return participantBoardUnitTabs[0].id;
+    });
+  }, [participantBoardUnitTabs]);
+
+  const visibleParticipants = useMemo(() => {
+    if (role !== "editor") return orderedParticipants;
+    if (selfParticipantId == null) return [];
+    const mine = String(selfParticipantId);
+    return orderedParticipants.filter((participant) => String(participant.id) === mine);
+  }, [orderedParticipants, role, selfParticipantId]);
 
   const participantTierById = useMemo(() => {
     const map: Record<string, TierKey | null> = {};
@@ -506,6 +643,7 @@ export default function GridSchedulePanel({
         readEntityId(item.bundle_id) ??
         readEntityId(item.bundle) ??
         null;
+      const bundleUnitIds = bundleId ? (bundleUnitsById[bundleId] || []).map(String) : [];
       const cell = cellById[sourceCellId];
       const cellName = cell?.name || `Cell ${sourceCellId}`;
       const color = cell?.colorHex || cell?.color_hex || undefined;
@@ -523,6 +661,7 @@ export default function GridSchedulePanel({
           placementId,
           sourceCellId,
           bundleId,
+          bundleUnitIds,
           ownerParticipantId: pid,
           assignedParticipantIds: assigned.map(String),
           dayColumnIndex,
@@ -549,7 +688,7 @@ export default function GridSchedulePanel({
     }
 
     return out;
-  }, [schedulePlacements, dayColumnByIndex, days.length, cellById, bundleNameById, dayStartMin, slotMin, timeRangeMetaById]);
+  }, [schedulePlacements, dayColumnByIndex, days.length, cellById, bundleNameById, bundleUnitsById, dayStartMin, slotMin, timeRangeMetaById]);
 
   const cellCatalog = useMemo(() => {
     return Object.values(cellById)
@@ -598,7 +737,7 @@ export default function GridSchedulePanel({
   };
 
   const canEditParticipantDraft = role === "supervisor" && scheduleViewMode === "draft" && !unitNoOverlapEnabled;
-  const canUseDraftHistory = role === "supervisor" && scheduleViewMode === "draft";
+  const canUseDraftHistory = !historyMode && role === "supervisor" && scheduleViewMode === "draft";
   const canUndoDraft = canUseDraftHistory && !historyBusy && draftHistory.can_undo;
   const canRedoDraft = canUseDraftHistory && !historyBusy && draftHistory.can_redo;
   const canRestoreDraft = canUseDraftHistory && !historyBusy;
@@ -713,22 +852,7 @@ export default function GridSchedulePanel({
   const promptRestorePublished = useCallback(() => {
     if (!canUseDraftHistory || historyBusy) return;
     setHistoryError(null);
-    const response = window.prompt(
-      "Restore draft from published version.\nLeave empty to restore from latest published.",
-      "",
-    );
-    if (response == null) return;
-    const value = response.trim();
-    if (!value) {
-      void restorePublishedInDraft();
-      return;
-    }
-    const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed < 1) {
-      setHistoryError("Enter a valid published version number.");
-      return;
-    }
-    void restorePublishedInDraft(parsed);
+    void restorePublishedInDraft();
   }, [canUseDraftHistory, historyBusy, restorePublishedInDraft]);
 
   useEffect(() => {
@@ -1208,145 +1332,152 @@ export default function GridSchedulePanel({
   if (unitNoOverlapEnabled) {
     return (
       <>
-        <div className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-          <div className="bg-gray-50 border-b h-12 flex items-center justify-center px-1.5">
-            {canUseDraftHistory && (
-              <div className="inline-flex items-center gap-0.5">
-                <button
-                  type="button"
-                  title="Undo (Ctrl+Z)"
-                  onClick={() => {
-                    if (!canUndoDraft) return;
-                    void undoDraft();
-                  }}
-                  aria-disabled={!canUndoDraft}
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
-                    canUndoDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
-                  }`}
-                >
-                  <Undo2 className="h-5 w-5" />
-                </button>
-                <button
-                  type="button"
-                  title="Redo (Ctrl+Y)"
-                  onClick={() => {
-                    if (!canRedoDraft) return;
-                    void redoDraft();
-                  }}
-                  aria-disabled={!canRedoDraft}
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
-                    canRedoDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
-                  }`}
-                >
-                  <Redo2 className="h-5 w-5" />
-                </button>
-                <button
-                  type="button"
-                  title="Restore Draft From Published Version"
-                  onClick={() => {
-                    if (!canRestoreDraft) return;
-                    promptRestorePublished();
-                  }}
-                  aria-disabled={!canRestoreDraft}
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
-                    canRestoreDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
-                  }`}
-                >
-                  <RotateCcw className="h-5 w-5" />
-                </button>
-              </div>
-            )}
-          </div>
-          {days.map((day) => (
-            <div key={day} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
-              {day}
+        <div ref={panelRootRef}>
+          <div className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
+            <div className="bg-gray-50 border-b h-12 flex items-center justify-center px-1.5">
+              {canUseDraftHistory && (
+                <div className="inline-flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    title="Undo (Ctrl+Z)"
+                    onClick={() => {
+                      if (!canUndoDraft) return;
+                      void undoDraft();
+                    }}
+                    aria-disabled={!canUndoDraft}
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
+                      canUndoDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
+                    }`}
+                  >
+                    <Undo2 className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Redo (Ctrl+Y)"
+                    onClick={() => {
+                      if (!canRedoDraft) return;
+                      void redoDraft();
+                    }}
+                    aria-disabled={!canRedoDraft}
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
+                      canRedoDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
+                    }`}
+                  >
+                    <Redo2 className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Restore Draft From Last Published Version"
+                    onClick={() => {
+                      if (!canRestoreDraft) return;
+                      promptRestorePublished();
+                    }}
+                    aria-disabled={!canRestoreDraft}
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
+                      canRestoreDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
+                    }`}
+                  >
+                    <RotateCcw className="h-5 w-5" />
+                  </button>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-
-        <div
-          data-schedule-scroll
-          className="relative max-h-[70vh] overflow-y-auto hide-scrollbar"
-        >
-          {historyError && (
-            <div className="sticky top-2 left-0 z-[80] mx-3 my-2 rounded border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">
-              {historyError}
-            </div>
-          )}
-          <div className="pointer-events-none absolute left-0 top-0 z-[2]" style={{ width: timeColPx, height: bodyHeight }}>
-            <div className="absolute inset-x-0 top-1 text-center text-xs text-gray-500">{fmt(dayStartMin)}</div>
-            {rows.slice(1).map((time, index) => (
-              <div
-                key={`time-axis-${time}`}
-                className="absolute inset-x-0 -translate-y-1/2 text-center text-xs text-gray-500"
-                style={{ top: (index + 1) * rowPx }}
-              >
-                {fmt(time)}
+            {days.map((day) => (
+              <div key={day} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
+                {day}
               </div>
             ))}
-            <div className="absolute inset-x-0 bottom-1 text-center text-xs text-gray-500">{fmt(dayEndMin)}</div>
           </div>
 
-          {rows.map((time) => (
-            <div key={time} className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-              <div className="h-16 border-r" />
-              {days.map((day, dayIndex) => (
+          <div
+            data-schedule-scroll
+            className="relative max-h-[70vh] overflow-y-auto hide-scrollbar"
+          >
+            {historyError && (
+              <div className="sticky top-2 left-0 z-[80] mx-3 my-2 rounded border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">
+                {historyError}
+              </div>
+            )}
+            <div className="pointer-events-none absolute left-0 top-0 z-[2]" style={{ width: timeColPx, height: bodyHeight }}>
+              <div className="absolute inset-x-0 top-1 text-center text-xs text-gray-500">{fmt(dayStartMin)}</div>
+              {rows.slice(1).map((time, index) => (
                 <div
-                  key={`${time}-${day}`}
-                  className={`border-b ${dayIndex < days.length - 1 ? "border-r" : ""} h-16 hover:bg-gray-50`}
-                />
+                  key={`time-axis-${time}`}
+                  className="absolute inset-x-0 -translate-y-1/2 text-center text-xs text-gray-500"
+                  style={{ top: (index + 1) * rowPx }}
+                >
+                  {fmt(time)}
+                </div>
               ))}
+              <div className="absolute inset-x-0 bottom-1 text-center text-xs text-gray-500">{fmt(dayEndMin)}</div>
             </div>
-          ))}
 
-          <UnitTabs
-            gridId={gridId}
-            role={role}
-            units={units}
-            daysCount={days.length}
-            dayLabels={days}
-            rowPx={rowPx}
-            timeColPx={timeColPx}
-            bodyHeight={bodyHeight}
-            dayStartMin={dayStartMin}
-            slotMin={slotMin}
-            scheduleViewMode={scheduleViewMode}
-            enablePinning={role === "supervisor" && scheduleViewMode === "draft"}
-            externalRefreshTick={contextRefreshTick}
-            onDraftMutated={handleDraftMutated}
+            {rows.map((time) => (
+              <div key={time} className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
+                <div className="h-16 border-r" />
+                {days.map((day, dayIndex) => (
+                  <div
+                    key={`${time}-${day}`}
+                    className={`border-b ${dayIndex < days.length - 1 ? "border-r" : ""} h-16 hover:bg-gray-50`}
+                  />
+                ))}
+              </div>
+            ))}
+
+            <UnitTabs
+              gridId={gridId}
+              role={role}
+              units={units}
+              daysCount={days.length}
+              dayLabels={days}
+              rowPx={rowPx}
+              timeColPx={timeColPx}
+              bodyHeight={bodyHeight}
+              dayStartMin={dayStartMin}
+              slotMin={slotMin}
+              scheduleViewMode={scheduleViewMode}
+              enablePinning={role === "supervisor" && scheduleViewMode === "draft"}
+              externalRefreshTick={contextRefreshTick}
+              onDraftMutated={handleDraftMutated}
+              commentsPanelOpen={historyMode ? false : commentsPanelOpen}
+              onCommentsPanelOpenChange={historyMode ? undefined : setCommentsPanelOpen}
+              historyMode={historyMode}
+              historyGridCode={historyGridCode}
+            />
+          </div>
+
+          <GradualBlur
+            target="parent"
+            position="top"
+            height="2.1rem"
+            strength={2}
+            divCount={5}
+            curve="bezier"
+            exponential
+            opacity={1}
+            showWhen="not-at-start"
+            style={{ top: "3rem" }}
+          />
+          <GradualBlur
+            target="parent"
+            position="bottom"
+            height="2.1rem"
+            strength={2}
+            divCount={5}
+            curve="bezier"
+            exponential
+            opacity={1}
+            showWhen="not-at-end"
           />
         </div>
-
-        <GradualBlur
-          target="parent"
-          position="top"
-          height="2.1rem"
-          strength={2}
-          divCount={5}
-          curve="bezier"
-          exponential
-          opacity={1}
-          showWhen="not-at-start"
-          style={{ top: "3rem" }}
-        />
-        <GradualBlur
-          target="parent"
-          position="bottom"
-          height="2.1rem"
-          strength={2}
-          divCount={5}
-          curve="bezier"
-          exponential
-          opacity={1}
-          showWhen="not-at-end"
-        />
       </>
     );
   }
 
   return (
     <>
-      <div className="grid" style={{ gridTemplateColumns: `220px repeat(${days.length}, 1fr)` }}>
+      <div ref={panelRootRef}>
+        <div className="grid" style={{ gridTemplateColumns: `220px repeat(${days.length}, 1fr)` }}>
         <div className="bg-gray-50 border-b h-12 flex items-center justify-center px-1.5">
           {canUseDraftHistory && (
             <div className="inline-flex items-center gap-0.5">
@@ -1380,7 +1511,7 @@ export default function GridSchedulePanel({
               </button>
               <button
                 type="button"
-                title="Restore Draft From Published Version"
+                title="Restore Draft From Last Published Version"
                 onClick={() => {
                   if (!canRestoreDraft) return;
                   promptRestorePublished();
@@ -1400,9 +1531,9 @@ export default function GridSchedulePanel({
             {day}
           </div>
         ))}
-      </div>
+        </div>
 
-      <div
+        <div
         ref={participantBoardRef}
         data-schedule-scroll
         data-participant-edit-root
@@ -1443,10 +1574,14 @@ export default function GridSchedulePanel({
             ))}
           </div>
         )}
-        {!participantsLoading && orderedParticipants.length === 0 && (
-          <div className="px-4 py-6 text-sm text-gray-500">No participants found for this grid.</div>
+        {!participantsLoading && visibleParticipants.length === 0 && (
+          <div className="px-4 py-6 text-sm text-gray-500">
+            {role === "editor"
+              ? "Your participant profile was not found in this grid."
+              : "No participants found for this grid."}
+          </div>
         )}
-        {orderedParticipants.map((participant) => {
+        {visibleParticipants.map((participant) => {
           const pid = String(participant.id);
           const tier = participant.tier ? TIER_LABEL[String(participant.tier)] || String(participant.tier) : "No tier";
           return (
@@ -1460,7 +1595,10 @@ export default function GridSchedulePanel({
                 <div className="text-xs text-gray-500 mt-1">{tier}</div>
               </div>
               {days.map((day, dayColumnIndex) => {
-                const entries = entriesByParticipantDay[pid]?.[dayColumnIndex] || [];
+                const dayEntries = entriesByParticipantDay[pid]?.[dayColumnIndex] || [];
+                const entries = participantBoardSelectedUnitId
+                  ? dayEntries.filter((entry) => entry.bundleUnitIds.includes(participantBoardSelectedUnitId))
+                  : dayEntries;
                 const targetCellKey = `${pid}-${dayColumnIndex}`;
                 const isDropActive = dragHoverCellKey === targetCellKey;
                 return (
@@ -1585,9 +1723,6 @@ export default function GridSchedulePanel({
                         >
                           <div className="flex h-full w-full flex-col items-center justify-center text-center">
                             <div className="font-semibold text-gray-900 truncate w-full">{entry.cellName}</div>
-                            <div className="mt-0.5 text-[10px] font-normal text-gray-600 truncate w-full">
-                              {entry.bundleLabel}
-                            </div>
                             <div className="mt-1 text-[11px] text-gray-700">{entry.timeLabel}</div>
                           </div>
                         </div>
@@ -1758,6 +1893,29 @@ export default function GridSchedulePanel({
           </div>
         )}
 
+        {participantBoardUnitTabs.length > 0 && (
+          <div data-unit-tabs className="fixed bottom-0 left-0 right-0 z-[40] pointer-events-none">
+            <div className="max-w-5xl mx-auto flex items-end gap-2 px-4 pt-2 pb-0 overflow-x-auto overflow-y-hidden pointer-events-auto">
+              {participantBoardUnitTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setParticipantBoardSelectedUnitId(tab.id)}
+                  className={[
+                    "px-4 py-2 text-sm border rounded-t-xl rounded-b-none origin-bottom",
+                    "transition-colors transition-shadow transition-transform duration-150 ease-out",
+                    participantBoardSelectedUnitId === tab.id
+                      ? "bg-white text-black shadow-lg border-gray-300"
+                      : "bg-gray-100 text-gray-700 shadow-md hover:shadow-lg hover:bg-white hover:scale-[1.02]",
+                  ].join(" ")}
+                >
+                  {tab.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <SolveOverlay
           gridId={gridId}
           role={role}
@@ -1770,10 +1928,14 @@ export default function GridSchedulePanel({
           slotMin={slotMin}
           selectedUnitId={null}
           hideScheduleOverlay
-          suppressRightDock={participantEditMode}
+          suppressRightDock={participantEditMode || historyMode}
           scheduleViewMode={scheduleViewMode}
           externalRefreshTick={contextRefreshTick}
           onDraftMutated={handleDraftMutated}
+          commentsPanelOpen={historyMode ? false : commentsPanelOpen}
+          onCommentsPanelOpenChange={historyMode ? undefined : setCommentsPanelOpen}
+          historyMode={historyMode}
+          historyGridCode={historyGridCode}
         />
       </div>
 
@@ -1800,6 +1962,7 @@ export default function GridSchedulePanel({
         opacity={1}
         showWhen="not-at-end"
       />
+      </div>
     </>
   );
 }

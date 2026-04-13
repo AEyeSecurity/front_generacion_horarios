@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import GridActions from "@/components/grid/GridActions";
 import UserMenu from "@/components/navigation/UserMenu";
 import ShareInviteButton from "@/components/invitations/ShareInviteButton";
+import GridTopBarTools from "@/components/navigation/GridTopBarTools";
 
 export default async function GridTopBar({
   id,
@@ -35,6 +36,7 @@ export default async function GridTopBar({
           <span className="font-medium truncate" title={name}>{name}</span>
         </div>
         <div className="flex items-center gap-3">
+          {canInvite && hasSolution && <GridTopBarTools gridId={id} gridCode={gridCode} />}
           {canInvite && (
             <ShareInviteButton
               gridId={id}
