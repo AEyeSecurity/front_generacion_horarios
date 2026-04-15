@@ -20,9 +20,8 @@ import {
   type TierCounts,
   type TierPools,
 } from "@/components/dialogs/cell-staffing";
-import TwoStepIndicator from "@/components/dialogs/TwoStepIndicator";
-import StepNavButton from "@/components/dialogs/StepNavButton";
 import { CELL_COLOR_OPTIONS_NO_RED as COLOR_OPTIONS } from "@/lib/cell-colors";
+import { useI18n } from "@/lib/use-i18n";
 
 type TimeRange = { id: number; name: string; start_time: string; end_time: string };
 type Unit = { id: number; name: string };
@@ -34,11 +33,17 @@ type Cell = {
   description?: string;
   duration_min?: number;
   division_days?: number;
+  split_parts_min?: Array<number | string>;
+  allow_overstaffing?: boolean | null;
+  split_order_flexible?: boolean | null;
   time_range?: number | string;
   bundles?: Array<number | string>;
   staffs?: Array<number | string>;
   colorHex?: string | null;
   color_hex?: string | null;
+  locked_day_index?: number | string | null;
+  locked_start_slot?: number | string | null;
+  locked_duration_min?: number | string | null;
   headcount?: number | null;
   tier_counts?: Partial<TierCounts> | null;
   tier_pools?: Partial<Record<"PRIMARY" | "SECONDARY" | "TERTIARY", Array<string | number>>> | null;
@@ -46,6 +51,167 @@ type Cell = {
   series_id?: string | null;
   seriesCells?: Cell[];
 };
+
+const LOCK_VALIDATION_KEYS = [
+  "locked_duration_min",
+  "locked_day_index",
+  "locked_start_slot",
+  "non_field_errors",
+] as const;
+
+function clampInt(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function arraysEqual(a: number[], b: number[]) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function buildBalancedParts(total: number, parts: number) {
+  const safeTotal = Math.max(1, Math.floor(total));
+  const safeParts = Math.max(1, Math.min(Math.floor(parts), safeTotal));
+  const base = Math.floor(safeTotal / safeParts);
+  let remainder = safeTotal - base * safeParts;
+  const out = Array.from({ length: safeParts }, () => base);
+  for (let i = 0; i < out.length && remainder > 0; i += 1) {
+    out[i] += 1;
+    remainder -= 1;
+  }
+  return out;
+}
+
+function boundariesFromParts(parts: number[]) {
+  const out: number[] = [];
+  let acc = 0;
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    acc += parts[i];
+    out.push(acc);
+  }
+  return out;
+}
+
+function partsFromBoundaries(total: number, boundaries: number[]) {
+  const out: number[] = [];
+  let prev = 0;
+  for (const boundary of boundaries) {
+    out.push(Math.max(1, boundary - prev));
+    prev = boundary;
+  }
+  out.push(Math.max(1, total - prev));
+  return out;
+}
+
+function normalizeBoundaries(boundaries: number[], total: number, partsCount: number) {
+  const safeTotal = Math.max(1, Math.floor(total));
+  const safeParts = Math.max(1, Math.min(Math.floor(partsCount), safeTotal));
+  const requiredLength = safeParts - 1;
+  if (requiredLength <= 0) return [];
+
+  const fallback = boundariesFromParts(buildBalancedParts(safeTotal, safeParts));
+  const source = boundaries.length === requiredLength ? boundaries : fallback;
+  const next: number[] = [];
+
+  for (let i = 0; i < requiredLength; i += 1) {
+    const min = i === 0 ? 1 : next[i - 1] + 1;
+    const max = safeTotal - (safeParts - i - 1);
+    const raw = Number.isFinite(source[i]) ? Math.round(source[i]) : min;
+    next.push(clampInt(raw, min, max));
+  }
+
+  return next;
+}
+
+function parseNullableInt(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.round(parsed);
+}
+
+function flattenErrorMessages(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap((entry) => flattenErrorMessages(entry));
+  if (value && typeof value === "object") {
+    const detail = (value as { detail?: unknown }).detail;
+    if (typeof detail === "string") return [detail];
+  }
+  return [];
+}
+
+function parseStructuredApiError(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const source = payload as Record<string, unknown>;
+  const preferred = LOCK_VALIDATION_KEYS.flatMap((key) =>
+    flattenErrorMessages(source[key]).map((message) => `${key}: ${message}`)
+  );
+  if (preferred.length > 0) return preferred.join("\n");
+
+  const detail = flattenErrorMessages(source.detail);
+  if (detail.length > 0) return detail.join("\n");
+
+  const generic = Object.entries(source).flatMap(([key, value]) =>
+    flattenErrorMessages(value).map((message) => `${key}: ${message}`)
+  );
+  return generic.length > 0 ? generic.join("\n") : null;
+}
+
+function buildApiErrorMessage(raw: string, status: number, fallback: string): string {
+  const trimmed = raw.trim();
+  if (trimmed) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      const structured = parseStructuredApiError(parsed);
+      if (structured) return structured;
+    } catch {}
+    return trimmed;
+  }
+  return `${fallback} (${status})`;
+}
+
+function hasOwnField<T extends object>(source: T, key: string) {
+  return Object.prototype.hasOwnProperty.call(source, key);
+}
+
+function normalizeLockPayload(cell: Cell, splitOrderFlexible: boolean) {
+  const payload: {
+    locked_day_index?: number | null;
+    locked_start_slot?: number | null;
+    locked_duration_min?: number | null;
+  } = {};
+
+  if (hasOwnField(cell, "locked_day_index")) {
+    payload.locked_day_index = parseNullableInt(cell.locked_day_index);
+  }
+  if (hasOwnField(cell, "locked_start_slot")) {
+    payload.locked_start_slot = parseNullableInt(cell.locked_start_slot);
+  }
+  if (hasOwnField(cell, "locked_duration_min")) {
+    payload.locked_duration_min = splitOrderFlexible ? parseNullableInt(cell.locked_duration_min) : null;
+  }
+
+  return payload;
+}
+
+function parseSplitPartsCells(cell: Cell, cellMin: number): number[] {
+  const normalizedCellMin = Math.max(1, Number(cellMin) || 1);
+  const splitPartsRaw = Array.isArray(cell.split_parts_min)
+    ? cell.split_parts_min
+    : [];
+  const partsFromSplit = splitPartsRaw
+    .map((part) => Number(part))
+    .filter((part) => Number.isFinite(part) && part > 0)
+    .map((part) => Math.max(1, Math.round(part / normalizedCellMin)));
+
+  if (partsFromSplit.length > 0) return partsFromSplit;
+
+  const totalCells = Math.max(1, Math.round((Number(cell.duration_min) || normalizedCellMin) / normalizedCellMin));
+  const legacyDays = Math.max(1, Math.round(Number(cell.division_days) || 1));
+  if (legacyDays <= 1) return [totalCells];
+  return buildBalancedParts(totalCells, legacyDays);
+}
 
 function buildStaffingError(
   tierCounts: TierCounts,
@@ -151,6 +317,7 @@ export default function EditCellDialog({
   onOpenChange: (v: boolean) => void;
   onSaved?: () => void;
 }) {
+  const { t } = useI18n();
   const requestClose = React.useCallback(() => {
     onOpenChange(false);
   }, [onOpenChange]);
@@ -159,11 +326,17 @@ export default function EditCellDialog({
     e.preventDefault();
   };
 
-  const [step, setStep] = React.useState<1 | 2>(1);
+  const [step, setStep] = React.useState<1 | 2 | 3>(1);
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [durationCells, setDurationCells] = React.useState<number>(1);
-  const [daysDivision, setDaysDivision] = React.useState<number>(1);
+  const [multiDayEnabled, setMultiDayEnabled] = React.useState(false);
+  const [splitDays, setSplitDays] = React.useState<number>(2);
+  const [equalSplit, setEqualSplit] = React.useState(false);
+  const [splitOrderFlexible, setSplitOrderFlexible] = React.useState(false);
+  const [splitBoundaries, setSplitBoundaries] = React.useState<number[]>([1]);
+  const [dragBoundaryIndex, setDragBoundaryIndex] = React.useState<number | null>(null);
+  const [maxSplitDays, setMaxSplitDays] = React.useState<number>(7);
   const [timeRangeId, setTimeRangeId] = React.useState<string>("");
   const [colorHex, setColorHex] = React.useState<string | null>(null);
   const [colorMenuOpen, setColorMenuOpen] = React.useState(false);
@@ -171,6 +344,7 @@ export default function EditCellDialog({
   const [bundleUnitSets, setBundleUnitSets] = React.useState<string[][]>([]);
   const [editingBundleIndex, setEditingBundleIndex] = React.useState<number | null>(null);
   const [initialBundleSetsSerialized, setInitialBundleSetsSerialized] = React.useState("[]");
+  const [seriesCellsSnapshot, setSeriesCellsSnapshot] = React.useState<Cell[]>([]);
   const [participants, setParticipants] = React.useState<Participant[]>([]);
   const [timeRanges, setTimeRanges] = React.useState<TimeRange[]>([]);
   const [units, setUnits] = React.useState<Unit[]>([]);
@@ -179,10 +353,12 @@ export default function EditCellDialog({
   const [tierCounts, setTierCounts] = React.useState<TierCounts>({ ...EMPTY_TIER_COUNTS });
   const [tierPools, setTierPools] = React.useState<TierPools>({ ...EMPTY_TIER_POOLS });
   const [staffGroups, setStaffGroups] = React.useState<StaffOption[]>([]);
+  const [allowOverstaffing, setAllowOverstaffing] = React.useState(false);
   const [initialStaffGroupsSerialized, setInitialStaffGroupsSerialized] = React.useState("[]");
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
+  const splitSliderRef = React.useRef<HTMLDivElement | null>(null);
   const inferredHeadcount = React.useMemo(
     () => TIERS.reduce((sum, tier) => sum + Math.max(0, Number(tierCounts[tier] || 0)), 0),
     [tierCounts]
@@ -218,6 +394,103 @@ export default function EditCellDialog({
     return `Bundle sets cannot share units: ${duplicates.map((id) => unitNameById[id] || `Unit ${id}`).join(", ")}.`;
   }, [activeBundleSets, unitNameById]);
 
+  const durationCellsSafe = React.useMemo(
+    () => Math.max(1, Math.floor(Number(durationCells) || 1)),
+    [durationCells]
+  );
+  const maxSplitDaysSafe = React.useMemo(
+    () => Math.max(1, Math.min(7, Math.floor(Number(maxSplitDays) || 7))),
+    [maxSplitDays]
+  );
+  const maxSplitByDuration = React.useMemo(
+    () => Math.min(maxSplitDaysSafe, durationCellsSafe),
+    [maxSplitDaysSafe, durationCellsSafe]
+  );
+  const canEnableMultiDay = maxSplitByDuration >= 2;
+  const splitDaysSafe = React.useMemo(() => {
+    if (!multiDayEnabled || !canEnableMultiDay) return 1;
+    return clampInt(splitDays, 2, maxSplitByDuration);
+  }, [multiDayEnabled, canEnableMultiDay, splitDays, maxSplitByDuration]);
+  const canEqualSplit = React.useMemo(
+    () => multiDayEnabled && splitDaysSafe > 1 && durationCellsSafe % splitDaysSafe === 0,
+    [multiDayEnabled, splitDaysSafe, durationCellsSafe]
+  );
+
+  React.useEffect(() => {
+    if (!multiDayEnabled) {
+      if (equalSplit) setEqualSplit(false);
+      if (splitOrderFlexible) setSplitOrderFlexible(false);
+      if (step === 3) setStep(2);
+      return;
+    }
+    if (!canEnableMultiDay) {
+      setMultiDayEnabled(false);
+      setEqualSplit(false);
+      return;
+    }
+    if (splitDays !== splitDaysSafe) {
+      setSplitDays(splitDaysSafe);
+    }
+  }, [multiDayEnabled, equalSplit, splitOrderFlexible, step, canEnableMultiDay, splitDays, splitDaysSafe]);
+
+  React.useEffect(() => {
+    if (!multiDayEnabled) return;
+
+    if (equalSplit) {
+      if (!canEqualSplit) {
+        setEqualSplit(false);
+        return;
+      }
+      const perPart = durationCellsSafe / splitDaysSafe;
+      const equalParts = Array.from({ length: splitDaysSafe }, () => perPart);
+      const next = boundariesFromParts(equalParts);
+      setSplitBoundaries((prev) => (arraysEqual(prev, next) ? prev : next));
+      return;
+    }
+
+    setSplitBoundaries((prev) => {
+      const next = normalizeBoundaries(prev, durationCellsSafe, splitDaysSafe);
+      return arraysEqual(prev, next) ? prev : next;
+    });
+  }, [multiDayEnabled, equalSplit, canEqualSplit, durationCellsSafe, splitDaysSafe]);
+
+  const sliderBoundaries = React.useMemo(
+    () => normalizeBoundaries(splitBoundaries, durationCellsSafe, splitDaysSafe),
+    [splitBoundaries, durationCellsSafe, splitDaysSafe]
+  );
+  const splitPartsCells = React.useMemo(() => {
+    if (!multiDayEnabled || !canEnableMultiDay) return [durationCellsSafe];
+    return partsFromBoundaries(durationCellsSafe, sliderBoundaries);
+  }, [multiDayEnabled, canEnableMultiDay, durationCellsSafe, sliderBoundaries]);
+  const splitPartsMin = React.useMemo(
+    () => splitPartsCells.map((cells) => cells * Math.max(1, cellMin)),
+    [splitPartsCells, cellMin]
+  );
+  const splitSegments = React.useMemo(() => {
+    if (durationCellsSafe <= 0) return [];
+    const points = [0, ...sliderBoundaries, durationCellsSafe];
+    return splitPartsCells.map((partCells, index) => {
+      const start = points[index] ?? 0;
+      const end = points[index + 1] ?? durationCellsSafe;
+      const centerPct = ((start + end) / 2 / durationCellsSafe) * 100;
+      return {
+        centerPct,
+        cells: partCells,
+        minutes: partCells * Math.max(1, cellMin),
+      };
+    });
+  }, [durationCellsSafe, sliderBoundaries, splitPartsCells, cellMin]);
+  const splitStepReady = React.useMemo(() => {
+    if (!multiDayEnabled) return true;
+    if (!canEnableMultiDay) return false;
+    if (splitPartsCells.length !== splitDaysSafe) return false;
+    if (splitPartsCells.some((part) => part < 1)) return false;
+    return splitPartsCells.reduce((sum, part) => sum + part, 0) === durationCellsSafe;
+  }, [multiDayEnabled, canEnableMultiDay, splitPartsCells, splitDaysSafe, durationCellsSafe]);
+  const totalSteps = multiDayEnabled ? 3 : 2;
+  const finalStep = totalSteps as 2 | 3;
+  const accentColor = colorHex ?? "#111827";
+
   React.useEffect(() => {
     if (!open || !cell) return;
     setErr(null);
@@ -225,12 +498,21 @@ export default function EditCellDialog({
     setStep(1);
     setName(stripBundleSuffix(cell.name) || "");
     setDescription(cell.description || "");
-    setDaysDivision(Number(cell.division_days) || 1);
+    setDurationCells(1);
+    setMultiDayEnabled(false);
+    setSplitDays(2);
+    setEqualSplit(false);
+    setSplitOrderFlexible(false);
+    setSplitBoundaries([1]);
+    setDragBoundaryIndex(null);
+    setMaxSplitDays(7);
     setTimeRangeId(cell.time_range != null ? String(cell.time_range) : "");
     setColorHex((cell.colorHex || cell.color_hex || null) as string | null);
     setColorMenuOpen(false);
+    setAllowOverstaffing(Boolean(cell.allow_overstaffing));
     setUnitIds([]);
     setEditingBundleIndex(null);
+    setSeriesCellsSnapshot([]);
 
     (async () => {
       try {
@@ -257,14 +539,16 @@ export default function EditCellDialog({
         const sourceSeriesCells = cell.seriesCells?.length ? cell.seriesCells : [cell];
         const seriesCells = sourceSeriesCells.map((seriesCell) => latestCellsById.get(String(seriesCell.id)) ?? seriesCell);
         const baseCell = latestCellById ?? latestCellsById.get(String(cell.id)) ?? cell;
+        setSeriesCellsSnapshot(seriesCells);
 
         setName(stripBundleSuffix(baseCell.name) || "");
         setDescription(baseCell.description || "");
-        setDaysDivision(Number(baseCell.division_days) || 1);
         setTimeRangeId(baseCell.time_range != null ? String(baseCell.time_range) : "");
         setColorHex((baseCell.colorHex || baseCell.color_hex || null) as string | null);
+        setAllowOverstaffing(Boolean(baseCell.allow_overstaffing));
 
         let gridCellMin = 1;
+        let gridMaxDays = 7;
         let bundlesList: Bundle[] = [];
         let staffMembersById: Record<string, string[]> = {};
 
@@ -278,10 +562,30 @@ export default function EditCellDialog({
           if (g?.cell_size_min) {
             gridCellMin = Number(g.cell_size_min);
             setCellMin(gridCellMin);
-            const dur = Number(baseCell.duration_min) || gridCellMin;
-            setDurationCells(Math.max(1, Math.round(dur / gridCellMin)));
+          }
+          if (Array.isArray(g?.days_enabled)) {
+            gridMaxDays = Math.max(1, Math.min(7, g.days_enabled.length));
+            setMaxSplitDays(gridMaxDays);
           }
         } catch {}
+
+        const initialSplitParts = parseSplitPartsCells(baseCell, gridCellMin);
+        const initialDurationCells = Math.max(1, initialSplitParts.reduce((sum, part) => sum + part, 0));
+        const cappedDays = Math.max(1, Math.min(initialSplitParts.length, initialDurationCells, gridMaxDays));
+        const initialParts =
+          initialSplitParts.length === cappedDays
+            ? initialSplitParts
+            : buildBalancedParts(initialDurationCells, cappedDays);
+        const initialBoundaries = boundariesFromParts(initialParts);
+
+        setDurationCells(initialDurationCells);
+        setMultiDayEnabled(cappedDays > 1);
+        setSplitDays(cappedDays > 1 ? cappedDays : 2);
+        setSplitBoundaries(initialBoundaries);
+        setSplitOrderFlexible(Boolean(baseCell.split_order_flexible));
+        const initialAllEqual =
+          initialParts.length > 1 && initialParts.every((part) => part === initialParts[0]);
+        setEqualSplit(initialAllEqual);
 
         try {
           const rp = await fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" });
@@ -397,11 +701,81 @@ export default function EditCellDialog({
 
   const stepOneReady = Boolean(name.trim() && timeRangeId && durationCells >= 1 && activeBundleSets.length > 0);
   const staffingError = buildStaffingError(tierCounts, tierPools, staffGroups, participantMap);
-  const canSubmit = stepOneReady && !staffingError && !bundleSetsError;
+  const canSubmit = stepOneReady && splitStepReady && !staffingError && !bundleSetsError;
+  const canAdvanceFromStepOne = stepOneReady && !bundleSetsError;
+  const canAdvanceFromCurrentStep =
+    step === 1 ? canAdvanceFromStepOne : step === 2 && multiDayEnabled ? splitStepReady : false;
+  const showStaffingStep = step === finalStep;
 
   const onMultiChange = (e: React.ChangeEvent<HTMLSelectElement>, setFn: (v: string[]) => void) => {
     const vals = Array.from(e.target.selectedOptions).map((o) => o.value);
     setFn(vals);
+  };
+
+  const onBoundaryChange = React.useCallback((index: number, value: number) => {
+    setEqualSplit(false);
+    setSplitBoundaries((prev) => {
+      const current = normalizeBoundaries(prev, durationCellsSafe, splitDaysSafe);
+      if (index < 0 || index >= current.length) return current;
+      const before = index === 0 ? 0 : current[index - 1];
+      const after = index === current.length - 1 ? durationCellsSafe : current[index + 1];
+      const min = before + 1;
+      const max = after - 1;
+      const next = [...current];
+      next[index] = clampInt(value, min, max);
+      return normalizeBoundaries(next, durationCellsSafe, splitDaysSafe);
+    });
+  }, [durationCellsSafe, splitDaysSafe]);
+
+  const updateBoundaryFromClientX = React.useCallback((index: number, clientX: number) => {
+    const slider = splitSliderRef.current;
+    if (!slider) return;
+    const rect = slider.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const ratio = (clientX - rect.left) / rect.width;
+    const raw = Math.round(ratio * durationCellsSafe);
+    onBoundaryChange(index, raw);
+  }, [durationCellsSafe, onBoundaryChange]);
+
+  React.useEffect(() => {
+    if (dragBoundaryIndex == null || equalSplit) return;
+    const onMove = (event: PointerEvent) => {
+      updateBoundaryFromClientX(dragBoundaryIndex, event.clientX);
+    };
+    const onEnd = () => {
+      setDragBoundaryIndex(null);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onEnd);
+    window.addEventListener("pointercancel", onEnd);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("pointercancel", onEnd);
+    };
+  }, [dragBoundaryIndex, equalSplit, updateBoundaryFromClientX]);
+
+  React.useEffect(() => {
+    if (equalSplit || !multiDayEnabled) {
+      setDragBoundaryIndex(null);
+    }
+  }, [equalSplit, multiDayEnabled]);
+
+  const onToggleMultiDay = (checked: boolean) => {
+    if (!checked) {
+      setMultiDayEnabled(false);
+      setEqualSplit(false);
+      setSplitOrderFlexible(false);
+      return;
+    }
+
+    if (durationCellsSafe < 2) {
+      setDurationCells(2);
+    }
+    setMultiDayEnabled(true);
+    const targetDays = clampInt(splitDays, 2, Math.max(2, maxSplitByDuration));
+    setSplitDays(targetDays);
+    setSplitBoundaries((prev) => normalizeBoundaries(prev, Math.max(2, durationCellsSafe), targetDays));
   };
 
   const saveCurrentUnitSet = () => {
@@ -429,8 +803,8 @@ export default function EditCellDialog({
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      throw new Error(txt || `Failed (${res.status})`);
+      const raw = await res.text().catch(() => "");
+      throw new Error(buildApiErrorMessage(raw, res.status, "Failed to update cell"));
     }
   }
 
@@ -479,17 +853,22 @@ export default function EditCellDialog({
     setSaving(true);
     setErr(null);
     try {
-      const seriesCells = cell.seriesCells?.length ? cell.seriesCells : [cell];
+      const fallbackSeriesCells = cell.seriesCells?.length ? cell.seriesCells : [cell];
+      const seriesCells = seriesCellsSnapshot.length > 0 ? seriesCellsSnapshot : fallbackSeriesCells;
+      const splitOrderFlexibleValue = multiDayEnabled ? splitOrderFlexible : false;
       const basePayload: any = {
         name: name.trim(),
         description: description.trim() || undefined,
-        duration_min: Number(durationCells) * Math.max(1, cellMin),
-        division_days: Number(daysDivision) || 1,
+        split_parts_min: splitPartsMin,
+        split_order_flexible: splitOrderFlexibleValue,
+        duration_min: splitPartsMin.reduce((sum, part) => sum + part, 0),
+        division_days: splitPartsMin.length,
         time_range: Number(timeRangeId),
         colorHex: colorHex ?? null,
         headcount: inferredHeadcount,
         tier_counts: tierCounts,
         tier_pools: tierPools,
+        allow_overstaffing: allowOverstaffing,
       };
 
       const serializedCurrentStaff = serializeStaffGroups(staffGroups);
@@ -507,13 +886,16 @@ export default function EditCellDialog({
             template: {
               grid: gridId,
               ...sharedPayload,
+              locked_day_index: null,
+              locked_start_slot: null,
+              locked_duration_min: null,
             },
             bundle_unit_sets: desiredSets,
           }),
         });
         if (!res.ok) {
-          const txt = await res.text().catch(() => "");
-          throw new Error(txt || `Failed (${res.status})`);
+          const raw = await res.text().catch(() => "");
+          throw new Error(buildApiErrorMessage(raw, res.status, "Failed to update cell"));
         }
       } else {
         if (seriesCells.length > 1 && desiredSets.length > seriesCells.length) {
@@ -522,8 +904,10 @@ export default function EditCellDialog({
 
         const desiredBundleIds = await Promise.all(desiredSets.map((set) => ensureBundleId(set)));
         for (let index = 0; index < desiredSets.length; index += 1) {
+          const lockPayload = normalizeLockPayload(seriesCells[index], splitOrderFlexibleValue);
           await patchCell(seriesCells[index].id, {
             ...sharedPayload,
+            ...lockPayload,
             bundles: [desiredBundleIds[index]],
           });
         }
@@ -572,13 +956,44 @@ export default function EditCellDialog({
           </svg>
         </button>
         <DialogHeader className="relative min-h-9 pr-8">
-          <DialogTitle>{isSeriesEdit ? "Edit Cell Series" : "Edit Cell"}</DialogTitle>
-          <TwoStepIndicator
-            step={step}
-            canGoStep2={stepOneReady}
-            onStepChange={setStep}
-            className="absolute left-1/2 top-0 -translate-x-1/2"
-          />
+          <DialogTitle>{isSeriesEdit ? t("edit_cell.edit_cell_series") : t("edit_cell.edit_cell")}</DialogTitle>
+          <div className="absolute left-1/2 top-0 -translate-x-1/2 flex items-center gap-2 select-none">
+            {Array.from({ length: totalSteps }, (_, index) => {
+              const idx = index + 1;
+              const isActive = step === idx;
+              const canGo =
+                idx === 1
+                  ? true
+                  : idx === 2
+                  ? canAdvanceFromStepOne
+                  : canAdvanceFromStepOne && splitStepReady;
+              return (
+                <React.Fragment key={idx}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!canGo) return;
+                      setStep(idx as 1 | 2 | 3);
+                    }}
+                    disabled={!canGo}
+                    className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-semibold transition-colors ${
+                      isActive
+                        ? "bg-black text-white border-black shadow-[0_0_0_3px_rgba(0,0,0,0.18)]"
+                        : canGo
+                        ? "bg-white text-gray-700 border-gray-300"
+                        : "bg-white text-gray-400 border-gray-200 opacity-40"
+                    }`}
+                    aria-label={t("create_cell.go_to_step", { step: idx })}
+                  >
+                    {idx}
+                  </button>
+                  {idx < totalSteps ? (
+                    <div className={`h-0.5 w-10 ${step > idx ? "bg-black" : "bg-gray-300"}`} />
+                  ) : null}
+                </React.Fragment>
+              );
+            })}
+          </div>
         </DialogHeader>
 
         {err && <div className="text-sm text-red-600 mb-2 whitespace-pre-wrap">{err}</div>}
@@ -588,22 +1003,30 @@ export default function EditCellDialog({
             <>
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
                 <div className="sm:col-span-4">
-                  <label className="block text-sm mb-1">Name *</label>
+                  <label className="block text-sm mb-1">{t("create_cell.name_required")}</label>
                   <input className="w-full border rounded px-3 py-2 text-sm" value={name} onChange={(e) => setName(e.target.value)} required />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block text-sm mb-1">Duration (in cells) *</label>
-                  <input className="w-full border rounded px-3 py-2 text-sm" type="number" min={1} step={1} value={durationCells} onChange={(e) => setDurationCells(Number(e.target.value))} required />
-                  <div className="text-xs text-gray-500 mt-1">Total minutes: {durationCells * cellMin}</div>
+                  <label className="block text-sm mb-1">{t("create_cell.duration_cells_required")}</label>
+                  <input className="w-full border rounded px-3 py-2 text-sm" type="number" min={1} step={1} value={durationCells} onChange={(e) => setDurationCells(Math.max(1, Number(e.target.value) || 1))} required />
+                  <div className="text-xs text-gray-500 mt-1">{t("create_cell.total_minutes", { minutes: durationCells * cellMin })}</div>
                 </div>
-                <div className="sm:col-span-1">
-                  <label className="block text-sm mb-1">Division in days</label>
-                  <input className="w-full border rounded px-3 py-2 text-sm" type="number" min={1} value={daysDivision} onChange={(e) => setDaysDivision(Number(e.target.value) || 1)} />
+                <div className="sm:col-span-2 flex items-end">
+                  <label className="inline-flex items-center gap-2 text-sm select-none">
+                    <input
+                      type="checkbox"
+                      checked={multiDayEnabled}
+                      onChange={(e) => onToggleMultiDay(e.target.checked)}
+                      disabled={!canEnableMultiDay && !multiDayEnabled}
+                      className="h-4 w-4"
+                    />
+                    {t("create_cell.more_than_day")}
+                  </label>
                 </div>
                 <div className="sm:col-span-4">
-                  <label className="block text-sm mb-1">Time Range *</label>
+                  <label className="block text-sm mb-1">{t("create_cell.time_range_required")}</label>
                   <select className="w-full border rounded px-3 py-2 text-sm" value={timeRangeId} onChange={(e) => setTimeRangeId(e.target.value)} required>
-                    <option value="">Select...</option>
+                    <option value="">{t("create_cell.select_option")}</option>
                     {timeRanges.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.name} ({t.start_time}-{t.end_time})
@@ -611,15 +1034,15 @@ export default function EditCellDialog({
                     ))}
                   </select>
                 </div>
-                <div className="sm:col-span-1">
-                  <label className="block text-sm mb-1">Color</label>
+                <div className="sm:col-span-1 ml-auto">
+                  <label className="block text-sm mb-1">{t("create_cell.color")}</label>
                   <div className="relative">
                     <button
                       type="button"
                       onClick={() => setColorMenuOpen((v) => !v)}
                       className="h-10 w-10 rounded-full border border-gray-300 shadow-sm flex items-center justify-center text-gray-500"
                       style={{ backgroundColor: colorHex || "#ffffff" }}
-                      aria-label="Select color"
+                      aria-label={t("create_cell.select_color")}
                     >
                       {!colorHex ? <span className="text-base leading-none">/</span> : null}
                     </button>
@@ -630,7 +1053,7 @@ export default function EditCellDialog({
                             type="button"
                             onClick={() => { setColorHex(null); setColorMenuOpen(false); }}
                             className={`h-8 w-8 rounded-full border flex items-center justify-center text-gray-500 ${colorHex === null ? "ring-2 ring-black border-black" : "border-gray-300"}`}
-                            aria-label="No color"
+                            aria-label={t("create_cell.no_color")}
                           >
                             <span className="text-sm leading-none">/</span>
                           </button>
@@ -643,15 +1066,20 @@ export default function EditCellDialog({
                   </div>
                 </div>
               </div>
+              {!canEnableMultiDay && (
+                <div className="text-xs text-gray-500">
+                  {t("create_cell.more_than_day_unavailable")}
+                </div>
+              )}
 
               <div>
-                <label className="block text-sm mb-1">Description</label>
+                <label className="block text-sm mb-1">{t("create_cell.description")}</label>
                 <textarea className="w-full border rounded px-3 py-2 text-sm resize-none" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm mb-1">Units *</label>
+                  <label className="block text-sm mb-1">{t("create_cell.units_required")}</label>
                   <select multiple className="w-full border rounded px-3 py-2 text-sm h-28" value={unitIds} onChange={(e) => onMultiChange(e, setUnitIds)} required={bundleUnitSets.length === 0}>
                     {units.map((u) => {
                       const id = String(u.id);
@@ -669,7 +1097,7 @@ export default function EditCellDialog({
                         disabled={unitIds.length === 0}
                         className="px-3 py-2 rounded border text-sm disabled:opacity-50"
                       >
-                        {editingBundleIndex == null ? "Save bundle set" : "Update bundle set"}
+                        {editingBundleIndex == null ? t("create_cell.save_bundle_set") : t("edit_cell.update_bundle_set")}
                       </button>
                       {editingBundleIndex != null && (
                         <button
@@ -680,15 +1108,15 @@ export default function EditCellDialog({
                           }}
                           className="px-3 py-2 rounded border text-sm"
                         >
-                          Cancel edit
+                          {t("edit_cell.cancel_edit")}
                         </button>
                       )}
-                      <div className="text-xs text-gray-500">Save each bundle/unit set. Bundle sets cannot share units.</div>
+                      <div className="text-xs text-gray-500">{t("create_cell.save_bundle_help")}</div>
                     </div>
                   {bundleSetsError && <div className="text-xs text-red-600 mt-2">{bundleSetsError}</div>}
                 </div>
                 <div>
-                  <label className="block text-sm mb-1">Saved bundles</label>
+                  <label className="block text-sm mb-1">{t("create_cell.saved_bundles")}</label>
                   {bundleUnitSets.length > 0 && (
                     <div className="space-y-2">
                       {bundleUnitSets.map((set, index) => (
@@ -743,14 +1171,166 @@ export default function EditCellDialog({
                   )}
                   {bundleUnitSets.length === 0 && (
                     <div className="rounded border border-dashed px-3 py-4 text-xs text-gray-500">
-                      No bundle sets saved yet.
+                      {t("edit_cell.no_bundle_sets_saved")}
                     </div>
                   )}
                 </div>
               </div>
             </>
+          ) : multiDayEnabled && step === 2 ? (
+            <>
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-start justify-center gap-3">
+                  <div className="w-full sm:w-56">
+                    <label className="block text-sm mb-1">{t("create_cell.duration_cells_required")}</label>
+                    <input
+                      className="w-full border rounded px-3 py-2 text-sm"
+                      type="number"
+                      min={2}
+                      step={1}
+                      value={durationCells}
+                      onChange={(e) => setDurationCells(Math.max(1, Number(e.target.value) || 1))}
+                    />
+                    <div className="text-xs text-gray-500 mt-1">
+                      {t("create_cell.total_minutes", { minutes: durationCellsSafe * cellMin })}
+                    </div>
+                  </div>
+
+                  <div className="w-full sm:w-56">
+                    <label className="block text-sm mb-1">{t("create_cell.days_count")}</label>
+                    <input
+                      className="w-full border rounded px-3 py-2 text-sm"
+                      type="number"
+                      min={2}
+                      max={Math.max(2, maxSplitByDuration)}
+                      value={splitDaysSafe}
+                      onChange={(e) => {
+                        const next = clampInt(Number(e.target.value) || 2, 2, Math.max(2, maxSplitByDuration));
+                        setSplitDays(next);
+                        if (equalSplit && durationCellsSafe % next !== 0) setEqualSplit(false);
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded border px-3 py-3">
+                  <label className="block text-sm mb-2">{t("create_cell.split_distribution")}</label>
+                  <div className="space-y-3">
+                    <div
+                      ref={splitSliderRef}
+                      className="relative h-16 select-none touch-none"
+                      onPointerDown={(e) => {
+                        if (equalSplit || sliderBoundaries.length === 0) return;
+                        if ((e.target as HTMLElement).closest("[data-split-knob='true']")) return;
+                        const slider = splitSliderRef.current;
+                        if (!slider) return;
+                        const rect = slider.getBoundingClientRect();
+                        if (rect.width <= 0) return;
+                        const ratio = (e.clientX - rect.left) / rect.width;
+                        const raw = Math.round(ratio * durationCellsSafe);
+                        let nearestIndex = 0;
+                        let nearestDist = Number.POSITIVE_INFINITY;
+                        sliderBoundaries.forEach((value, index) => {
+                          const dist = Math.abs(value - raw);
+                          if (dist < nearestDist) {
+                            nearestDist = dist;
+                            nearestIndex = index;
+                          }
+                        });
+                        onBoundaryChange(nearestIndex, raw);
+                      }}
+                    >
+                      <div className="absolute left-0 right-0 top-5 h-1 -translate-y-1/2 rounded-full bg-gray-200" />
+                      <div
+                        className="absolute left-0 top-5 h-1 -translate-y-1/2 rounded-full opacity-35"
+                        style={{ width: "100%", backgroundColor: accentColor }}
+                      />
+                      {sliderBoundaries.map((boundary, index) => (
+                        <button
+                          key={`split-boundary-${index}`}
+                          type="button"
+                          data-split-knob="true"
+                          onPointerDown={(e) => {
+                            if (equalSplit) return;
+                            e.preventDefault();
+                            setDragBoundaryIndex(index);
+                            updateBoundaryFromClientX(index, e.clientX);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "ArrowLeft") {
+                              e.preventDefault();
+                              onBoundaryChange(index, boundary - 1);
+                            } else if (e.key === "ArrowRight") {
+                              e.preventDefault();
+                              onBoundaryChange(index, boundary + 1);
+                            }
+                          }}
+                          aria-label={t("create_cell.split_handle", { index: index + 1 })}
+                          className={`absolute top-5 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 bg-white shadow-sm ${
+                            equalSplit ? "cursor-not-allowed opacity-70" : "cursor-ew-resize"
+                          }`}
+                          style={{
+                            left: `${(boundary / durationCellsSafe) * 100}%`,
+                            borderColor: accentColor,
+                            zIndex: 10 + index,
+                          }}
+                        />
+                      ))}
+                      <div className="pointer-events-none absolute left-0 right-0 top-8 h-6">
+                        {splitSegments.map((segment, index) => (
+                          <span
+                            key={`split-segment-${index}`}
+                            className="absolute -translate-x-1/2 text-[11px] text-gray-600 whitespace-nowrap"
+                            style={{ left: `${segment.centerPct}%` }}
+                          >
+                            {t("create_cell.split_preview_compact", {
+                              cells: segment.cells,
+                              minutes: segment.minutes,
+                            })}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                    <label className="inline-flex items-center gap-2 text-sm select-none">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={splitOrderFlexible}
+                        onChange={(e) => setSplitOrderFlexible(e.target.checked)}
+                      />
+                      {t("create_cell.flexible_order")}
+                    </label>
+                    {canEqualSplit && (
+                      <label className="inline-flex items-center gap-2 text-sm select-none">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={equalSplit}
+                          onChange={(e) => setEqualSplit(e.target.checked)}
+                        />
+                        {t("create_cell.equally")}
+                      </label>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
           ) : (
             <>
+              <div className="rounded border px-3 py-2">
+                <label className="inline-flex items-center gap-2 text-sm select-none">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={allowOverstaffing}
+                    onChange={(e) => setAllowOverstaffing(e.target.checked)}
+                  />
+                  {t("create_cell.allow_overstaffing")}
+                </label>
+              </div>
               <CellStaffingEditor
                 participants={participants}
                 tierCounts={tierCounts}
@@ -767,22 +1347,45 @@ export default function EditCellDialog({
           )}
 
             <div className="flex justify-between gap-2">
-              <div>
-                <StepNavButton
-                  step={step}
-                  onToggle={() => setStep(step === 1 ? 2 : 1)}
-                />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStep((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3) : prev))}
+                  disabled={step === 1}
+                  className="h-9 w-9 rounded-full border text-sm flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
+                  aria-label={t("create_cell.previous_step")}
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+                    <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+
+                {step < finalStep && (
+                  <button
+                    type="button"
+                    onClick={() => setStep((prev) => (prev < finalStep ? ((prev + 1) as 1 | 2 | 3) : prev))}
+                    disabled={!canAdvanceFromCurrentStep}
+                    className="h-9 w-9 rounded-full border text-sm flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
+                    aria-label={t("create_cell.next_step")}
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+                      <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                )}
               </div>
-            <div className="flex gap-2">
-              <button type="button" className="px-3 py-2 rounded border text-sm" onClick={requestClose}>
-                Cancel
-              </button>
-              <button type="submit" className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50" disabled={saving || !canSubmit || loading}>
-                {saving ? "Saving..." : "Save"}
-              </button>
+              <div className="flex gap-2">
+                <button type="button" className="px-3 py-2 rounded border text-sm" onClick={requestClose}>
+                  {t("common.cancel")}
+                </button>
+                {showStaffingStep && (
+                  <button type="submit" className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50" disabled={saving || !canSubmit || loading}>
+                    {saving ? t("common.saving") : t("common.save")}
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        </form>
+          </form>
       </DialogContent>
     </Dialog>
   );

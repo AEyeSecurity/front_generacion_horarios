@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import SidePanel from "./SidePanel";
 import { Users, Tags, User as UserIcon, LayoutGrid } from "lucide-react";
 import type { Role } from "@/lib/types";
+import { useI18n } from "@/lib/use-i18n";
 
 type Tab = "participants" | "categories";
 const SHEET_ANIM_MS = 240;
@@ -51,6 +52,7 @@ export default function SideDock({
   role: Role;
   selfParticipantId?: number | null;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("participants");
   const lockRef = useRef(false);
@@ -96,7 +98,7 @@ export default function SideDock({
           id="sidedock"
           className="fixed left-4 top-1/2 -translate-y-1/2 z-[150] flex flex-col gap-3 pointer-events-auto"
         >
-          <DockButton title="My availability" onClick={gotoSelf}>
+          <DockButton title={t("side_dock.my_availability")} onClick={gotoSelf}>
             <UserIcon className={`w-5 h-5 ${selfParticipantId ? "" : "opacity-50"}`} />
           </DockButton>
         </div>
@@ -112,19 +114,19 @@ export default function SideDock({
         className="fixed left-4 top-1/2 -translate-y-1/2 z-[150] flex flex-col gap-3 pointer-events-auto"
       >
         <DockButton
-          title="Participants"
+          title={t("side_dock.participants")}
           active={open && tab === "participants"}
           onClick={() => switchTo("participants")}
         >
           <Users className="w-5 h-5" />
         </DockButton>
 
-        <DockButton title="Cells" onClick={gotoCells}>
+        <DockButton title={t("side_dock.cells")} onClick={gotoCells}>
           <LayoutGrid className="w-5 h-5" />
         </DockButton>
 
         <DockButton
-          title="Categories"
+          title={t("side_dock.categories")}
           active={open && tab === "categories"}
           onClick={() => switchTo("categories")}
         >

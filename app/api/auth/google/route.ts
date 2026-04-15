@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { normalizePreferredLanguage } from "@/lib/language";
 
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
 const REFRESH = process.env.AUTH_REFRESH_COOKIE!;
@@ -14,13 +15,26 @@ const cookieOptions = {
 };
 
 export async function POST(req: Request) {
-  const body = await req.text();
-  const res = await fetch(`${process.env.BACKEND_URL}/api/auth/google/`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body,
-    cache: "no-store",
-  });
+  const raw = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const payloadWithLanguage = {
+    ...raw,
+    preferred_language: normalizePreferredLanguage(raw.preferred_language),
+  };
+
+  const tryGoogleLogin = async (payload: Record<string, unknown>) =>
+    fetch(`${process.env.BACKEND_URL}/api/auth/google/`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
+
+  let res = await tryGoogleLogin(payloadWithLanguage);
+  if (!res.ok && res.status === 400) {
+    // Backward compatibility when backend google serializer does not accept preferred_language.
+    const { preferred_language: _ignored, ...withoutLanguage } = payloadWithLanguage;
+    res = await tryGoogleLogin(withoutLanguage);
+  }
 
   const text = await res.text().catch(() => "");
   let data: any = text; try { data = JSON.parse(text); } catch {}

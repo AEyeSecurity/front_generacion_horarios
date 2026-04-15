@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { useI18n } from "@/lib/use-i18n";
 
 type Id = number | string;
 
@@ -61,6 +62,12 @@ type StatusBadge = {
   label: string;
   className: string;
 };
+type InviteStatusKey =
+  | "invite_token.accepted"
+  | "invite_token.declined"
+  | "invite_token.expired"
+  | "invite_token.cancelled"
+  | "invite_token.pending";
 
 const AUTO_JOIN_STORAGE_KEY = "invite_auto_join_token";
 
@@ -123,21 +130,21 @@ function normalizeParticipantRef(value: unknown): ParticipantRef | null {
   };
 }
 
-function statusBadgeFromValue(status: unknown): StatusBadge {
+function statusBadgeFromValue(status: unknown, t: (key: InviteStatusKey) => string): StatusBadge {
   const raw = String(status ?? "").toLowerCase().trim();
   if (raw === "accepted") {
-    return { label: "Accepted", className: "text-green-700 bg-green-50 border border-green-200" };
+    return { label: t("invite_token.accepted"), className: "text-green-700 bg-green-50 border border-green-200" };
   }
   if (raw === "declined" || raw === "rejected") {
-    return { label: "Declined", className: "text-red-700 bg-red-50 border border-red-200" };
+    return { label: t("invite_token.declined"), className: "text-red-700 bg-red-50 border border-red-200" };
   }
   if (raw === "expired") {
-    return { label: "Expired", className: "text-yellow-700 bg-yellow-50 border border-yellow-200" };
+    return { label: t("invite_token.expired"), className: "text-yellow-700 bg-yellow-50 border border-yellow-200" };
   }
   if (raw === "cancelled" || raw === "canceled") {
-    return { label: "Cancelled", className: "text-orange-700 bg-orange-50 border border-orange-200" };
+    return { label: t("invite_token.cancelled"), className: "text-orange-700 bg-orange-50 border border-orange-200" };
   }
-  return { label: "Pending...", className: "text-gray-700 bg-gray-100 border border-gray-200" };
+  return { label: t("invite_token.pending"), className: "text-gray-700 bg-gray-100 border border-gray-200" };
 }
 
 function normalizeResolveData(data: unknown): ResolveData {
@@ -273,6 +280,7 @@ function invitedEmailFromResolved(resolved: ResolveData | null): string {
 }
 
 export default function InviteTokenView({ token }: { token: string }) {
+  const { t } = useI18n();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
@@ -363,15 +371,15 @@ export default function InviteTokenView({ token }: { token: string }) {
 
           // Never surface "Invitation is inactive" generic message.
           if (resolveInactiveError(resolveRaw)) {
-            if (!cancelled) setError("Invitation could not be loaded.");
+            if (!cancelled) setError(t("invite_token.could_not_load"));
             return;
           }
-          setError(resolveErrorMessage(resolveRaw, "Invitation is invalid or expired."));
+          setError(resolveErrorMessage(resolveRaw, t("invite_token.invalid_or_expired")));
           return;
         }
         if (!cancelled) setResolved(resolvedFromApi);
       } catch (e: unknown) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Could not resolve invitation.");
+        if (!cancelled) setError(e instanceof Error ? e.message : t("invite_token.could_not_resolve"));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -379,11 +387,11 @@ export default function InviteTokenView({ token }: { token: string }) {
     return () => {
       cancelled = true;
     };
-  }, [token, router, navigateToGrid]);
+  }, [token, router, navigateToGrid, t]);
 
   const invitedEmail = invitedEmailFromResolved(resolved);
   const resolvedStatus = String(resolved?.status ?? "").toLowerCase();
-  const statusTag = statusBadgeFromValue(resolved?.status);
+  const statusTag = statusBadgeFromValue(resolved?.status, t);
   const isPendingStatus = resolvedStatus === "pending";
   const isAlreadyAccepted = resolvedStatus === "accepted";
   const isLinkInvite = String(resolved?.type ?? "").toLowerCase() === "link";
@@ -403,7 +411,7 @@ export default function InviteTokenView({ token }: { token: string }) {
       return;
     }
     if (mustUseInvitedAccount) {
-      setError(`This invite is for ${invitedEmail}. Please sign in with that account.`);
+      setError(t("invite_token.use_invited_account", { email: invitedEmail }));
       return;
     }
     setAccepting(true);
@@ -421,7 +429,7 @@ export default function InviteTokenView({ token }: { token: string }) {
           router.push(`/login?next=${encodeURIComponent(`/invite/${token}`)}`);
           return;
         }
-        throw new Error(acceptedData.error || acceptedData.detail || "Could not accept invitation.");
+        throw new Error(acceptedData.error || acceptedData.detail || t("invite_token.could_not_accept"));
       }
       setAccepted(true);
       router.refresh();
@@ -449,11 +457,11 @@ export default function InviteTokenView({ token }: { token: string }) {
         router.refresh();
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Could not accept invitation.");
+      setError(e instanceof Error ? e.message : t("invite_token.could_not_accept"));
     } finally {
       setAccepting(false);
     }
-  }, [invitedEmail, isAuthenticated, isLinkInvite, mustUseInvitedAccount, resolved, router, token, navigateToGrid]);
+  }, [invitedEmail, isAuthenticated, isLinkInvite, mustUseInvitedAccount, resolved, router, token, navigateToGrid, t]);
 
   // Safety net: once accepted, keep trying a short-lived resolve->redirect flow
   // in case backend response arrives without grid_code on first attempt.
@@ -589,30 +597,30 @@ export default function InviteTokenView({ token }: { token: string }) {
   if (!token) {
     return (
       <div className="max-w-md mx-auto mt-16 bg-white p-6 rounded-lg shadow">
-        <h1 className="text-xl font-semibold mb-2">Invitation</h1>
-        <p className="text-sm text-red-600">Missing invitation token.</p>
+        <h1 className="text-xl font-semibold mb-2">{t("invite_token.invitation")}</h1>
+        <p className="text-sm text-red-600">{t("invite_token.missing_token")}</p>
       </div>
     );
   }
 
   return (
     <div className="max-w-md mx-auto mt-16 bg-white p-6 rounded-lg shadow space-y-4">
-      <h1 className="text-xl font-semibold">Invitation</h1>
-      {loading && <p className="text-sm text-gray-700">Loading invitation...</p>}
+      <h1 className="text-xl font-semibold">{t("invite_token.invitation")}</h1>
+      {loading && <p className="text-sm text-gray-700">{t("invite_token.loading_invitation")}</p>}
 
       {!loading && resolved && (
         <div className="space-y-2 text-sm">
-          <div><span className="text-gray-500">Grid:</span> {resolved.grid_name || resolved.grid?.name || "-"}</div>
-          <div><span className="text-gray-500">Role:</span> {resolved.role || "-"}</div>
-          <div><span className="text-gray-500">Type:</span> {resolved.type || "-"}</div>
-          {resolved.message && <div><span className="text-gray-500">Message:</span> {resolved.message}</div>}
+          <div><span className="text-gray-500">{t("invite_token.grid")}</span> {resolved.grid_name || resolved.grid?.name || t("invite_token.fallback_symbol")}</div>
+          <div><span className="text-gray-500">{t("invite_token.role")}</span> {resolved.role || t("invite_token.fallback_symbol")}</div>
+          <div><span className="text-gray-500">{t("invite_token.type")}</span> {resolved.type || t("invite_token.fallback_symbol")}</div>
+          {resolved.message && <div><span className="text-gray-500">{t("invite_token.message")}</span> {resolved.message}</div>}
           <div className="flex items-center gap-2">
-            <span className="text-gray-500">Status:</span>
+            <span className="text-gray-500">{t("invite_token.status")}</span>
             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTag.className}`}>
               {statusTag.label}
             </span>
           </div>
-          {resolved.expires_at && <div><span className="text-gray-500">Expires:</span> {new Date(resolved.expires_at).toLocaleString()}</div>}
+          {resolved.expires_at && <div><span className="text-gray-500">{t("invite_token.expires")}</span> {new Date(resolved.expires_at).toLocaleString()}</div>}
           {isPendingStatus && (
             <button
               type="button"
@@ -620,12 +628,18 @@ export default function InviteTokenView({ token }: { token: string }) {
               disabled={accepting || accepted || mustUseInvitedAccount || isAlreadyAccepted}
               className="mt-2 px-4 py-2 rounded bg-black text-white text-sm disabled:opacity-60"
             >
-              {accepting ? "Joining..." : accepted || isAlreadyAccepted ? "Accepted" : isLinkInvite ? "Join Grid" : "Accept invitation"}
+              {accepting
+                ? t("invite_token.joining")
+                : accepted || isAlreadyAccepted
+                  ? t("invite_token.accepted")
+                  : isLinkInvite
+                    ? t("invite_token.join_grid")
+                    : t("invite_token.accept_invitation")}
             </button>
           )}
           {mustUseInvitedAccount && (
             <div className="text-xs text-red-600">
-              This invite is for <span className="font-medium">{invitedEmail}</span>. Sign in with that account to accept.
+              {t("invite_token.use_invited_account", { email: invitedEmail })}
             </div>
           )}
         </div>
@@ -634,7 +648,8 @@ export default function InviteTokenView({ token }: { token: string }) {
       {error && <div className="text-sm text-red-600">{error}</div>}
       {isAuthenticated === false && !isLinkInvite && (
         <p className="text-sm text-gray-600">
-          <Link href="/login" className="underline">Log in</Link> or <Link href="/register" className="underline">create an account</Link>.
+          <Link href="/login" className="underline">{t("invite_token.log_in")}</Link> or{" "}
+          <Link href="/register" className="underline">{t("invite_token.create_account")}</Link>.
         </p>
       )}
     </div>

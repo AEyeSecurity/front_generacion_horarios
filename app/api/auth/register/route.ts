@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { normalizePreferredLanguage } from "@/lib/language";
 
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
 const REFRESH = process.env.AUTH_REFRESH_COOKIE!;
@@ -16,13 +17,26 @@ const cookieOptions = {
 // Simple passthrough to backend user creation endpoint
 // Adjust the path if your backend differs
 export async function POST(req: Request) {
-  const payload = await req.text();
-  const res = await fetch(`${process.env.BACKEND_URL}/api/auth/register/`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: payload,
-    cache: "no-store",
-  });
+  const raw = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const payloadWithLanguage = {
+    ...raw,
+    preferred_language: normalizePreferredLanguage(raw.preferred_language),
+  };
+
+  const tryRegister = async (payload: Record<string, unknown>) =>
+    fetch(`${process.env.BACKEND_URL}/api/auth/register/`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
+
+  let res = await tryRegister(payloadWithLanguage);
+  if (!res.ok && res.status === 400) {
+    // Backward compatibility when backend register serializer does not accept preferred_language.
+    const { preferred_language: _ignored, ...withoutLanguage } = payloadWithLanguage;
+    res = await tryRegister(withoutLanguage);
+  }
 
   const text = await res.text().catch(() => "");
   const ct = res.headers.get("content-type") || "";

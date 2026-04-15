@@ -6,6 +6,7 @@ import CardSwap, { Card } from "@/components/animations/CardSwap";
 import EditCellDialog from "@/components/dialogs/EditCellDialog";
 import { ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
 import { CELL_COLOR_OPTIONS, CELL_TEXT_DARK, CELL_TEXT_LIGHT } from "@/lib/cell-colors";
+import { useI18n } from "@/lib/use-i18n";
 
 const shadeHex = (hex: string, amt: number) => {
   if (!/^#([0-9a-f]{6})$/i.test(hex)) return hex;
@@ -25,6 +26,7 @@ type Cell = {
   description?: string;
   duration_min?: number;
   division_days?: number;
+  allow_overstaffing?: boolean | null;
   time_range?: number | string;
   units?: Array<number | string>;
   bundles?: Array<number | string>;
@@ -60,6 +62,7 @@ export default function CellsCardSwap({
   bundles: Bundle[];
   gridId: number;
 }) {
+  const { t } = useI18n();
   const bundleNameById = useMemo(() => {
     const map: Record<string, string> = {};
     for (const b of bundles) {
@@ -252,7 +255,9 @@ export default function CellsCardSwap({
                     <div className="flex items-start justify-between gap-4 text-xs">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1">
-                          <span className="font-medium" style={{ color: textLight || undefined }}>Bundles:</span>
+                          <span className="font-medium" style={{ color: textLight || undefined }}>
+                            {t("cells_card_swap.bundles")}
+                          </span>
                           {group.bundleNames.length > 0 ? group.bundleNames.map((bundleName) => (
                             <span
                               key={bundleName}
@@ -269,7 +274,9 @@ export default function CellsCardSwap({
                     </div>
                     <div className="text-xs">
                       <div className="flex flex-wrap items-center gap-1">
-                        <span className="font-medium" style={{ color: textLight || undefined }}>Staffs:</span>
+                        <span className="font-medium" style={{ color: textLight || undefined }}>
+                          {t("cells_card_swap.staffs")}
+                        </span>
                         {staffNames.length > 0 ? staffNames.map((staffName) => (
                           <span
                             key={staffName}

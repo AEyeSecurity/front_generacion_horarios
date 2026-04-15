@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { normalizePreferredLanguage } from "@/lib/language";
 
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
 const REFRESH = process.env.AUTH_REFRESH_COOKIE!;
@@ -14,17 +15,32 @@ const cookieOptions = {
 };
 
 export async function POST(req: Request) {
-  const { email, password } = await req.json();
-  const res = await fetch(`${process.env.BACKEND_URL}/api/auth/login/`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-    cache: 'no-store',
-  });
+  const raw = (await req.json().catch(() => ({}))) as {
+    email?: unknown;
+    password?: unknown;
+    preferred_language?: unknown;
+  };
+  const email = typeof raw.email === "string" ? raw.email : "";
+  const password = typeof raw.password === "string" ? raw.password : "";
+  const preferredLanguage = normalizePreferredLanguage(raw.preferred_language);
+
+  const tryLogin = async (payload: Record<string, unknown>) =>
+    fetch(`${process.env.BACKEND_URL}/api/auth/login/`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    });
+
+  let res = await tryLogin({ email, password, preferred_language: preferredLanguage });
+  if (!res.ok && res.status === 400) {
+    // Backward compatibility when backend login serializer does not accept preferred_language.
+    res = await tryLogin({ email, password });
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => 'Invalid credentials');
-    return NextResponse.json({ error: text }, { status: 401 });
+    return NextResponse.json({ error: text }, { status: res.status || 401 });
   }
 
   const { access, refresh } = await res.json();

@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { canChangePassword } from "@/lib/account";
 import type { User } from "@/lib/types";
+import { useI18n } from "@/lib/use-i18n";
 
 export default function PasswordChangePage() {
+  const { t } = useI18n();
   const [checkingAccess, setCheckingAccess] = useState(true);
   const [allowed, setAllowed] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -41,16 +43,16 @@ export default function PasswordChangePage() {
     setMessage(null);
 
     if (!allowed) {
-      setError("Google accounts must change password in Google.");
+      setError(t("password_change.google_accounts_change_in_google"));
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError("New passwords do not match.");
+      setError(t("password_change.new_passwords_do_not_match"));
       return;
     }
     if (currentPassword === newPassword) {
-      setError("New password must be different from the previous one.");
+      setError(t("password_change.new_password_must_differ"));
       return;
     }
 
@@ -65,7 +67,7 @@ export default function PasswordChangePage() {
         }),
       });
       if (!r.ok) {
-        let msg = "Could not change password";
+        let msg = t("password_change.could_not_change_password");
         try {
           const j = await r.json();
           msg = j?.error || j?.detail || msg;
@@ -73,12 +75,12 @@ export default function PasswordChangePage() {
         setError(msg);
         return;
       }
-      setMessage("Password updated.");
+      setMessage(t("password_change.password_updated"));
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not change password");
+      setError(err instanceof Error ? err.message : t("password_change.could_not_change_password"));
     } finally {
       setLoading(false);
     }
@@ -86,19 +88,17 @@ export default function PasswordChangePage() {
 
   return (
     <div className="max-w-md mx-auto mt-16 bg-white p-6 rounded-lg shadow space-y-4">
-      <h1 className="text-xl font-semibold">Change password</h1>
+      <h1 className="text-xl font-semibold">{t("password_change.title")}</h1>
       {checkingAccess ? (
-        <div className="text-sm text-gray-600">Loading...</div>
+        <div className="text-sm text-gray-600">{t("password_change.loading")}</div>
       ) : !allowed ? (
         <div className="space-y-2">
-          <div className="text-sm text-gray-700">
-            This account signs in with Google. Password changes must be done in Google.
-          </div>
+          <div className="text-sm text-gray-700">{t("password_change.google_account_notice")}</div>
         </div>
       ) : (
         <form onSubmit={onSubmit} className="space-y-3">
           <div>
-            <label className="block text-sm">Current password</label>
+            <label className="block text-sm">{t("password_change.current_password")}</label>
             <input
               className="border rounded w-full p-2"
               type="password"
@@ -108,7 +108,7 @@ export default function PasswordChangePage() {
             />
           </div>
           <div>
-            <label className="block text-sm">New password</label>
+            <label className="block text-sm">{t("password_change.new_password")}</label>
             <input
               className="border rounded w-full p-2"
               type="password"
@@ -118,7 +118,7 @@ export default function PasswordChangePage() {
             />
           </div>
           <div>
-            <label className="block text-sm">Confirm new password</label>
+            <label className="block text-sm">{t("password_change.confirm_new_password")}</label>
             <input
               className="border rounded w-full p-2"
               type="password"
@@ -132,14 +132,17 @@ export default function PasswordChangePage() {
             disabled={loading}
             className="px-4 py-2 rounded bg-black text-white text-sm disabled:opacity-60"
           >
-            {loading ? "Updating..." : "Update password"}
+            {loading ? t("password_change.updating") : t("password_change.update_password")}
           </button>
         </form>
       )}
       {message && <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded p-2">{message}</div>}
       {error && <div className="text-sm text-red-600">{error}</div>}
       <p className="text-sm text-gray-600">
-        Back to <Link href="/dashboard" className="underline">Dashboard</Link>
+        {t("password_change.back_to")}{" "}
+        <Link href="/dashboard" className="underline">
+          {t("password_change.dashboard")}
+        </Link>
       </p>
     </div>
   );

@@ -13,7 +13,15 @@ import {
 import PanelShell from "@/components/panels/PanelShell";
 import PanelScrollArea from "@/components/panels/PanelScrollArea";
 
-type Participant = { id: number; name: string; surname?: string; tier?: Tier };
+type Participant = {
+  id: number;
+  name: string;
+  surname?: string;
+  tier?: Tier;
+  hours_week_mode?: "default" | "custom" | "not_available" | null;
+  min_hours_week_override?: number | null;
+  max_hours_week_override?: number | null;
+};
 
 export default function ParticipantsPanel({
   gridId,

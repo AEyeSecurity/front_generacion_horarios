@@ -2,6 +2,7 @@ import GridSolverSettingsForm from "@/components/grid/GridSolverSettingsForm";
 import { backendFetchJSON } from "@/lib/backend";
 import { getCurrentUser } from "@/lib/auth";
 import { resolveGridByCode } from "../_helpers";
+import { getTranslation } from "@/lib/i18n";
 
 export default async function GridSettingsPage({
   params,
@@ -11,10 +12,11 @@ export default async function GridSettingsPage({
   const { code } = await params;
   const grid = await resolveGridByCode(code);
   const id = String(grid.id);
+  const me = await getCurrentUser();
+  const t = (key: Parameters<typeof getTranslation>[1]) => getTranslation(me?.preferred_language, key);
   let canConfigure = false;
 
   try {
-    const me = await getCurrentUser();
     if (me) {
       const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
       const list = Array.isArray(data) ? data : data.results ?? [];
@@ -29,8 +31,8 @@ export default async function GridSettingsPage({
     return (
       <div className="p-4">
         <div className="w-[80%] mx-auto rounded-lg border bg-white p-6 shadow-sm">
-          <h1 className="text-2xl font-semibold">Settings</h1>
-          <p className="mt-4 text-sm text-gray-600">Only supervisors can configure solver settings.</p>
+          <h1 className="text-2xl font-semibold">{t("grid_solver_settings.title")}</h1>
+          <p className="mt-4 text-sm text-gray-600">{t("grid_settings.only_supervisors")}</p>
         </div>
       </div>
     );

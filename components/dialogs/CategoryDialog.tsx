@@ -12,6 +12,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Trash2, Plus } from "lucide-react";
+import { useI18n } from "@/lib/use-i18n";
 
 type Category = { id: number; name: string };
 type CategoryValue = { id: number; name: string; category: number };
@@ -27,6 +28,7 @@ export default function CategoryDialog({
   onOpenChange: (v: boolean) => void;
   onDeleted?: () => void; // notify parent to refresh list
 }) {
+  const { t } = useI18n();
   const [values, setValues] = React.useState<CategoryValue[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [adding, setAdding] = React.useState(false);
@@ -46,7 +48,7 @@ export default function CategoryDialog({
       const items = Array.isArray(data) ? data : data.results ?? [];
       setValues(items.filter((v: any) => Number(v.category) === Number(catId)));
     } catch (e: any) {
-      setErr(e.message || "Error loading values");
+      setErr(e.message || t("category_dialog.error_loading_values"));
     } finally {
       setLoading(false);
     }
@@ -69,18 +71,18 @@ export default function CategoryDialog({
       setNewValue("");
       await load();
     } catch (e: any) {
-      setErr(e.message || "Failed to add value");
+      setErr(e.message || t("category_dialog.failed_add_value"));
     } finally {
       setAdding(false);
     }
   }
 
   async function removeValue(id: number) {
-    if (!window.confirm("Delete this value?")) return;
+    if (!window.confirm(t("category_dialog.confirm_delete_value"))) return;
     const res = await fetch(`/api/category_values/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      alert(`Failed to delete value (${res.status}). ${txt}`);
+      alert(t("category_dialog.failed_delete_value", { status: res.status, details: txt }));
       return;
     }
     await load();
@@ -88,11 +90,11 @@ export default function CategoryDialog({
 
   async function deleteCategory() {
     if (!catId) return;
-    if (!window.confirm("Delete this category and all its values?")) return;
+    if (!window.confirm(t("category_dialog.confirm_delete_category"))) return;
     const res = await fetch(`/api/categories/${catId}`, { method: "DELETE" });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      alert(`Failed to delete category (${res.status}). ${txt}`);
+      alert(t("category_dialog.failed_delete_category", { status: res.status, details: txt }));
       return;
     }
     onOpenChange(false);
@@ -105,25 +107,25 @@ export default function CategoryDialog({
         <DialogOverlay className="fixed inset-0 bg-black/50 z-[180]" />
         <DialogContent className="sm:max-w-[720px] z-[181]">
           <DialogHeader>
-            <DialogTitle>Category: {category?.name ?? ""}</DialogTitle>
+            <DialogTitle>{t("category_dialog.title_with_name", { name: category?.name ?? "" })}</DialogTitle>
           </DialogHeader>
 
         <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-600">Add and manage values for this category.</p>
+          <p className="text-sm text-gray-600">{t("category_dialog.description")}</p>
           <button
             type="button"
             onClick={deleteCategory}
             className="inline-flex items-center gap-1 px-2 py-1 rounded border text-xs text-red-600 hover:bg-red-50"
-            title="Delete category"
+            title={t("category_dialog.delete_category_title")}
           >
-            <Trash2 className="w-4 h-4" /> Delete Category
+            <Trash2 className="w-4 h-4" /> {t("category_dialog.delete_category")}
           </button>
         </div>
 
         <form onSubmit={addValue} className="mt-4 flex items-center gap-2">
           <input
             className="flex-1 border rounded px-3 py-2 text-sm"
-            placeholder="New value name"
+            placeholder={t("category_dialog.new_value_name")}
             value={newValue}
             onChange={(e) => setNewValue(e.target.value)}
           />
@@ -132,7 +134,7 @@ export default function CategoryDialog({
             className="inline-flex items-center gap-2 px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50"
             disabled={adding || !newValue.trim()}
           >
-            <Plus className="w-4 h-4" /> Add
+            <Plus className="w-4 h-4" /> {t("category_dialog.add")}
           </button>
         </form>
 
@@ -140,9 +142,9 @@ export default function CategoryDialog({
 
         <div className="mt-4 border rounded divide-y bg-white max-h-40 overflow-y-auto">
           {loading ? (
-            <div className="p-3 text-sm text-gray-500">Loading…</div>
+            <div className="p-3 text-sm text-gray-500">{t("category_dialog.loading")}</div>
           ) : values.length === 0 ? (
-            <div className="p-3 text-sm text-gray-500">No values yet</div>
+            <div className="p-3 text-sm text-gray-500">{t("category_dialog.no_values_yet")}</div>
           ) : (
             values.map((v) => (
               <div key={v.id} className="flex items-center justify-between p-2 text-sm">
@@ -151,7 +153,7 @@ export default function CategoryDialog({
                   className="px-2 py-1 rounded border text-xs text-red-600 hover:bg-red-50"
                   onClick={() => removeValue(v.id)}
                 >
-                  Delete
+                  {t("category_dialog.delete_value")}
                 </button>
               </div>
             ))
@@ -160,7 +162,7 @@ export default function CategoryDialog({
 
           <DialogFooter>
             <DialogClose asChild>
-              <button type="button" className="px-3 py-2 rounded border text-sm">Close</button>
+              <button type="button" className="px-3 py-2 rounded border text-sm">{t("common.close")}</button>
             </DialogClose>
           </DialogFooter>
         </DialogContent>
@@ -168,3 +170,5 @@ export default function CategoryDialog({
     </Dialog>
   );
 }
+
+

@@ -4,6 +4,8 @@ import localFont from "next/font/local";
 import { CalendarDays, Users, Clock } from "lucide-react";
 import RotatingText from "@/components/animations/RotatingText";
 import Squares from "@/components/animations/Squares";
+import { t as translate, type I18nKey } from "@/lib/i18n";
+import { normalizePreferredLanguage, type PreferredLanguage } from "@/lib/language";
 
 const sourceSerif = localFont({
   src: [
@@ -14,7 +16,13 @@ const sourceSerif = localFont({
   display: "swap",
 });
 
-export default function LandingPage() {
+type LandingPageProps = {
+  language?: PreferredLanguage;
+};
+
+export default function LandingPage({ language = "en-US" }: LandingPageProps) {
+  const locale = normalizePreferredLanguage(language);
+  const t = (key: I18nKey, params?: Record<string, string | number>) => translate(locale, key, params);
   return (
     <div className="min-h-screen flex flex-col bg-white relative overflow-hidden">
       <div className="absolute inset-0 z-0 pointer-events-none">
@@ -30,9 +38,9 @@ export default function LandingPage() {
       <main className="flex-1 relative z-10">
         <section className="mx-auto max-w-4xl px-4 py-16 sm:py-20 text-center">
           <h1 className={`${sourceSerif.className} text-4xl sm:text-6xl font-extrabold leading-tight tracking-tight`}>
-            <span>Manage your </span>
+            <span>{t("landing.manage_your")} </span>
             <RotatingText
-              texts={["schedules", "teams", "classes", "projects"]}
+              texts={[t("landing.schedules"), t("landing.teams"), t("landing.classes"), t("landing.projects")]}
               mainClassName="inline-flex px-2 sm:px-2 md:px-3 bg-black text-white overflow-hidden py-0.5 sm:py-1 md:py-2 justify-center rounded-lg align-middle"
               staggerFrom="last"
               initial={{ y: "100%" }}
@@ -44,12 +52,11 @@ export default function LandingPage() {
               rotationInterval={2000}
             />
             <br className="hidden sm:block" />
-            <span className="block">like a pro</span>
+            <span className="block">{t("landing.like_a_pro")}</span>
           </h1>
 
           <p className="mt-6 text-lg text-gray-700">
-            Create, organize, and share scheduling grids.
-            A Google-Docs-like experience for calendar management.
+            {t("landing.hero_description")}
           </p>
 
           <div className="mt-10">
@@ -57,7 +64,7 @@ export default function LandingPage() {
               href="/register"
               className="inline-flex items-center px-6 py-3 rounded bg-black text-white text-base"
             >
-              Start Now
+              {t("landing.start_now")}
             </Link>
           </div>
         </section>
@@ -68,9 +75,9 @@ export default function LandingPage() {
               <div className="w-12 h-12 rounded-xl bg-black flex items-center justify-center">
                 <CalendarDays className="w-6 h-6 text-white" aria-hidden />
               </div>
-              <h3 className="font-semibold text-lg">Flexible Grids</h3>
+              <h3 className="font-semibold text-lg">{t("landing.flexible_grids")}</h3>
               <p className="text-gray-700">
-                Build weekly calendars with custom days and time windows.
+                {t("landing.flexible_grids_description")}
               </p>
             </div>
 
@@ -78,9 +85,9 @@ export default function LandingPage() {
               <div className="w-12 h-12 rounded-xl bg-black flex items-center justify-center">
                 <Users className="w-6 h-6 text-white" aria-hidden />
               </div>
-              <h3 className="font-semibold text-lg">Team Management</h3>
+              <h3 className="font-semibold text-lg">{t("landing.team_management")}</h3>
               <p className="text-gray-700">
-                Manage people, roles, categories, and assignments in one place.
+                {t("landing.team_management_description")}
               </p>
             </div>
 
@@ -88,9 +95,9 @@ export default function LandingPage() {
               <div className="w-12 h-12 rounded-xl bg-black flex items-center justify-center">
                 <Clock className="w-6 h-6 text-white" aria-hidden />
               </div>
-              <h3 className="font-semibold text-lg">Availability Rules</h3>
+              <h3 className="font-semibold text-lg">{t("landing.availability_rules")}</h3>
               <p className="text-gray-700">
-                Define preferred, flexible, and impossible time ranges with ease.
+                {t("landing.availability_rules_description")}
               </p>
             </div>
           </div>
@@ -109,14 +116,14 @@ export default function LandingPage() {
             />
             <Image
               src="/ucc.png"
-              alt="Universidad Católica de Córdoba"
+              alt="Universidad Catolica de Cordoba"
               width={50}
               height={36}
               priority
             />
           </div>
           <p className="mt-6 text-center text-sm">
-            © {new Date().getFullYear()} Shift. Hassle-free scheduling in one click.
+            {t("landing.footer_text", { year: new Date().getFullYear() })}
           </p>
         </div>
       </footer>

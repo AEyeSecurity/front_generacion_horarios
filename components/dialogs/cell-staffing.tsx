@@ -1,12 +1,21 @@
 "use client";
 
 import * as React from "react";
+import { useI18n } from "@/lib/use-i18n";
 
 export type Tier = "PRIMARY" | "SECONDARY" | "TERTIARY";
 export type TierCounts = Record<Tier, number>;
 export type TierPools = Record<Tier, string[]>;
 export type StaffOption = { members: string[] };
-export type Participant = { id: number | string; name: string; surname?: string; tier?: Tier | null };
+export type Participant = {
+  id: number | string;
+  name: string;
+  surname?: string;
+  tier?: Tier | null;
+  hours_week_mode?: "default" | "custom" | "not_available" | null;
+  min_hours_week_override?: number | null;
+  max_hours_week_override?: number | null;
+};
 
 export const TIERS: Tier[] = ["PRIMARY", "SECONDARY", "TERTIARY"];
 
@@ -85,6 +94,7 @@ function TierCountControls({
   tierCounts: TierCounts;
   onTierCountsChange: (value: TierCounts) => void;
 }) {
+  const { t } = useI18n();
   const currentTotal = TIERS.reduce((sum, tier) => sum + tierCounts[tier], 0);
 
   const updateTierCount = (tier: Tier, next: number) => {
@@ -94,12 +104,12 @@ function TierCountControls({
 
   return (
     <div className="rounded border bg-gray-50 p-3">
-      <div className="text-sm font-medium mb-2">Tier counts</div>
+      <div className="text-sm font-medium mb-2">{t("cell_staffing.tier_counts")}</div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {TIERS.map((tier) => (
           <div key={tier} className="rounded border bg-white p-3">
             <div className="text-sm font-medium mb-2">
-              {tier === "PRIMARY" ? "Primary" : tier === "SECONDARY" ? "Secondary" : "Tertiary"}
+              {tier === "PRIMARY" ? t("tier.primary") : tier === "SECONDARY" ? t("tier.secondary") : t("tier.tertiary")}
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -137,6 +147,7 @@ export function CellStaffingEditor({
   staffGroups,
   onStaffGroupsChange,
 }: StaffingEditorProps) {
+  const { t } = useI18n();
   const participantsByTier = React.useMemo(() => buildParticipantsByTier(participants), [participants]);
   const participantMap = React.useMemo(
     () => Object.fromEntries(participants.map((p) => [String(p.id), p])) as Record<string, Participant>,
@@ -318,11 +329,11 @@ export function CellStaffingEditor({
 
       <div className="rounded border p-3 space-y-4">
         <div className="flex items-start justify-between gap-4">
-            <div className="text-sm font-medium">Participants board</div>
+            <div className="text-sm font-medium">{t("cell_staffing.participants_board")}</div>
         </div>
         {headcount > 1 && !groupMode && (
           <div className="text-xs text-gray-500">
-            Long-press a participant chip to start building a staff group.
+            {t("cell_staffing.long_press_chip")}
           </div>
         )}
         {groupMode && headcount > 1 && (
@@ -351,7 +362,7 @@ export function CellStaffingEditor({
             </div>
             <div className="flex flex-wrap gap-2">
               {groupDraft.length === 0 ? (
-                <span className="text-xs text-gray-500">Long-press any eligible chip to start.</span>
+                <span className="text-xs text-gray-500">{t("cell_staffing.long_press_chip")}</span>
               ) : (
                 groupDraft.map((id) => (
                   <span key={id} className="rounded-full border bg-white px-3 py-1 text-sm">
@@ -367,7 +378,7 @@ export function CellStaffingEditor({
           {TIERS.map((tier) => (
             <div key={tier} className="rounded border bg-white p-3">
               <div className="text-sm font-medium mb-3">
-                {tier === "PRIMARY" ? "Primary" : tier === "SECONDARY" ? "Secondary" : "Tertiary"}
+                {tier === "PRIMARY" ? t("tier.primary") : tier === "SECONDARY" ? t("tier.secondary") : t("tier.tertiary")}
               </div>
               <div className="flex flex-wrap gap-2">
                 {participantsByTier[tier].map((participant) => {
@@ -414,7 +425,7 @@ export function CellStaffingEditor({
                   );
                 })}
                 {participantsByTier[tier].length === 0 && (
-                  <div className="text-xs text-gray-500">No participants in this tier.</div>
+                  <div className="text-xs text-gray-500">{t("cell_staffing.no_participants_tier")}</div>
                 )}
               </div>
             </div>
@@ -423,7 +434,7 @@ export function CellStaffingEditor({
 
         {headcount > 1 && staffGroups.length > 0 && (
           <div className="space-y-2">
-            <div className="text-sm font-medium">Staff groups</div>
+            <div className="text-sm font-medium">{t("cell_staffing.staff_groups")}</div>
             <div className="flex flex-wrap gap-2">
               {staffGroups.map((group, index) => (
                 <div

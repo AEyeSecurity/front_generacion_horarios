@@ -42,6 +42,7 @@ import {
   invalidateGridScreenContext,
 } from "@/lib/screen-context";
 import type { ScheduleViewMode } from "@/lib/schedule-view";
+import { useI18n } from "@/lib/use-i18n";
 
 const shadeHex = (hex: string, amt: number) => {
   if (!/^#([0-9a-f]{6})$/i.test(hex)) return hex;
@@ -304,6 +305,7 @@ export default function SolveOverlay({
   historyMode = false,
   historyGridCode = null,
 }: Props) {
+  const { t } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
   const [hasCells, setHasCells] = useState(false);
@@ -324,6 +326,8 @@ export default function SolveOverlay({
   const [cellPinMetaById, setCellPinMetaById] = useState<Record<string, CellPinMeta>>({});
   const [cellTimeRangeById, setCellTimeRangeById] = useState<Record<string, string>>({});
   const [cellDurationSlotsById, setCellDurationSlotsById] = useState<Record<string, number>>({});
+  const [cellAllowOverstaffById, setCellAllowOverstaffById] = useState<Record<string, boolean>>({});
+  const [cellRequiredPlacementsById, setCellRequiredPlacementsById] = useState<Record<string, number>>({});
   const [bundleUnitsById, setBundleUnitsById] = useState<Record<string, string[]>>({});
   const [bundleNameById, setBundleNameById] = useState<Record<string, string>>({});
   const [unitNameById, setUnitNameById] = useState<Record<string, string>>({});
@@ -689,7 +693,9 @@ export default function SolveOverlay({
         setPublishedHistorySchedules([]);
         setSelectedHistoryKey("");
         setCurrentSchedule(null);
-        setHistoryPanelError(error instanceof Error ? error.message : "Could not load published versions.");
+        setHistoryPanelError(
+          error instanceof Error ? error.message : t("solve_overlay.could_not_load_published_versions"),
+        );
       } finally {
         if (active) setHistoryPanelBusy(false);
       }
@@ -805,6 +811,70 @@ export default function SolveOverlay({
         trlist = getContextList(context?.time_ranges);
         arlist = getContextList(context?.availability_rules);
 
+        const hasOwn = (obj: unknown, key: string) =>
+          Boolean(obj && typeof obj === "object" && Object.prototype.hasOwnProperty.call(obj, key));
+        const needsCellContractEnrichment = clist.some(
+          (cell: any) =>
+            cell?.id != null &&
+            (!hasOwn(cell, "allow_overstaffing") ||
+              !hasOwn(cell, "split_parts_min") ||
+              !hasOwn(cell, "division_days")),
+        );
+        if (needsCellContractEnrichment) {
+          const gridQuery = encodeURIComponent(String(gridId));
+          const candidateEndpoints = [
+            `/api/cells/?grid=${gridQuery}`,
+            `/api/cells?grid=${gridQuery}`,
+          ];
+          let cellsFromApi: any[] = [];
+          for (const endpoint of candidateEndpoints) {
+            try {
+              const res = await fetch(endpoint, { cache: "no-store" });
+              if (!res.ok) continue;
+              const payload = await res.json().catch(() => ({}));
+              cellsFromApi = Array.isArray(payload)
+                ? payload
+                : Array.isArray(payload?.results)
+                ? payload.results
+                : [];
+              if (cellsFromApi.length > 0) break;
+            } catch {
+              // keep trying fallback endpoint
+            }
+          }
+          if (cellsFromApi.length > 0) {
+            const apiCellById = new Map<string, any>();
+            for (const apiCell of cellsFromApi) {
+              const apiId = readEntityId(apiCell?.id);
+              if (apiId == null) continue;
+              apiCellById.set(String(apiId), apiCell);
+            }
+            clist = clist.map((cell: any) => {
+              const cellId = readEntityId(cell?.id);
+              if (cellId == null) return cell;
+              const apiCell = apiCellById.get(String(cellId));
+              if (!apiCell) return cell;
+              const merged = { ...cell };
+              if (!hasOwn(merged, "allow_overstaffing") && hasOwn(apiCell, "allow_overstaffing")) {
+                merged.allow_overstaffing = apiCell.allow_overstaffing;
+              }
+              if (!hasOwn(merged, "split_parts_min") && hasOwn(apiCell, "split_parts_min")) {
+                merged.split_parts_min = apiCell.split_parts_min;
+              }
+              if (!hasOwn(merged, "division_days") && hasOwn(apiCell, "division_days")) {
+                merged.division_days = apiCell.division_days;
+              }
+              if (!hasOwn(merged, "duration_min") && hasOwn(apiCell, "duration_min")) {
+                merged.duration_min = apiCell.duration_min;
+              }
+              if ((!Array.isArray(merged.bundles) || merged.bundles.length === 0) && Array.isArray(apiCell.bundles)) {
+                merged.bundles = apiCell.bundles;
+              }
+              return merged;
+            });
+          }
+        }
+
         const explicitStaffMembers = getContextList(context?.staff_members);
         const derivedStaffMembers = slist.flatMap((staff: any) => {
           const staffId = readEntityId(staff?.id);
@@ -851,10 +921,27 @@ export default function SolveOverlay({
         const cpins: Record<string, CellPinMeta> = {};
         const ctrange: Record<string, string> = {};
         const cdurationSlots: Record<string, number> = {};
+        const callowOverstaff: Record<string, boolean> = {};
+        const crequiredPlacements: Record<string, number> = {};
         for (const c of clist) {
           if (c?.id != null) {
             const cid = String(c.id);
             cmap[cid] = c.name || `Cell ${c.id}`;
+            callowOverstaff[cid] = Boolean(c?.allow_overstaffing);
+            const splitPartsCount = Array.isArray(c?.split_parts_min)
+              ? c.split_parts_min
+                  .map((part: unknown) => Number(part))
+                  .filter((part: number) => Number.isFinite(part) && part > 0).length
+              : 0;
+            const legacyDivisionDays = Number(c?.division_days ?? 0);
+            crequiredPlacements[cid] = Math.max(
+              1,
+              splitPartsCount > 0
+                ? splitPartsCount
+                : Number.isFinite(legacyDivisionDays) && legacyDivisionDays > 0
+                ? Math.round(legacyDivisionDays)
+                : 1,
+            );
             if (c?.colorHex) ccolors[cid] = c.colorHex;
             else if (c?.color_hex) ccolors[cid] = c.color_hex;
             if (Array.isArray(c.staffs)) cstaffs[cid] = normalizeIdArray(c.staffs);
@@ -998,6 +1085,8 @@ export default function SolveOverlay({
           setCellPinMetaById(cpins);
           setCellTimeRangeById(ctrange);
           setCellDurationSlotsById(cdurationSlots);
+          setCellAllowOverstaffById(callowOverstaff);
+          setCellRequiredPlacementsById(crequiredPlacements);
           setBundleUnitsById(bundleUnitsMap);
           setBundleNameById(bundleNamesMap);
           setUnitNameById(umap);
@@ -1064,7 +1153,7 @@ export default function SolveOverlay({
       const { signature, solverParams } = await computeCurrentSolveInputSignature();
       const saved = window.localStorage.getItem(solveSignatureStorageKey);
       if (saved && saved === signature) {
-        setError("Input is unchanged from the latest solved solution.");
+        setError(t("solve_overlay.input_unchanged_latest_solution"));
         return;
       }
 
@@ -1118,10 +1207,10 @@ export default function SolveOverlay({
       setPreviewCandidateIndex(firstCandidateIndex);
 
       if (data.all_candidates_failed) {
-        setError("All 3 candidates failed. Edit constraints and try again.");
+        setError(t("solve_overlay.all_three_candidates_failed"));
       }
     } catch (e: any) {
-      setError(e?.message || "Solver error");
+      setError(e?.message || t("solve_overlay.solver_error"));
     } finally {
       setIsSolving(false);
     }
@@ -1137,7 +1226,7 @@ export default function SolveOverlay({
 
   const chooseCandidate = async (candidateIndex: number) => {
     if (!candidateRunId) {
-      setCandidateError("Missing candidate run id.");
+      setCandidateError(t("solve_overlay.missing_candidate_run_id"));
       return;
     }
     setCandidateBusy(true);
@@ -1176,7 +1265,7 @@ export default function SolveOverlay({
       }
       refreshGridView();
     } catch (e: any) {
-      setCandidateError(e?.message || "Could not choose candidate.");
+      setCandidateError(e?.message || t("solve_overlay.could_not_choose_candidate"));
     } finally {
       setCandidateBusy(false);
     }
@@ -1184,12 +1273,12 @@ export default function SolveOverlay({
 
   const rejectCandidates = async () => {
     if (!candidateRunId) {
-      setCandidateError("Missing candidate run id.");
+      setCandidateError(t("solve_overlay.missing_candidate_run_id"));
       return;
     }
     const reason = rejectReasonCode || rejectReasonOptions[0]?.code;
     if (!reason) {
-      setCandidateError("Select a reject reason.");
+      setCandidateError(t("solve_overlay.select_reject_reason"));
       return;
     }
     setCandidateBusy(true);
@@ -1211,10 +1300,10 @@ export default function SolveOverlay({
         throw new Error(txt || `Failed to reject candidates (${res.status})`);
       }
       setCandidateDialogOpen(false);
-      setError("Candidates rejected. Adjust constraints/settings and run solve again.");
+      setError(t("solve_overlay.candidates_rejected_adjust_and_run_again"));
       refreshGridView();
     } catch (e: any) {
-      setCandidateError(e?.message || "Could not reject candidates.");
+      setCandidateError(e?.message || t("solve_overlay.could_not_reject_candidates"));
     } finally {
       setCandidateBusy(false);
     }
@@ -1277,13 +1366,19 @@ export default function SolveOverlay({
   }, [schedule]);
 
   const unassignedCells = useMemo(() => {
-    const assignedSourceIds = new Set(
-      schedule.map((row) => String(row.source_cell_id ?? row.cell_id)),
-    );
+    const placedCountBySourceCell = schedule.reduce<Record<string, number>>((acc, row) => {
+      const sourceCellId = String(row.source_cell_id ?? row.cell_id);
+      acc[sourceCellId] = (acc[sourceCellId] ?? 0) + 1;
+      return acc;
+    }, {});
     return Object.entries(cellNameById)
-      .filter(([cellId]) => !assignedSourceIds.has(String(cellId)))
-      .map(([cellId, name]) => {
+      .flatMap(([cellId, name]) => {
         const cellKey = String(cellId);
+        const requiredPlacements = Math.max(1, Number(cellRequiredPlacementsById[cellKey] ?? 1));
+        const currentPlacements = Number(placedCountBySourceCell[cellKey] ?? 0);
+        const needsPlacement = currentPlacements < requiredPlacements;
+        const allowsOverstaffing = Boolean(cellAllowOverstaffById[cellKey]);
+        if (!needsPlacement && !allowsOverstaffing) return [];
         const trId = cellTimeRangeById[cellKey];
         const trMeta = trId ? timeRangeMetaById[trId] : undefined;
         const trDurationSlots =
@@ -1293,21 +1388,20 @@ export default function SolveOverlay({
         const durationSlots = cellDurationSlotsById[cellKey] ?? trDurationSlots ?? 1;
         const timeLabel = trMeta
           ? formatSlotRange(dayStartMin, slotMin, trMeta.startSlot, trMeta.endSlot)
-          : "No time range";
+          : t("grid_schedule.no_time_range");
         const cellBundles = (cellPinMetaById[cellKey]?.bundles || []).map(String);
         const matchingBundles = selectedUnitId
           ? cellBundles.filter((bundleId) =>
               (bundleUnitsById[bundleId] || []).map(String).includes(String(selectedUnitId)),
             )
           : cellBundles;
+        if (selectedUnitId && matchingBundles.length === 0) return [];
         const selectedBundleId = matchingBundles[0] ?? cellBundles[0] ?? null;
         const unitIds = selectedBundleId
           ? (bundleUnitsById[selectedBundleId] || []).map(String)
           : [];
-        const canGrabForCurrentTab = selectedUnitId
-          ? matchingBundles.length > 0
-          : selectedBundleId != null;
-        return {
+        const canGrabForCurrentTab = selectedBundleId != null;
+        return [{
           id: cellKey,
           name,
           color: cellColorById[cellKey] || "",
@@ -1316,15 +1410,17 @@ export default function SolveOverlay({
           selectedBundleId,
           unitIds,
           canGrabForCurrentTab,
-        };
+        }];
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [
     bundleUnitsById,
+    cellAllowOverstaffById,
     cellColorById,
     cellDurationSlotsById,
     cellNameById,
     cellPinMetaById,
+    cellRequiredPlacementsById,
     cellTimeRangeById,
     schedule,
     selectedUnitId,
@@ -1405,7 +1501,7 @@ export default function SolveOverlay({
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (error: unknown) {
-      setHistoryPanelError(error instanceof Error ? error.message : "Could not export this version.");
+      setHistoryPanelError(error instanceof Error ? error.message : t("solve_overlay.could_not_export_version"));
     } finally {
       setExportingHistoryVersion(false);
     }
@@ -1427,14 +1523,16 @@ export default function SolveOverlay({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || `Could not restore draft (${res.status})`);
+        throw new Error(txt || `${t("solve_overlay.could_not_restore_draft")} (${res.status})`);
       }
       writeGridScheduleViewMode(gridId, "draft");
       invalidateGridScreenContext(gridId);
       closeHistoryView();
       router.refresh();
     } catch (error: unknown) {
-      setHistoryPanelError(error instanceof Error ? error.message : "Could not restore this published version.");
+      setHistoryPanelError(
+        error instanceof Error ? error.message : t("solve_overlay.could_not_restore_published_version"),
+      );
     } finally {
       setRestoringHistoryVersion(false);
     }
@@ -1760,7 +1858,7 @@ export default function SolveOverlay({
       if (deduped.has(key)) continue;
       deduped.set(key, {
         key,
-        label: `${cellName} • ${timeLabel}`,
+        label: `${cellName} - ${timeLabel}`,
         count: commentCountByPlacement[key] || 0,
         anchor: {
           scheduleId: currentSchedule.id,
@@ -1897,7 +1995,7 @@ export default function SolveOverlay({
       setPlacementComments((prev) => [next, ...prev]);
       setCommentDraft("");
     } catch (e: unknown) {
-      setCommentError(e instanceof Error ? e.message : "Could not add comment.");
+      setCommentError(e instanceof Error ? e.message : t("solve_overlay.could_not_add_comment"));
     } finally {
       setCommentBusy(false);
     }
@@ -1953,7 +2051,7 @@ export default function SolveOverlay({
             }
           : prev,
       );
-      setPinError(e instanceof Error ? e.message : "Could not update placement lock.");
+      setPinError(e instanceof Error ? e.message : t("solve_overlay.could_not_update_placement_lock"));
     } finally {
       setPinOptimisticByCard((prev) => {
         if (!(cardKey in prev)) return prev;
@@ -2025,7 +2123,7 @@ export default function SolveOverlay({
             });
             if (!deleteRes.ok) {
               const txt = await deleteRes.text().catch(() => "");
-              throw new Error(txt || `Could not remove placement (${deleteRes.status})`);
+              throw new Error(txt || `${t("solve_overlay.could_not_remove_placement")} (${deleteRes.status})`);
             }
           } else {
             const patchRes = await fetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
@@ -2037,7 +2135,7 @@ export default function SolveOverlay({
             });
             if (!patchRes.ok) {
               const txt = await patchRes.text().catch(() => "");
-              throw new Error(txt || `Could not update placement (${patchRes.status})`);
+              throw new Error(txt || `${t("solve_overlay.could_not_update_placement")} (${patchRes.status})`);
             }
           }
           notifyDraftMutation();
@@ -2050,7 +2148,7 @@ export default function SolveOverlay({
                 }
               : prev,
           );
-          setPinError(error instanceof Error ? error.message : "Could not remove participant from placement.");
+          setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_remove_participant"));
         }
         return;
       }
@@ -2071,7 +2169,7 @@ export default function SolveOverlay({
         });
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
-          throw new Error(txt || `Could not remove placement (${res.status})`);
+          throw new Error(txt || `${t("solve_overlay.could_not_remove_placement")} (${res.status})`);
         }
         notifyDraftMutation();
       } catch (error: unknown) {
@@ -2083,7 +2181,7 @@ export default function SolveOverlay({
               }
             : prev,
         );
-        setPinError(error instanceof Error ? error.message : "Could not remove placement.");
+        setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_remove_placement"));
       }
     },
     [currentSchedule, normalizeIdArray, notifyDraftMutation, previewMode, previewParticipantId],
@@ -2134,7 +2232,7 @@ export default function SolveOverlay({
       const normalizedBundleId = String(bundleId);
       const bundleUnitIds = (bundleUnitsById[normalizedBundleId] || []).map(String);
       if (bundleUnitIds.length === 0) {
-        return { options: [], error: "Selected bundle has no units." };
+        return { options: [], error: t("solve_overlay.selected_bundle_has_no_units") };
       }
 
       const unitOverlap = schedule.some((row) => {
@@ -2144,7 +2242,7 @@ export default function SolveOverlay({
         return rowUnits.some((unitId) => bundleUnitIds.includes(unitId));
       });
       if (unitOverlap) {
-        return { options: [], error: "Cannot place this cell there: one of its bundle units is already occupied." };
+        return { options: [], error: t("solve_overlay.cannot_place_cell_bundle_unit_occupied") };
       }
 
       const tierCounts = cellTierCountsById[sourceCellId] || {
@@ -2191,7 +2289,7 @@ export default function SolveOverlay({
           id: `staff:${staffId}`,
           source: "staff",
           participantIds: members,
-          label: `Staff: ${staffNameById[staffId] || memberNames}`,
+          label: t("solve_overlay.staff_assignment_label", { name: staffNameById[staffId] || memberNames }),
           recommended: isRecommendedSet(members),
         });
       }
@@ -2232,7 +2330,7 @@ export default function SolveOverlay({
             id: "pool:recommended",
             source: "pool",
             participantIds: previousAssigned.map(String),
-            label: "Tier pools (recommended from previous assignment)",
+            label: t("solve_overlay.tier_pools_recommended"),
             recommended: true,
           });
         }
@@ -2242,7 +2340,7 @@ export default function SolveOverlay({
             id: "pool:auto",
             source: "pool",
             participantIds: selectedFromPools,
-            label: "Tier pools",
+            label: t("solve_overlay.tier_pools"),
             recommended: isRecommendedSet(selectedFromPools),
           });
         }
@@ -2251,8 +2349,7 @@ export default function SolveOverlay({
       if (options.length === 0) {
         return {
           options: [],
-          error:
-            "No valid participants/staff are available at this slot (availability, overlap, or tier constraints).",
+          error: t("solve_overlay.no_valid_participants_for_slot"),
         };
       }
 
@@ -2284,7 +2381,7 @@ export default function SolveOverlay({
       assignedParticipantIds: string[] = [],
     ) => {
       if (!currentSchedule?.id) {
-        setPinError("No draft schedule available.");
+        setPinError(t("grid_schedule.no_draft_schedule_error"));
         return;
       }
       const scheduleId = Number(currentSchedule.id);
@@ -2339,7 +2436,7 @@ export default function SolveOverlay({
         });
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
-          throw new Error(txt || `Could not place cell (${res.status})`);
+          throw new Error(txt || `${t("grid_schedule.could_not_place_cell")} (${res.status})`);
         }
         const raw = await res.json().catch(() => ({} as Record<string, unknown>));
         const rawSourceCellId =
@@ -2391,10 +2488,10 @@ export default function SolveOverlay({
               }
             : prev,
         );
-        setPinError(error instanceof Error ? error.message : "Could not place cell.");
+        setPinError(error instanceof Error ? error.message : t("grid_schedule.could_not_place_cell"));
       }
     },
-    [currentSchedule, normalizeIdArray, notifyDraftMutation],
+    [currentSchedule, normalizeIdArray, notifyDraftMutation, t],
   );
 
   const requestUnassignedPlacement = useCallback(
@@ -2451,8 +2548,8 @@ export default function SolveOverlay({
                   typeof assignment?.label === "string" && assignment.label.trim()
                     ? assignment.label
                     : isStaff
-                    ? `Staff: ${staffNameById[String(staffId)] || participantLabel}`
-                    : `Tier pools: ${participantLabel}`;
+                    ? t("solve_overlay.staff_assignment_label", { name: staffNameById[String(staffId)] || participantLabel })
+                    : t("solve_overlay.tier_pools_assignment_label", { names: participantLabel });
                 const recommendedByBackend = Boolean(assignment?.recommended);
                 const previousAssigned =
                   lastAssignedParticipantsByCellBundle[`${sourceCellId}|${normalizedBundleId}`] || [];
@@ -2580,7 +2677,7 @@ export default function SolveOverlay({
       const targetPlacement = currentSchedule.placements.find((placement) => String(placement.id) === placementId);
       if (!targetPlacement) return;
       if (targetPlacement.locked) {
-        setPinError("Locked placements cannot be moved.");
+        setPinError(t("solve_overlay.locked_placements_cannot_be_moved"));
         return;
       }
       const nextEndSlot = nextStartSlot + durationSlots;
@@ -2615,7 +2712,7 @@ export default function SolveOverlay({
         });
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
-          throw new Error(txt || `Could not move placement (${res.status})`);
+          throw new Error(txt || `${t("grid_schedule.could_not_move_placement")} (${res.status})`);
         }
         notifyDraftMutation();
       } catch (error: unknown) {
@@ -2627,10 +2724,10 @@ export default function SolveOverlay({
               }
             : prev,
         );
-        setPinError(error instanceof Error ? error.message : "Could not move placement.");
+        setPinError(error instanceof Error ? error.message : t("grid_schedule.could_not_move_placement"));
       }
     },
-    [currentSchedule, notifyDraftMutation],
+    [currentSchedule, notifyDraftMutation, t],
   );
 
   useEffect(() => {
@@ -2697,7 +2794,7 @@ export default function SolveOverlay({
       }
       if (activeDrag.dragType === "unassigned") {
         if (activeDrag.sourceBundleId == null) {
-          setPinError("Select the matching unit tab before placing this cell.");
+          setPinError(t("solve_overlay.select_matching_unit_tab_before_placing"));
           return;
         }
         void requestUnassignedPlacement(
@@ -2800,16 +2897,16 @@ export default function SolveOverlay({
   }, [isJiggleMode]);
 
   const solveDisabledReason = !canSolve
-    ? "Solve unavailable"
+    ? t("solve_overlay.solve_unavailable")
     : !hasCells
-    ? "Create cells to enable solve"
+    ? t("solve_overlay.create_cells_to_enable_solve")
     : isInputUnchanged
-    ? "Input is unchanged from the latest solved solution"
+    ? t("solve_overlay.input_unchanged_latest_solution")
     : isInputSignatureLoading
-    ? "Checking if changes were made..."
+    ? t("solve_overlay.checking_changes")
     : isSolving
-    ? "Solving..."
-    : "Solve";
+    ? t("solve_overlay.solving")
+    : t("solve_overlay.solve");
 
   const candidateStatusClass = (status?: CandidateStatus) => {
     if (status === "OPTIMAL") return "text-green-700 bg-green-50 border border-green-200";
@@ -2859,11 +2956,11 @@ export default function SolveOverlay({
       if (bundleNameById[key]) return bundleNameById[key];
       const unitIds = bundleUnitsById[key] || [];
       if (unitIds.length > 0) {
-        return unitIds.map((uid) => unitNameById[uid] || `Unit ${uid}`).join(" + ");
+        return unitIds.map((uid) => unitNameById[uid] || t("format.unit_with_id", { id: uid })).join(" + ");
       }
-      return `Bundle ${key}`;
+      return t("format.bundle_with_id", { id: key });
     },
-    [bundleNameById, bundleUnitsById, unitNameById],
+    [bundleNameById, bundleUnitsById, unitNameById, t],
   );
 
   const getPreviewBundleLabel = useCallback(
@@ -2886,8 +2983,8 @@ export default function SolveOverlay({
     }
     return Array.from(ids)
       .sort((a, b) => (unitNameById[a] || a).localeCompare(unitNameById[b] || b))
-      .map((id) => ({ id, name: unitNameById[id] || `Unit ${id}` }));
-  }, [previewSchedule, unitNameById, getPreviewScheduleUnitIds]);
+      .map((id) => ({ id, name: unitNameById[id] || t("format.unit_with_id", { id }) }));
+  }, [previewSchedule, unitNameById, getPreviewScheduleUnitIds, t]);
 
   useEffect(() => {
     if (!previewCandidate) {
@@ -3113,7 +3210,7 @@ export default function SolveOverlay({
 
   const rejectFromPreview = () => {
     if (!canRejectFromPreview) return;
-    const confirmed = window.confirm("Reject all candidates for this run?");
+    const confirmed = window.confirm(t("solve_overlay.reject_all_candidates_confirm"));
     if (!confirmed) return;
     void rejectCandidates();
   };
@@ -3144,7 +3241,7 @@ export default function SolveOverlay({
 
       refreshGridView();
     } catch (e: any) {
-      setError(e?.message || "Could not publish schedule.");
+      setError(e?.message || t("solve_overlay.could_not_publish_schedule"));
     } finally {
       setIsPublishing(false);
     }
@@ -3525,7 +3622,7 @@ export default function SolveOverlay({
                         boxShadow: `inset 1.5px 1.5px 3px ${pinTrackInsetDark}, inset -1.5px -1.5px 3px ${pinTrackInsetLight}, 0 1px 3px rgba(0,0,0,0.16)`,
                         opacity: isCardBusy ? 0.92 : 1,
                       }}
-                      title={isPinnedVisual ? "Unlock placement" : "Lock placement"}
+                      title={isPinnedVisual ? t("solve_overlay.unlock_placement") : t("solve_overlay.lock_placement")}
                       aria-busy={isCardBusy}
                       onPointerDown={(event) => {
                         event.preventDefault();
@@ -3598,16 +3695,16 @@ export default function SolveOverlay({
       >
         <DialogContent className="sm:max-w-[620px] z-[170]">
           <DialogHeader>
-            <DialogTitle>Choose participants for placement</DialogTitle>
+            <DialogTitle>{t("solve_overlay.choose_participants_for_placement")}</DialogTitle>
             <DialogDescription>
               {pendingPlacementRequest
-                ? `${cellNameById[pendingPlacementRequest.sourceCellId] || `Cell ${pendingPlacementRequest.sourceCellId}`} • ${formatSlotRange(
+                ? `${cellNameById[pendingPlacementRequest.sourceCellId] || t("format.cell_with_id", { id: pendingPlacementRequest.sourceCellId })} - ${formatSlotRange(
                     dayStartMin,
                     slotMin,
                     pendingPlacementRequest.startSlot,
                     pendingPlacementRequest.startSlot + pendingPlacementRequest.durationSlots,
                   )}`
-                : "Select one assignment option"}
+                : t("solve_overlay.select_one_assignment_option")}
             </DialogDescription>
           </DialogHeader>
 
@@ -3630,11 +3727,11 @@ export default function SolveOverlay({
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-gray-900">
-                      {option.source === "staff" ? "Staff option" : "Tier pools option"}
+                      {option.source === "staff" ? t("solve_overlay.staff_option") : t("solve_overlay.tier_pools_option")}
                     </span>
                     {option.recommended && (
                       <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                        Recommended
+                        {t("solve_overlay.recommended")}
                       </span>
                     )}
                   </div>
@@ -3656,7 +3753,7 @@ export default function SolveOverlay({
                 setSelectedAssignmentOptionId(null);
               }}
             >
-              Cancel
+              {t("common.cancel")}
             </button>
             <button
               type="button"
@@ -3664,7 +3761,7 @@ export default function SolveOverlay({
               onClick={confirmSelectedAssignmentAndPlace}
               disabled={!selectedAssignmentOptionId}
             >
-              Place cell
+              {t("solve_overlay.place_cell")}
             </button>
           </div>
         </DialogContent>
@@ -3681,13 +3778,13 @@ export default function SolveOverlay({
               <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
                 <div className="flex items-center gap-2">
                   <HistoryIcon className="h-4 w-4 text-gray-700" />
-                  <h2 className="text-xl font-semibold text-gray-900">Version history</h2>
+                  <h2 className="text-xl font-semibold text-gray-900">{t("solve_overlay.history")}</h2>
                 </div>
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
                     className="inline-flex h-8 w-8 items-center justify-center rounded text-gray-600 transition-colors hover:bg-gray-200 hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Export selected version (.xlsx)"
+                    title={t("solve_overlay.export_selected_version")}
                     onClick={() => void downloadHistoryVersionExport()}
                     disabled={!selectedHistoryEntry || exportingHistoryVersion}
                   >
@@ -3700,7 +3797,7 @@ export default function SolveOverlay({
                   <button
                     type="button"
                     className="inline-flex h-8 w-8 items-center justify-center rounded text-gray-600 transition-colors hover:bg-gray-200 hover:text-black"
-                    title="Close history"
+                    title={t("solve_overlay.close_history")}
                     onClick={closeHistoryView}
                   >
                     <X className="h-4 w-4" />
@@ -3712,11 +3809,11 @@ export default function SolveOverlay({
                 {historyPanelBusy ? (
                   <div className="flex items-center gap-2 rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading published versions...
+                    {t("solve_overlay.loading_published_versions")}
                   </div>
                 ) : publishedHistorySchedules.length === 0 ? (
                   <div className="rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500">
-                    No published versions available.
+                    {t("solve_overlay.no_published_versions")}
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -3724,11 +3821,11 @@ export default function SolveOverlay({
                       const isSelected = entry.key === selectedHistoryKey;
                       const versionLabel =
                         typeof entry.publishedVersion === "number"
-                          ? `Version ${entry.publishedVersion}`
-                          : `Published snapshot ${publishedHistorySchedules.length - idx}`;
+                          ? t("solve_overlay.version_with_number", { version: entry.publishedVersion })
+                          : t("solve_overlay.published_snapshot_with_index", { index: publishedHistorySchedules.length - idx });
                       const createdLabel = entry.createdAt
                         ? new Date(entry.createdAt).toLocaleString()
-                        : "No timestamp";
+                        : t("solve_overlay.no_timestamp");
                       const placementsCount = Array.isArray(entry.schedule.placements)
                         ? entry.schedule.placements.length
                         : 0;
@@ -3750,7 +3847,7 @@ export default function SolveOverlay({
                           <div className="text-sm font-medium text-gray-900">{versionLabel}</div>
                           <div className="mt-1 text-xs text-gray-500">{createdLabel}</div>
                           <div className="mt-1 text-xs text-gray-600">
-                            Placements: {placementsCount}
+                            {t("solve_overlay.placements_count", { count: placementsCount })}
                           </div>
                         </button>
                       );
@@ -3772,10 +3869,12 @@ export default function SolveOverlay({
                   onClick={() => void restoreHistoryVersionToDraft()}
                   disabled={role !== "supervisor" || !selectedHistoryEntry || restoringHistoryVersion}
                 >
-                  {restoringHistoryVersion ? "Restoring..." : "Restore draft from selected version"}
+                  {restoringHistoryVersion
+                    ? t("solve_overlay.restoring")
+                    : t("solve_overlay.restore_draft_selected")}
                 </button>
                 <div className="mt-2 text-xs text-gray-500">
-                  Restoring copies this published version into draft. It is not published until you upload it.
+                  {t("solve_overlay.restore_draft_selected_help")}
                 </div>
               </div>
             </div>
@@ -3795,12 +3894,12 @@ export default function SolveOverlay({
             <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
               <div className="flex items-center gap-2">
                 <MessageSquare className="h-4 w-4 text-gray-700" />
-                <h2 className="text-xl font-semibold text-gray-900">Comments</h2>
+                <h2 className="text-xl font-semibold text-gray-900">{t("solve_overlay.comments")}</h2>
               </div>
               <button
                 type="button"
                 className="inline-flex h-8 w-8 items-center justify-center rounded text-gray-600 transition-colors hover:bg-gray-200 hover:text-black"
-                title="Close comments panel"
+                title={t("solve_overlay.close_comments_panel")}
                 onClick={() => {
                   onCommentsPanelOpenChange?.(false);
                   setCommentError(null);
@@ -3812,11 +3911,11 @@ export default function SolveOverlay({
 
             <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
               {!canCommentCards ? (
-                <div className="text-sm text-gray-500">Comments are unavailable until a schedule is loaded.</div>
+                <div className="text-sm text-gray-500">{t("solve_overlay.comments_unavailable")}</div>
               ) : (
                 <>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-600">Placement</label>
+                    <label className="text-xs font-medium text-gray-600">{t("solve_overlay.placement")}</label>
                     <select
                       className="h-9 w-full rounded border border-gray-300 bg-white px-2 text-sm"
                       value={selectedCommentPlacementKey}
@@ -3838,17 +3937,17 @@ export default function SolveOverlay({
                   </div>
 
                   {commentsLoading ? (
-                    <div className="text-sm text-gray-500">Loading comments...</div>
+                    <div className="text-sm text-gray-500">{t("solve_overlay.loading_comments")}</div>
                   ) : orderedActivePlacementComments.length === 0 ? (
                     <div className="rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500">
-                      No comments for this placement.
+                      {t("solve_overlay.no_comments_for_placement")}
                     </div>
                   ) : (
                     <div className="space-y-2">
                       {orderedActivePlacementComments.map((c) => (
                         <div key={String(c.id)} className="rounded border border-gray-200 bg-white p-2">
                           <div className="mb-1 text-xs text-gray-500">
-                            {c.author_name || "User"}
+                            {c.author_name || t("solve_overlay.default_comment_author")}
                             {c.created_at ? ` - ${new Date(c.created_at).toLocaleString()}` : ""}
                           </div>
                           <div className="whitespace-pre-wrap text-sm text-gray-900">{c.text}</div>
@@ -3861,7 +3960,7 @@ export default function SolveOverlay({
                     <div className="space-y-2 border-t border-gray-200 pt-3">
                       <textarea
                         className="min-h-[100px] w-full rounded border bg-white px-3 py-2 text-sm"
-                        placeholder="Write a comment for the selected placement..."
+                        placeholder={t("solve_overlay.write_comment_selected")}
                         value={commentDraft}
                         onChange={(event) => setCommentDraft(event.target.value)}
                         disabled={commentBusy}
@@ -3874,7 +3973,7 @@ export default function SolveOverlay({
                           onClick={() => void submitPlacementComment()}
                           disabled={commentBusy || !commentDraft.trim() || !commentAnchor}
                         >
-                          {commentBusy ? "Saving..." : "Add comment"}
+                          {commentBusy ? t("solve_overlay.saving") : t("solve_overlay.add_comment")}
                         </button>
                       </div>
                     </div>
@@ -3896,22 +3995,22 @@ export default function SolveOverlay({
       >
         <DialogContent className="sm:max-w-[760px] z-[170]">
           <DialogHeader>
-            <DialogTitle>Choose a Solver Candidate</DialogTitle>
+            <DialogTitle>{t("solve_overlay.choose_candidate_title")}</DialogTitle>
             <DialogDescription>
-              The solver generated 3 candidates. Select one to create the final solution.
+              {t("solve_overlay.choose_candidate_description")}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
             {candidatePreference && (
-              <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                Candidate preference metadata loaded for this run.
-              </div>
+                <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                  {t("solve_overlay.candidate_preference_loaded")}
+                </div>
             )}
 
             {orderedCandidates.length === 0 && (
               <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                No candidates were returned by backend.
+                {t("solve_overlay.no_candidates_returned")}
               </div>
             )}
 
@@ -3939,10 +4038,10 @@ export default function SolveOverlay({
                           className="text-sm font-semibold text-gray-900 underline decoration-gray-300 underline-offset-4 hover:text-black"
                           onClick={() => openCandidatePreview(idx)}
                         >
-                          Candidate {idx + 1}
+                          {t("solve_overlay.candidate_with_index", { index: idx + 1 })}
                         </button>
                         <span className={`rounded px-2 py-0.5 text-xs font-medium ${candidateStatusClass(candidate.status)}`}>
-                          {candidate.status || "UNKNOWN"}
+                          {candidate.status || t("solve_overlay.unknown_status")}
                         </span>
                       </div>
                       {candidate.label && (
@@ -3950,19 +4049,19 @@ export default function SolveOverlay({
                       )}
                       <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
                         <span className="rounded border border-gray-200 bg-gray-50 px-2 py-1">
-                          Placements: {scheduleCount}
+                          {t("solve_overlay.placements_count", { count: scheduleCount })}
                         </span>
                         <span className="rounded border border-gray-200 bg-gray-50 px-2 py-1">
-                          Violations: {violationCount}
+                          {t("solve_overlay.violations_count", { count: violationCount })}
                         </span>
                         {runtimeMs != null && (
                           <span className="rounded border border-gray-200 bg-gray-50 px-2 py-1">
-                            Runtime: {Math.round(runtimeMs)} ms
+                            {t("solve_overlay.runtime_ms", { value: Math.round(runtimeMs) })}
                           </span>
                         )}
                         {objectiveValue != null && (
                           <span className="rounded border border-gray-200 bg-gray-50 px-2 py-1">
-                            Objective: {objectiveValue.toFixed(2)}
+                            {t("solve_overlay.objective_value", { value: objectiveValue.toFixed(2) })}
                           </span>
                         )}
                       </div>
@@ -3974,7 +4073,7 @@ export default function SolveOverlay({
                       disabled={!canChoose || candidateBusy}
                       onClick={() => void chooseCandidate(idx)}
                     >
-                      {candidateBusy ? "Choosing..." : "Choose"}
+                      {candidateBusy ? t("solve_overlay.choosing") : t("solve_overlay.choose")}
                     </button>
                   </div>
                 </div>
@@ -3983,14 +4082,14 @@ export default function SolveOverlay({
 
             {allCandidatesFailed && (
               <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                All candidates failed. Edit constraints/settings and run solve again.
+                {t("solve_overlay.all_candidates_failed_edit_and_run_again")}
               </div>
             )}
 
             <div className="rounded border border-gray-200 p-3 space-y-2">
-              <div className="text-sm font-medium text-gray-900">Reject all candidates</div>
+              <div className="text-sm font-medium text-gray-900">{t("solve_overlay.reject_all_candidates")}</div>
               <div className="text-xs text-gray-600">
-                Reject this run if none of the candidates should become the final solution.
+                {t("solve_overlay.reject_this_run")}
               </div>
               <div className="grid gap-2 sm:grid-cols-[1fr_2fr]">
                 <select
@@ -4000,7 +4099,7 @@ export default function SolveOverlay({
                   disabled={candidateBusy || rejectReasonOptions.length === 0}
                 >
                   {rejectReasonOptions.length === 0 ? (
-                    <option value="">No reasons available</option>
+                    <option value="">{t("solve_overlay.no_reasons_available")}</option>
                   ) : (
                     rejectReasonOptions.map((reason) => (
                       <option key={reason.code} value={reason.code}>
@@ -4011,7 +4110,7 @@ export default function SolveOverlay({
                 </select>
                 <input
                   className="h-9 rounded border px-3 text-sm"
-                  placeholder="Optional note"
+                  placeholder={t("solve_overlay.optional_note")}
                   value={rejectNote}
                   onChange={(e) => setRejectNote(e.target.value)}
                   disabled={candidateBusy}
@@ -4021,7 +4120,7 @@ export default function SolveOverlay({
                 {candidateError ? (
                   <div className="text-xs text-red-600">{candidateError}</div>
                 ) : (
-                  <div className="text-xs text-gray-500">Only selectable candidates can be chosen.</div>
+                  <div className="text-xs text-gray-500">{t("solve_overlay.only_selectable_can_be_chosen")}</div>
                 )}
                 <button
                   type="button"
@@ -4034,7 +4133,7 @@ export default function SolveOverlay({
                   }
                   onClick={() => void rejectCandidates()}
                 >
-                  {candidateBusy ? "Submitting..." : "Reject all"}
+                  {candidateBusy ? t("solve_overlay.submitting") : t("solve_overlay.reject_all")}
                 </button>
               </div>
             </div>
@@ -4049,7 +4148,7 @@ export default function SolveOverlay({
               <button
                 type="button"
                 className="justify-self-start inline-flex items-center p-2 text-gray-700 hover:text-black"
-                title={previewIsParticipantMode ? "Back to candidate" : "Previous candidate"}
+                title={previewIsParticipantMode ? t("solve_overlay.back_to_candidate") : t("solve_overlay.previous_candidate")}
                 onClick={() => {
                   if (previewIsParticipantMode) {
                     backToCandidateMainView();
@@ -4063,10 +4162,10 @@ export default function SolveOverlay({
 
               <div className="flex items-center justify-center gap-3">
                 <div className="text-base font-bold text-gray-900">
-                  Candidate {Number(previewCandidate.index) + 1}
+                  {t("solve_overlay.candidate_with_index", { index: Number(previewCandidate.index) + 1 })}
                 </div>
                 <span className={`rounded px-2 py-0.5 text-xs font-medium ${candidateStatusClass(previewCandidate.status)}`}>
-                  {previewCandidate.status || "UNKNOWN"}
+                  {previewCandidate.status || t("solve_overlay.unknown_status")}
                 </span>
                 {previewIsParticipantMode && (
                   <span className="text-sm font-medium text-gray-700">{previewParticipantName}</span>
@@ -4079,7 +4178,7 @@ export default function SolveOverlay({
                 <button
                   type="button"
                   className="justify-self-end inline-flex items-center p-2 text-gray-700 hover:text-black"
-                  title="Next candidate"
+                  title={t("solve_overlay.next_candidate")}
                   onClick={() => shiftPreviewCandidate(1)}
                 >
                   <ChevronRight className="h-5 w-5" />
@@ -4091,7 +4190,7 @@ export default function SolveOverlay({
               <div className="fixed left-4 top-1/2 -translate-y-1/2 z-[178] flex flex-col gap-3 pointer-events-auto">
                 <button
                   type="button"
-                  title="Participants"
+                  title={t("solve_overlay.participants")}
                   onClick={() =>
                     setPreviewParticipantsOpen((prev) => {
                       const next = !prev;
@@ -4110,28 +4209,28 @@ export default function SolveOverlay({
                 <>
                   <button
                     type="button"
-                    aria-label="Close participants panel"
+                    aria-label={t("solve_overlay.close_participants_panel")}
                     className="fixed inset-0 z-[177] pointer-events-auto cursor-default"
                     onClick={() => setPreviewParticipantsOpen(false)}
                   />
 
                   <div className="fixed left-[84px] top-[72px] bottom-[24px] z-[178] w-[360px] rounded-xl border bg-white shadow-lg p-4 pointer-events-auto">
                     <div className="flex items-center justify-between">
-                      <div className="text-base font-semibold">Participants</div>
+                      <div className="text-base font-semibold">{t("solve_overlay.participants")}</div>
                       <button
                         type="button"
                         className="rounded p-1 text-gray-500 hover:text-black"
                         onClick={() => setPreviewParticipantsOpen(false)}
-                        title="Close panel"
+                        title={t("common.close")}
                       >
                         <X className="h-4 w-4" />
                       </button>
                     </div>
-                    <div className="mt-1 text-xs text-gray-500">Select one to open candidate schedule view.</div>
+                    <div className="mt-1 text-xs text-gray-500">{t("solve_overlay.participants_panel_help")}</div>
                     <div className="mt-3">
                       <input
                         className="w-full border rounded px-3 py-2 text-sm"
-                        placeholder="Search..."
+                        placeholder={t("common.search")}
                         value={previewParticipantsQuery}
                         onChange={(e) => setPreviewParticipantsQuery(e.target.value)}
                       />
@@ -4154,8 +4253,8 @@ export default function SolveOverlay({
                       {previewParticipantOptions.length === 0 && (
                         <div className="rounded border px-3 py-2 text-sm text-gray-500">
                           {previewParticipantIds.length === 0
-                            ? "No assigned participants in this candidate."
-                            : "No participants match this search."}
+                            ? t("solve_overlay.no_assigned_participants_candidate")
+                            : t("solve_overlay.no_participants_match_search")}
                         </div>
                       )}
                     </div>
@@ -4166,7 +4265,7 @@ export default function SolveOverlay({
               <div className="fixed right-4 top-1/2 -translate-y-1/2 z-[178] pointer-events-auto flex flex-col gap-3">
                 <button
                   type="button"
-                  title={previewCanChoose ? "Choose this candidate" : "This candidate is not selectable"}
+                  title={previewCanChoose ? t("solve_overlay.choose_this_candidate") : t("solve_overlay.candidate_not_selectable")}
                   disabled={!previewCanChoose || candidateBusy}
                   onClick={() => void chooseCandidate(Number(previewCandidate.index))}
                   className={`w-12 h-12 rounded-full shadow-md border flex items-center justify-center transition-colors ${
@@ -4183,7 +4282,7 @@ export default function SolveOverlay({
                 </button>
                 <button
                   type="button"
-                  title={canRejectFromPreview ? "Reject all candidates" : "Reject unavailable"}
+                  title={canRejectFromPreview ? t("solve_overlay.reject_all_candidates") : t("solve_overlay.reject_unavailable")}
                   disabled={!canRejectFromPreview}
                   onClick={rejectFromPreview}
                   className={`w-12 h-12 rounded-full shadow-md border flex items-center justify-center transition-colors ${
@@ -4203,7 +4302,7 @@ export default function SolveOverlay({
                   <div className="bg-gray-50 border-b h-12" />
                   {Array.from({ length: daysCount }).map((_, index) => (
                     <div key={`preview-day-${index}`} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
-                      {dayLabels?.[index] || `Day ${index + 1}`}
+                      {dayLabels?.[index] || t("solve_overlay.day_with_index", { index: index + 1 })}
                     </div>
                   ))}
                 </div>
@@ -4285,7 +4384,7 @@ export default function SolveOverlay({
                       const height = previewIsParticipantMode ? Math.max(6, rawHeight * 0.9) : rawHeight;
                       const left = `calc(${timeColPx}px + ${col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
                       const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`;
-                      const cellName = cellNameById[sourceCellId] || `Cell ${sourceCellId}`;
+                      const cellName = cellNameById[sourceCellId] || t("format.cell_with_id", { id: sourceCellId });
                       const timeLabel = formatSlotRange(dayStartMin, slotMin, s.start_slot, s.end_slot);
                       const staffIds = cellStaffsById[sourceCellId] || [];
                       const bg = cellColorById[sourceCellId] || "";
@@ -4312,7 +4411,7 @@ export default function SolveOverlay({
                           );
                         });
                         if (matchedStaffId) {
-                          assignmentLabel = staffNameById[matchedStaffId] || `Staff ${matchedStaffId}`;
+                          assignmentLabel = staffNameById[matchedStaffId] || t("format.staff_with_id", { id: matchedStaffId });
                         }
                       }
                       const secondaryLabel = previewIsParticipantMode ? bundleLabel : assignmentLabel;
@@ -4378,7 +4477,7 @@ export default function SolveOverlay({
           <div className="flex flex-col items-center gap-3">
             <button
               type="button"
-              title="Comments"
+              title={t("solve_overlay.comments")}
               onClick={() => onCommentsPanelOpenChange?.(true)}
               className="w-12 h-12 rounded-full shadow-md border flex items-center justify-center pointer-events-auto transition-colors bg-black border-gray-800"
             >
@@ -4420,7 +4519,7 @@ export default function SolveOverlay({
 
             <button
               type="button"
-              title={canPublishDraft ? "Publish draft schedule" : "Nothing to publish"}
+              title={canPublishDraft ? t("solve_overlay.publish_draft_schedule") : t("solve_overlay.nothing_to_publish")}
               onClick={() => {
                 void publishDraftSchedule();
               }}
@@ -4440,7 +4539,7 @@ export default function SolveOverlay({
           {error && <div className="mt-2 w-48 text-xs text-red-600 text-right">{error}</div>}
           {isSolving && (
             <div className="mt-1 w-48 text-xs text-gray-600 text-right">
-              Solving... {Math.round(solveElapsedMs / 100) / 10}s
+              {t("solve_overlay.solving")} {Math.round(solveElapsedMs / 100) / 10}s
             </div>
           )}
         </div>
@@ -4456,7 +4555,7 @@ export default function SolveOverlay({
                 ? "bg-red-600 border-red-700 scale-110"
                 : "bg-white border-gray-300"
             }`}
-            title="Drop here to remove placement from schedule"
+            title={t("solve_overlay.drop_to_remove_placement")}
           >
             <Trash2 className={`w-5 h-5 ${isDeleteDropActive ? "text-white" : "text-red-600"}`} />
             <div
@@ -4550,7 +4649,7 @@ export default function SolveOverlay({
                     onPointerDown={(event) => {
                       if (!canManualEditCards || !isJiggleMode) return;
                       if (!canGrabCard || cell.selectedBundleId == null) {
-                        setPinError("Switch to the matching unit tab to place this cell.");
+                        setPinError(t("solve_overlay.select_matching_unit_tab_before_placing"));
                         return;
                       }
                       clearLongPressTimer();
@@ -4605,4 +4704,5 @@ export default function SolveOverlay({
     </>
   );
 }
+
 

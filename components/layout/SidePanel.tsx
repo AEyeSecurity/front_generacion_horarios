@@ -8,6 +8,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useI18n } from "@/lib/use-i18n";
 
 const ParticipantsPanel = dynamic(() => import("@/components/panels/ParticipantsPanel"), { ssr: false });
 const CategoriesPanel = dynamic(() => import("@/components/panels/CategoriesPanel"), { ssr: false });
@@ -25,6 +26,7 @@ export default function SidePanel({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const { t } = useI18n();
   const [showPerson, setShowPerson] = useState(false);
   const [showCategory, setShowCategory] = useState(false);
   const [categoryParents, setCategoryParents] = useState<{ id: number; name: string }[]>([]);
@@ -54,7 +56,7 @@ export default function SidePanel({
       >
         {/* Título oculto requerido por accesibilidad */}
         <SheetHeader className="sr-only">
-          <SheetTitle>Manage panel</SheetTitle>
+          <SheetTitle>{t("side_panel.manage_panel")}</SheetTitle>
         </SheetHeader>
 
         <div className="h-full flex flex-col pl-18 pr-4 pt-4 pb-0">
@@ -77,7 +79,7 @@ export default function SidePanel({
                   onClick={() => setShowPerson(true)}
                   className="w-full py-2 rounded bg-black text-white text-sm"
                 >
-                  + Add Participant
+                  {t("side_panel.add_participant")}
                 </button>
                 <AddParticipantDialog
                   gridId={gridId}
@@ -92,7 +94,7 @@ export default function SidePanel({
                   onClick={() => setShowCategory(true)}
                   className="w-full py-2 rounded bg-black text-white text-sm"
                 >
-                  + Add Category
+                  {t("side_panel.add_category")}
                 </button>
                 <AddCategoryDialog
                   gridId={gridId}

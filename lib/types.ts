@@ -5,6 +5,8 @@ export type User = {
   email: string;
   first_name: string;
   last_name: string;
+  preferred_language?: string | null;
+  email_verified?: boolean | null;
   // Optional avatar fields (backend may expose any of these)
   avatar_url?: string | null;
   avatar?: string | null;
@@ -28,6 +30,19 @@ export type Grid = {
   cell_size_min: number;     // minutos
   creator: number | null;
   created_at: string;        // ISO
+};
+
+export type Participant = {
+  id: number;
+  grid: number;
+  name: string;
+  surname?: string;
+  tier?: "PRIMARY" | "SECONDARY" | "TERTIARY" | null;
+  user_id?: number | null;
+  user?: User | null;
+  hours_week_mode?: "default" | "custom" | "not_available" | null;
+  min_hours_week_override?: number | null;
+  max_hours_week_override?: number | null;
 };
 
 export type ApiList<T> = {

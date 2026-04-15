@@ -3,14 +3,19 @@ import { backendFetchJSON } from "@/lib/backend";
 import { getCurrentUser } from "@/lib/auth";
 import type { Grid, Role } from "@/lib/types";
 import SideDock from "@/components/layout/SideDock";
-import { Users, Tags, LayoutGrid, Clock4 } from "lucide-react";
-import GlassIcons from "@/components/animations/GlassIcons";
-import SolveOverlay from "@/components/grid/SolveOverlay";
-import { DeleteGridBubble } from "@/components/actions";
 import GridSchedulePanel from "@/components/grid/GridSchedulePanel";
-import { resolveGridByCode, resolveScheduleByGridCode } from "./_helpers";
+import { resolveGridByCode } from "./_helpers";
+import { t as translate } from "@/lib/i18n";
 
-const EN_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAY_KEYS = [
+  "day.mon_short",
+  "day.tue_short",
+  "day.wed_short",
+  "day.thu_short",
+  "day.fri_short",
+  "day.sat_short",
+  "day.sun_short",
+] as const;
 
 // Next 15: params es Promise
 export default async function GridOverview({
@@ -26,41 +31,35 @@ export default async function GridOverview({
   } catch (e: any) {
     return (
       <div className="space-y-3">
-        <h1 className="text-xl font-semibold">Grid not found</h1>
+        <h1 className="text-xl font-semibold">{translate("en-US", "grid_overview.not_found")}</h1>
         <pre className="text-xs p-3 bg-red-50 border rounded text-red-700 overflow-auto">
           {String(e?.message ?? e)}
         </pre>
         <p className="text-sm text-gray-600">
-          Check <code>/api/grids/code/{code}</code> and that the code exists for your user.
+          {translate("en-US", "grid_overview.not_found_help", { code })}
         </p>
       </div>
     );
   }
   const id = String(grid.id);
   const me = await getCurrentUser();
+  const t = (key: Parameters<typeof translate>[1], params?: Record<string, string | number>) =>
+    translate(me?.preferred_language, key, params);
 
   const toMin = (hhmmss: string) => {
     const [h, m] = hhmmss.split(":").map(Number);
     return h * 60 + m;
   };
-  const steps = (a: number, b: number, s: number) => {
-    const out: number[] = [];
-    for (let t = a; t < b; t += s) out.push(t);
-    return out;
-  };
   const start = toMin(grid.day_start);
   const end = toMin(grid.day_end);
-  const gridBase = `/grid/${encodeURIComponent(grid.grid_code || code)}`;
-  const rows = steps(start, end, grid.cell_size_min);
-  const days = (grid.days_enabled || []).map((i) => EN_DAY[i] ?? String(i));
+  const days = (grid.days_enabled || []).map((i) => t(DAY_KEYS[i] ?? "day.mon_short"));
   const ROW_PX = 64;
   const TIME_COL_PX = 100;
-  const BODY_H = rows.length * ROW_PX;
   let units: { id: number | string; name: string }[] = [];
   try {
     const udata = await backendFetchJSON<any>(`/api/units/?grid=${id}`);
     const list = Array.isArray(udata) ? udata : udata.results ?? [];
-    units = list.map((u: any) => ({ id: u.id, name: u.name || `Unit ${u.id}` }));
+    units = list.map((u: any) => ({ id: u.id, name: u.name || t("format.unit_with_id", { id: u.id }) }));
   } catch {}
 
   // Resolve my role and (if editor) my participant id in this grid
@@ -93,113 +92,31 @@ export default async function GridOverview({
     } catch {}
   }
 
-  // Minimal onboarding: require at least one participant, category, and cell
-  let participantsCount = 0;
-  let categoriesCount = 0;
-  let cellsCount = 0;
-  try {
-    const pdata = await backendFetchJSON<any>(`/api/participants/?grid=${id}`);
-    const plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
-    participantsCount = plist.length;
-  } catch {}
-  try {
-    const cdata = await backendFetchJSON<any>(`/api/categories/?grid=${id}`);
-    const clist = Array.isArray(cdata) ? cdata : cdata.results ?? [];
-    categoriesCount = clist.length;
-  } catch {}
-  try {
-    const celldata = await backendFetchJSON<any>(`/api/cells/?grid=${id}`);
-    const celllist = Array.isArray(celldata) ? celldata : celldata.results ?? [];
-    cellsCount = celllist.length;
-  } catch {}
-
-  const ready = participantsCount > 0 && categoriesCount > 0 && cellsCount > 0;
-
-  // Determine if there is a solved solution to show schedule view
-  let hasSolved = false;
-  try {
-    const schedule = await resolveScheduleByGridCode(grid.grid_code || code);
-    hasSolved = Array.isArray(schedule?.placements) && schedule.placements.length > 0;
-  } catch {}
-
   return (
     <div className="relative">
-      {hasSolved && (
-        <SideDock
-          gridId={Number(grid.id)}
-          gridCode={grid.grid_code || code}
-          role={role}
-          selfParticipantId={selfPid ?? undefined}
-        />
-      )}
-      {!hasSolved && role === "supervisor" && <DeleteGridBubble gridId={Number(grid.id)} />}
+      <SideDock
+        gridId={Number(grid.id)}
+        gridCode={grid.grid_code || code}
+        role={role}
+        selfParticipantId={selfPid ?? undefined}
+      />
 
       <div className="p-4">
         <div className="w-[80%] mx-auto space-y-4">
-          {!ready || (ready && !hasSolved) ? (
-            <div className="min-h-[70vh] flex items-center justify-center">
-              <div className="w-full max-w-3xl relative" style={{ height: "600px" }}>
-                <GlassIcons
-                  items={[
-                    {
-                      icon: <Users className="w-5 h-5 text-white" />,
-                      color: "gray",
-                      label: "Participants",
-                      href: `${gridBase}/participants`,
-                    },
-                    {
-                      icon: <LayoutGrid className="w-5 h-5 text-white" />,
-                      color: "gray",
-                      label: "Cells",
-                      href: `${gridBase}/cells`,
-                    },
-                    {
-                      icon: <Tags className="w-5 h-5 text-white" />,
-                      color: "gray",
-                      label: "Categories",
-                      href: `${gridBase}/categories`,
-                    },
-                    {
-                      icon: <Clock4 className="w-5 h-5 text-white" />,
-                      color: "gray",
-                      label: "Time Ranges",
-                      href: `${gridBase}/time-ranges`,
-                    },
-                  ]}
-                  className="py-0 h-full place-items-center grid-cols-2 md:grid-cols-2"
-                />
-              </div>
-              {ready && (
-                <SolveOverlay
-                  gridId={Number(grid.id)}
-                  role={role}
-                  daysCount={days.length}
-                  dayLabels={days}
-                  rowPx={ROW_PX}
-                  timeColPx={TIME_COL_PX}
-                  bodyHeight={BODY_H}
-                  dayStartMin={start}
-                  slotMin={grid.cell_size_min}
-                  selectedUnitId={null}
-                />
-              )}
-            </div>
-          ) : (
-            <div className="relative border rounded-lg bg-white overflow-hidden shadow-sm">
-              <GridSchedulePanel
-                gridId={Number(grid.id)}
-                role={role}
-                selfParticipantId={selfPid}
-                units={units}
-                days={days}
-                dayStartMin={start}
-                dayEndMin={end}
-                slotMin={grid.cell_size_min}
-                rowPx={ROW_PX}
-                timeColPx={TIME_COL_PX}
-              />
-            </div>
-          )}
+          <div className="relative border rounded-lg bg-white overflow-hidden shadow-sm">
+            <GridSchedulePanel
+              gridId={Number(grid.id)}
+              role={role}
+              selfParticipantId={selfPid}
+              units={units}
+              days={days}
+              dayStartMin={start}
+              dayEndMin={end}
+              slotMin={grid.cell_size_min}
+              rowPx={ROW_PX}
+              timeColPx={TIME_COL_PX}
+            />
+          </div>
         </div>
       </div>
     </div>

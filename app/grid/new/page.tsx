@@ -3,6 +3,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useI18n } from "@/lib/use-i18n";
 
 type Grid = {
   id: number;
@@ -14,16 +15,6 @@ type Grid = {
   days_enabled: number[]; // [0..6]
   cell_size_min: number;
 };
-
-const DAY_OPTS = [
-  { idx: 0, label: "Mon" },
-  { idx: 1, label: "Tue" },
-  { idx: 2, label: "Wed" },
-  { idx: 3, label: "Thu" },
-  { idx: 4, label: "Fri" },
-  { idx: 5, label: "Sat" },
-  { idx: 6, label: "Sun" },
-];
 
 function normalizeTime(t: string) {
   const [hRaw, mRaw] = t.split(":");
@@ -39,6 +30,7 @@ function toMin(t: string) {
 
 export default function NewGridPage() {
   const router = useRouter();
+  const { t } = useI18n();
 
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
@@ -48,6 +40,16 @@ export default function NewGridPage() {
   const [cellMinutes, setCellMinutes] = useState(60);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const dayOptions = [
+    { idx: 0, label: t("day.mon_short") },
+    { idx: 1, label: t("day.tue_short") },
+    { idx: 2, label: t("day.wed_short") },
+    { idx: 3, label: t("day.thu_short") },
+    { idx: 4, label: t("day.fri_short") },
+    { idx: 5, label: t("day.sat_short") },
+    { idx: 6, label: t("day.sun_short") },
+  ];
 
   function toggleDay(idx: number) {
     setDays((prev) =>
@@ -73,11 +75,11 @@ export default function NewGridPage() {
     const e_ = normalizeTime(end);
 
     if (toMin(e_) <= toMin(s)) {
-      setErr("End time must be after start time.");
+      setErr(t("grid_new.end_time_after_start_error"));
       return;
     }
     if (cellMinutes < 30 || cellMinutes % 5 !== 0) {
-      setErr("Cell size must be at least 30 and a multiple of 5.");
+      setErr(t("grid_new.cell_size_validation_error"));
       return;
     }
 
@@ -111,11 +113,11 @@ export default function NewGridPage() {
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-8">
       <div className="max-w-2xl bg-white border rounded p-6 space-y-5 mx-auto">
-        <h1 className="text-xl font-semibold">Create New Grid</h1>
+        <h1 className="text-xl font-semibold">{t("grid_new.title")}</h1>
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm mb-1">Name</label>
+            <label className="block text-sm mb-1">{t("grid_new.name")}</label>
             <input
               className="border rounded w-full p-2"
               value={name}
@@ -125,7 +127,7 @@ export default function NewGridPage() {
           </div>
 
           <div>
-            <label className="block text-sm mb-1">Description</label>
+            <label className="block text-sm mb-1">{t("grid_new.description")}</label>
             <input
               className="border rounded w-full p-2"
               value={desc}
@@ -134,9 +136,9 @@ export default function NewGridPage() {
           </div>
 
           <div>
-            <label className="block text-sm mb-1">Days of the week</label>
+            <label className="block text-sm mb-1">{t("grid_new.days_of_week")}</label>
             <div className="flex flex-wrap gap-2">
-              {DAY_OPTS.map((d) => (
+              {dayOptions.map((d) => (
                 <label
                   key={d.idx}
                   className={`cursor-pointer border rounded px-3 py-1 text-sm ${
@@ -159,14 +161,14 @@ export default function NewGridPage() {
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:gap-6">
             <div className="flex items-center gap-2">
-              <span className="text-sm">From</span>
+              <span className="text-sm">{t("grid_new.from")}</span>
               <input
                 type="time"
                 value={start}
                 onChange={(e) => setStart(normalizeTime(e.target.value))}
                 className="border rounded p-1"
               />
-              <span className="text-sm">To</span>
+              <span className="text-sm">{t("grid_new.to")}</span>
               <input
                 type="time"
                 value={end}
@@ -175,7 +177,7 @@ export default function NewGridPage() {
               />
             </div>
             <div className="flex items-center gap-2 mt-2 sm:mt-0">
-              <label className="text-sm">Cell size (min)</label>
+              <label className="text-sm">{t("grid_new.cell_size_min")}</label>
               <input
                 type="number"
                 min={30}
@@ -195,7 +197,7 @@ export default function NewGridPage() {
             className="px-4 py-2 rounded bg-black text-white disabled:opacity-60"
             disabled={!isFormValid}
           >
-            {loading ? "Creating..." : "Create Grid"}
+            {loading ? t("grid_new.creating") : t("grid_new.create_grid")}
           </button>
         </form>
       </div>

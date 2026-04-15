@@ -10,6 +10,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { useI18n } from "@/lib/use-i18n";
+import type { I18nKey } from "@/lib/i18n";
 
 type Props = {
   participantId: number;
@@ -26,21 +28,10 @@ type Props = {
   onCreated?: () => void;
 };
 
-const PREFS = [
-  { value: "preferred", label: "Preferred" },
-  { value: "impossible", label: "Impossible" },
-] as const;
-type PreferenceValue = (typeof PREFS)[number]["value"];
+const PREFS = ["preferred", "impossible"] as const;
+type PreferenceValue = (typeof PREFS)[number];
 
-const DAYS = [
-  { value: 0, label: "Mon" },
-  { value: 1, label: "Tue" },
-  { value: 2, label: "Wed" },
-  { value: 3, label: "Thu" },
-  { value: 4, label: "Fri" },
-  { value: 5, label: "Sat" },
-  { value: 6, label: "Sun" },
-] as const;
+const DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 
 function toMin(hhmm: string) {
   const [h, m] = hhmm.split(":").map(Number);
@@ -121,7 +112,7 @@ const collectErrorMessages = (value: unknown): string[] => {
   return [String(value)];
 };
 
-const toFriendlyRuleError = (raw: unknown, fallback: string): string => {
+const toFriendlyRuleError = (raw: unknown, fallback: string, translateFn?: (key: I18nKey) => string): string => {
   let parsed: unknown = raw;
   if (typeof raw === "string") {
     const text = raw.trim();
@@ -141,16 +132,17 @@ const toFriendlyRuleError = (raw: unknown, fallback: string): string => {
   const normalized = message.toLowerCase();
 
   if (normalized.includes("overlapping availability rule already exists")) {
-    return "This rule overlaps another rule on the same day. Try moving or resizing it.";
+    return translateFn?.("availability_rule.overlap_message") ??
+      "This rule overlaps another rule on the same day. Try moving or resizing it.";
   }
   if (normalized.includes("end") && normalized.includes("start")) {
-    return "End time must be later than start time.";
+    return translateFn?.("availability_rule.end_must_be_later_than_start") ?? "End time must be later than start time.";
   }
   if (normalized.includes("grid bounds") || normalized.includes("within grid bounds")) {
-    return "The rule must stay inside the grid time range.";
+    return translateFn?.("availability_rule.within_grid_range_message") ?? "The rule must stay inside the grid time range.";
   }
   if (normalized.includes("required")) {
-    return "Please complete all required rule fields.";
+    return translateFn?.("availability_rule.required_fields_message") ?? "Please complete all required rule fields.";
   }
   return message;
 };
@@ -169,6 +161,7 @@ export default function AddAvailabilityRuleDialog({
   onOpenChange,
   onCreated,
 }: Props) {
+  const { t } = useI18n();
   const initialAllowedDay = allowedDays?.[0] ?? 0;
   const [preference, setPreference] = useState<PreferenceValue>(initialPreference ?? "preferred");
   const [day, setDay] = useState<number>(typeof initialDay === "number" ? initialDay : initialAllowedDay);
@@ -199,12 +192,12 @@ export default function AddAvailabilityRuleDialog({
     const ge = toMin(gridEnd);
     const s = toMin(start);
     const e = toMin(end);
-    if (s >= e) return "End time must be greater than start time.";
+    if (s >= e) return t("add_rule.validation_end_greater_than_start");
     if (typeof minMinutes === "number" && e - s < minMinutes) {
-      return `Duration must be at least ${minMinutes} minutes.`;
+      return t("add_rule.validation_duration_at_least", { minutes: minMinutes });
     }
-    if (s < gs || e > ge) return `Rule must be within grid bounds (${gridStart}–${gridEnd}).`;
-    if (allowedDays && !allowedDays.includes(day)) return "Selected day is not enabled in this grid.";
+    if (s < gs || e > ge) return t("add_rule.validation_within_bounds", { start: gridStart, end: gridEnd });
+    if (allowedDays && !allowedDays.includes(day)) return t("add_rule.validation_day_not_enabled");
     return null;
   };
 
@@ -231,7 +224,7 @@ export default function AddAvailabilityRuleDialog({
       if (!res.ok) {
         const rawError = await res.text().catch(() => "");
         if (res.status !== 400) {
-          throw new Error(toFriendlyRuleError(rawError || `Error creating rule (${res.status})`, "Could not create rule."));
+          throw new Error(toFriendlyRuleError(rawError || `Error creating rule (${res.status})`, "Could not create rule.", t));
         }
 
         const rulesRes = await fetch(`/api/availability_rules?participant=${participantId}`, { cache: "no-store" });
@@ -281,7 +274,7 @@ export default function AddAvailabilityRuleDialog({
         }
 
         if (toMerge.size === 0) {
-          throw new Error(toFriendlyRuleError(rawError || "Could not create rule.", "Could not create rule."));
+          throw new Error(toFriendlyRuleError(rawError || "Could not create rule.", "Could not create rule.", t));
         }
 
         const sortedToMerge = [...toMerge.values()].sort(
@@ -343,7 +336,9 @@ export default function AddAvailabilityRuleDialog({
 
           if (!deletedAll) {
             for (const deletedRule of deletedRules) await recreateRule(deletedRule);
-            throw new Error(toFriendlyRuleError(rawError || "Could not merge with adjacent rule.", "Could not merge with adjacent rule."));
+            throw new Error(
+              toFriendlyRuleError(rawError || "Could not merge with adjacent rule.", "Could not merge with adjacent rule.", t),
+            );
           }
 
           if (requiresPatch) {
@@ -357,7 +352,9 @@ export default function AddAvailabilityRuleDialog({
             });
             if (!patchAfterDelete.ok) {
               for (const deletedRule of deletedRules) await recreateRule(deletedRule);
-              throw new Error(toFriendlyRuleError(rawError || "Could not merge with adjacent rule.", "Could not merge with adjacent rule."));
+              throw new Error(
+                toFriendlyRuleError(rawError || "Could not merge with adjacent rule.", "Could not merge with adjacent rule.", t),
+              );
             }
           }
 
@@ -365,14 +362,14 @@ export default function AddAvailabilityRuleDialog({
         }
 
         if (!mergedOk) {
-          throw new Error(toFriendlyRuleError(rawError || "Could not create rule.", "Could not create rule."));
+          throw new Error(toFriendlyRuleError(rawError || "Could not create rule.", "Could not create rule.", t));
         }
       }
-      toast("Availability rule created");
+      toast(t("add_rule.created_toast"));
       onOpenChange(false);
       onCreated?.();
     } catch (e: unknown) {
-      toast.error(toFriendlyRuleError(e instanceof Error ? e.message : "", "Error creating rule"));
+      toast.error(toFriendlyRuleError(e instanceof Error ? e.message : "", t("add_rule.error_creating"), t));
     } finally {
       setLoading(false);
     }
@@ -382,41 +379,61 @@ export default function AddAvailabilityRuleDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Add Availability Rule</DialogTitle>
-          <DialogDescription>Use Preferred or Impossible. Unspecified slots are treated as Flexible.</DialogDescription>
+          <DialogTitle>{t("add_rule.title")}</DialogTitle>
+          <DialogDescription>{t("add_rule.description")}</DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Availability type</label>
+            <label className="text-sm font-medium">{t("add_rule.availability_type")}</label>
             <select
               className="border rounded px-3 py-2 w-full"
               value={preference}
               onChange={(e) => setPreference(e.target.value as PreferenceValue)}
             >
-              {PREFS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+              {PREFS.map((pref) => (
+                <option key={pref} value={pref}>
+                  {pref === "preferred" ? t("availability_rule.preferred") : t("availability_rule.impossible")}
+                </option>
+              ))}
             </select>
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Day of week</label>
+            <label className="text-sm font-medium">{t("add_rule.day_of_week")}</label>
             <select
               className="border rounded px-3 py-2 w-full"
               value={day}
               onChange={(e) => setDay(Number(e.target.value))}
             >
-              {(allowedDays ? DAYS.filter(d => allowedDays.includes(d.value)) : DAYS)
-                .map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+              {(allowedDays ? DAYS.filter((d) => allowedDays.includes(d)) : DAYS)
+                .map((d) => (
+                  <option key={d} value={d}>
+                    {d === 0
+                      ? t("day.mon_short")
+                      : d === 1
+                        ? t("day.tue_short")
+                        : d === 2
+                          ? t("day.wed_short")
+                          : d === 3
+                            ? t("day.thu_short")
+                            : d === 4
+                              ? t("day.fri_short")
+                              : d === 5
+                                ? t("day.sat_short")
+                                : t("day.sun_short")}
+                  </option>
+                ))}
             </select>
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Start time</label>
+            <label className="text-sm font-medium">{t("add_rule.start_time")}</label>
             <input type="time" className="border rounded px-3 py-2 w-full" step={(minMinutes ?? 5) * 60}
                    value={start} onChange={(e) => setStart(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">End time</label>
+            <label className="text-sm font-medium">{t("add_rule.end_time")}</label>
             <input type="time" className="border rounded px-3 py-2 w-full" step={(minMinutes ?? 5) * 60}
                    value={end} onChange={(e) => setEnd(e.target.value)} />
           </div>
@@ -424,14 +441,16 @@ export default function AddAvailabilityRuleDialog({
         <DialogFooter className="gap-2">
           <button type="button" className="px-3 py-2 rounded border text-sm"
                   onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancel
+            {t("add_rule.cancel")}
           </button>
           <button type="button" className="px-3 py-2 rounded bg-black text-white text-sm"
                   onClick={submit} disabled={loading}>
-            {loading ? "Saving…" : "Add"}
+            {loading ? t("add_rule.saving") : t("common.add")}
           </button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
+
+

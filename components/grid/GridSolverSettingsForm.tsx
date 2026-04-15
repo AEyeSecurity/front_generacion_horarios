@@ -10,6 +10,7 @@ import {
   type GridSolverSettings,
   type TierKey,
 } from "@/lib/grid-solver-settings";
+import { useI18n } from "@/lib/use-i18n";
 
 type TierValues = Record<TierKey, string>;
 
@@ -24,7 +25,6 @@ type FormState = {
   min_hours_week_by_tier: ToggleTierValues;
   min_hours_week_hard: ToggleBoolean;
   min_hours_week_weight: ToggleNumber;
-  allow_overstaffing: ToggleBoolean;
   unit_max_hours_day: ToggleNumber;
   min_rest_hours: ToggleNumber;
   stability_weight: ToggleNumber;
@@ -64,7 +64,6 @@ function fromParsedSettings(settings: GridSolverSettings): FormState {
     min_hours_week_by_tier: toTierValues(settings.min_hours_week_by_tier),
     min_hours_week_hard: toToggleBoolean(settings.min_hours_week_hard),
     min_hours_week_weight: toToggleNumber(settings.min_hours_week_weight),
-    allow_overstaffing: toToggleBoolean(settings.allow_overstaffing),
     unit_max_hours_day: toToggleNumber(settings.unit_max_hours_day),
     min_rest_hours: toToggleNumber(settings.min_rest_hours),
     stability_weight: toToggleNumber(settings.stability_weight),
@@ -109,8 +108,6 @@ function toSettingsPayload(state: FormState): GridSolverSettings {
     if (parsed !== undefined) payload.min_hours_week_weight = parsed;
   }
 
-  if (state.allow_overstaffing.enabled) payload.allow_overstaffing = state.allow_overstaffing.value;
-
   if (state.unit_max_hours_day.enabled) {
     const parsed = parseNumeric(state.unit_max_hours_day.value);
     if (parsed !== undefined) payload.unit_max_hours_day = parsed;
@@ -133,12 +130,16 @@ function TierInputs({
   title,
   helper,
   value,
+  tierLabels,
+  placeholder,
   onEnabledChange,
   onValueChange,
 }: {
   title: string;
   helper: string;
   value: ToggleTierValues;
+  tierLabels: Record<TierKey, string>;
+  placeholder: string;
   onEnabledChange: (next: boolean) => void;
   onValueChange: (tier: TierKey, next: string) => void;
 }) {
@@ -157,9 +158,7 @@ function TierInputs({
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
             {TIER_KEYS.map((tier) => (
               <div key={tier}>
-                <div className="mb-1 text-xs text-gray-600">
-                  {tier === "PRIMARY" ? "Primary" : tier === "SECONDARY" ? "Secondary" : "Tertiary"}
-                </div>
+                <div className="mb-1 text-xs text-gray-600">{tierLabels[tier]}</div>
                 <input
                   type="number"
                   step="1"
@@ -167,7 +166,7 @@ function TierInputs({
                   value={value.values[tier]}
                   disabled={!value.enabled}
                   onChange={(e) => onValueChange(tier, e.target.value)}
-                  placeholder="e.g. 8"
+                  placeholder={placeholder}
                 />
               </div>
             ))}
@@ -229,12 +228,14 @@ function BooleanOption({
   title,
   helper,
   value,
+  enabledLabel,
   onEnabledChange,
   onValueChange,
 }: {
   title: string;
   helper: string;
   value: ToggleBoolean;
+  enabledLabel: string;
   onEnabledChange: (next: boolean) => void;
   onValueChange: (next: boolean) => void;
 }) {
@@ -259,7 +260,7 @@ function BooleanOption({
                 disabled={!value.enabled}
                 onChange={(e) => onValueChange(e.target.checked)}
               />
-              Enabled
+              {enabledLabel}
             </label>
           </div>
         </div>
@@ -269,7 +270,13 @@ function BooleanOption({
 }
 
 export default function GridSolverSettingsForm({ gridId }: { gridId: number }) {
+  const { t } = useI18n();
   const [state, setState] = useState<FormState | null>(null);
+  const tierLabels: Record<TierKey, string> = {
+    PRIMARY: t("tier.primary"),
+    SECONDARY: t("tier.secondary"),
+    TERTIARY: t("tier.tertiary"),
+  };
 
   useEffect(() => {
     const key = getGridSolverSettingsKey(gridId);
@@ -289,18 +296,17 @@ export default function GridSolverSettingsForm({ gridId }: { gridId: number }) {
   if (!state) {
     return (
       <div className="max-w-3xl rounded-lg border bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-semibold">Settings</h1>
-        <p className="mt-4 text-sm text-gray-600">Loading settings...</p>
+        <h1 className="text-2xl font-semibold">{t("grid_solver_settings.title")}</h1>
+        <p className="mt-4 text-sm text-gray-600">{t("grid_solver_settings.loading")}</p>
       </div>
     );
   }
 
   return (
     <div className="max-w-3xl rounded-lg border bg-white p-6 shadow-sm">
-      <h1 className="text-2xl font-semibold">Settings</h1>
+      <h1 className="text-2xl font-semibold">{t("grid_solver_settings.title")}</h1>
       <p className="mt-2 text-sm text-gray-600">
-        Runtime solver options. Only enabled and fully configured fields are sent in{" "}
-        <code>solver_params</code>.
+        {t("grid_solver_settings.runtime_options")}
       </p>
 
       <div className="mt-6 space-y-4">
@@ -315,18 +321,20 @@ export default function GridSolverSettingsForm({ gridId }: { gridId: number }) {
               }
             />
             <div>
-              <div className="text-sm font-medium">Prevent overlap for same unit</div>
+              <div className="text-sm font-medium">{t("grid_solver_settings.prevent_overlap_title")}</div>
               <div className="text-sm text-gray-600">
-                If enabled, cells sharing the same unit cannot be scheduled at the same time.
+                {t("grid_solver_settings.prevent_overlap_help")}
               </div>
             </div>
           </label>
         </div>
 
         <TierInputs
-          title="Max hours per day by tier"
-          helper="Hard cap per day by participant tier."
+          title={t("grid_solver_settings.max_hours_day_title")}
+          helper={t("grid_solver_settings.max_hours_day_help")}
           value={state.max_hours_day_by_tier}
+          tierLabels={tierLabels}
+          placeholder={t("grid_solver_settings.placeholder_example_8")}
           onEnabledChange={(enabled) =>
             setState((prev) =>
               prev ? { ...prev, max_hours_day_by_tier: { ...prev.max_hours_day_by_tier, enabled } } : prev
@@ -348,9 +356,11 @@ export default function GridSolverSettingsForm({ gridId }: { gridId: number }) {
         />
 
         <TierInputs
-          title="Max hours per week by tier"
-          helper="Hard weekly cap by participant tier."
+          title={t("grid_solver_settings.max_hours_week_title")}
+          helper={t("grid_solver_settings.max_hours_week_help")}
           value={state.max_hours_week_by_tier}
+          tierLabels={tierLabels}
+          placeholder={t("grid_solver_settings.placeholder_example_8")}
           onEnabledChange={(enabled) =>
             setState((prev) =>
               prev ? { ...prev, max_hours_week_by_tier: { ...prev.max_hours_week_by_tier, enabled } } : prev
@@ -372,9 +382,11 @@ export default function GridSolverSettingsForm({ gridId }: { gridId: number }) {
         />
 
         <TierInputs
-          title="Min hours per week by tier"
-          helper="Weekly minimum target by participant tier."
+          title={t("grid_solver_settings.min_hours_week_title")}
+          helper={t("grid_solver_settings.min_hours_week_help")}
           value={state.min_hours_week_by_tier}
+          tierLabels={tierLabels}
+          placeholder={t("grid_solver_settings.placeholder_example_8")}
           onEnabledChange={(enabled) =>
             setState((prev) =>
               prev ? { ...prev, min_hours_week_by_tier: { ...prev.min_hours_week_by_tier, enabled } } : prev
@@ -396,9 +408,10 @@ export default function GridSolverSettingsForm({ gridId }: { gridId: number }) {
         />
 
         <BooleanOption
-          title="Minimum weekly hours are hard"
-          helper="If disabled, weekly minimum is soft and uses penalty weight."
+          title={t("grid_solver_settings.min_hours_week_hard_title")}
+          helper={t("grid_solver_settings.min_hours_week_hard_help")}
           value={state.min_hours_week_hard}
+          enabledLabel={t("grid_solver_settings.enabled")}
           onEnabledChange={(enabled) =>
             setState((prev) => (prev ? { ...prev, min_hours_week_hard: { ...prev.min_hours_week_hard, enabled } } : prev))
           }
@@ -408,8 +421,8 @@ export default function GridSolverSettingsForm({ gridId }: { gridId: number }) {
         />
 
         <NumberOption
-          title="Min weekly shortfall penalty weight"
-          helper="Penalty multiplier used when minimum weekly hours are soft."
+          title={t("grid_solver_settings.min_hours_shortfall_weight_title")}
+          helper={t("grid_solver_settings.min_hours_shortfall_weight_help")}
           value={state.min_hours_week_weight}
           min={0}
           onEnabledChange={(enabled) =>
@@ -420,21 +433,9 @@ export default function GridSolverSettingsForm({ gridId }: { gridId: number }) {
           }
         />
 
-        <BooleanOption
-          title="Allow overstaffing"
-          helper="Allows assigning above headcount to reduce minimum-hours shortfall."
-          value={state.allow_overstaffing}
-          onEnabledChange={(enabled) =>
-            setState((prev) => (prev ? { ...prev, allow_overstaffing: { ...prev.allow_overstaffing, enabled } } : prev))
-          }
-          onValueChange={(next) =>
-            setState((prev) => (prev ? { ...prev, allow_overstaffing: { ...prev.allow_overstaffing, value: next } } : prev))
-          }
-        />
-
         <NumberOption
-          title="Unit max hours per day"
-          helper="Hard daily cap per unit."
+          title={t("grid_solver_settings.unit_max_hours_day_title")}
+          helper={t("grid_solver_settings.unit_max_hours_day_help")}
           value={state.unit_max_hours_day}
           min={0}
           onEnabledChange={(enabled) =>
@@ -446,8 +447,8 @@ export default function GridSolverSettingsForm({ gridId }: { gridId: number }) {
         />
 
         <NumberOption
-          title="Minimum rest hours"
-          helper="Hard minimum rest between two assigned shifts."
+          title={t("grid_solver_settings.min_rest_hours_title")}
+          helper={t("grid_solver_settings.min_rest_hours_help")}
           value={state.min_rest_hours}
           min={0}
           onEnabledChange={(enabled) =>
@@ -459,8 +460,8 @@ export default function GridSolverSettingsForm({ gridId }: { gridId: number }) {
         />
 
         <NumberOption
-          title="Stability weight"
-          helper="0..100. Higher values keep schedules closer to the previous solution."
+          title={t("grid_solver_settings.stability_weight_title")}
+          helper={t("grid_solver_settings.stability_weight_help")}
           value={state.stability_weight}
           min={0}
           max={100}
@@ -475,7 +476,9 @@ export default function GridSolverSettingsForm({ gridId }: { gridId: number }) {
 
       {previewPayload && (
         <div className="mt-6 rounded-md border bg-gray-50 p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-600">Payload Preview</div>
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-600">
+            {t("grid_solver_settings.payload_preview")}
+          </div>
           <pre className="overflow-auto text-xs text-gray-700">{JSON.stringify(previewPayload, null, 2)}</pre>
         </div>
       )}

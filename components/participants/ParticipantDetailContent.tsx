@@ -17,6 +17,7 @@ import {
   getGridSolverSettingsKey,
   parseGridSolverSettings,
 } from "@/lib/grid-solver-settings";
+import { useI18n } from "@/lib/use-i18n";
 
 type Rule = {
   id: number;
@@ -144,6 +145,7 @@ export default function ParticipantDetailContent({
   rules,
   initialView = "rules",
 }: Props) {
+  const { t } = useI18n();
   const [showScheduleTab, setShowScheduleTab] = useState(DEFAULT_UNIT_NOOVERLAP_ENABLED);
   const [view, setView] = useState<"rules" | "schedule">(initialView);
   const [rulesState, setRulesState] = useState<Rule[]>(rules);
@@ -1378,8 +1380,8 @@ export default function ParticipantDetailContent({
       {role === "supervisor" && (
         <div className="mt-8 p-4 border rounded bg-white flex items-center justify-between">
           <div>
-            <div className="font-medium">Danger zone</div>
-            <div className="text-sm text-gray-600">Delete this participant and all their availability rules.</div>
+            <div className="font-medium">{t("participant_detail.danger_zone")}</div>
+            <div className="text-sm text-gray-600">{t("participant_detail.delete_participant_with_rules")}</div>
           </div>
           <DeleteParticipantButton
             gridId={String(gridId)}

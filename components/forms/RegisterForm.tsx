@@ -2,8 +2,11 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { detectPreferredLanguageFromNavigator } from "@/lib/language";
+import { useI18n } from "@/lib/use-i18n";
 
 export default function RegisterForm() {
+  const { t } = useI18n();
   const [firstName, setFirst] = useState("");
   const [lastName, setLast] = useState("");
   const [email, setEmail] = useState("");
@@ -20,15 +23,24 @@ export default function RegisterForm() {
     setLoading(true);
     try {
       window.sessionStorage.removeItem("invite_auto_join_token");
-    } catch {}
+    } catch {
+      // ignore storage failures
+    }
+    const preferredLanguage = detectPreferredLanguageFromNavigator();
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ first_name: firstName, last_name: lastName, email, password }),
+        body: JSON.stringify({
+          first_name: firstName,
+          last_name: lastName,
+          email,
+          password,
+          preferred_language: preferredLanguage,
+        }),
       });
       if (!res.ok) {
-        let msg = "Registration failed";
+        let msg = t("auth.registration_failed");
         try {
           const j = await res.json();
           msg = j?.error || msg;
@@ -43,8 +55,8 @@ export default function RegisterForm() {
       if (next) q.set("next", next);
       router.replace(`/register/verify?${q.toString()}`);
       router.refresh();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Registration failed");
+    } catch (submitError: unknown) {
+      setError(submitError instanceof Error ? submitError.message : t("auth.registration_failed"));
     } finally {
       setLoading(false);
     }
@@ -54,25 +66,25 @@ export default function RegisterForm() {
     <form onSubmit={onSubmit} className="space-y-3">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className="block text-sm">First name</label>
+          <label className="block text-sm">{t("auth.first_name")}</label>
           <input className="border rounded w-full p-2" value={firstName} onChange={(e) => setFirst(e.target.value)} required />
         </div>
         <div>
-          <label className="block text-sm">Last name</label>
+          <label className="block text-sm">{t("auth.last_name")}</label>
           <input className="border rounded w-full p-2" value={lastName} onChange={(e) => setLast(e.target.value)} required />
         </div>
       </div>
       <div>
-        <label className="block text-sm">Email</label>
+        <label className="block text-sm">{t("auth.email")}</label>
         <input className="border rounded w-full p-2" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
       </div>
       <div>
-        <label className="block text-sm">Password</label>
+        <label className="block text-sm">{t("auth.password")}</label>
         <input className="border rounded w-full p-2" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
       </div>
       {error && <div className="text-red-600 text-sm whitespace-pre-wrap">{error}</div>}
       <button className="px-4 py-2 rounded bg-black text-white disabled:opacity-50" disabled={loading}>
-        {loading ? "Creating..." : "Create account"}
+        {loading ? t("auth.creating_account") : t("auth.create_account")}
       </button>
     </form>
   );

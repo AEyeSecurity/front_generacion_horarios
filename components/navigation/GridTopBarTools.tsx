@@ -10,8 +10,10 @@ import {
   type ScheduleViewMode,
   writeGridScheduleViewMode,
 } from "@/lib/schedule-view";
+import { useI18n } from "@/lib/use-i18n";
 
 export default function GridTopBarTools({ gridId, gridCode }: { gridId: number; gridCode?: string | null }) {
+  const { t } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
   const codeOrId = gridCode || String(gridId);
@@ -58,8 +60,8 @@ export default function GridTopBarTools({ gridId, gridCode }: { gridId: number; 
     <div className="inline-flex items-center gap-2">
       <button
         type="button"
-        title={isPublishedView ? "Switch to draft view" : "Switch to published view"}
-        aria-label={isPublishedView ? "Switch to draft view" : "Switch to published view"}
+        title={isPublishedView ? t("grid_topbar.switch_to_draft_view") : t("grid_topbar.switch_to_published_view")}
+        aria-label={isPublishedView ? t("grid_topbar.switch_to_draft_view") : t("grid_topbar.switch_to_published_view")}
         onClick={toggleScheduleView}
         className="relative h-8 w-[128px] rounded-full border p-0 transition-all duration-200 hover:scale-[1.01]"
         style={{
@@ -71,7 +73,7 @@ export default function GridTopBarTools({ gridId, gridCode }: { gridId: number; 
         }}
       >
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[11px] font-semibold tracking-wide text-slate-700">
-          {isPublishedView ? "Published" : "Draft"}
+          {isPublishedView ? t("entity.published") : t("entity.draft")}
         </span>
         <span
           className="pointer-events-none absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border transition-transform duration-200 ease-out"
@@ -87,8 +89,8 @@ export default function GridTopBarTools({ gridId, gridCode }: { gridId: number; 
       </button>
       <button
         type="button"
-        title={isHistoryPage ? "Back to schedule" : "Version history"}
-        aria-label={isHistoryPage ? "Back to schedule" : "Version history"}
+        title={isHistoryPage ? t("grid_topbar.back_to_schedule") : t("grid_topbar.version_history")}
+        aria-label={isHistoryPage ? t("grid_topbar.back_to_schedule") : t("grid_topbar.version_history")}
         className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
           isHistoryPage
             ? "text-black bg-gray-100"

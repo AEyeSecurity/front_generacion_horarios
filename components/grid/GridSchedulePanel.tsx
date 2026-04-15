@@ -19,6 +19,7 @@ import {
 } from "@/lib/schedule-view";
 import { GRID_COMMENTS_PANEL_TOGGLE_EVENT } from "@/lib/grid-comments-panel";
 import { fetchGridScreenContext, getContextList, invalidateGridScreenContext } from "@/lib/screen-context";
+import { useI18n } from "@/lib/use-i18n";
 
 type Unit = { id: number | string; name: string };
 
@@ -27,6 +28,9 @@ type Participant = {
   name?: string;
   surname?: string;
   tier?: "PRIMARY" | "SECONDARY" | "TERTIARY" | null;
+  hours_week_mode?: "default" | "custom" | "not_available" | null;
+  min_hours_week_override?: number | null;
+  max_hours_week_override?: number | null;
 };
 
 type Cell = {
@@ -35,6 +39,9 @@ type Cell = {
   colorHex?: string;
   color_hex?: string;
   duration_min?: number | string;
+  division_days?: number | string | null;
+  split_parts_min?: Array<number | string> | null;
+  allow_overstaffing?: boolean | null;
   time_range?: number | string | { id?: number | string };
   tier_counts?: Partial<Record<TierKey, number>> | null;
   bundles?: Array<number | string>;
@@ -155,16 +162,12 @@ type ParticipantDragPayload =
       durationSlots: number;
     };
 
+type AvailabilityCoverageKind = "none" | "impossible" | "preferred" | "preferred-strong" | "flexible";
+
 const TIER_ORDER: Record<string, number> = {
   PRIMARY: 0,
   SECONDARY: 1,
   TERTIARY: 2,
-};
-
-const TIER_LABEL: Record<string, string> = {
-  PRIMARY: "Primary",
-  SECONDARY: "Secondary",
-  TERTIARY: "Tertiary",
 };
 
 const DAY_LABEL_TO_INDEX: Record<string, number> = {
@@ -209,10 +212,10 @@ const normalizeApiError = (raw: unknown, fallback: string): string => {
         normalized.includes("schedule, source_cell, bundle, day_index, start_slot must make a unique set") ||
         normalized.includes("must make a unique set")
       ) {
-        return "This cell and bundle already exist in that day/time slot. Move the existing placement or choose another slot.";
+        return fallback;
       }
       if (text.toLowerCase().includes("overlap")) {
-        return "Could not place this card in the selected slot.";
+        return fallback;
       }
       return text;
     }
@@ -262,6 +265,15 @@ export default function GridSchedulePanel({
   historyMode = false,
   historyGridCode = null,
 }: Props) {
+  const { t } = useI18n();
+  const tierLabelByKey = useMemo<Record<TierKey, string>>(
+    () => ({
+      PRIMARY: t("tier.primary"),
+      SECONDARY: t("tier.secondary"),
+      TERTIARY: t("tier.tertiary"),
+    }),
+    [t],
+  );
   const rows = useMemo(() => {
     const out: number[] = [];
     for (let t = dayStartMin; t < dayEndMin; t += slotMin) out.push(t);
@@ -460,10 +472,70 @@ export default function GridSchedulePanel({
       try {
         const contextJson = await fetchGridScreenContext(gridId, scheduleViewMode);
         const participantsList = getContextList<Participant>(contextJson?.participants);
-        const cellsList = getContextList<Cell>(contextJson?.cells);
+        let cellsList = getContextList<Cell>(contextJson?.cells);
         const bundlesList = getContextList<Bundle>(contextJson?.bundles);
         const timeRangesList = getContextList<TimeRange>(contextJson?.time_ranges);
         const availabilityRules = getContextList<AvailabilityRule>(contextJson?.availability_rules);
+        const hasOwn = (obj: unknown, key: string) =>
+          Boolean(obj && typeof obj === "object" && Object.prototype.hasOwnProperty.call(obj, key));
+        const needsCellContractEnrichment = cellsList.some(
+          (cell) =>
+            cell?.id != null &&
+            (!hasOwn(cell, "allow_overstaffing") ||
+              !hasOwn(cell, "split_parts_min") ||
+              !hasOwn(cell, "division_days")),
+        );
+        if (needsCellContractEnrichment) {
+          const gridQuery = encodeURIComponent(String(gridId));
+          const candidateEndpoints = [
+            `/api/cells/?grid=${gridQuery}`,
+            `/api/cells?grid=${gridQuery}`,
+          ];
+          let cellsFromApi: Cell[] = [];
+          for (const endpoint of candidateEndpoints) {
+            try {
+              const res = await fetch(endpoint, { cache: "no-store" });
+              if (!res.ok) continue;
+              const payload = await res.json().catch(() => ({}));
+              cellsFromApi = Array.isArray(payload)
+                ? (payload as Cell[])
+                : Array.isArray((payload as { results?: unknown }).results)
+                ? ((payload as { results: Cell[] }).results ?? [])
+                : [];
+              if (cellsFromApi.length > 0) break;
+            } catch {
+              // keep trying fallback endpoint
+            }
+          }
+          if (cellsFromApi.length > 0) {
+            const apiCellById = new Map<string, Cell>();
+            for (const apiCell of cellsFromApi) {
+              if (apiCell?.id == null) continue;
+              apiCellById.set(String(apiCell.id), apiCell);
+            }
+            cellsList = cellsList.map((cell) => {
+              const apiCell = apiCellById.get(String(cell?.id));
+              if (!apiCell) return cell;
+              const merged: Cell = { ...cell };
+              if (!hasOwn(merged, "allow_overstaffing") && hasOwn(apiCell, "allow_overstaffing")) {
+                merged.allow_overstaffing = apiCell.allow_overstaffing;
+              }
+              if (!hasOwn(merged, "split_parts_min") && hasOwn(apiCell, "split_parts_min")) {
+                merged.split_parts_min = apiCell.split_parts_min;
+              }
+              if (!hasOwn(merged, "division_days") && hasOwn(apiCell, "division_days")) {
+                merged.division_days = apiCell.division_days;
+              }
+              if (!hasOwn(merged, "duration_min") && hasOwn(apiCell, "duration_min")) {
+                merged.duration_min = apiCell.duration_min;
+              }
+              if ((!Array.isArray(merged.bundles) || merged.bundles.length === 0) && Array.isArray(apiCell.bundles)) {
+                merged.bundles = apiCell.bundles;
+              }
+              return merged;
+            });
+          }
+        }
         const cellMap: Record<string, Cell> = {};
         for (const cell of cellsList) {
           if (cell?.id == null) continue;
@@ -474,7 +546,7 @@ export default function GridSchedulePanel({
         for (const bundle of bundlesList) {
           if (bundle?.id == null) continue;
           const key = String(bundle.id);
-          bundleNameMap[key] = bundle.name || `Bundle ${key}`;
+          bundleNameMap[key] = bundle.name || t("format.bundle_with_id", { id: key });
           bundleUnitsMap[key] = Array.isArray(bundle.units) ? bundle.units.map(String) : [];
         }
 
@@ -499,7 +571,7 @@ export default function GridSchedulePanel({
           const normalizedStart = Math.max(0, Number.isFinite(startSlot ?? NaN) ? Number(startSlot) : 0);
           const normalizedEnd = Math.max(normalizedStart + 1, Number.isFinite(endSlot ?? NaN) ? Number(endSlot) : normalizedStart + 1);
           timeRangeMap[trId] = {
-            name: tr.name || `Time range ${trId}`,
+            name: tr.name || t("format.time_range_with_id", { id: trId }),
             startSlot: normalizedStart,
             endSlot: normalizedEnd,
           };
@@ -553,7 +625,7 @@ export default function GridSchedulePanel({
     return () => {
       active = false;
     };
-  }, [gridId, unitNoOverlapEnabled, scheduleViewMode, dayStartMin, slotMin, contextRefreshTick]);
+  }, [gridId, unitNoOverlapEnabled, scheduleViewMode, dayStartMin, slotMin, contextRefreshTick, t]);
 
   const orderedParticipants = useMemo(() => {
     return participants
@@ -568,9 +640,11 @@ export default function GridSchedulePanel({
       })
       .map((p) => ({
         ...p,
-        displayName: `${p.name || ""}${p.surname ? ` ${p.surname}` : ""}`.trim() || `Participant ${p.id}`,
+        displayName:
+          `${p.name || ""}${p.surname ? ` ${p.surname}` : ""}`.trim() ||
+          t("format.participant_with_id", { id: p.id }),
       }));
-  }, [participants]);
+  }, [participants, t]);
 
   const participantBoardUnitTabs = useMemo(
     () =>
@@ -645,11 +719,15 @@ export default function GridSchedulePanel({
         null;
       const bundleUnitIds = bundleId ? (bundleUnitsById[bundleId] || []).map(String) : [];
       const cell = cellById[sourceCellId];
-      const cellName = cell?.name || `Cell ${sourceCellId}`;
+      const cellName = cell?.name || t("format.cell_with_id", { id: sourceCellId });
       const color = cell?.colorHex || cell?.color_hex || undefined;
-      const bundleLabel = bundleId ? bundleNameById[bundleId] || `Bundle ${bundleId}` : "No bundle";
+      const bundleLabel = bundleId
+        ? bundleNameById[bundleId] || t("format.bundle_with_id", { id: bundleId })
+        : t("grid_schedule.no_bundle");
       const trId = readEntityId(cell?.time_range);
-      const trName = trId ? timeRangeMetaById[trId]?.name || "No time range" : "No time range";
+      const trName = trId
+        ? timeRangeMetaById[trId]?.name || t("grid_schedule.no_time_range")
+        : t("grid_schedule.no_time_range");
       const timeLabel = formatSlotRange(dayStartMin, slotMin, item.start_slot, item.end_slot);
 
       for (const rawPid of assigned) {
@@ -688,14 +766,56 @@ export default function GridSchedulePanel({
     }
 
     return out;
-  }, [schedulePlacements, dayColumnByIndex, days.length, cellById, bundleNameById, bundleUnitsById, dayStartMin, slotMin, timeRangeMetaById]);
+  }, [
+    schedulePlacements,
+    dayColumnByIndex,
+    days.length,
+    cellById,
+    bundleNameById,
+    bundleUnitsById,
+    dayStartMin,
+    slotMin,
+    timeRangeMetaById,
+    t,
+  ]);
 
   const cellCatalog = useMemo(() => {
+    const placementCountByCellId = schedulePlacements.reduce<Record<string, number>>((acc, placement) => {
+      const sourceCellId = readEntityId(placement.source_cell_id ?? placement.source_cell ?? placement.id);
+      if (!sourceCellId) return acc;
+      const key = String(sourceCellId);
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
     return Object.values(cellById)
-      .map((cell) => {
+      .flatMap((cell) => {
         const sourceCellId = String(cell.id);
+        const splitPartsCount = Array.isArray(cell.split_parts_min)
+          ? cell.split_parts_min
+              .map((part) => Number(part))
+              .filter((part) => Number.isFinite(part) && part > 0).length
+          : 0;
+        const legacyDivisionDays = Number(cell.division_days ?? 0);
+        const requiredPlacements = Math.max(
+          1,
+          splitPartsCount > 0
+            ? splitPartsCount
+            : Number.isFinite(legacyDivisionDays) && legacyDivisionDays > 0
+            ? Math.round(legacyDivisionDays)
+            : 1,
+        );
+        const currentPlacements = Number(placementCountByCellId[sourceCellId] ?? 0);
+        const needsPlacement = currentPlacements < requiredPlacements;
+        const allowsOverstaffing = Boolean(cell.allow_overstaffing);
+        if (!needsPlacement && !allowsOverstaffing) return [];
         const bundleIds = Array.isArray(cell.bundles) ? cell.bundles.map(String) : [];
-        const bundleId = bundleIds[0] ?? null;
+        const matchingBundleIds = participantBoardSelectedUnitId
+          ? bundleIds.filter((bundleId) =>
+              (bundleUnitsById[bundleId] || []).map(String).includes(participantBoardSelectedUnitId),
+            )
+          : bundleIds;
+        if (participantBoardSelectedUnitId && matchingBundleIds.length === 0) return [];
+        const bundleId = matchingBundleIds[0] ?? bundleIds[0] ?? null;
         const trId = readEntityId(cell.time_range);
         const trMeta = trId ? timeRangeMetaById[trId] : undefined;
         const fallbackDurationSlots =
@@ -706,22 +826,35 @@ export default function GridSchedulePanel({
         const endSlot = trMeta?.endSlot ?? Math.max(startSlot + fallbackDurationSlots, 1);
         const timeLabel = formatSlotRange(dayStartMin, slotMin, startSlot, endSlot);
         const tierCounts = (cell.tier_counts ?? null) as Partial<Record<TierKey, number>> | null;
-        return {
+        return [{
           sourceCellId,
           cardKey: `catalog-${sourceCellId}`,
-          name: cell.name || `Cell ${sourceCellId}`,
+          name: cell.name || t("format.cell_with_id", { id: sourceCellId }),
           color: cell.colorHex || cell.color_hex || undefined,
           bundleId,
-          bundleLabel: bundleId ? bundleNameById[bundleId] || `Bundle ${bundleId}` : "No bundle",
+          bundleLabel: bundleId
+            ? bundleNameById[bundleId] || t("format.bundle_with_id", { id: bundleId })
+            : t("grid_schedule.no_bundle"),
           timeLabel,
           startSlot,
           endSlot,
           durationSlots: Math.max(1, endSlot - startSlot),
           tierCounts,
-        };
+          canGrabForCurrentTab: bundleId != null,
+        }];
       })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [cellById, bundleNameById, dayStartMin, slotMin, timeRangeMetaById]);
+  }, [
+    bundleNameById,
+    bundleUnitsById,
+    cellById,
+    dayStartMin,
+    participantBoardSelectedUnitId,
+    schedulePlacements,
+    slotMin,
+    t,
+    timeRangeMetaById,
+  ]);
 
   useEffect(() => {
     setCatalogFocusIndex((prev) => {
@@ -756,7 +889,7 @@ export default function GridSchedulePanel({
       const res = await fetch(`/api/grids/${gridId}/schedule/history/`, { cache: "no-store" });
       if (!res.ok) {
         const raw = await res.text().catch(() => "");
-        throw new Error(raw || `Failed to load history (${res.status})`);
+        throw new Error(raw || `${t("grid_schedule.history_load_error")} (${res.status})`);
       }
       const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       const historyRaw = data?.draft_history ?? data?.history ?? data;
@@ -765,10 +898,10 @@ export default function GridSchedulePanel({
     } catch (error: unknown) {
       setDraftHistory(EMPTY_DRAFT_HISTORY);
       setHistoryError(
-        normalizeApiError(error instanceof Error ? error.message : "", "Could not load draft history."),
+        normalizeApiError(error instanceof Error ? error.message : "", t("grid_schedule.history_load_error")),
       );
     }
-  }, [canUseDraftHistory, gridId]);
+  }, [canUseDraftHistory, gridId, t]);
 
   const handleDraftMutated = useCallback(() => {
     refreshAfterDraftMutation();
@@ -813,7 +946,7 @@ export default function GridSchedulePanel({
         });
         if (!res.ok) {
           const raw = await res.text().catch(() => "");
-          throw new Error(raw || `Request failed (${res.status})`);
+          throw new Error(raw || `${t("grid_schedule.history_apply_error")} (${res.status})`);
         }
         const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         const historyRaw = data?.draft_history ?? data?.history ?? (data?.schedule as Record<string, unknown>)?.history;
@@ -821,13 +954,13 @@ export default function GridSchedulePanel({
         refreshAfterDraftMutation();
       } catch (error: unknown) {
         setHistoryError(
-          normalizeApiError(error instanceof Error ? error.message : "", "Could not apply draft history action."),
+          normalizeApiError(error instanceof Error ? error.message : "", t("grid_schedule.history_apply_error")),
         );
       } finally {
         setHistoryBusy(false);
       }
     },
-    [canUseDraftHistory, historyBusy, refreshAfterDraftMutation],
+    [canUseDraftHistory, historyBusy, refreshAfterDraftMutation, t],
   );
 
   const undoDraft = useCallback(async () => {
@@ -968,20 +1101,43 @@ export default function GridSchedulePanel({
   const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
     aStart < bEnd && bStart < aEnd;
 
-  const hasImpossibleRuleCollision = useCallback(
+  const getAvailabilityCoverageKind = useCallback(
     (participantId: string, dayColumnIndex: number, startSlot: number, endSlot: number) => {
       const scheduleDayIndex = dayIndexByColumn[dayColumnIndex] ?? dayColumnIndex;
       const rules = availabilityRulesByParticipant[participantId] || [];
-      return rules.some((rule) => {
-        const preference = String(rule.preference || "").toLowerCase();
-        if (preference !== "impossible") return false;
+      const overlappingRules = rules.filter((rule) => {
         if (Number(rule.day_of_week) !== Number(scheduleDayIndex)) return false;
         const ruleStartSlot = Math.round((parseClockToMin(rule.start_time) - dayStartMin) / slotMin);
         const ruleEndSlot = Math.round((parseClockToMin(rule.end_time) - dayStartMin) / slotMin);
+        if (ruleEndSlot <= ruleStartSlot) return false;
         return overlaps(startSlot, endSlot, ruleStartSlot, ruleEndSlot);
       });
+      if (overlappingRules.length === 0) return "none";
+      const hasImpossible = overlappingRules.some(
+        (rule) => String(rule.preference || "").toLowerCase() === "impossible",
+      );
+      if (hasImpossible) return "impossible";
+      const preferredCount = overlappingRules.filter(
+        (rule) => String(rule.preference || "").toLowerCase() === "preferred",
+      ).length;
+      const flexibleCount = overlappingRules.filter((rule) => {
+        const preference = String(rule.preference || "").toLowerCase();
+        return preference === "flexible" || preference === "";
+      }).length;
+      const allPreferred =
+        preferredCount > 0 &&
+        preferredCount === overlappingRules.length &&
+        flexibleCount === 0;
+      if (allPreferred) return preferredCount > 1 ? "preferred-strong" : "preferred";
+      return "flexible";
     },
     [availabilityRulesByParticipant, dayIndexByColumn, dayStartMin, slotMin],
+  );
+
+  const hasImpossibleRuleCollision = useCallback(
+    (participantId: string, dayColumnIndex: number, startSlot: number, endSlot: number) =>
+      getAvailabilityCoverageKind(participantId, dayColumnIndex, startSlot, endSlot) === "impossible",
+    [getAvailabilityCoverageKind],
   );
 
   const isTierAllowedForCell = useCallback(
@@ -1035,8 +1191,8 @@ export default function GridSchedulePanel({
             const raw = await res.text().catch(() => "");
             throw new Error(
               normalizeApiError(
-                raw || `Could not remove placement (${res.status})`,
-                "Could not remove participant from placement.",
+                raw || `${t("grid_schedule.could_not_remove_participant")} (${res.status})`,
+                t("grid_schedule.could_not_remove_participant"),
               ),
             );
           }
@@ -1058,21 +1214,21 @@ export default function GridSchedulePanel({
           const raw = await res.text().catch(() => "");
           throw new Error(
             normalizeApiError(
-              raw || `Could not update placement (${res.status})`,
-              "Could not remove participant from placement.",
+              raw || `${t("grid_schedule.could_not_remove_participant")} (${res.status})`,
+              t("grid_schedule.could_not_remove_participant"),
             ),
           );
         }
       } catch (error: unknown) {
         setSchedulePlacements(previousPlacements);
         setParticipantEditError(
-          normalizeApiError(error instanceof Error ? error.message : "", "Could not remove participant from placement."),
+          normalizeApiError(error instanceof Error ? error.message : "", t("grid_schedule.could_not_remove_participant")),
         );
       } finally {
         setParticipantEditBusy(false);
       }
     },
-    [canEditParticipantDraft, participantEditBusy, schedulePlacements, updatePlacementInState],
+    [canEditParticipantDraft, participantEditBusy, schedulePlacements, updatePlacementInState, t],
   );
 
   const movePlacedCard = useCallback(
@@ -1080,7 +1236,7 @@ export default function GridSchedulePanel({
       if (!canEditParticipantDraft || participantEditBusy) return;
       if (payload.ownerParticipantId == null) return;
       if (hasImpossibleRuleCollision(payload.ownerParticipantId, targetDayColumn, payload.startSlot, payload.endSlot)) {
-        setParticipantEditError("This participant has an Impossible availability rule in that time range.");
+        setParticipantEditError(t("grid_schedule.impossible_availability_error"));
         return;
       }
       setParticipantEditError(null);
@@ -1119,16 +1275,31 @@ export default function GridSchedulePanel({
         });
         if (!res.ok) {
           const raw = await res.text().catch(() => "");
-          throw new Error(normalizeApiError(raw || `Could not move placement (${res.status})`, "Could not move placement."));
+          throw new Error(
+            normalizeApiError(
+              raw || `${t("grid_schedule.could_not_move_placement")} (${res.status})`,
+              t("grid_schedule.could_not_move_placement"),
+            ),
+          );
         }
       } catch (error: unknown) {
         updatePlacementInState(payload.placementId, () => originalPlacement);
-        setParticipantEditError(normalizeApiError(error instanceof Error ? error.message : "", "Could not move placement."));
+        setParticipantEditError(
+          normalizeApiError(error instanceof Error ? error.message : "", t("grid_schedule.could_not_move_placement")),
+        );
       } finally {
         setParticipantEditBusy(false);
       }
     },
-    [canEditParticipantDraft, dayIndexByColumn, hasImpossibleRuleCollision, participantEditBusy, schedulePlacements, updatePlacementInState],
+    [
+      canEditParticipantDraft,
+      dayIndexByColumn,
+      hasImpossibleRuleCollision,
+      participantEditBusy,
+      schedulePlacements,
+      updatePlacementInState,
+      t,
+    ],
   );
 
   const addPlacementFromCatalog = useCallback(
@@ -1139,15 +1310,15 @@ export default function GridSchedulePanel({
     ) => {
       if (!canEditParticipantDraft || participantEditBusy) return;
       if (!scheduleId) {
-        setParticipantEditError("No draft schedule available.");
+        setParticipantEditError(t("grid_schedule.no_draft_schedule_error"));
         return;
       }
       if (!payload.bundleId) {
-        setParticipantEditError("This cell has no bundle assigned.");
+        setParticipantEditError(t("grid_schedule.cell_without_bundle_error"));
         return;
       }
       if (!isTierAllowedForCell(payload.sourceCellId, targetParticipantId)) {
-        setParticipantEditError("This participant tier is not eligible for this cell.");
+        setParticipantEditError(t("grid_schedule.participant_tier_not_eligible_error"));
         return;
       }
       const targetDayIndex = dayIndexByColumn[targetDayColumn] ?? targetDayColumn;
@@ -1181,7 +1352,7 @@ export default function GridSchedulePanel({
       const targetStartSlot = sameDayPlacement ? Number(sameDayPlacement.start_slot) : Number(payload.startSlot);
       const targetEndSlot = sameDayPlacement ? Number(sameDayPlacement.end_slot) : Number(payload.endSlot);
       if (hasImpossibleRuleCollision(targetParticipantId, targetDayColumn, targetStartSlot, targetEndSlot)) {
-        setParticipantEditError("This participant has an Impossible availability rule in that time range.");
+        setParticipantEditError(t("grid_schedule.impossible_availability_error"));
         return;
       }
 
@@ -1217,7 +1388,10 @@ export default function GridSchedulePanel({
             const raw = await patchRes.text().catch(() => "");
             updatePlacementInState(placementId, () => previousPlacement);
             throw new Error(
-              normalizeApiError(raw || `Could not update placement (${patchRes.status})`, "Could not place cell."),
+              normalizeApiError(
+                raw || `${t("grid_schedule.could_not_place_cell")} (${patchRes.status})`,
+                t("grid_schedule.could_not_place_cell"),
+              ),
             );
           }
         } else {
@@ -1283,8 +1457,8 @@ export default function GridSchedulePanel({
                   const patchRaw = await patchRes.text().catch(() => "");
                   throw new Error(
                     normalizeApiError(
-                      patchRaw || `Could not update placement (${patchRes.status})`,
-                      "Could not place cell.",
+                      patchRaw || `${t("grid_schedule.could_not_place_cell")} (${patchRes.status})`,
+                      t("grid_schedule.could_not_place_cell"),
                     ),
                   );
                 }
@@ -1295,7 +1469,12 @@ export default function GridSchedulePanel({
                 return;
               }
             }
-            throw new Error(normalizeApiError(raw || `Could not place cell (${res.status})`, "Could not place cell."));
+            throw new Error(
+              normalizeApiError(
+                raw || `${t("grid_schedule.could_not_place_cell")} (${res.status})`,
+                t("grid_schedule.could_not_place_cell"),
+              ),
+            );
           }
           const created = (await res.json().catch(() => ({}))) as SchedulePlacement;
           if (created?.id == null) return;
@@ -1312,7 +1491,9 @@ export default function GridSchedulePanel({
           ]);
         }
       } catch (error: unknown) {
-        setParticipantEditError(normalizeApiError(error instanceof Error ? error.message : "", "Could not place cell."));
+        setParticipantEditError(
+          normalizeApiError(error instanceof Error ? error.message : "", t("grid_schedule.could_not_place_cell")),
+        );
       } finally {
         setParticipantEditBusy(false);
       }
@@ -1326,6 +1507,7 @@ export default function GridSchedulePanel({
       dayIndexByColumn,
       schedulePlacements,
       updatePlacementInState,
+      t,
     ],
   );
 
@@ -1339,7 +1521,7 @@ export default function GridSchedulePanel({
                 <div className="inline-flex items-center gap-0.5">
                   <button
                     type="button"
-                    title="Undo (Ctrl+Z)"
+                    title={t("grid_schedule.undo_title")}
                     onClick={() => {
                       if (!canUndoDraft) return;
                       void undoDraft();
@@ -1353,7 +1535,7 @@ export default function GridSchedulePanel({
                   </button>
                   <button
                     type="button"
-                    title="Redo (Ctrl+Y)"
+                    title={t("grid_schedule.redo_title")}
                     onClick={() => {
                       if (!canRedoDraft) return;
                       void redoDraft();
@@ -1367,7 +1549,7 @@ export default function GridSchedulePanel({
                   </button>
                   <button
                     type="button"
-                    title="Restore Draft From Last Published Version"
+                    title={t("grid_schedule.restore_draft_title")}
                     onClick={() => {
                       if (!canRestoreDraft) return;
                       promptRestorePublished();
@@ -1483,7 +1665,7 @@ export default function GridSchedulePanel({
             <div className="inline-flex items-center gap-0.5">
               <button
                 type="button"
-                title="Undo (Ctrl+Z)"
+                title={t("grid_schedule.undo_title")}
                 onClick={() => {
                   if (!canUndoDraft) return;
                   void undoDraft();
@@ -1497,7 +1679,7 @@ export default function GridSchedulePanel({
               </button>
               <button
                 type="button"
-                title="Redo (Ctrl+Y)"
+                title={t("grid_schedule.redo_title")}
                 onClick={() => {
                   if (!canRedoDraft) return;
                   void redoDraft();
@@ -1511,7 +1693,7 @@ export default function GridSchedulePanel({
               </button>
               <button
                 type="button"
-                title="Restore Draft From Last Published Version"
+                title={t("grid_schedule.restore_draft_title")}
                 onClick={() => {
                   if (!canRestoreDraft) return;
                   promptRestorePublished();
@@ -1551,7 +1733,7 @@ export default function GridSchedulePanel({
         )}
         {participantsLoading && (
           <div className="px-3 py-3 space-y-2">
-            <div className="text-xs text-gray-500 px-1">Loading participants...</div>
+            <div className="text-xs text-gray-500 px-1">{t("grid_schedule.loading_participants")}</div>
             {Array.from({ length: 4 }).map((_, rowIndex) => (
               <div
                 key={`participants-skeleton-${rowIndex}`}
@@ -1577,13 +1759,15 @@ export default function GridSchedulePanel({
         {!participantsLoading && visibleParticipants.length === 0 && (
           <div className="px-4 py-6 text-sm text-gray-500">
             {role === "editor"
-              ? "Your participant profile was not found in this grid."
-              : "No participants found for this grid."}
+              ? t("grid_schedule.my_participant_missing")
+              : t("grid_schedule.no_participants_found")}
           </div>
         )}
         {visibleParticipants.map((participant) => {
           const pid = String(participant.id);
-          const tier = participant.tier ? TIER_LABEL[String(participant.tier)] || String(participant.tier) : "No tier";
+          const tier = participant.tier
+            ? tierLabelByKey[String(participant.tier) as TierKey] || String(participant.tier)
+            : t("grid_schedule.no_tier");
           return (
             <div
               key={pid}
@@ -1601,6 +1785,36 @@ export default function GridSchedulePanel({
                   : dayEntries;
                 const targetCellKey = `${pid}-${dayColumnIndex}`;
                 const isDropActive = dragHoverCellKey === targetCellKey;
+                const dragPreviewRange =
+                  participantEditMode && dragPayload
+                    ? dragPayload.kind === "placed"
+                      ? dragPayload.ownerParticipantId === pid
+                        ? { start: dragPayload.startSlot, end: dragPayload.endSlot }
+                        : null
+                      : isTierAllowedForCell(dragPayload.sourceCellId, pid)
+                      ? { start: dragPayload.startSlot, end: dragPayload.endSlot }
+                      : null
+                    : null;
+                const availabilityKind: AvailabilityCoverageKind =
+                  dragPreviewRange && dragPreviewRange.end > dragPreviewRange.start
+                    ? getAvailabilityCoverageKind(pid, dayColumnIndex, dragPreviewRange.start, dragPreviewRange.end)
+                    : "none";
+                const availabilityBorderColor =
+                  availabilityKind === "preferred-strong"
+                    ? "rgba(21, 128, 61, 0.62)"
+                    : availabilityKind === "preferred"
+                    ? "rgba(22, 163, 74, 0.45)"
+                    : availabilityKind === "impossible"
+                    ? "rgba(220, 38, 38, 0.45)"
+                    : "rgba(217, 119, 6, 0.45)";
+                const availabilityBgColor =
+                  availabilityKind === "preferred-strong"
+                    ? "rgba(21, 128, 61, 0.12)"
+                    : availabilityKind === "preferred"
+                    ? "rgba(34, 197, 94, 0.06)"
+                    : availabilityKind === "impossible"
+                    ? "rgba(239, 68, 68, 0.08)"
+                    : "rgba(245, 158, 11, 0.06)";
                 return (
                   <div
                     key={`${pid}-${day}`}
@@ -1653,7 +1867,7 @@ export default function GridSchedulePanel({
                       if (!canEditParticipantDraft || !participantEditMode || participantEditBusy || !dragPayload) return;
                       if (dragPayload.kind === "placed") {
                         if (dragPayload.ownerParticipantId !== pid) {
-                          setParticipantEditError("Placed cards can only be moved inside the same participant row.");
+                          setParticipantEditError(t("grid_schedule.placed_cards_same_row_error"));
                           return;
                         }
                         void movePlacedCard(dragPayload, dayColumnIndex);
@@ -1662,7 +1876,21 @@ export default function GridSchedulePanel({
                       void addPlacementFromCatalog(dragPayload, pid, dayColumnIndex);
                     }}
                   >
-                    <div className={`absolute inset-[10px] ${entries.length > 1 ? "flex flex-col gap-[6px]" : ""}`}>
+                    {availabilityKind !== "none" && (
+                      <div
+                        className="pointer-events-none absolute inset-[10px] z-[1] rounded-md border-2"
+                        style={{
+                          borderColor: availabilityBorderColor,
+                          backgroundColor: availabilityBgColor,
+                          borderStyle: "dotted",
+                        }}
+                      />
+                    )}
+                    <div
+                      className={`absolute inset-[10px] z-[2] ${
+                        entries.length > 1 ? "flex flex-col gap-[6px]" : ""
+                      }`}
+                    >
                       {entries.map((entry) => (
                         <div
                           key={entry.key}
@@ -1715,10 +1943,13 @@ export default function GridSchedulePanel({
                               : canEditParticipantDraft && !participantEditMode
                               ? "cursor-pointer"
                               : ""
+                          } ${
+                            participantEditMode && dragPayload?.cardKey !== entry.key ? "shift-jiggle" : ""
                           }`}
                           style={{
                             backgroundColor: entry.color || "#f3f4f6",
                             borderColor: "#d1d5db",
+                            animationDelay: `${(entry.startSlot % 6) * 35}ms`,
                           }}
                         >
                           <div className="flex h-full w-full flex-col items-center justify-center text-center">
@@ -1745,7 +1976,7 @@ export default function GridSchedulePanel({
                   ? "bg-red-600 border-red-700 scale-110"
                   : "bg-white border-gray-300"
               }`}
-              title="Drop here to remove this participant from the placement"
+              title={t("grid_schedule.drop_to_remove_participant")}
               onDragOver={(event) => {
                 if (!dragPayload || dragPayload.kind !== "placed" || participantEditBusy) return;
                 event.preventDefault();
@@ -1827,7 +2058,7 @@ export default function GridSchedulePanel({
                       : nearOffset + nearToFarOffset;
                   const y = baseCenterY + sign * yOffset;
                   const z = 120 - absDistance * 20;
-                  const canDragCard = Boolean(cell.bundleId) && !participantEditBusy;
+                  const canDragCard = Boolean(cell.bundleId) && cell.canGrabForCurrentTab && !participantEditBusy;
                   const isDraggingCard = dragPayload?.cardKey === cell.cardKey;
                   return (
                     <div
@@ -1862,6 +2093,8 @@ export default function GridSchedulePanel({
                         isDraggingCard ? "transition-none" : "transition-transform duration-150"
                       } ${
                         canDragCard ? (isDraggingCard ? "cursor-grabbing" : "cursor-grab") : "cursor-not-allowed"
+                      } ${
+                        participantEditMode && !isDraggingCard ? "shift-jiggle" : ""
                       }`}
                       style={{
                         top: `${y - cardHeight / 2}px`,
@@ -1871,6 +2104,7 @@ export default function GridSchedulePanel({
                         transform: isDraggingCard ? "scale(1)" : `scale(${scale})`,
                         opacity: canDragCard ? opacity : Math.max(0.45, opacity * 0.6),
                         zIndex: isDraggingCard ? 320 : z,
+                        animationDelay: `${(index % 6) * 35}ms`,
                       }}
                     >
                       <div className="flex h-full w-full items-center justify-start text-left">

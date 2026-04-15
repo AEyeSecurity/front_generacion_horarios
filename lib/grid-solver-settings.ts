@@ -11,7 +11,6 @@ export type GridSolverSettings = {
   min_hours_week_by_tier?: TierHours;
   min_hours_week_hard?: boolean;
   min_hours_week_weight?: number;
-  allow_overstaffing?: boolean;
   unit_max_hours_day?: number;
   min_rest_hours?: number;
   stability_weight?: number;
@@ -71,9 +70,6 @@ export function parseGridSolverSettings(raw: string | null | undefined): GridSol
     const minWeekWeight = parseFiniteNumber(parsed.min_hours_week_weight);
     if (minWeekWeight !== undefined) out.min_hours_week_weight = minWeekWeight;
 
-    const allowOverstaffing = parseBoolean(parsed.allow_overstaffing);
-    if (allowOverstaffing !== undefined) out.allow_overstaffing = allowOverstaffing;
-
     const unitMaxHoursDay = parseFiniteNumber(parsed.unit_max_hours_day);
     if (unitMaxHoursDay !== undefined) out.unit_max_hours_day = unitMaxHoursDay;
 
@@ -104,7 +100,6 @@ export function buildSolverParamsPayload(settings: GridSolverSettings) {
   if (settings.min_hours_week_by_tier) payload.min_hours_week_by_tier = settings.min_hours_week_by_tier;
   if (typeof settings.min_hours_week_hard === "boolean") payload.min_hours_week_hard = settings.min_hours_week_hard;
   if (typeof settings.min_hours_week_weight === "number") payload.min_hours_week_weight = settings.min_hours_week_weight;
-  if (typeof settings.allow_overstaffing === "boolean") payload.allow_overstaffing = settings.allow_overstaffing;
   if (typeof settings.unit_max_hours_day === "number") payload.unit_max_hours_day = settings.unit_max_hours_day;
   if (typeof settings.min_rest_hours === "number") payload.min_rest_hours = settings.min_rest_hours;
   if (typeof settings.stability_weight === "number") {

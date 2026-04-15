@@ -5,8 +5,7 @@ import Link from "next/link";
 import { List as ListIcon, Grid as GridIcon, ArrowDownAZ, Clock4, Search, User } from "lucide-react";
 import type { Grid } from "@/lib/types";
 import { getAvatarInitials, getAvatarPalette, getAvatarSeed } from "@/lib/avatar";
-
-const EN_DAY = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+import { useI18n } from "@/lib/use-i18n";
 
 type View = "grid" | "list";
 type Sort = "chrono" | "alpha";
@@ -94,6 +93,17 @@ function toDisplayName(first: string, last: string, fallback: string) {
   return name || fallback;
 }
 
+function areMembersEqual(a: Member[] | undefined, b: Member[]): boolean {
+  if (!a) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i].id !== b[i].id) return false;
+    if (a[i].name !== b[i].name) return false;
+    if ((a[i].avatarUrl ?? null) !== (b[i].avatarUrl ?? null)) return false;
+  }
+  return true;
+}
+
 function AvatarStack({ members }: { members: Member[] }) {
   if (!members.length) return null;
   const visible = members.slice(0, 3);
@@ -125,7 +135,9 @@ function AvatarStack({ members }: { members: Member[] }) {
                 />
               ) : null}
               <div
-                className={`hidden h-full w-full items-center justify-center rounded-full text-[10px] font-semibold ${m.avatarUrl ? "" : "!flex"}`}
+                className={`hidden h-full w-full items-center justify-center rounded-full text-[10px] font-semibold ${
+                  m.avatarUrl ? "" : "!flex"
+                }`}
                 style={{ backgroundColor: palette.background, color: palette.text }}
               >
                 {getAvatarInitials(m.name)}
@@ -144,6 +156,7 @@ function AvatarStack({ members }: { members: Member[] }) {
 }
 
 export default function RecentProjects({ meId, initialItems }: { meId: number; initialItems: Grid[] }) {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [view, setView] = useState<View>("grid");
   const [sort, setSort] = useState<Sort>("chrono");
@@ -156,7 +169,7 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
   useEffect(() => {
     const update = () => {
       setIsSingleColumn(window.innerWidth < 640);
-      setCanShowListToggle(window.innerWidth >= 1024); // lg: grid can render 4 cards
+      setCanShowListToggle(window.innerWidth >= 1024);
     };
     update();
     window.addEventListener("resize", update);
@@ -178,11 +191,10 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
       list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }
     return list;
-  }, [initialItems, query, sort, mineOnly, meId]);
+  }, [initialItems, mineOnly, meId, query, sort]);
   const hasAnyGrid = initialItems.length > 0;
 
   useEffect(() => {
-    // Resolve creators + collaborators shown in cards/list
     const abort = new AbortController();
     (async () => {
       const ownerUpdates: Record<number, string> = {};
@@ -204,13 +216,8 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
 
               const first = m.user_first_name ?? m.user?.first_name ?? "";
               const last = m.user_last_name ?? m.user?.last_name ?? "";
-              const email = m.user_email ?? m.user?.email ?? `User ${userId}`;
-              const avatarUrl =
-                m.user_avatar_url ??
-                m.user?.avatar_url ??
-                m.user?.avatar ??
-                m.user?.image ??
-                null;
+              const email = m.user_email ?? m.user?.email ?? t("format.participant_with_id", { id: userId });
+              const avatarUrl = m.user_avatar_url ?? m.user?.avatar_url ?? m.user?.avatar ?? m.user?.image ?? null;
 
               byUserId.set(userId, {
                 id: userId,
@@ -234,25 +241,55 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
               }
             }
           } catch {}
-        })
+        }),
       );
       if (!abort.signal.aborted) {
-        if (Object.keys(ownerUpdates).length) {
-          setOwnerByGrid((prev) => ({ ...prev, ...ownerUpdates }));
+        if (Object.keys(ownerUpdates).length > 0) {
+          setOwnerByGrid((prev) => {
+            let changed = false;
+            const next = { ...prev };
+            for (const [gridIdKey, ownerName] of Object.entries(ownerUpdates)) {
+              const gridId = Number(gridIdKey);
+              if (next[gridId] !== ownerName) {
+                next[gridId] = ownerName;
+                changed = true;
+              }
+            }
+            return changed ? next : prev;
+          });
         }
-        if (Object.keys(memberUpdates).length) {
-          setMembersByGrid((prev) => ({ ...prev, ...memberUpdates }));
+        if (Object.keys(memberUpdates).length > 0) {
+          setMembersByGrid((prev) => {
+            let changed = false;
+            const next = { ...prev };
+            for (const [gridIdKey, nextMembers] of Object.entries(memberUpdates)) {
+              const gridId = Number(gridIdKey);
+              if (!areMembersEqual(prev[gridId], nextMembers)) {
+                next[gridId] = nextMembers;
+                changed = true;
+              }
+            }
+            return changed ? next : prev;
+          });
         }
       }
     })();
     return () => abort.abort();
-  }, [items, meId]);
+  }, [items, meId, t]);
 
   const shouldWrapWeekends = !isSingleColumn;
-  const hrefForGrid = (g: Grid) =>
-    `/grid/${encodeURIComponent(g.grid_code || String(g.id))}`;
-
+  const hrefForGrid = (g: Grid) => `/grid/${encodeURIComponent(g.grid_code || String(g.id))}`;
   const effectiveView: View = canShowListToggle ? view : "grid";
+
+  const dayLabels = [
+    t("day.mon_short"),
+    t("day.tue_short"),
+    t("day.wed_short"),
+    t("day.thu_short"),
+    t("day.fri_short"),
+    t("day.sat_short"),
+    t("day.sun_short"),
+  ];
 
   const DayBadges = ({
     days,
@@ -269,7 +306,7 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
         key={i}
         className="text-[10px] font-semibold uppercase border border-gray-300 rounded-sm px-1.5 py-0 tracking-wider"
       >
-        {EN_DAY[i] ?? String(i)}
+        {dayLabels[i] ?? String(i)}
       </span>
     );
 
@@ -281,31 +318,24 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
           <div className={`flex flex-wrap gap-1 ${align === "left" ? "justify-start" : "justify-center"}`}>
             {weekdays.map(chip)}
           </div>
-          <div className={`flex gap-1 ${align === "left" ? "justify-start" : "justify-center"}`}>
-            {weekends.map(chip)}
-          </div>
+          <div className={`flex gap-1 ${align === "left" ? "justify-start" : "justify-center"}`}>{weekends.map(chip)}</div>
         </div>
       );
     }
 
-    return (
-      <div className={`mt-1 flex flex-wrap gap-1 ${align === "left" ? "justify-start" : "justify-center"}`}>
-        {ordered.map(chip)}
-      </div>
-    );
+    return <div className={`mt-1 flex flex-wrap gap-1 ${align === "left" ? "justify-start" : "justify-center"}`}>{ordered.map(chip)}</div>;
   };
 
   return (
     <div className="space-y-6">
-      {/* Toolbar */}
       <div className="flex items-center justify-between gap-4">
-        <div className="text-base font-semibold whitespace-nowrap">Recent Projects</div>
+        <div className="text-base font-semibold whitespace-nowrap">{t("recent_projects.title")}</div>
         <div className="flex-1 flex items-center justify-center">
           <div className="relative w-full max-w-md">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search"
+              placeholder={t("recent_projects.search_placeholder")}
               className="w-full bg-white text-sm rounded-md border px-9 py-2 shadow-sm"
             />
             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -315,7 +345,7 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
           <button
             type="button"
             onClick={() => setMineOnly((v) => !v)}
-            title={mineOnly ? "Show all projects" : "Show my projects only"}
+            title={mineOnly ? t("recent_projects.show_all_projects") : t("recent_projects.show_my_projects_only")}
             className="w-9 h-9 inline-flex items-center justify-center rounded-md hover:bg-gray-100"
           >
             <User className={`w-4 h-4 ${mineOnly ? "text-black" : "text-gray-600"}`} />
@@ -323,7 +353,7 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
           <button
             type="button"
             onClick={() => setSort((s) => (s === "chrono" ? "alpha" : "chrono"))}
-            title={sort === "chrono" ? "Sort A–Z" : "Sort by recent"}
+            title={sort === "chrono" ? t("recent_projects.sort_alpha") : t("recent_projects.sort_recent")}
             className="w-9 h-9 inline-flex items-center justify-center rounded-md hover:bg-gray-100"
           >
             {sort === "chrono" ? <ArrowDownAZ className="w-4 h-4" /> : <Clock4 className="w-4 h-4" />}
@@ -332,7 +362,7 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
             <button
               type="button"
               onClick={() => setView((v) => (v === "grid" ? "list" : "grid"))}
-              title={view === "grid" ? "List view" : "Card view"}
+              title={view === "grid" ? t("recent_projects.list_view") : t("recent_projects.card_view")}
               className="w-9 h-9 inline-flex items-center justify-center rounded-md hover:bg-gray-100"
             >
               {view === "grid" ? <ListIcon className="w-4 h-4" /> : <GridIcon className="w-4 h-4" />}
@@ -341,10 +371,9 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
         </div>
       </div>
 
-      {/* Content */}
       {items.length === 0 ? (
         <div className="rounded-xl border bg-white px-4 py-8 text-center text-sm text-gray-600">
-          {hasAnyGrid ? "No grids match your current filters." : "No grids created yet."}
+          {hasAnyGrid ? t("recent_projects.no_grids_match_filters") : t("recent_projects.no_grids_created")}
         </div>
       ) : effectiveView === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -355,16 +384,14 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
               className="bg-white rounded-xl border shadow-sm hover:shadow-md transition-shadow p-3 flex flex-col justify-between min-h-[142px]"
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 text-sm font-medium truncate" title={g.name}>{g.name}</div>
+                <div className="min-w-0 text-sm font-medium truncate" title={g.name}>
+                  {g.name}
+                </div>
                 <AvatarStack members={membersByGrid[g.id] || []} />
               </div>
               <DayBadges days={g.days_enabled || []} align="center" splitWeekends={shouldWrapWeekends} />
               <div className="mt-1 text-xs text-gray-600 flex items-center justify-between">
-                <span>
-                  {g.creator === meId
-                    ? "By you"
-                    : (ownerByGrid[g.id] || "")}
-                </span>
+                <span>{g.creator === meId ? t("recent_projects.by_you") : ownerByGrid[g.id] || ""}</span>
                 <span>{new Date(g.created_at).toLocaleDateString()}</span>
               </div>
             </Link>
@@ -373,20 +400,20 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
       ) : (
         <div className="bg-white rounded-xl border overflow-hidden">
           <div className="grid grid-cols-12 text-xs font-medium text-gray-600 px-3 py-2 border-b bg-gray-50">
-            <div className="col-span-6">Title</div>
-            <div className="col-span-3">Owner</div>
-            <div className="col-span-3 text-right">Created</div>
+            <div className="col-span-6">{t("recent_projects.column_title")}</div>
+            <div className="col-span-3">{t("recent_projects.column_owner")}</div>
+            <div className="col-span-3 text-right">{t("recent_projects.column_created")}</div>
           </div>
           <div className="divide-y">
             {items.map((g) => (
               <Link key={g.id} href={hrefForGrid(g)} className="grid grid-cols-12 items-center px-3 py-3 hover:bg-gray-50 text-sm">
                 <div className="col-span-6 min-w-0">
-                  <div className="truncate" title={g.name}>{g.name}</div>
+                  <div className="truncate" title={g.name}>
+                    {g.name}
+                  </div>
                   <DayBadges days={g.days_enabled || []} align="left" />
                 </div>
-                <div className="col-span-3 truncate">
-                  {g.creator === meId ? "You" : (ownerByGrid[g.id] || "")}
-                </div>
+                <div className="col-span-3 truncate">{g.creator === meId ? t("recent_projects.you") : ownerByGrid[g.id] || ""}</div>
                 <div className="col-span-3 text-right text-gray-600 text-xs">{new Date(g.created_at).toLocaleDateString()}</div>
               </Link>
             ))}

@@ -4,15 +4,17 @@ import { getCurrentUser } from "@/lib/auth";
 import { ParticipantsHeader } from "@/components/grid/headers";
 import Link from "next/link";
 import { resolveGridByCode } from "../_helpers";
+import { getTranslation } from "@/lib/i18n";
 
 export default async function ParticipantsPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
   const grid = await resolveGridByCode(code);
   const id = String(grid.id);
+  const me = await getCurrentUser();
+  const t = (key: Parameters<typeof getTranslation>[1]) => getTranslation(me?.preferred_language, key);
 
   let role: Role = "viewer";
   try {
-    const me = await getCurrentUser();
     if (me) {
       const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
       const list = Array.isArray(data) ? data : data.results ?? [];
@@ -40,7 +42,7 @@ export default async function ParticipantsPage({ params }: { params: Promise<{ c
 
         {participants.length === 0 ? (
           <div className="text-sm text-gray-600 border rounded-lg p-6 bg-white">
-            No participants yet. Create one with the Create button above.
+            {t("participants_page.no_participants")}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -54,7 +56,7 @@ export default async function ParticipantsPage({ params }: { params: Promise<{ c
                   {p.name}{p.surname ? ` ${p.surname}` : ""}
                 </div>
                 {p.user && (
-                  <div className="text-xs text-gray-500 mt-1">Linked user</div>
+                  <div className="text-xs text-gray-500 mt-1">{t("participants_page.linked_user")}</div>
                 )}
               </Link>
             ))}

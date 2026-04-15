@@ -14,6 +14,7 @@ import {
   DialogDescription,
   DialogClose,
 } from "@/components/ui/dialog";
+import { useI18n } from "@/lib/use-i18n";
 
 type Role = "viewer" | "editor" | "supervisor";
 type InviteType = "email" | "link";
@@ -292,6 +293,7 @@ export default function InviteDialog({
   onOpenChange: (v: boolean) => void;
   roleOptions?: Role[];
 }) {
+  const { t } = useI18n();
   const allowedRoles = React.useMemo<Role[]>(
     () => (roleOptions && roleOptions.length > 0 ? roleOptions : ["viewer", "editor", "supervisor"]),
     [roleOptions]
@@ -656,7 +658,7 @@ export default function InviteDialog({
                     ))}
                     <input
                       className="w-[260px] shrink-0 border-0 bg-transparent p-0 text-sm outline-none"
-                      placeholder="Add people by email"
+                      placeholder={t("invite_dialog.add_people_by_email")}
                       value={draftEmail}
                       onChange={(e) => setDraftEmail(e.target.value)}
                       onKeyDown={onEmailKeyDown}
@@ -673,9 +675,9 @@ export default function InviteDialog({
                     value={role}
                     onChange={(e) => setRole(e.target.value as Role)}
                   >
-                    {allowedRoles.includes("viewer") && <option value="viewer">Viewer</option>}
-                    {allowedRoles.includes("editor") && <option value="editor">Editor</option>}
-                    {allowedRoles.includes("supervisor") && <option value="supervisor">Supervisor</option>}
+                    {allowedRoles.includes("viewer") && <option value="viewer">{t("invite_dialog.viewer")}</option>}
+                    {allowedRoles.includes("editor") && <option value="editor">{t("invite_dialog.editor")}</option>}
+                    {allowedRoles.includes("supervisor") && <option value="supervisor">{t("invite_dialog.supervisor")}</option>}
                   </select>
                   {showEditorTier && (
                     <select
@@ -683,9 +685,9 @@ export default function InviteDialog({
                       value={participantTier}
                       onChange={(e) => setParticipantTier(e.target.value as Tier)}
                     >
-                      <option value="PRIMARY">Primary</option>
-                      <option value="SECONDARY">Secondary</option>
-                      <option value="TERTIARY">Tertiary</option>
+                      <option value="PRIMARY">{t("tier.primary")}</option>
+                      <option value="SECONDARY">{t("tier.secondary")}</option>
+                      <option value="TERTIARY">{t("tier.tertiary")}</option>
                     </select>
                   )}
                 </div>
@@ -694,23 +696,23 @@ export default function InviteDialog({
 
             {viewMode === "compose" ? (
               <div>
-                <label className="block text-sm mb-1">Message (optional)</label>
+                <label className="block text-sm mb-1">{t("invite_dialog.message_optional")}</label>
                 <textarea
                   className="w-full border rounded px-3 py-2 text-sm"
                   rows={6}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Message"
+                  placeholder={t("invite_dialog.message_placeholder")}
                 />
               </div>
             ) : (
               <>
                 <div className="rounded border p-3">
-                  <div className="text-base font-semibold mb-2">People with access</div>
+                  <div className="text-base font-semibold mb-2">{t("invite_dialog.people_with_access")}</div>
                   {loadingData ? (
-                    <div className="text-sm text-gray-500">Loading...</div>
+                    <div className="text-sm text-gray-500">{t("invite_dialog.loading")}</div>
                   ) : accessList.length === 0 ? (
-                    <div className="text-sm text-gray-500">No supervisors or editors yet.</div>
+                    <div className="text-sm text-gray-500">{t("invite_dialog.no_supervisors_editors")}</div>
                   ) : (
                     <div className="space-y-2">
                       {accessList.map((u) => {
@@ -723,9 +725,9 @@ export default function InviteDialog({
                             </div>
                             <div className="shrink-0 text-sm">
                               {u.role === "supervisor" ? (
-                                <span className="text-gray-600">{u.isOwner ? "Owner" : "Supervisor"}</span>
+                                <span className="text-gray-600">{u.isOwner ? t("invite_dialog.owner") : t("invite_dialog.supervisor")}</span>
                               ) : (
-                                <span style={{ color: tierStyle?.text || "#555" }}>Editor</span>
+                                <span style={{ color: tierStyle?.text || "#555" }}>{t("invite_dialog.editor")}</span>
                               )}
                             </div>
                           </div>
@@ -736,16 +738,16 @@ export default function InviteDialog({
                 </div>
 
                 <div className="rounded border p-3">
-                  <div className="text-base font-semibold mb-2">General access</div>
+                  <div className="text-base font-semibold mb-2">{t("invite_dialog.general_access")}</div>
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-sm font-medium">
-                        {generalAccessEnabled ? "Anyone with the link" : "General link disabled"}
+                        {generalAccessEnabled ? t("invite_dialog.anyone_with_link") : t("invite_dialog.general_link_disabled")}
                       </div>
                       <div className="text-xs text-gray-500">
                         {generalAccessEnabled
-                          ? "Viewer access through the link is active."
-                          : "No public viewer link is currently active."}
+                          ? t("invite_dialog.viewer_link_active")
+                          : t("invite_dialog.viewer_link_inactive")}
                       </div>
                     </div>
                     <button
@@ -757,7 +759,7 @@ export default function InviteDialog({
                       }`}
                       onClick={() => setGeneralAccessEnabled((v) => !v)}
                     >
-                      {generalAccessEnabled ? "Deactivate URL" : "Activate URL"}
+                      {generalAccessEnabled ? t("invite_dialog.deactivate_url") : t("invite_dialog.activate_url")}
                     </button>
                   </div>
                 </div>
@@ -772,7 +774,7 @@ export default function InviteDialog({
                   type="button"
                   className="inline-flex h-9 w-9 items-center justify-center rounded text-sm hover:bg-gray-100 disabled:opacity-50"
                   onClick={() => copy(generalAccessUrl)}
-                  title="Copy URL"
+                  title={t("invite_dialog.copy_url")}
                   disabled={!generalAccessUrl}
                 >
                   <Link2 className="h-4 w-4" />
@@ -783,7 +785,7 @@ export default function InviteDialog({
                     className="px-3 py-2 rounded text-sm text-blue-600 hover:underline"
                     onClick={cancelCompose}
                   >
-                    Cancel
+                    {t("common.cancel")}
                   </button>
                   <button
                     type="button"
@@ -791,7 +793,7 @@ export default function InviteDialog({
                     disabled={sendingEmails || emails.length === 0}
                     onClick={sendEmailInvites}
                   >
-                    {sendingEmails ? "Sending..." : "Send"}
+                    {sendingEmails ? t("invite_dialog.sending") : t("invite_dialog.send")}
                   </button>
                 </div>
               </div>
@@ -804,11 +806,11 @@ export default function InviteDialog({
                   onClick={() => copy(generalAccessUrl)}
                 >
                   <Link2 className="h-4 w-4" />
-                  Copy URL
+                  {t("invite_dialog.copy_url")}
                 </button>
                 <div className="flex items-center gap-2">
                   <DialogClose asChild>
-                    <button type="button" className="px-3 py-2 rounded border text-sm">Close</button>
+                    <button type="button" className="px-3 py-2 rounded border text-sm">{t("invite_dialog.close")}</button>
                   </DialogClose>
                   <button
                     type="button"
@@ -816,7 +818,7 @@ export default function InviteDialog({
                     disabled={savingGeneral}
                     onClick={saveGeneralAccess}
                   >
-                    {savingGeneral ? "Saving..." : "Save changes"}
+                    {savingGeneral ? t("common.saving") : t("invite_dialog.save_changes")}
                   </button>
                 </div>
               </div>

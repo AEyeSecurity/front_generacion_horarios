@@ -16,6 +16,7 @@ import {
   getAvatarSeed,
   getAvatarSource,
 } from "@/lib/avatar";
+import { useI18n } from "@/lib/use-i18n";
 
 type InviteStatus = "pending" | "accepted" | "declined" | "expired";
 type Id = number | string;
@@ -411,6 +412,7 @@ function normalizeAcceptInviteResponse(data: unknown): AcceptInviteResponse {
 }
 
 export default function InvitesMenu({ me }: { me: User }) {
+  const { t } = useI18n();
   const router = useRouter();
   const [items, setItems] = useState<Invite[]>([]);
   const [open, setOpen] = useState(false);
@@ -670,7 +672,7 @@ export default function InvitesMenu({ me }: { me: User }) {
       <DropdownMenuTrigger asChild>
         <button
           className="relative w-8 h-8 rounded-full inline-flex items-center justify-center hover:bg-gray-100"
-          aria-label="Invitations"
+          aria-label={t("invites_menu.invitations_aria")}
         >
           <MessageSquare className="w-5 h-5 text-gray-700" />
           {unseen && (
@@ -680,7 +682,7 @@ export default function InvitesMenu({ me }: { me: User }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[25rem] p-2">
         {items.length === 0 ? (
-          <div className="text-sm text-gray-600 p-3">No invitations</div>
+          <div className="text-sm text-gray-600 p-3">{t("invites_menu.no_invitations")}</div>
         ) : (
           <div className="max-h-[16rem] overflow-y-auto pr-1">
             {items.map((inv) => {
@@ -692,7 +694,7 @@ export default function InvitesMenu({ me }: { me: User }) {
               const fallbackName = getAvatarDisplayName(sender);
               const initials = getAvatarInitials(fallbackName);
               const palette = getAvatarPalette(getAvatarSeed(sender));
-              const gridName = inv.grid_name ?? inv.grid?.name ?? "Unknown grid";
+              const gridName = inv.grid_name ?? inv.grid?.name ?? t("invites_menu.unknown_grid");
               const sentAgo = relativeTimeFromInvite(inv);
 
               return (
@@ -755,7 +757,7 @@ export default function InvitesMenu({ me }: { me: User }) {
                               void acceptInvite(inv);
                             }}
                           >
-                            Accept
+                            {t("invites_menu.accept")}
                           </button>
                           <button
                             type="button"
@@ -766,7 +768,7 @@ export default function InvitesMenu({ me }: { me: User }) {
                               void rejectInvite(inv);
                             }}
                           >
-                            Reject
+                            {t("invites_menu.reject")}
                           </button>
                         </>
                       )}

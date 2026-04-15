@@ -12,25 +12,27 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
+import { useI18n } from "@/lib/use-i18n";
 
 type Props = { gridId: number | string; gridCode?: string | null; canDelete?: boolean; canConfigureSolve?: boolean };
 
 export default function GridActions({ gridId, gridCode, canDelete = false, canConfigureSolve = false }: Props) {
+  const { t } = useI18n();
   const router = useRouter();
 
   async function onDelete() {
     const id = String(gridId);
     if (!id || id === "undefined") {
       console.error("[GridActions] Missing gridId prop:", gridId);
-      alert("Could not resolve grid id – delete aborted.");
+      alert(t("grid_actions.missing_grid_id_delete"));
       return;
     }
-    if (!window.confirm("Delete this grid? This action cannot be undone.")) return;
+    if (!window.confirm(t("grid_actions.delete_grid_confirm"))) return;
 
     const res = await fetch(`/api/grids/${encodeURIComponent(id)}`, { method: "DELETE" });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      alert(`Failed to delete grid (${res.status}). ${txt || ""}`);
+      alert(t("grid_actions.delete_failed", { status: res.status, details: txt || "" }));
       return;
     }
     router.replace("/dashboard");
@@ -58,7 +60,7 @@ export default function GridActions({ gridId, gridCode, canDelete = false, canCo
   const downloadScheduleExport = async (view: "draft" | "published") => {
     const id = String(gridId);
     if (!id || id === "undefined") {
-      alert("Could not resolve grid id - export aborted.");
+      alert(t("grid_actions.missing_grid_id_export"));
       return;
     }
     const res = await fetch(`/api/grids/${encodeURIComponent(id)}/schedule/export?view=${view}`, {
@@ -66,7 +68,7 @@ export default function GridActions({ gridId, gridCode, canDelete = false, canCo
     });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      alert(`Failed to export ${view} schedule (${res.status}). ${txt || ""}`);
+      alert(t("grid_actions.export_failed", { view, status: res.status, details: txt || "" }));
       return;
     }
 
@@ -88,7 +90,7 @@ export default function GridActions({ gridId, gridCode, canDelete = false, canCo
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="p-2 rounded hover:bg-gray-100 text-gray-600" aria-label="More actions">
+        <button className="p-2 rounded hover:bg-gray-100 text-gray-600" aria-label={t("grid_actions.more_actions")}>
           <MoreVertical className="w-5 h-5" />
         </button>
       </DropdownMenuTrigger>
@@ -96,31 +98,31 @@ export default function GridActions({ gridId, gridCode, canDelete = false, canCo
         {canConfigureSolve && (
           <DropdownMenuItem onClick={goSettings}>
             <Settings className="w-4 h-4 mr-2" />
-            Settings
+            {t("grid_actions.settings")}
           </DropdownMenuItem>
         )}
         <DropdownMenuItem onClick={goTimeRanges}>
           <Clock4 className="w-4 h-4 mr-2" />
-          Time Ranges
+          {t("grid_actions.time_ranges")}
         </DropdownMenuItem>
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>
             <FileDown className="w-4 h-4 mr-2" />
-            Export Schedule (.xlsx)
+            {t("grid_actions.export_schedule_xlsx")}
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
             <DropdownMenuItem onClick={() => void downloadScheduleExport("draft")}>
-              Draft schedule
+              {t("grid_actions.draft_schedule")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => void downloadScheduleExport("published")}>
-              Published schedule
+              {t("grid_actions.published_schedule")}
             </DropdownMenuItem>
           </DropdownMenuSubContent>
         </DropdownMenuSub>
         {canDelete && (
         <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-700">
           <Trash2 className="w-4 h-4 mr-2" />
-          Delete grid
+          {t("grid_actions.delete_grid")}
         </DropdownMenuItem>
         )}
       </DropdownMenuContent>

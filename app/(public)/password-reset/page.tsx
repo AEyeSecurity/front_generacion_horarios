@@ -3,8 +3,14 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
+import { useI18n } from "@/lib/use-i18n";
+
+type UserLookup = { email?: string };
+
+type UserLookupResponse = UserLookup[] | { results?: UserLookup[] };
 
 export default function PasswordResetPage() {
+  const { t } = useI18n();
   const sp = useSearchParams();
   const initialEmail = useMemo(() => sp.get("email") || "", [sp]);
   const [email, setEmail] = useState(initialEmail);
@@ -23,19 +29,19 @@ export default function PasswordResetPage() {
         cache: "no-store",
       });
       if (!lookup.ok) {
-        setError("That address doesn't have an account.");
+        setError(t("auth.email_no_account"));
         return;
       }
 
-      const raw = await lookup.json().catch(() => ({}));
+      const raw = (await lookup.json().catch(() => ({}))) as UserLookupResponse;
       const list = Array.isArray(raw) ? raw : raw?.results ?? [];
-      const exists = list.some((u: any) => {
-        const userEmail = String(u?.email || "").trim().toLowerCase();
+      const exists = list.some((user) => {
+        const userEmail = String(user?.email || "").trim().toLowerCase();
         return userEmail && userEmail === normalizedEmail;
       });
 
       if (!exists) {
-        setError("That address doesn't have an account.");
+        setError(t("auth.email_no_account"));
         return;
       }
 
@@ -45,17 +51,19 @@ export default function PasswordResetPage() {
         body: JSON.stringify({ email: normalizedEmail }),
       });
       if (!r.ok) {
-        let msg = "Could not process request";
+        let msg = t("auth.request_process_failed");
         try {
           const j = await r.json();
           msg = j?.error || j?.detail || msg;
-        } catch {}
+        } catch {
+          // ignore parse failures
+        }
         setError(msg);
         return;
       }
-      setMessage("Reset email sent.");
-    } catch (err: any) {
-      setError(err?.message || "Could not process request");
+      setMessage(t("auth.reset_email_sent"));
+    } catch (submitError: unknown) {
+      setError(submitError instanceof Error ? submitError.message : t("auth.request_process_failed"));
     } finally {
       setLoading(false);
     }
@@ -63,11 +71,11 @@ export default function PasswordResetPage() {
 
   return (
     <div className="max-w-md mx-auto mt-16 bg-white p-6 rounded-lg shadow space-y-4">
-      <h1 className="text-xl font-semibold">Reset password</h1>
-      <p className="text-sm text-gray-700">Enter your account email and we&apos;ll send a reset link.</p>
+      <h1 className="text-xl font-semibold">{t("auth.reset_password")}</h1>
+      <p className="text-sm text-gray-700">{t("auth.reset_password_instructions")}</p>
       <form onSubmit={onSubmit} className="space-y-3">
         <div>
-          <label className="block text-sm">Email</label>
+          <label className="block text-sm">{t("auth.email")}</label>
           <input
             className="border rounded w-full p-2"
             type="email"
@@ -81,13 +89,13 @@ export default function PasswordResetPage() {
           disabled={loading}
           className="px-4 py-2 rounded bg-black text-white text-sm disabled:opacity-60"
         >
-          {loading ? "Sending..." : "Send reset link"}
+          {loading ? t("auth.sending") : t("auth.send_reset_link")}
         </button>
       </form>
       {message && <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded p-2">{message}</div>}
       {error && <div className="text-sm text-red-600">{error}</div>}
       <p className="text-sm text-gray-600">
-        Back to <Link href="/login" className="underline">Log in</Link>
+        {t("auth.back_to")} <Link href="/login" className="underline">{t("auth.log_in")}</Link>
       </p>
     </div>
   );
