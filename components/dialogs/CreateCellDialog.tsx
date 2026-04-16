@@ -23,6 +23,11 @@ import { useI18n } from "@/lib/use-i18n";
 
 type TimeRange = { id: number; name: string; start_time: string; end_time: string };
 type Unit = { id: number; name: string };
+type GridConfig = {
+  cell_size_min?: number | null;
+  days_enabled?: number[] | null;
+  allow_overstaffing?: boolean | null;
+};
 
 function clampInt(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(value)));
@@ -228,6 +233,7 @@ export default function CreateCellDialog({
   const [tierPools, setTierPools] = React.useState<TierPools>({ ...EMPTY_TIER_POOLS });
   const [staffGroups, setStaffGroups] = React.useState<StaffOption[]>([]);
   const [allowOverstaffing, setAllowOverstaffing] = React.useState(false);
+  const [gridAllowsOverstaffing, setGridAllowsOverstaffing] = React.useState(true);
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
@@ -377,11 +383,12 @@ export default function CreateCellDialog({
     setTierCounts({ PRIMARY: 1, SECONDARY: 0, TERTIARY: 0 });
     setTierPools({ ...EMPTY_TIER_POOLS });
     setStaffGroups([]);
+    setGridAllowsOverstaffing(true);
     setAllowOverstaffing(false);
     (async () => {
       try {
         try {
-          let g: any = null;
+          let g: GridConfig | null = null;
           try {
             g = await fetch(`/api/grids/${gridId}/`, { cache: "no-store" }).then((r) => r.json());
           } catch {
@@ -390,6 +397,11 @@ export default function CreateCellDialog({
           if (g?.cell_size_min) setCellMin(Number(g.cell_size_min));
           if (Array.isArray(g?.days_enabled)) {
             setMaxSplitDays(Math.max(1, Math.min(7, g.days_enabled.length)));
+          }
+          const overstaffingEnabled = g?.allow_overstaffing !== false;
+          setGridAllowsOverstaffing(overstaffingEnabled);
+          if (!overstaffingEnabled) {
+            setAllowOverstaffing(false);
           }
         } catch {}
 
@@ -537,7 +549,7 @@ export default function CreateCellDialog({
         headcount: inferredHeadcount,
         tier_counts: tierCounts,
         tier_pools: tierPools,
-        allow_overstaffing: allowOverstaffing,
+        allow_overstaffing: gridAllowsOverstaffing ? allowOverstaffing : null,
       };
 
       if (staffGroups.length > 0) template.staff_options = staffGroups;
@@ -897,17 +909,19 @@ export default function CreateCellDialog({
               </>
             ) : (
               <>
-                <div className="rounded border px-3 py-2">
-                  <label className="inline-flex items-center gap-2 text-sm select-none">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4"
-                      checked={allowOverstaffing}
-                      onChange={(e) => setAllowOverstaffing(e.target.checked)}
-                    />
-                    {t("create_cell.allow_overstaffing")}
-                  </label>
-                </div>
+                {gridAllowsOverstaffing && (
+                  <div className="rounded border px-3 py-2">
+                    <label className="inline-flex items-center gap-2 text-sm select-none">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={allowOverstaffing}
+                        onChange={(e) => setAllowOverstaffing(e.target.checked)}
+                      />
+                      {t("create_cell.allow_overstaffing")}
+                    </label>
+                  </div>
+                )}
                 <CellStaffingEditor
                   participants={participants}
                   tierCounts={tierCounts}

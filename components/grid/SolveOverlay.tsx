@@ -107,6 +107,27 @@ type SolveCandidate = {
   delta?: Record<string, unknown>;
 };
 
+type PrecheckSeverity = "ERROR" | "WARNING" | string;
+
+type PrecheckViolation = {
+  severity?: PrecheckSeverity;
+  type?: string;
+  detail?: string;
+  [key: string]: unknown;
+};
+
+type PrecheckResponse = {
+  ok?: boolean;
+  errors?: PrecheckViolation[];
+  warnings?: PrecheckViolation[];
+  violations?: PrecheckViolation[];
+  metrics?: Record<string, unknown> | null;
+  runtime_ms?: number | null;
+  input_snapshot?: {
+    payload?: unknown;
+  } | null;
+};
+
 type CandidateReasonOption = {
   code: string;
   label: string;
@@ -117,6 +138,7 @@ type SolveCandidatesResponse = {
   candidates?: SolveCandidate[];
   selectable_candidate_indexes?: number[];
   all_candidates_failed?: boolean;
+  precheck?: PrecheckResponse;
   none_option?: {
     reason_options?: Array<string | { code?: string; label?: string; reason?: string; text?: string }>;
   };
@@ -169,6 +191,18 @@ type CommentPlacementOption = {
   count: number;
 };
 
+type OverlapGroupMeta = {
+  dayIndex: number;
+  groupSize: number;
+  groupPosition: number;
+};
+
+type PrecheckDialogState = {
+  open: boolean;
+  blocking: boolean;
+  lines: string[];
+};
+
 function buildPlacementKey(
   scheduleId: number | string,
   sourceCellId: number | string,
@@ -189,12 +223,116 @@ const DAY_LABEL_TO_INDEX: Record<string, number> = {
   sun: 6,
 };
 
+const OVERLAP_CAROUSEL_INTERVAL_MS = 2500;
+
 const parseClockToMin = (value: string) => {
   const [h, m] = String(value ?? "").split(":");
   const hour = Number(h);
   const minute = Number(m);
   if (!Number.isFinite(hour) || !Number.isFinite(minute)) return 0;
   return hour * 60 + minute;
+};
+
+const flattenErrorText = (value: unknown): string[] => {
+  if (typeof value === "string") return value.trim() ? [value.trim()] : [];
+  if (Array.isArray(value)) return value.flatMap((entry) => flattenErrorText(entry));
+  if (value && typeof value === "object") {
+    const source = value as Record<string, unknown>;
+    const fromDetail = flattenErrorText(source.detail);
+    if (fromDetail.length > 0) return fromDetail;
+    return Object.entries(source).flatMap(([key, entry]) =>
+      flattenErrorText(entry).map((message) => `${key}: ${message}`),
+    );
+  }
+  return [];
+};
+
+const parseApiErrorMessage = (raw: string, fallback: string) => {
+  const text = raw.trim();
+  if (!text) return fallback;
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    const flattened = flattenErrorText(parsed);
+    if (flattened.length > 0) return flattened.join(" ");
+  } catch {
+    return text;
+  }
+  return fallback;
+};
+
+const normalizePrecheckViolationList = (value: unknown): PrecheckViolation[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === "object"))
+    .map((entry) => {
+      const severityRaw = typeof entry.severity === "string" ? entry.severity : undefined;
+      const typeRaw = typeof entry.type === "string" ? entry.type : undefined;
+      const detailRaw = typeof entry.detail === "string" ? entry.detail : undefined;
+      return {
+        ...entry,
+        severity: severityRaw,
+        type: typeRaw,
+        detail: detailRaw,
+      } as PrecheckViolation;
+    });
+};
+
+const normalizePrecheckResponse = (value: unknown): PrecheckResponse => {
+  if (!value || typeof value !== "object") {
+    return { ok: false, errors: [], warnings: [], violations: [] };
+  }
+  const source = value as Record<string, unknown>;
+  return {
+    ok: typeof source.ok === "boolean" ? source.ok : undefined,
+    errors: normalizePrecheckViolationList(source.errors),
+    warnings: normalizePrecheckViolationList(source.warnings),
+    violations: normalizePrecheckViolationList(source.violations),
+    metrics: source.metrics && typeof source.metrics === "object" ? (source.metrics as Record<string, unknown>) : null,
+    runtime_ms:
+      typeof source.runtime_ms === "number" && Number.isFinite(source.runtime_ms)
+        ? source.runtime_ms
+        : null,
+    input_snapshot:
+      source.input_snapshot && typeof source.input_snapshot === "object"
+        ? (source.input_snapshot as { payload?: unknown })
+        : null,
+  };
+};
+
+const normalizeViolationSeverity = (value: unknown) => String(value ?? "").trim().toUpperCase();
+
+const getPrecheckDiagnostics = (precheck: PrecheckResponse | null) => {
+  if (!precheck) {
+    return {
+      all: [] as PrecheckViolation[],
+      errors: [] as PrecheckViolation[],
+      warnings: [] as PrecheckViolation[],
+      hasBlockingErrors: false,
+    };
+  }
+  const allFromViolations = Array.isArray(precheck.violations) ? precheck.violations : [];
+  const errorsFromField = Array.isArray(precheck.errors) ? precheck.errors : [];
+  const warningsFromField = Array.isArray(precheck.warnings) ? precheck.warnings : [];
+  const inferredErrors = allFromViolations.filter(
+    (violation) => normalizeViolationSeverity(violation.severity) === "ERROR",
+  );
+  const inferredWarnings = allFromViolations.filter(
+    (violation) => normalizeViolationSeverity(violation.severity) === "WARNING",
+  );
+  const errors = errorsFromField.length > 0 ? errorsFromField : inferredErrors;
+  const warnings = warningsFromField.length > 0 ? warningsFromField : inferredWarnings;
+  const all = allFromViolations.length > 0 ? allFromViolations : [...errors, ...warnings];
+  const hasBlockingErrors = errors.length > 0 || precheck.ok === false;
+  return { all, errors, warnings, hasBlockingErrors };
+};
+
+const formatPrecheckViolation = (violation: PrecheckViolation) => {
+  const typeText = typeof violation.type === "string" && violation.type.trim() ? violation.type.trim() : "";
+  const detailText = typeof violation.detail === "string" && violation.detail.trim() ? violation.detail.trim() : "";
+  if (typeText && detailText) return `${typeText}: ${detailText}`;
+  if (detailText) return detailText;
+  if (typeText) return typeText;
+  return "";
 };
 
 const extractAuthorId = (author: unknown): string | number | undefined => {
@@ -313,6 +451,11 @@ export default function SolveOverlay({
   const [solveStartedAt, setSolveStartedAt] = useState<number | null>(null);
   const [currentSchedule, setCurrentSchedule] = useState<ScheduleResource | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [precheck, setPrecheck] = useState<PrecheckResponse | null>(null);
+  const [precheckBusy, setPrecheckBusy] = useState(false);
+  const [precheckError, setPrecheckError] = useState<string | null>(null);
+  const [precheckSignature, setPrecheckSignature] = useState<string | null>(null);
+  const [precheckRefreshTick, setPrecheckRefreshTick] = useState(0);
   const [tick, setTick] = useState(0);
   const [cellNameById, setCellNameById] = useState<Record<string, string>>({});
   const [cellStaffsById, setCellStaffsById] = useState<Record<string, string[]>>({});
@@ -326,7 +469,6 @@ export default function SolveOverlay({
   const [cellPinMetaById, setCellPinMetaById] = useState<Record<string, CellPinMeta>>({});
   const [cellTimeRangeById, setCellTimeRangeById] = useState<Record<string, string>>({});
   const [cellDurationSlotsById, setCellDurationSlotsById] = useState<Record<string, number>>({});
-  const [cellAllowOverstaffById, setCellAllowOverstaffById] = useState<Record<string, boolean>>({});
   const [cellRequiredPlacementsById, setCellRequiredPlacementsById] = useState<Record<string, number>>({});
   const [bundleUnitsById, setBundleUnitsById] = useState<Record<string, string[]>>({});
   const [bundleNameById, setBundleNameById] = useState<Record<string, string>>({});
@@ -372,6 +514,12 @@ export default function SolveOverlay({
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [isDeleteDropActive, setIsDeleteDropActive] = useState(false);
   const [unassignedFocusIndex, setUnassignedFocusIndex] = useState(0);
+  const [overlapCarouselPage, setOverlapCarouselPage] = useState(0);
+  const [precheckDialogState, setPrecheckDialogState] = useState<PrecheckDialogState>({
+    open: false,
+    blocking: false,
+    lines: [],
+  });
   const [isPublishing, setIsPublishing] = useState(false);
   const [assignmentDialogOpen, setAssignmentDialogOpen] = useState(false);
   const [assignmentOptions, setAssignmentOptions] = useState<PlacementAssignmentOption[]>([]);
@@ -406,6 +554,24 @@ export default function SolveOverlay({
   useEffect(() => {
     setIsClientReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!canSolve) return;
+    const key = getGridSolverSettingsKey(gridId);
+    const refresh = () => {
+      setPrecheckRefreshTick((prev) => prev + 1);
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== key) return;
+      refresh();
+    };
+    window.addEventListener("focus", refresh);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [canSolve, gridId]);
 
   const parseTimestamp = (value: unknown) => {
     if (typeof value !== "string") return 0;
@@ -543,6 +709,46 @@ export default function SolveOverlay({
       maxUpdatedAt,
     };
   };
+
+  const sanitizeSolverParamsForSolve = (solverParams: Record<string, unknown>) => {
+    const next = { ...solverParams };
+    if (Object.prototype.hasOwnProperty.call(next, "allow_overstaffing")) {
+      delete (next as { allow_overstaffing?: unknown }).allow_overstaffing;
+    }
+    return next;
+  };
+
+  const runPrecheckRequest = useCallback(
+    async (
+      solverParams: Record<string, unknown>,
+      options?: { signature?: string; signal?: AbortSignal },
+    ): Promise<PrecheckResponse> => {
+      const sanitizedSolverParams = sanitizeSolverParamsForSolve(solverParams);
+      const payload =
+        Object.keys(sanitizedSolverParams).length > 0
+          ? { solver_params: sanitizedSolverParams }
+          : {};
+      const res = await fetch(`/api/grids/${gridId}/precheck/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: options?.signal,
+      });
+      if (!res.ok) {
+        const raw = await res.text().catch(() => "");
+        throw new Error(parseApiErrorMessage(raw, t("solve_overlay.precheck_could_not_run")));
+      }
+      const rawPayload = (await res.json().catch(() => ({}))) as unknown;
+      const normalized = normalizePrecheckResponse(rawPayload);
+      setPrecheck(normalized);
+      setPrecheckError(null);
+      if (options?.signature) {
+        setPrecheckSignature(options.signature);
+      }
+      return normalized;
+    },
+    [gridId, t],
+  );
 
   const normalizeScheduleResource = useCallback(
     (raw: unknown): ScheduleResource | null => {
@@ -811,6 +1017,31 @@ export default function SolveOverlay({
         trlist = getContextList(context?.time_ranges);
         arlist = getContextList(context?.availability_rules);
 
+        const resolveGridAllowsOverstaffing = async () => {
+          const contextGrid = context?.grid;
+          if (contextGrid && typeof contextGrid === "object") {
+            const fromContext = (contextGrid as { allow_overstaffing?: unknown }).allow_overstaffing;
+            if (typeof fromContext === "boolean") {
+              return fromContext;
+            }
+          }
+          const gridEndpoints = [`/api/grids/${gridId}/`, `/api/grids/${gridId}`];
+          for (const endpoint of gridEndpoints) {
+            try {
+              const res = await fetch(endpoint, { cache: "no-store" });
+              if (!res.ok) continue;
+              const payload = (await res.json().catch(() => ({}))) as { allow_overstaffing?: unknown };
+              if (typeof payload.allow_overstaffing === "boolean") {
+                return payload.allow_overstaffing;
+              }
+            } catch {
+              // try next endpoint
+            }
+          }
+          return true;
+        };
+        const gridAllowsOverstaffing = await resolveGridAllowsOverstaffing();
+
         const hasOwn = (obj: unknown, key: string) =>
           Boolean(obj && typeof obj === "object" && Object.prototype.hasOwnProperty.call(obj, key));
         const needsCellContractEnrichment = clist.some(
@@ -921,13 +1152,11 @@ export default function SolveOverlay({
         const cpins: Record<string, CellPinMeta> = {};
         const ctrange: Record<string, string> = {};
         const cdurationSlots: Record<string, number> = {};
-        const callowOverstaff: Record<string, boolean> = {};
         const crequiredPlacements: Record<string, number> = {};
         for (const c of clist) {
           if (c?.id != null) {
             const cid = String(c.id);
             cmap[cid] = c.name || `Cell ${c.id}`;
-            callowOverstaff[cid] = Boolean(c?.allow_overstaffing);
             const splitPartsCount = Array.isArray(c?.split_parts_min)
               ? c.split_parts_min
                   .map((part: unknown) => Number(part))
@@ -1085,7 +1314,6 @@ export default function SolveOverlay({
           setCellPinMetaById(cpins);
           setCellTimeRangeById(ctrange);
           setCellDurationSlotsById(cdurationSlots);
-          setCellAllowOverstaffById(callowOverstaff);
           setCellRequiredPlacementsById(crequiredPlacements);
           setBundleUnitsById(bundleUnitsMap);
           setBundleNameById(bundleNamesMap);
@@ -1143,10 +1371,77 @@ export default function SolveOverlay({
     };
   }, [canSolve, gridId, hasCells, currentSchedule?.id, currentSchedule?.updated_at, currentSchedule?.created_at]);
 
+  useEffect(() => {
+    if (!canSolve || historyMode || scheduleViewMode !== "draft" || !hasCells) {
+      setPrecheck(null);
+      setPrecheckBusy(false);
+      setPrecheckError(null);
+      setPrecheckSignature(null);
+      return;
+    }
+    let active = true;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const { signature, solverParams } = await computeCurrentSolveInputSignature();
+        if (!active) return;
+        if (precheckSignature && precheckSignature === signature) {
+          return;
+        }
+        setPrecheckBusy(true);
+        setPrecheckError(null);
+        await runPrecheckRequest(solverParams, { signature, signal: controller.signal });
+      } catch (err: unknown) {
+        if (!active) return;
+        if ((err as { name?: string })?.name === "AbortError") return;
+        setPrecheck(null);
+        setPrecheckError(
+          err instanceof Error ? err.message : t("solve_overlay.precheck_could_not_run"),
+        );
+      } finally {
+        if (active) {
+          setPrecheckBusy(false);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [
+    canSolve,
+    currentSchedule?.created_at,
+    currentSchedule?.id,
+    currentSchedule?.updated_at,
+    externalRefreshTick,
+    gridId,
+    hasCells,
+    historyMode,
+    precheckSignature,
+    precheckRefreshTick,
+    runPrecheckRequest,
+    scheduleViewMode,
+    t,
+  ]);
+
   const solveElapsedMs = useMemo(() => {
     if (!solveStartedAt) return 0;
     return Date.now() - solveStartedAt;
   }, [solveStartedAt, tick]);
+
+  const openPrecheckDialog = useCallback(
+    (blocking: boolean, lines: string[]) => {
+      const normalizedLines = lines
+        .map((line) => String(line || "").trim())
+        .filter((line) => line.length > 0);
+      setPrecheckDialogState({
+        open: true,
+        blocking,
+        lines: normalizedLines,
+      });
+    },
+    [],
+  );
 
   async function runSolve() {
     try {
@@ -1167,12 +1462,29 @@ export default function SolveOverlay({
       setPreviewParticipantId(null);
       setPreviewSelectedUnitId(null);
       setPendingSolveSignature(signature);
+      setPrecheckDialogState((prev) => ({ ...prev, open: false }));
 
+      setPrecheckBusy(true);
+      setPrecheckError(null);
+      const precheckResult = await runPrecheckRequest(solverParams, { signature });
+      const precheckDiagnostics = getPrecheckDiagnostics(precheckResult);
+      if (precheckDiagnostics.hasBlockingErrors) {
+        const blockingLines = (precheckDiagnostics.errors.length > 0
+          ? precheckDiagnostics.errors
+          : precheckDiagnostics.all
+        )
+          .map((violation) => formatPrecheckViolation(violation))
+          .filter(Boolean);
+        openPrecheckDialog(true, blockingLines);
+        return;
+      }
+
+      const sanitizedSolverParams = sanitizeSolverParamsForSolve(solverParams);
       const r = await fetch(`/api/grids/${gridId}/solve-candidates/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          solver_params: solverParams,
+          solver_params: sanitizedSolverParams,
           candidate_min_diff_ratio: 0.1,
         }),
       });
@@ -1181,12 +1493,21 @@ export default function SolveOverlay({
         throw new Error(txt || `Solve candidates failed (${r.status})`);
       }
       const data = (await r.json()) as SolveCandidatesResponse;
+      const responsePrecheck = data.precheck ? normalizePrecheckResponse(data.precheck) : null;
+      if (responsePrecheck) {
+        setPrecheck(responsePrecheck);
+        setPrecheckError(null);
+        setPrecheckSignature(signature);
+      }
       const candidates = Array.isArray(data.candidates) ? data.candidates : [];
       const selectable = Array.isArray(data.selectable_candidate_indexes)
         ? data.selectable_candidate_indexes
             .map((idx) => Number(idx))
             .filter((idx) => Number.isFinite(idx))
         : [];
+      const skippedByPrecheck = candidates.some((candidate) =>
+        Boolean((candidate.solver_stats as { skipped_solver?: unknown } | undefined)?.skipped_solver),
+      );
       const reasonOptions = normalizeReasonOptions(data.none_option?.reason_options);
 
       setCandidateRunId(data.run_id ?? null);
@@ -1206,12 +1527,35 @@ export default function SolveOverlay({
           .find((index) => Number.isFinite(index)) ?? null;
       setPreviewCandidateIndex(firstCandidateIndex);
 
+      if (skippedByPrecheck) {
+        const fallbackPrecheck = normalizePrecheckResponse({
+          ok: false,
+          violations: candidates.flatMap((candidate) =>
+            Array.isArray(candidate.violations) ? candidate.violations : [],
+          ),
+        });
+        const normalizedPrecheck = responsePrecheck ?? fallbackPrecheck;
+        setPrecheck(normalizedPrecheck);
+        setPrecheckError(null);
+        setPrecheckSignature(signature);
+        const skippedDiagnostics = getPrecheckDiagnostics(normalizedPrecheck);
+        const skippedLines = (skippedDiagnostics.errors.length > 0
+          ? skippedDiagnostics.errors
+          : skippedDiagnostics.all
+        )
+          .map((violation) => formatPrecheckViolation(violation))
+          .filter(Boolean);
+        openPrecheckDialog(true, skippedLines);
+        return;
+      }
+
       if (data.all_candidates_failed) {
         setError(t("solve_overlay.all_three_candidates_failed"));
       }
     } catch (e: any) {
       setError(e?.message || t("solve_overlay.solver_error"));
     } finally {
+      setPrecheckBusy(false);
       setIsSolving(false);
     }
   }
@@ -1345,9 +1689,136 @@ export default function SolveOverlay({
     });
   }, [currentSchedule, bundleUnitsById]);
 
-  const filteredSchedule = selectedUnitId
-    ? schedule.filter((s: any) => Array.isArray(s.units) && s.units.map(String).includes(String(selectedUnitId)))
-    : schedule;
+  const filteredSchedule = useMemo(
+    () =>
+      selectedUnitId
+        ? schedule.filter(
+            (s: any) => Array.isArray(s.units) && s.units.map(String).includes(String(selectedUnitId)),
+          )
+        : schedule,
+    [schedule, selectedUnitId],
+  );
+
+  const overlapGroupMetaByPlacementId = useMemo<Record<string, OverlapGroupMeta>>(() => {
+    type PlacementEntry = {
+      placementId: string;
+      dayIndex: number;
+      startSlot: number;
+      endSlot: number;
+    };
+
+    const rowsByDay = new Map<number, PlacementEntry[]>();
+    for (const row of filteredSchedule) {
+      const placementId = String(row.cell_id ?? "");
+      const dayIndex = Number(row.day_index);
+      const startSlot = Number(row.start_slot);
+      const endSlot = Number(row.end_slot);
+      if (!placementId) continue;
+      if (!Number.isFinite(dayIndex) || !Number.isFinite(startSlot) || !Number.isFinite(endSlot)) continue;
+      if (endSlot <= startSlot) continue;
+      const dayRows = rowsByDay.get(dayIndex) ?? [];
+      dayRows.push({ placementId, dayIndex, startSlot, endSlot });
+      rowsByDay.set(dayIndex, dayRows);
+    }
+
+    const nextMeta: Record<string, OverlapGroupMeta> = {};
+
+    for (const [dayIndex, dayRows] of rowsByDay.entries()) {
+      const orderedRows = [...dayRows].sort(
+        (a, b) =>
+          a.startSlot - b.startSlot ||
+          a.endSlot - b.endSlot ||
+          a.placementId.localeCompare(b.placementId),
+      );
+      const laneEndByIndex: number[] = [];
+      const placementLaneAssignments: Array<{ placementId: string; laneIndex: number }> = [];
+
+      for (const row of orderedRows) {
+        let laneIndex = -1;
+        for (let idx = 0; idx < laneEndByIndex.length; idx += 1) {
+          if (laneEndByIndex[idx] <= row.startSlot) {
+            laneIndex = idx;
+            break;
+          }
+        }
+        if (laneIndex < 0) {
+          laneIndex = laneEndByIndex.length;
+          laneEndByIndex.push(row.endSlot);
+        } else {
+          laneEndByIndex[laneIndex] = row.endSlot;
+        }
+        placementLaneAssignments.push({ placementId: row.placementId, laneIndex });
+      }
+
+      const laneCount = Math.max(1, laneEndByIndex.length);
+      for (const assignment of placementLaneAssignments) {
+        nextMeta[assignment.placementId] = {
+          dayIndex,
+          groupSize: laneCount,
+          groupPosition: assignment.laneIndex,
+        };
+      }
+    }
+
+    return nextMeta;
+  }, [filteredSchedule]);
+
+  const overlapCarouselHasConflicts = useMemo(() => {
+    const byDayGroupSize = new Map<number, number>();
+    for (const meta of Object.values(overlapGroupMetaByPlacementId)) {
+      const current = byDayGroupSize.get(meta.dayIndex) ?? 1;
+      byDayGroupSize.set(meta.dayIndex, Math.max(current, meta.groupSize));
+    }
+    for (const size of byDayGroupSize.values()) {
+      if (size > 1) return true;
+    }
+    return false;
+  }, [overlapGroupMetaByPlacementId]);
+
+  const overlapCarouselTotalPages = useMemo(() => {
+    if (!overlapCarouselHasConflicts) return 1;
+    let maxGroupSize = 2;
+    for (const meta of Object.values(overlapGroupMetaByPlacementId)) {
+      maxGroupSize = Math.max(maxGroupSize, meta.groupSize);
+    }
+    return Math.max(2, maxGroupSize);
+  }, [overlapCarouselHasConflicts, overlapGroupMetaByPlacementId]);
+
+  useEffect(() => {
+    setOverlapCarouselPage((prev) => {
+      if (overlapCarouselTotalPages <= 1) return 0;
+      return ((prev % overlapCarouselTotalPages) + overlapCarouselTotalPages) % overlapCarouselTotalPages;
+    });
+  }, [overlapCarouselTotalPages]);
+
+  useEffect(() => {
+    if (overlapCarouselTotalPages <= 1 || dragState || isJiggleMode) return;
+
+    const intervalId = window.setInterval(() => {
+      setOverlapCarouselPage((prev) => (prev + 1) % overlapCarouselTotalPages);
+    }, OVERLAP_CAROUSEL_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [dragState, isJiggleMode, overlapCarouselTotalPages]);
+
+  const overlapCarouselDisplayByPlacementId = useMemo(() => {
+    const next: Record<string, { isVisible: boolean }> = {};
+    const normalizedPage =
+      overlapCarouselTotalPages <= 1
+        ? 0
+        : ((overlapCarouselPage % overlapCarouselTotalPages) + overlapCarouselTotalPages) %
+          overlapCarouselTotalPages;
+    for (const [placementId, meta] of Object.entries(overlapGroupMetaByPlacementId)) {
+      const size = Math.max(1, Number(meta.groupSize) || 1);
+      next[placementId] = {
+        isVisible:
+          overlapCarouselTotalPages <= 1
+            ? true
+            : normalizedPage < size && normalizedPage === meta.groupPosition,
+      };
+    }
+    return next;
+  }, [overlapCarouselPage, overlapCarouselTotalPages, overlapGroupMetaByPlacementId]);
 
   useEffect(() => {
     if (!Array.isArray(schedule) || schedule.length === 0) return;
@@ -1377,8 +1848,7 @@ export default function SolveOverlay({
         const requiredPlacements = Math.max(1, Number(cellRequiredPlacementsById[cellKey] ?? 1));
         const currentPlacements = Number(placedCountBySourceCell[cellKey] ?? 0);
         const needsPlacement = currentPlacements < requiredPlacements;
-        const allowsOverstaffing = Boolean(cellAllowOverstaffById[cellKey]);
-        if (!needsPlacement && !allowsOverstaffing) return [];
+        if (!needsPlacement) return [];
         const trId = cellTimeRangeById[cellKey];
         const trMeta = trId ? timeRangeMetaById[trId] : undefined;
         const trDurationSlots =
@@ -1415,7 +1885,6 @@ export default function SolveOverlay({
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [
     bundleUnitsById,
-    cellAllowOverstaffById,
     cellColorById,
     cellDurationSlotsById,
     cellNameById,
@@ -1436,8 +1905,31 @@ export default function SolveOverlay({
     });
   }, [unassignedCells.length]);
 
+  const precheckDiagnostics = useMemo(
+    () => getPrecheckDiagnostics(precheck),
+    [precheck],
+  );
+  const hasBlockingPrecheckErrors = precheckDiagnostics.hasBlockingErrors;
+  const precheckBlockingLines = useMemo(
+    () =>
+      (precheckDiagnostics.errors.length > 0 ? precheckDiagnostics.errors : precheckDiagnostics.all)
+        .map((violation) => formatPrecheckViolation(violation))
+        .filter(Boolean),
+    [precheckDiagnostics.all, precheckDiagnostics.errors],
+  );
+  const precheckWarningLines = useMemo(
+    () => precheckDiagnostics.warnings.map((violation) => formatPrecheckViolation(violation)).filter(Boolean),
+    [precheckDiagnostics.warnings],
+  );
+
   const isInputUnchanged = Boolean(inputSignature);
-  const canUseSolve = canSolve && hasCells && !isSolving && !isInputUnchanged && !isInputSignatureLoading;
+  const canUseSolve =
+    canSolve &&
+    hasCells &&
+    !isSolving &&
+    !isInputUnchanged &&
+    !isInputSignatureLoading &&
+    !precheckBusy;
   const canPublishDraft =
     canSolve &&
     scheduleViewMode === "draft" &&
@@ -1450,6 +1942,24 @@ export default function SolveOverlay({
     scheduleViewMode === "published" &&
     Boolean(currentSchedule?.id) &&
     !historyMode;
+
+  const onSolvePressed = () => {
+    if (!canUseSolve) return;
+    if (precheckError) {
+      openPrecheckDialog(true, [precheckError]);
+      return;
+    }
+    if (hasBlockingPrecheckErrors) {
+      openPrecheckDialog(true, precheckBlockingLines);
+      return;
+    }
+    if (precheckWarningLines.length > 0) {
+      openPrecheckDialog(false, precheckWarningLines);
+      return;
+    }
+    void runSolve();
+  };
+
   const selectedHistoryEntry = useMemo(
     () => publishedHistorySchedules.find((entry) => entry.key === selectedHistoryKey) ?? null,
     [publishedHistorySchedules, selectedHistoryKey],
@@ -2900,6 +3410,12 @@ export default function SolveOverlay({
     ? t("solve_overlay.solve_unavailable")
     : !hasCells
     ? t("solve_overlay.create_cells_to_enable_solve")
+    : precheckBusy
+    ? t("solve_overlay.precheck_running")
+    : precheckError
+    ? t("solve_overlay.precheck_could_not_run")
+    : hasBlockingPrecheckErrors
+    ? t("solve_overlay.precheck_blocking_fix_before_solve")
     : isInputUnchanged
     ? t("solve_overlay.input_unchanged_latest_solution")
     : isInputSignatureLoading
@@ -3399,6 +3915,10 @@ export default function SolveOverlay({
             const sourceCellId = String(s.source_cell_id ?? s.cell_id);
             const cardKey = `${sourceCellId}-${s.day_index}-${s.start_slot}-${idx}`;
             const placementId = String(s.cell_id ?? "");
+            const overlapCarouselMeta = placementId
+              ? overlapCarouselDisplayByPlacementId[placementId]
+              : undefined;
+            if (overlapCarouselMeta && !overlapCarouselMeta.isVisible) return null;
             const top = s.start_slot * rowPx;
             const height = Math.max(6, (s.end_slot - s.start_slot) * rowPx);
             const left = `calc(${timeColPx}px + ${col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
@@ -3682,6 +4202,30 @@ export default function SolveOverlay({
         </div>
       )}
 
+      {!hideScheduleOverlay && overlapCarouselTotalPages > 1 && (
+        <div
+          className="fixed inset-x-0 z-[121] pointer-events-none"
+          style={{ bottom: selectedUnitId ? "3.75rem" : "0.9rem" }}
+          aria-hidden
+        >
+          <div className="flex justify-center">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white/90 px-2 py-1 shadow-sm pointer-events-auto">
+              {Array.from({ length: overlapCarouselTotalPages }).map((_, idx) => (
+                <button
+                  type="button"
+                  key={`carousel-dot-${idx}`}
+                  className={`h-2 w-2 rounded-full transition-colors duration-200 ${
+                    idx === overlapCarouselPage ? "bg-gray-700" : "bg-gray-300"
+                  }`}
+                  onClick={() => setOverlapCarouselPage(idx)}
+                  aria-label={`${t("solve_overlay.carousel_view")} ${idx + 1}`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <Dialog
         open={assignmentDialogOpen}
         onOpenChange={(open) => {
@@ -3763,6 +4307,74 @@ export default function SolveOverlay({
             >
               {t("solve_overlay.place_cell")}
             </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={precheckDialogState.open}
+        onOpenChange={(open) =>
+          setPrecheckDialogState((prev) => ({
+            ...prev,
+            open,
+          }))
+        }
+      >
+        <DialogContent className="sm:max-w-[620px] z-[170]">
+          <DialogHeader>
+            <DialogTitle>
+              {precheckDialogState.blocking
+                ? t("solve_overlay.precheck_dialog_alert_title")
+                : t("solve_overlay.precheck_dialog_warning_title")}
+            </DialogTitle>
+            <DialogDescription>
+              {precheckDialogState.blocking
+                ? t("solve_overlay.precheck_dialog_alert_description")
+                : t("solve_overlay.precheck_dialog_warning_description")}
+            </DialogDescription>
+          </DialogHeader>
+
+          {precheckDialogState.lines.length > 0 && (
+            <div className="max-h-[42vh] overflow-y-auto rounded border border-gray-200 bg-gray-50 px-3 py-2">
+              <ul className="space-y-1 text-sm text-gray-800">
+                {precheckDialogState.lines.map((line, idx) => (
+                  <li key={`precheck-dialog-line-${idx}`} className="leading-snug">
+                    - {line}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              className="h-9 px-3 rounded border text-sm"
+              onClick={() =>
+                setPrecheckDialogState((prev) => ({
+                  ...prev,
+                  open: false,
+                }))
+              }
+            >
+              {t("common.close")}
+            </button>
+            {!precheckDialogState.blocking && (
+              <button
+                type="button"
+                className="h-9 px-3 rounded bg-black text-white text-sm disabled:opacity-60"
+                onClick={() => {
+                  setPrecheckDialogState((prev) => ({
+                    ...prev,
+                    open: false,
+                  }));
+                  void runSolve();
+                }}
+                disabled={isSolving || precheckBusy}
+              >
+                {t("solve_overlay.run_anyways")}
+              </button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -4502,7 +5114,7 @@ export default function SolveOverlay({
               type="button"
               title={solveDisabledReason}
               onClick={() => {
-                if (canUseSolve) runSolve();
+                onSolvePressed();
               }}
               disabled={!canUseSolve}
               className={`w-12 h-12 rounded-full shadow-md border flex items-center justify-center pointer-events-auto disabled:cursor-not-allowed transition-colors ${

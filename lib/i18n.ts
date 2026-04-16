@@ -255,6 +255,23 @@ const EN_US = {
   "solve_overlay.solve_unavailable": "Solve unavailable",
   "solve_overlay.solver_error": "Solver error",
   "solve_overlay.solving": "Solving...",
+  "solve_overlay.precheck_running": "Running precheck...",
+  "solve_overlay.precheck_could_not_run": "Could not run precheck.",
+  "solve_overlay.precheck_blocking_fix_before_solve":
+    "Precheck found blocking issues. Fix them before solving.",
+  "solve_overlay.precheck_solver_skipped": "Solver skipped because precheck failed.",
+  "solve_overlay.precheck_passed": "Precheck passed.",
+  "solve_overlay.precheck_warnings_with_counts": "Precheck warnings: {warnings}",
+  "solve_overlay.precheck_blocking_with_counts":
+    "Precheck blocking issues: {errors} errors, {warnings} warnings",
+  "solve_overlay.precheck_dialog_alert_title": "Blocking precheck issues",
+  "solve_overlay.precheck_dialog_alert_description":
+    "These issues block solve. Fix them before running the solver.",
+  "solve_overlay.precheck_dialog_warning_title": "Precheck warnings",
+  "solve_overlay.precheck_dialog_warning_description":
+    "Warnings were found. You can still continue and run the solver.",
+  "solve_overlay.run_anyways": "Run Anyways",
+  "solve_overlay.carousel_view": "Carousel view",
   "solve_overlay.staff_assignment_label": "Staff: {name}",
   "solve_overlay.submitting": "Submitting...",
   "solve_overlay.tier_pools": "Tier pools",
@@ -807,6 +824,23 @@ const ES_AR: Dictionary = {
   "solve_overlay.tier_pools_option": "Opcion por categoria",
   "solve_overlay.publish": "Publicar",
   "solve_overlay.publishing": "Publicando...",
+  "solve_overlay.precheck_running": "Ejecutando precheck...",
+  "solve_overlay.precheck_could_not_run": "No se pudo ejecutar el precheck.",
+  "solve_overlay.precheck_blocking_fix_before_solve":
+    "El precheck encontro problemas bloqueantes. Corregilos antes de resolver.",
+  "solve_overlay.precheck_solver_skipped": "El solver fue omitido porque el precheck fallo.",
+  "solve_overlay.precheck_passed": "Precheck aprobado.",
+  "solve_overlay.precheck_warnings_with_counts": "Advertencias de precheck: {warnings}",
+  "solve_overlay.precheck_blocking_with_counts":
+    "Problemas bloqueantes de precheck: {errors} errores, {warnings} advertencias",
+  "solve_overlay.precheck_dialog_alert_title": "Problemas bloqueantes de precheck",
+  "solve_overlay.precheck_dialog_alert_description":
+    "Estos problemas bloquean el solve. Corregilos antes de ejecutar el solver.",
+  "solve_overlay.precheck_dialog_warning_title": "Advertencias de precheck",
+  "solve_overlay.precheck_dialog_warning_description":
+    "Se encontraron advertencias. Igual podes continuar y ejecutar el solver.",
+  "solve_overlay.run_anyways": "Ejecutar igual",
+  "solve_overlay.carousel_view": "Vista de carrusel",
 };
 
 const DICTIONARIES: Record<PreferredLanguage, Dictionary> = {

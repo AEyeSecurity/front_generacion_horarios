@@ -7,11 +7,6 @@ import SolveOverlay from "@/components/grid/SolveOverlay";
 import GradualBlur from "@/components/animations/GradualBlur";
 import { formatSlotRange } from "@/lib/schedule";
 import {
-  DEFAULT_UNIT_NOOVERLAP_ENABLED,
-  getGridSolverSettingsKey,
-  parseGridSolverSettings,
-} from "@/lib/grid-solver-settings";
-import {
   getGridScheduleViewModeKey,
   readGridScheduleViewMode,
   SCHEDULE_VIEW_MODE_EVENT,
@@ -281,7 +276,6 @@ export default function GridSchedulePanel({
   }, [dayStartMin, dayEndMin, slotMin]);
   const bodyHeight = rows.length * rowPx;
 
-  const [unitNoOverlapEnabled, setUnitNoOverlapEnabled] = useState(DEFAULT_UNIT_NOOVERLAP_ENABLED);
   const [scheduleViewMode, setScheduleViewMode] = useState<ScheduleViewMode>(
     historyMode ? "published" : "draft",
   );
@@ -324,35 +318,6 @@ export default function GridSchedulePanel({
     marginRight: string;
     transition: string;
   } | null>(null);
-
-  useEffect(() => {
-    const readSettings = () => {
-      try {
-        const key = getGridSolverSettingsKey(gridId);
-        const parsed = parseGridSolverSettings(window.localStorage.getItem(key));
-        setUnitNoOverlapEnabled(
-          typeof parsed.unit_nooverlap_enabled === "boolean"
-            ? parsed.unit_nooverlap_enabled
-            : DEFAULT_UNIT_NOOVERLAP_ENABLED,
-        );
-      } catch {
-        setUnitNoOverlapEnabled(DEFAULT_UNIT_NOOVERLAP_ENABLED);
-      }
-    };
-
-    const onStorage = (event: StorageEvent) => {
-      const key = getGridSolverSettingsKey(gridId);
-      if (event.key === key) readSettings();
-    };
-
-    readSettings();
-    window.addEventListener("focus", readSettings);
-    window.addEventListener("storage", onStorage);
-    return () => {
-      window.removeEventListener("focus", readSettings);
-      window.removeEventListener("storage", onStorage);
-    };
-  }, [gridId]);
 
   useEffect(() => {
     if (historyMode) {
@@ -446,7 +411,7 @@ export default function GridSchedulePanel({
     shell.style.maxWidth = base.maxWidth;
     shell.style.marginLeft = base.marginLeft;
     shell.style.marginRight = base.marginRight;
-  }, [sidePanelOpen, unitNoOverlapEnabled]);
+  }, [sidePanelOpen]);
 
   useEffect(() => {
     return () => {
@@ -462,10 +427,6 @@ export default function GridSchedulePanel({
   }, []);
 
   useEffect(() => {
-    if (unitNoOverlapEnabled) {
-      setParticipantsLoading(false);
-      return;
-    }
     let active = true;
     setParticipantsLoading(true);
     (async () => {
@@ -476,6 +437,30 @@ export default function GridSchedulePanel({
         const bundlesList = getContextList<Bundle>(contextJson?.bundles);
         const timeRangesList = getContextList<TimeRange>(contextJson?.time_ranges);
         const availabilityRules = getContextList<AvailabilityRule>(contextJson?.availability_rules);
+        const resolveGridAllowsOverstaffing = async () => {
+          const contextGrid = contextJson?.grid;
+          if (contextGrid && typeof contextGrid === "object") {
+            const fromContext = (contextGrid as { allow_overstaffing?: unknown }).allow_overstaffing;
+            if (typeof fromContext === "boolean") {
+              return fromContext;
+            }
+          }
+          const gridEndpoints = [`/api/grids/${gridId}/`, `/api/grids/${gridId}`];
+          for (const endpoint of gridEndpoints) {
+            try {
+              const res = await fetch(endpoint, { cache: "no-store" });
+              if (!res.ok) continue;
+              const payload = (await res.json().catch(() => ({}))) as { allow_overstaffing?: unknown };
+              if (typeof payload.allow_overstaffing === "boolean") {
+                return payload.allow_overstaffing;
+              }
+            } catch {
+              // try next endpoint
+            }
+          }
+          return true;
+        };
+        const gridAllowsOverstaffing = await resolveGridAllowsOverstaffing();
         const hasOwn = (obj: unknown, key: string) =>
           Boolean(obj && typeof obj === "object" && Object.prototype.hasOwnProperty.call(obj, key));
         const needsCellContractEnrichment = cellsList.some(
@@ -539,7 +524,7 @@ export default function GridSchedulePanel({
         const cellMap: Record<string, Cell> = {};
         for (const cell of cellsList) {
           if (cell?.id == null) continue;
-          cellMap[String(cell.id)] = cell;
+          cellMap[String(cell.id)] = gridAllowsOverstaffing ? cell : { ...cell, allow_overstaffing: null };
         }
         const bundleNameMap: Record<string, string> = {};
         const bundleUnitsMap: Record<string, string[]> = {};
@@ -625,7 +610,7 @@ export default function GridSchedulePanel({
     return () => {
       active = false;
     };
-  }, [gridId, unitNoOverlapEnabled, scheduleViewMode, dayStartMin, slotMin, contextRefreshTick, t]);
+  }, [gridId, scheduleViewMode, dayStartMin, slotMin, contextRefreshTick, t]);
 
   const orderedParticipants = useMemo(() => {
     return participants
@@ -806,8 +791,7 @@ export default function GridSchedulePanel({
         );
         const currentPlacements = Number(placementCountByCellId[sourceCellId] ?? 0);
         const needsPlacement = currentPlacements < requiredPlacements;
-        const allowsOverstaffing = Boolean(cell.allow_overstaffing);
-        if (!needsPlacement && !allowsOverstaffing) return [];
+        if (!needsPlacement) return [];
         const bundleIds = Array.isArray(cell.bundles) ? cell.bundles.map(String) : [];
         const matchingBundleIds = participantBoardSelectedUnitId
           ? bundleIds.filter((bundleId) =>
@@ -869,7 +853,7 @@ export default function GridSchedulePanel({
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   };
 
-  const canEditParticipantDraft = role === "supervisor" && scheduleViewMode === "draft" && !unitNoOverlapEnabled;
+  const canEditParticipantDraft = role === "supervisor" && scheduleViewMode === "draft";
   const canUseDraftHistory = !historyMode && role === "supervisor" && scheduleViewMode === "draft";
   const canUndoDraft = canUseDraftHistory && !historyBusy && draftHistory.can_undo;
   const canRedoDraft = canUseDraftHistory && !historyBusy && draftHistory.can_redo;
@@ -1511,667 +1495,122 @@ export default function GridSchedulePanel({
     ],
   );
 
-  if (unitNoOverlapEnabled) {
-    return (
-      <>
-        <div ref={panelRootRef}>
-          <div className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-            <div className="bg-gray-50 border-b h-12 flex items-center justify-center px-1.5">
-              {canUseDraftHistory && (
-                <div className="inline-flex items-center gap-0.5">
-                  <button
-                    type="button"
-                    title={t("grid_schedule.undo_title")}
-                    onClick={() => {
-                      if (!canUndoDraft) return;
-                      void undoDraft();
-                    }}
-                    aria-disabled={!canUndoDraft}
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
-                      canUndoDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
-                    }`}
-                  >
-                    <Undo2 className="h-5 w-5" />
-                  </button>
-                  <button
-                    type="button"
-                    title={t("grid_schedule.redo_title")}
-                    onClick={() => {
-                      if (!canRedoDraft) return;
-                      void redoDraft();
-                    }}
-                    aria-disabled={!canRedoDraft}
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
-                      canRedoDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
-                    }`}
-                  >
-                    <Redo2 className="h-5 w-5" />
-                  </button>
-                  <button
-                    type="button"
-                    title={t("grid_schedule.restore_draft_title")}
-                    onClick={() => {
-                      if (!canRestoreDraft) return;
-                      promptRestorePublished();
-                    }}
-                    aria-disabled={!canRestoreDraft}
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
-                      canRestoreDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
-                    }`}
-                  >
-                    <RotateCcw className="h-5 w-5" />
-                  </button>
-                </div>
-              )}
-            </div>
-            {days.map((day) => (
-              <div key={day} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
-                {day}
-              </div>
-            ))}
-          </div>
-
-          <div
-            data-schedule-scroll
-            className="relative max-h-[70vh] overflow-y-auto hide-scrollbar"
-          >
-            {historyError && (
-              <div className="sticky top-2 left-0 z-[80] mx-3 my-2 rounded border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">
-                {historyError}
-              </div>
-            )}
-            <div className="pointer-events-none absolute left-0 top-0 z-[2]" style={{ width: timeColPx, height: bodyHeight }}>
-              <div className="absolute inset-x-0 top-1 text-center text-xs text-gray-500">{fmt(dayStartMin)}</div>
-              {rows.slice(1).map((time, index) => (
-                <div
-                  key={`time-axis-${time}`}
-                  className="absolute inset-x-0 -translate-y-1/2 text-center text-xs text-gray-500"
-                  style={{ top: (index + 1) * rowPx }}
-                >
-                  {fmt(time)}
-                </div>
-              ))}
-              <div className="absolute inset-x-0 bottom-1 text-center text-xs text-gray-500">{fmt(dayEndMin)}</div>
-            </div>
-
-            {rows.map((time) => (
-              <div key={time} className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-                <div className="h-16 border-r" />
-                {days.map((day, dayIndex) => (
-                  <div
-                    key={`${time}-${day}`}
-                    className={`border-b ${dayIndex < days.length - 1 ? "border-r" : ""} h-16 hover:bg-gray-50`}
-                  />
-                ))}
-              </div>
-            ))}
-
-            <UnitTabs
-              gridId={gridId}
-              role={role}
-              units={units}
-              daysCount={days.length}
-              dayLabels={days}
-              rowPx={rowPx}
-              timeColPx={timeColPx}
-              bodyHeight={bodyHeight}
-              dayStartMin={dayStartMin}
-              slotMin={slotMin}
-              scheduleViewMode={scheduleViewMode}
-              enablePinning={role === "supervisor" && scheduleViewMode === "draft"}
-              externalRefreshTick={contextRefreshTick}
-              onDraftMutated={handleDraftMutated}
-              commentsPanelOpen={historyMode ? false : commentsPanelOpen}
-              onCommentsPanelOpenChange={historyMode ? undefined : setCommentsPanelOpen}
-              historyMode={historyMode}
-              historyGridCode={historyGridCode}
-            />
-          </div>
-
-          <GradualBlur
-            target="parent"
-            position="top"
-            height="2.1rem"
-            strength={2}
-            divCount={5}
-            curve="bezier"
-            exponential
-            opacity={1}
-            showWhen="not-at-start"
-            style={{ top: "3rem" }}
-          />
-          <GradualBlur
-            target="parent"
-            position="bottom"
-            height="2.1rem"
-            strength={2}
-            divCount={5}
-            curve="bezier"
-            exponential
-            opacity={1}
-            showWhen="not-at-end"
-          />
-        </div>
-      </>
-    );
-  }
-
   return (
     <>
       <div ref={panelRootRef}>
-        <div className="grid" style={{ gridTemplateColumns: `220px repeat(${days.length}, 1fr)` }}>
-        <div className="bg-gray-50 border-b h-12 flex items-center justify-center px-1.5">
-          {canUseDraftHistory && (
-            <div className="inline-flex items-center gap-0.5">
-              <button
-                type="button"
-                title={t("grid_schedule.undo_title")}
-                onClick={() => {
-                  if (!canUndoDraft) return;
-                  void undoDraft();
-                }}
-                aria-disabled={!canUndoDraft}
-                className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
-                  canUndoDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
-                }`}
-              >
-                <Undo2 className="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                title={t("grid_schedule.redo_title")}
-                onClick={() => {
-                  if (!canRedoDraft) return;
-                  void redoDraft();
-                }}
-                aria-disabled={!canRedoDraft}
-                className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
-                  canRedoDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
-                }`}
-              >
-                <Redo2 className="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                title={t("grid_schedule.restore_draft_title")}
-                onClick={() => {
-                  if (!canRestoreDraft) return;
-                  promptRestorePublished();
-                }}
-                aria-disabled={!canRestoreDraft}
-                className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
-                  canRestoreDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
-                }`}
-              >
-                <RotateCcw className="h-5 w-5" />
-              </button>
-            </div>
-          )}
-        </div>
-        {days.map((day) => (
-          <div key={day} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
-            {day}
+        <div className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
+          <div className="bg-gray-50 border-b h-12 flex items-center justify-center px-1.5">
+            {canUseDraftHistory && (
+              <div className="inline-flex items-center gap-0.5">
+                <button
+                  type="button"
+                  title={t("grid_schedule.undo_title")}
+                  onClick={() => {
+                    if (!canUndoDraft) return;
+                    void undoDraft();
+                  }}
+                  aria-disabled={!canUndoDraft}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
+                    canUndoDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
+                  }`}
+                >
+                  <Undo2 className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  title={t("grid_schedule.redo_title")}
+                  onClick={() => {
+                    if (!canRedoDraft) return;
+                    void redoDraft();
+                  }}
+                  aria-disabled={!canRedoDraft}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
+                    canRedoDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
+                  }`}
+                >
+                  <Redo2 className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  title={t("grid_schedule.restore_draft_title")}
+                  onClick={() => {
+                    if (!canRestoreDraft) return;
+                    promptRestorePublished();
+                  }}
+                  aria-disabled={!canRestoreDraft}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
+                    canRestoreDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
+                  }`}
+                >
+                  <RotateCcw className="h-5 w-5" />
+                </button>
+              </div>
+            )}
           </div>
-        ))}
+          {days.map((day) => (
+            <div key={day} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
+              {day}
+            </div>
+          ))}
         </div>
 
         <div
-        ref={participantBoardRef}
-        data-schedule-scroll
-        data-participant-edit-root
-        className="relative max-h-[70vh] overflow-y-auto hide-scrollbar"
-      >
-        {historyError && (
-          <div className="sticky top-2 left-0 z-[80] mx-3 my-2 rounded border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">
-            {historyError}
-          </div>
-        )}
-        {participantEditError && (
-          <div className="sticky top-2 left-0 z-[80] mx-3 my-2 rounded border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">
-            {participantEditError}
-          </div>
-        )}
-        {participantsLoading && (
-          <div className="px-3 py-3 space-y-2">
-            <div className="text-xs text-gray-500 px-1">{t("grid_schedule.loading_participants")}</div>
-            {Array.from({ length: 4 }).map((_, rowIndex) => (
+          data-schedule-scroll
+          className="relative max-h-[70vh] overflow-y-auto hide-scrollbar"
+        >
+          {historyError && (
+            <div className="sticky top-2 left-0 z-[80] mx-3 my-2 rounded border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">
+              {historyError}
+            </div>
+          )}
+          <div className="pointer-events-none absolute left-0 top-0 z-[2]" style={{ width: timeColPx, height: bodyHeight }}>
+            <div className="absolute inset-x-0 top-1 text-center text-xs text-gray-500">{fmt(dayStartMin)}</div>
+            {rows.slice(1).map((time, index) => (
               <div
-                key={`participants-skeleton-${rowIndex}`}
-                className="grid animate-pulse"
-                style={{ gridTemplateColumns: `220px repeat(${days.length}, 1fr)` }}
+                key={`time-axis-${time}`}
+                className="absolute inset-x-0 -translate-y-1/2 text-center text-xs text-gray-500"
+                style={{ top: (index + 1) * rowPx }}
               >
-                <div className="border-r border-b px-3 py-3 bg-white">
-                  <div className="h-4 w-32 rounded bg-gray-200" />
-                  <div className="mt-2 h-3 w-20 rounded bg-gray-100" />
-                </div>
-                {days.map((day, dayIndex) => (
-                  <div
-                    key={`participants-skeleton-${rowIndex}-${day}`}
-                    className={`border-b ${dayIndex < days.length - 1 ? "border-r" : ""} min-h-[108px] p-0`}
-                  >
-                    <div className="m-[10px] h-[calc(100%-20px)] rounded bg-gray-100" />
-                  </div>
-                ))}
+                {fmt(time)}
               </div>
             ))}
+            <div className="absolute inset-x-0 bottom-1 text-center text-xs text-gray-500">{fmt(dayEndMin)}</div>
           </div>
-        )}
-        {!participantsLoading && visibleParticipants.length === 0 && (
-          <div className="px-4 py-6 text-sm text-gray-500">
-            {role === "editor"
-              ? t("grid_schedule.my_participant_missing")
-              : t("grid_schedule.no_participants_found")}
-          </div>
-        )}
-        {visibleParticipants.map((participant) => {
-          const pid = String(participant.id);
-          const tier = participant.tier
-            ? tierLabelByKey[String(participant.tier) as TierKey] || String(participant.tier)
-            : t("grid_schedule.no_tier");
-          return (
-            <div
-              key={pid}
-              className="grid"
-              style={{ gridTemplateColumns: `220px repeat(${days.length}, 1fr)` }}
-            >
-              <div className="border-r border-b px-3 py-3 bg-white">
-                <div className="font-medium text-sm text-gray-900">{participant.displayName}</div>
-                <div className="text-xs text-gray-500 mt-1">{tier}</div>
-              </div>
-              {days.map((day, dayColumnIndex) => {
-                const dayEntries = entriesByParticipantDay[pid]?.[dayColumnIndex] || [];
-                const entries = participantBoardSelectedUnitId
-                  ? dayEntries.filter((entry) => entry.bundleUnitIds.includes(participantBoardSelectedUnitId))
-                  : dayEntries;
-                const targetCellKey = `${pid}-${dayColumnIndex}`;
-                const isDropActive = dragHoverCellKey === targetCellKey;
-                const dragPreviewRange =
-                  participantEditMode && dragPayload
-                    ? dragPayload.kind === "placed"
-                      ? dragPayload.ownerParticipantId === pid
-                        ? { start: dragPayload.startSlot, end: dragPayload.endSlot }
-                        : null
-                      : isTierAllowedForCell(dragPayload.sourceCellId, pid)
-                      ? { start: dragPayload.startSlot, end: dragPayload.endSlot }
-                      : null
-                    : null;
-                const availabilityKind: AvailabilityCoverageKind =
-                  dragPreviewRange && dragPreviewRange.end > dragPreviewRange.start
-                    ? getAvailabilityCoverageKind(pid, dayColumnIndex, dragPreviewRange.start, dragPreviewRange.end)
-                    : "none";
-                const availabilityBorderColor =
-                  availabilityKind === "preferred-strong"
-                    ? "rgba(21, 128, 61, 0.62)"
-                    : availabilityKind === "preferred"
-                    ? "rgba(22, 163, 74, 0.45)"
-                    : availabilityKind === "impossible"
-                    ? "rgba(220, 38, 38, 0.45)"
-                    : "rgba(217, 119, 6, 0.45)";
-                const availabilityBgColor =
-                  availabilityKind === "preferred-strong"
-                    ? "rgba(21, 128, 61, 0.12)"
-                    : availabilityKind === "preferred"
-                    ? "rgba(34, 197, 94, 0.06)"
-                    : availabilityKind === "impossible"
-                    ? "rgba(239, 68, 68, 0.08)"
-                    : "rgba(245, 158, 11, 0.06)";
-                return (
-                  <div
-                    key={`${pid}-${day}`}
-                    className={`relative border-b ${dayColumnIndex < days.length - 1 ? "border-r" : ""} min-h-[108px] p-0 ${
-                      isDropActive ? "bg-emerald-50/60" : ""
-                    }`}
-                    onDragOver={(event) => {
-                      if (!canEditParticipantDraft || !participantEditMode || participantEditBusy || !dragPayload) return;
-                      if (
-                        dragPayload.kind === "placed" &&
-                        dragPayload.ownerParticipantId !== pid
-                      ) {
-                        return;
-                      }
-                      if (
-                        dragPayload.kind === "catalog" &&
-                        !isTierAllowedForCell(dragPayload.sourceCellId, pid)
-                      ) {
-                        return;
-                      }
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = "move";
-                      setDragHoverCellKey(targetCellKey);
-                    }}
-                    onDragEnter={(event) => {
-                      if (!canEditParticipantDraft || !participantEditMode || participantEditBusy || !dragPayload) return;
-                      if (
-                        dragPayload.kind === "placed" &&
-                        dragPayload.ownerParticipantId !== pid
-                      ) {
-                        return;
-                      }
-                      if (
-                        dragPayload.kind === "catalog" &&
-                        !isTierAllowedForCell(dragPayload.sourceCellId, pid)
-                      ) {
-                        return;
-                      }
-                      event.preventDefault();
-                      setDragHoverCellKey(targetCellKey);
-                    }}
-                    onDragLeave={(event) => {
-                      const next = event.relatedTarget as Node | null;
-                      if (next && (event.currentTarget as HTMLDivElement).contains(next)) return;
-                      setDragHoverCellKey((prev) => (prev === targetCellKey ? null : prev));
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      setDragHoverCellKey(null);
-                      if (!canEditParticipantDraft || !participantEditMode || participantEditBusy || !dragPayload) return;
-                      if (dragPayload.kind === "placed") {
-                        if (dragPayload.ownerParticipantId !== pid) {
-                          setParticipantEditError(t("grid_schedule.placed_cards_same_row_error"));
-                          return;
-                        }
-                        void movePlacedCard(dragPayload, dayColumnIndex);
-                        return;
-                      }
-                      void addPlacementFromCatalog(dragPayload, pid, dayColumnIndex);
-                    }}
-                  >
-                    {availabilityKind !== "none" && (
-                      <div
-                        className="pointer-events-none absolute inset-[10px] z-[1] rounded-md border-2"
-                        style={{
-                          borderColor: availabilityBorderColor,
-                          backgroundColor: availabilityBgColor,
-                          borderStyle: "dotted",
-                        }}
-                      />
-                    )}
-                    <div
-                      className={`absolute inset-[10px] z-[2] ${
-                        entries.length > 1 ? "flex flex-col gap-[6px]" : ""
-                      }`}
-                    >
-                      {entries.map((entry) => (
-                        <div
-                          key={entry.key}
-                          draggable={canEditParticipantDraft && participantEditMode && !participantEditBusy}
-                          onPointerDown={() => {
-                            if (!canEditParticipantDraft || participantEditMode) return;
-                            clearLongPressTimer();
-                            longPressTimerRef.current = window.setTimeout(() => {
-                              setParticipantEditMode(true);
-                              longPressTimerRef.current = null;
-                            }, 320);
-                          }}
-                          onPointerUp={() => clearLongPressTimer()}
-                          onPointerCancel={() => clearLongPressTimer()}
-                          onDragStart={(event) => {
-                            if (!canEditParticipantDraft || !participantEditMode || participantEditBusy) {
-                              event.preventDefault();
-                              return;
-                            }
-                            const payload: ParticipantDragPayload = {
-                              kind: "placed",
-                              cardKey: entry.key,
-                              placementId: entry.placementId,
-                              sourceCellId: entry.sourceCellId,
-                              bundleId: entry.bundleId,
-                              ownerParticipantId: pid,
-                              assignedParticipantIds: entry.assignedParticipantIds,
-                              startSlot: entry.startSlot,
-                              endSlot: entry.endSlot,
-                              durationSlots: entry.durationSlots,
-                            };
-                            event.dataTransfer.effectAllowed = "move";
-                            event.dataTransfer.setData("text/plain", entry.key);
-                            setParticipantEditError(null);
-                            setIsDeleteDropActive(false);
-                            setDragPayload(payload);
-                          }}
-                          onDragEnd={() => {
-                            setDragPayload(null);
-                            setDragHoverCellKey(null);
-                            setIsDeleteDropActive(false);
-                          }}
-                          className={`relative rounded-md border px-3 py-2 text-xs leading-tight ${
-                            entries.length > 1 ? "flex-1 min-h-0" : "h-full"
-                          } ${
-                            canEditParticipantDraft && participantEditMode && !participantEditBusy
-                              ? dragPayload?.cardKey === entry.key
-                                ? "opacity-80 cursor-grabbing"
-                                : "cursor-grab"
-                              : canEditParticipantDraft && !participantEditMode
-                              ? "cursor-pointer"
-                              : ""
-                          } ${
-                            participantEditMode && dragPayload?.cardKey !== entry.key ? "shift-jiggle" : ""
-                          }`}
-                          style={{
-                            backgroundColor: entry.color || "#f3f4f6",
-                            borderColor: "#d1d5db",
-                            animationDelay: `${(entry.startSlot % 6) * 35}ms`,
-                          }}
-                        >
-                          <div className="flex h-full w-full flex-col items-center justify-center text-center">
-                            <div className="font-semibold text-gray-900 truncate w-full">{entry.cellName}</div>
-                            <div className="mt-1 text-[11px] text-gray-700">{entry.timeLabel}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })}
 
-        {canEditParticipantDraft && participantEditMode && (
-          <div className="fixed left-4 top-1/2 -translate-y-1/2 z-[210] pointer-events-none animate-[participant-edit-pop_180ms_cubic-bezier(0.22,1,0.36,1)]">
-            <div
-              ref={deleteDropRef}
-              data-participant-delete-drop
-              className={`relative isolate w-12 h-12 rounded-full border shadow-md pointer-events-auto transition-all duration-150 flex items-center justify-center ${
-                isDeleteDropActive
-                  ? "bg-red-600 border-red-700 scale-110"
-                  : "bg-white border-gray-300"
-              }`}
-              title={t("grid_schedule.drop_to_remove_participant")}
-              onDragOver={(event) => {
-                if (!dragPayload || dragPayload.kind !== "placed" || participantEditBusy) return;
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "move";
-                setIsDeleteDropActive(true);
-              }}
-              onDragEnter={(event) => {
-                if (!dragPayload || dragPayload.kind !== "placed" || participantEditBusy) return;
-                event.preventDefault();
-                setIsDeleteDropActive(true);
-              }}
-              onDragLeave={(event) => {
-                const next = event.relatedTarget as Node | null;
-                if (next && (event.currentTarget as HTMLDivElement).contains(next)) return;
-                setIsDeleteDropActive(false);
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                const payload = dragPayload;
-                setIsDeleteDropActive(false);
-                setDragHoverCellKey(null);
-                setDragPayload(null);
-                if (!payload || payload.kind !== "placed") return;
-                void removePlacementFromSchedule(payload);
-              }}
-            >
-              <Trash2 className={`w-5 h-5 ${isDeleteDropActive ? "text-white" : "text-red-600"}`} />
-              <div
-                className={`absolute left-full top-1/2 -translate-y-1/2 ml-[-22px] h-44 w-9 overflow-hidden pointer-events-none transition-all duration-150 -z-10 ${
-                  isDeleteDropActive ? "opacity-100 scale-100" : "opacity-0 scale-95"
-                }`}
-              >
+          {rows.map((time) => (
+            <div key={time} className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
+              <div className="h-16 border-r" />
+              {days.map((day, dayIndex) => (
                 <div
-                  className="absolute top-1/2 left-0 h-[220px] w-[220px] -translate-y-1/2 -translate-x-[190px] rounded-full border-[6px] border-red-500/85 shadow-[0_0_34px_rgba(239,68,68,0.34)]"
-                  style={{ background: "transparent" }}
+                  key={`${time}-${day}`}
+                  className={`border-b ${dayIndex < days.length - 1 ? "border-r" : ""} h-16 hover:bg-gray-50`}
                 />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {canEditParticipantDraft && participantEditMode && (
-          <div
-            className="fixed right-[-108px] top-1/2 -translate-y-1/2 z-[210] pointer-events-none animate-[participant-edit-pop_180ms_cubic-bezier(0.22,1,0.36,1)]"
-            data-participant-stack
-          >
-            <div className="w-[228px] pointer-events-auto">
-              <div
-                className="relative h-[312px] pr-2 overflow-visible overscroll-contain"
-                onWheel={(event) => {
-                  event.stopPropagation();
-                  if (cellCatalog.length <= 1) return;
-                  event.preventDefault();
-                  const dir = event.deltaY > 0 ? 1 : event.deltaY < 0 ? -1 : 0;
-                  if (!dir) return;
-                  setCatalogFocusIndex((prev) =>
-                    Math.max(0, Math.min(cellCatalog.length - 1, prev + dir)),
-                  );
-                }}
-              >
-                {cellCatalog.map((cell, index) => {
-                  const distance = index - catalogFocusIndex;
-                  if (Math.abs(distance) > 2) return null;
-                  const absDistance = Math.abs(distance);
-                  const scale = absDistance === 0 ? 1 : absDistance === 1 ? 0.78 : 0.62;
-                  const opacity = absDistance === 0 ? 1 : absDistance === 1 ? 0.92 : 0.82;
-                  const cardHeight = absDistance === 0 ? 86 : 52;
-                  const baseCenterY = 156;
-                  const visualNearHeight = 52 * 0.78;
-                  const visualFarHeight = 52 * 0.62;
-                  const sign = distance === 0 ? 0 : distance > 0 ? 1 : -1;
-                  const nearOffset = 52;
-                  const nearToFarOffset = visualNearHeight / 2 + visualFarHeight / 2;
-                  const yOffset =
-                    absDistance === 0
-                      ? 0
-                      : absDistance === 1
-                      ? nearOffset
-                      : nearOffset + nearToFarOffset;
-                  const y = baseCenterY + sign * yOffset;
-                  const z = 120 - absDistance * 20;
-                  const canDragCard = Boolean(cell.bundleId) && cell.canGrabForCurrentTab && !participantEditBusy;
-                  const isDraggingCard = dragPayload?.cardKey === cell.cardKey;
-                  return (
-                    <div
-                      key={cell.cardKey}
-                      draggable={canDragCard}
-                      onDragStart={(event) => {
-                        if (!canDragCard) {
-                          event.preventDefault();
-                          return;
-                        }
-                        const payload: ParticipantDragPayload = {
-                          kind: "catalog",
-                          cardKey: cell.cardKey,
-                          sourceCellId: cell.sourceCellId,
-                          bundleId: cell.bundleId,
-                          startSlot: cell.startSlot,
-                          endSlot: cell.endSlot,
-                          durationSlots: cell.durationSlots,
-                        };
-                        event.dataTransfer.effectAllowed = "move";
-                        event.dataTransfer.setData("text/plain", cell.cardKey);
-                        setParticipantEditError(null);
-                        setIsDeleteDropActive(false);
-                        setDragPayload(payload);
-                      }}
-                      onDragEnd={() => {
-                        setDragPayload(null);
-                        setDragHoverCellKey(null);
-                        setIsDeleteDropActive(false);
-                      }}
-                      className={`absolute left-0 right-2 rounded-xl border px-3 py-2 shadow-[0_12px_18px_-14px_rgba(0,0,0,0.55)] ${
-                        isDraggingCard ? "transition-none" : "transition-transform duration-150"
-                      } ${
-                        canDragCard ? (isDraggingCard ? "cursor-grabbing" : "cursor-grab") : "cursor-not-allowed"
-                      } ${
-                        participantEditMode && !isDraggingCard ? "shift-jiggle" : ""
-                      }`}
-                      style={{
-                        top: `${y - cardHeight / 2}px`,
-                        height: `${cardHeight}px`,
-                        backgroundColor: cell.color || "#9CA3AF",
-                        borderColor: "#d1d5db",
-                        transform: isDraggingCard ? "scale(1)" : `scale(${scale})`,
-                        opacity: canDragCard ? opacity : Math.max(0.45, opacity * 0.6),
-                        zIndex: isDraggingCard ? 320 : z,
-                        animationDelay: `${(index % 6) * 35}ms`,
-                      }}
-                    >
-                      <div className="flex h-full w-full items-center justify-start text-left">
-                        <div className="min-w-0 w-full">
-                          <div className="truncate text-xs font-semibold text-gray-50" title={cell.name}>
-                            {cell.name}
-                          </div>
-                          {absDistance === 0 && (
-                            <div className="mt-1 text-[10px] font-medium text-gray-900">
-                              {cell.timeLabel}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {participantBoardUnitTabs.length > 0 && (
-          <div data-unit-tabs className="fixed bottom-0 left-0 right-0 z-[40] pointer-events-none">
-            <div className="max-w-5xl mx-auto flex items-end gap-2 px-4 pt-2 pb-0 overflow-x-auto overflow-y-hidden pointer-events-auto">
-              {participantBoardUnitTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setParticipantBoardSelectedUnitId(tab.id)}
-                  className={[
-                    "px-4 py-2 text-sm border rounded-t-xl rounded-b-none origin-bottom",
-                    "transition-colors transition-shadow transition-transform duration-150 ease-out",
-                    participantBoardSelectedUnitId === tab.id
-                      ? "bg-white text-black shadow-lg border-gray-300"
-                      : "bg-gray-100 text-gray-700 shadow-md hover:shadow-lg hover:bg-white hover:scale-[1.02]",
-                  ].join(" ")}
-                >
-                  {tab.name}
-                </button>
               ))}
             </div>
-          </div>
-        )}
+          ))}
 
-        <SolveOverlay
-          gridId={gridId}
-          role={role}
-          daysCount={days.length}
-          dayLabels={days}
-          rowPx={rowPx}
-          timeColPx={timeColPx}
-          bodyHeight={bodyHeight}
-          dayStartMin={dayStartMin}
-          slotMin={slotMin}
-          selectedUnitId={null}
-          hideScheduleOverlay
-          suppressRightDock={participantEditMode || historyMode}
-          scheduleViewMode={scheduleViewMode}
-          externalRefreshTick={contextRefreshTick}
-          onDraftMutated={handleDraftMutated}
-          commentsPanelOpen={historyMode ? false : commentsPanelOpen}
-          onCommentsPanelOpenChange={historyMode ? undefined : setCommentsPanelOpen}
-          historyMode={historyMode}
-          historyGridCode={historyGridCode}
-        />
-      </div>
+          <UnitTabs
+            gridId={gridId}
+            role={role}
+            units={units}
+            daysCount={days.length}
+            dayLabels={days}
+            rowPx={rowPx}
+            timeColPx={timeColPx}
+            bodyHeight={bodyHeight}
+            dayStartMin={dayStartMin}
+            slotMin={slotMin}
+            scheduleViewMode={scheduleViewMode}
+            enablePinning={role === "supervisor" && scheduleViewMode === "draft"}
+            externalRefreshTick={contextRefreshTick}
+            onDraftMutated={handleDraftMutated}
+            commentsPanelOpen={historyMode ? false : commentsPanelOpen}
+            onCommentsPanelOpenChange={historyMode ? undefined : setCommentsPanelOpen}
+            historyMode={historyMode}
+            historyGridCode={historyGridCode}
+
+          />
+        </div>
 
       <GradualBlur
         target="parent"
