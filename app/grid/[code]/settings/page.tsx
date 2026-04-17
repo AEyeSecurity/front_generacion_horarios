@@ -41,7 +41,14 @@ export default async function GridSettingsPage({
   return (
     <div className="p-4">
       <div className="w-[80%] mx-auto">
-        <GridSolverSettingsForm gridId={Number(grid.id)} />
+        <GridSolverSettingsForm
+          gridId={Number(grid.id)}
+          daysEnabled={Array.isArray(grid.days_enabled) ? grid.days_enabled : []}
+          horizonStart={grid.day_start}
+          horizonEnd={grid.day_end}
+          initialDayHeatmap={grid.day_heatmap ?? null}
+          cellSizeMin={grid.cell_size_min}
+        />
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Check,
+  Edit,
   FileDown,
   History as HistoryIcon,
   Lightbulb,
@@ -3380,6 +3381,7 @@ export default function SolveOverlay({
     };
   }, [isJiggleMode]);
 
+  
   useEffect(() => {
     if (canManualEditCards) return;
     setIsJiggleMode(false);
@@ -5127,6 +5129,21 @@ export default function SolveOverlay({
               ) : (
                 <LightbulbOff className="w-5 h-5 text-gray-300" />
               )}
+            </button>
+
+            <button
+              type="button"
+              title={t("common.edit")}
+              onClick={() => {
+                setIsJiggleMode((prev) => !prev);
+              }}
+              disabled={!canManualEditCards}
+              className={`w-12 h-12 rounded-full shadow-md border flex items-center justify-center pointer-events-auto disabled:cursor-not-allowed transition-colors ${
+                canManualEditCards ? "bg-black border-gray-800" : "bg-gray-700 border-gray-600"
+              }`}
+              aria-disabled={!canManualEditCards}
+            >
+              <Edit className={`w-5 h-5 ${canManualEditCards ? "text-white" : "text-gray-300"}`} />
             </button>
 
             <button

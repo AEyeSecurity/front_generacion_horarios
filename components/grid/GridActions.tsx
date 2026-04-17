@@ -2,7 +2,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { MoreVertical, Trash2, Clock4, FileDown, Settings } from "lucide-react";
+import { MoreVertical, Trash2, FileDown, Settings } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -39,10 +39,6 @@ export default function GridActions({ gridId, gridCode, canDelete = false, canCo
     router.refresh();
   }
 
-  const goTimeRanges = () => {
-    const codeOrId = gridCode || String(gridId);
-    router.push(`/grid/${encodeURIComponent(codeOrId)}/time-ranges`);
-  };
   const goSettings = () => {
     const codeOrId = gridCode || String(gridId);
     router.push(`/grid/${encodeURIComponent(codeOrId)}/settings`);
@@ -101,10 +97,6 @@ export default function GridActions({ gridId, gridCode, canDelete = false, canCo
             {t("grid_actions.settings")}
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem onClick={goTimeRanges}>
-          <Clock4 className="w-4 h-4 mr-2" />
-          {t("grid_actions.time_ranges")}
-        </DropdownMenuItem>
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>
             <FileDown className="w-4 h-4 mr-2" />

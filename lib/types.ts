@@ -28,6 +28,7 @@ export type Grid = {
   days_enabled: number[];    // 0..6 (0=Lun)
   timezone: string | null;
   cell_size_min: number;     // minutos
+  day_heatmap?: Partial<Record<string, number>> | null;
   allow_overstaffing?: boolean | null;
   creator: number | null;
   created_at: string;        // ISO

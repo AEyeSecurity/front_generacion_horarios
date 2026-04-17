@@ -88,3 +88,44 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
   });
 }
+
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  if (!id || id === "undefined") {
+    return NextResponse.json(
+      { error: "bad_request", detail: "Missing or invalid grid id in route param." },
+      { status: 400 }
+    );
+  }
+
+  const access = await getAccessToken();
+  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+
+  const body = await req.text();
+  const headers: HeadersInit = {
+    Authorization: `Bearer ${access}`,
+    "content-type": "application/json",
+    cookie: req.headers.get("cookie") || "",
+  };
+
+  let res = await fetch(`${B}/api/grids/${id}/`, {
+    method: "PATCH",
+    headers,
+    body,
+    cache: "no-store",
+  });
+  if (res.status === 404) {
+    res = await fetch(`${B}/api/grids/${id}`, {
+      method: "PATCH",
+      headers,
+      body,
+      cache: "no-store",
+    });
+  }
+
+  const txt = await res.text().catch(() => "");
+  return new NextResponse(txt, {
+    status: res.status,
+    headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
+  });
+}

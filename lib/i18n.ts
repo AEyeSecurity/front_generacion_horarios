@@ -390,6 +390,24 @@ const EN_US = {
   "grid_solver_settings.enabled": "Enabled",
   "grid_solver_settings.payload_preview": "Payload Preview",
   "grid_solver_settings.placeholder_example_8": "e.g. 8",
+  "grid_solver_settings.day_heatmap_title": "Day Heatmap",
+  "grid_solver_settings.day_heatmap_help":
+    "Set day intensity from 1 to 3 for each enabled day. Missing days are treated as 1.",
+  "grid_solver_settings.no_enabled_days": "No enabled days were found for this grid.",
+  "grid_solver_settings.budget_meter": "Budget meter",
+  "grid_solver_settings.heatmap_budget_ok":
+    "Heatmap budget usage: {used} upgrade points used out of {max} for {days} enabled days.",
+  "grid_solver_settings.heatmap_save_failed": "Could not save day heatmap.",
+  "grid_solver_settings.heatmap_saved": "Day heatmap saved.",
+  "grid_solver_settings.time_ranges_title": "Time Ranges",
+  "grid_solver_settings.time_ranges_help":
+    "Manage time ranges here. Each range uses a 2-knob slider over the full schedule horizon.",
+  "grid_solver_settings.time_ranges_horizon": "Horizon: {start} to {end}",
+  "grid_solver_settings.time_ranges_name_required": "Time range name is required.",
+  "grid_solver_settings.time_ranges_invalid": "Start and end must define a valid range.",
+  "grid_solver_settings.time_ranges_create_failed": "Could not create time range.",
+  "grid_solver_settings.time_ranges_save_failed": "Could not save time range.",
+  "grid_solver_settings.time_ranges_delete_failed": "Could not delete time range.",
 
   "invite_token.accepted": "Accepted",
   "invite_token.declined": "Declined",
@@ -785,6 +803,25 @@ const ES_AR: Dictionary = {
   "grid_schedule.could_not_move_placement": "No se pudo mover la asignacion.",
   "grid_schedule.could_not_place_cell": "No se pudo ubicar la celda.",
   "grid_schedule.drop_to_remove_participant": "Solta aqui para quitar este participante de la asignacion",
+
+  "grid_solver_settings.day_heatmap_title": "Heatmap diario",
+  "grid_solver_settings.day_heatmap_help":
+    "Define intensidad diaria de 1 a 3 para cada dia habilitado. Los dias faltantes se toman como 1.",
+  "grid_solver_settings.no_enabled_days": "No se encontraron dias habilitados para esta grilla.",
+  "grid_solver_settings.budget_meter": "Medidor de presupuesto",
+  "grid_solver_settings.heatmap_budget_ok":
+    "Uso de presupuesto del heatmap: {used} puntos usados de {max} para {days} dias habilitados.",
+  "grid_solver_settings.heatmap_save_failed": "No se pudo guardar el heatmap diario.",
+  "grid_solver_settings.heatmap_saved": "Heatmap diario guardado.",
+  "grid_solver_settings.time_ranges_title": "Rangos horarios",
+  "grid_solver_settings.time_ranges_help":
+    "Administra rangos horarios desde aqui. Cada rango usa un slider de 2 perillas sobre todo el horizonte.",
+  "grid_solver_settings.time_ranges_horizon": "Horizonte: {start} a {end}",
+  "grid_solver_settings.time_ranges_name_required": "El nombre del rango horario es obligatorio.",
+  "grid_solver_settings.time_ranges_invalid": "Inicio y fin deben formar un rango valido.",
+  "grid_solver_settings.time_ranges_create_failed": "No se pudo crear el rango horario.",
+  "grid_solver_settings.time_ranges_save_failed": "No se pudo guardar el rango horario.",
+  "grid_solver_settings.time_ranges_delete_failed": "No se pudo eliminar el rango horario.",
 
   "solve_overlay.comments": "Comentarios",
   "solve_overlay.history": "Historial de versiones",
