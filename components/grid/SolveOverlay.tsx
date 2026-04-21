@@ -8,16 +8,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Check,
-  Edit,
   FileDown,
   History as HistoryIcon,
-  Lightbulb,
-  LightbulbOff,
   Lock,
   Loader2,
   MessageSquare,
-  Trash2,
-  Upload,
   Users,
   Unlock,
   X,
@@ -42,6 +37,10 @@ import {
   getContextList,
   invalidateGridScreenContext,
 } from "@/lib/screen-context";
+import RightSideDock from "@/components/layout/RightSideDock";
+import GlassSurface from "@/components/ui/GlassSurface";
+import AnimatedList from "@/components/navigation/AnimatedList";
+import ScheduleErrorCard from "@/components/grid/ScheduleErrorCard";
 import type { ScheduleViewMode } from "@/lib/schedule-view";
 import { useI18n } from "@/lib/use-i18n";
 
@@ -91,6 +90,22 @@ type ScheduleRow = {
   participants?: Array<string | number>;
   units?: Array<string | number>;
   locked?: boolean;
+  breaks?: Array<{ offset_min: number; duration_min: number }>;
+};
+
+type BreakEntry = {
+  offset_min: number;
+  duration_min: number;
+};
+
+type ScheduleBlockage = {
+  id: string;
+  schedule: number;
+  day_index: number;
+  start_slot: number;
+  end_slot: number;
+  note?: string;
+  unit_ids: string[];
 };
 
 type CandidateStatus = "OPTIMAL" | "FEASIBLE" | "INFEASIBLE" | "ERROR";
@@ -204,6 +219,8 @@ type PrecheckDialogState = {
   lines: string[];
 };
 
+type PinErrorCardState = { message: string };
+
 function buildPlacementKey(
   scheduleId: number | string,
   sourceCellId: number | string,
@@ -225,6 +242,9 @@ const DAY_LABEL_TO_INDEX: Record<string, number> = {
 };
 
 const OVERLAP_CAROUSEL_INTERVAL_MS = 2500;
+const BREAK_DURATION_OPTIONS_MIN = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 420, 480] as const;
+const UNIT_TAB_SELECT_EVENT = "shift:unit-tab:select";
+const GRID_LEFT_PANEL_STATE_EVENT = "shift:grid-left-panel-state";
 
 const parseClockToMin = (value: string) => {
   const [h, m] = String(value ?? "").split(":");
@@ -259,6 +279,36 @@ const parseApiErrorMessage = (raw: string, fallback: string) => {
     return text;
   }
   return fallback;
+};
+
+const formatClockLabel = (value: string) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  if (/^\d{2}:\d{2}$/.test(raw)) return raw;
+  if (/^\d{2}:\d{2}:\d{2}$/.test(raw)) return raw.slice(0, 5);
+  return raw;
+};
+
+const stripNonFieldPrefix = (message: string) =>
+  message
+    .replace(/^non_field_errors:\s*/i, "")
+    .replace(/^errors?:\s*/i, "")
+    .trim();
+
+const extractPlacementIdsFromMessage = (message: string): string[] => {
+  const found = new Set<string>();
+  const patterns = [
+    /placement(?:\s*id)?\s*[:#]?\s*(\d+)/gi,
+    /existing placement\s+(\d+)/gi,
+  ];
+  for (const pattern of patterns) {
+    let match: RegExpExecArray | null = null;
+    while ((match = pattern.exec(message)) !== null) {
+      const id = String(match[1] ?? "").trim();
+      if (id) found.add(id);
+    }
+  }
+  return Array.from(found);
 };
 
 const normalizePrecheckViolationList = (value: unknown): PrecheckViolation[] => {
@@ -421,6 +471,34 @@ type PendingPlacementRequest = {
   durationSlots: number;
 };
 
+type BlockageDraft = {
+  pointerId: number;
+  anchorDayIndex: number;
+  anchorSlot: number;
+  dayIndex: number;
+  startSlot: number;
+  endSlot: number;
+};
+
+type BlockageDragState = {
+  pointerId: number;
+  blockageId: string;
+  mode: "move" | "resize-start" | "resize-end";
+  durationSlots: number;
+  grabOffsetY: number;
+};
+
+type BreakDialogState = {
+  open: boolean;
+  placementId: string | null;
+  sourceCellId: string | null;
+  startSlot: number;
+  endSlot: number;
+  breaks: BreakEntry[];
+};
+
+type EditToolMode = "none" | "break" | "blockage" | "unassigned" | "participants";
+
 export default function SolveOverlay({
   gridId,
   role,
@@ -483,6 +561,9 @@ export default function SolveOverlay({
   const [previewParticipantRules, setPreviewParticipantRules] = useState<AvailabilityRule[]>([]);
   const [pinBusyKey, setPinBusyKey] = useState<string | null>(null);
   const [pinError, setPinError] = useState<string | null>(null);
+  const [pinErrorCard, setPinErrorCard] = useState<PinErrorCardState | null>(null);
+  const [pinErrorCardAnchor, setPinErrorCardAnchor] = useState<{ left: number; top: number } | null>(null);
+  const [collisionBeatingPlacementId, setCollisionBeatingPlacementId] = useState<string | null>(null);
   const [placementComments, setPlacementComments] = useState<PlacementComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentAnchor, setCommentAnchor] = useState<CommentAnchor | null>(null);
@@ -490,6 +571,8 @@ export default function SolveOverlay({
   const [commentDraft, setCommentDraft] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
+  const [leftPanelOpen, setLeftPanelOpen] = useState(false);
+  const [isNarrowMobile, setIsNarrowMobile] = useState(false);
   const [inputSignature, setInputSignature] = useState<string | null>(null);
   const [isInputSignatureLoading, setIsInputSignatureLoading] = useState(false);
   const [candidateDialogOpen, setCandidateDialogOpen] = useState(false);
@@ -511,11 +594,33 @@ export default function SolveOverlay({
   const [previewMode, setPreviewMode] = useState<"candidate" | "participant">("candidate");
   const [previewParticipantsQuery, setPreviewParticipantsQuery] = useState("");
   const [pinOptimisticByCard, setPinOptimisticByCard] = useState<Record<string, boolean>>({});
+  const [hoveredJiggleCardKey, setHoveredJiggleCardKey] = useState<string | null>(null);
   const [isJiggleMode, setIsJiggleMode] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [isDeleteDropActive, setIsDeleteDropActive] = useState(false);
+  const [editToolMode, setEditToolMode] = useState<EditToolMode>("none");
+  const [breakDialogState, setBreakDialogState] = useState<BreakDialogState>({
+    open: false,
+    placementId: null,
+    sourceCellId: null,
+    startSlot: 0,
+    endSlot: 0,
+    breaks: [],
+  });
+  const [breakDraftDurationMin, setBreakDraftDurationMin] = useState<number>(5);
+  const [breakDraftOffsetMin, setBreakDraftOffsetMin] = useState<number | null>(null);
+  const [breakDialogBusy, setBreakDialogBusy] = useState(false);
+  const [breakDialogError, setBreakDialogError] = useState<string | null>(null);
+  const [scheduleBlockages, setScheduleBlockages] = useState<ScheduleBlockage[]>([]);
+  const [blockagesBusy, setBlockagesBusy] = useState(false);
+  const [blockagesRefreshTick, setBlockagesRefreshTick] = useState(0);
+  const [blockageDraft, setBlockageDraft] = useState<BlockageDraft | null>(null);
+  const [blockageDragState, setBlockageDragState] = useState<BlockageDragState | null>(null);
   const [unassignedFocusIndex, setUnassignedFocusIndex] = useState(0);
+  const [cellAllowOverstaffById, setCellAllowOverstaffById] = useState<Record<string, boolean>>({});
+  const [gridAllowsOverstaffing, setGridAllowsOverstaffing] = useState(false);
   const [overlapCarouselPage, setOverlapCarouselPage] = useState(0);
+  const [overlapCarouselPaused, setOverlapCarouselPaused] = useState(false);
   const [precheckDialogState, setPrecheckDialogState] = useState<PrecheckDialogState>({
     open: false,
     blocking: false,
@@ -543,13 +648,48 @@ export default function SolveOverlay({
   const [restoringHistoryVersion, setRestoringHistoryVersion] = useState(false);
   const [exportingHistoryVersion, setExportingHistoryVersion] = useState(false);
   const longPressTimerRef = useRef<number | null>(null);
+  const lastHandledPinErrorRef = useRef<string | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
-  const deleteDropRef = useRef<HTMLDivElement | null>(null);
+  const rightDockCloseSignalRef = useRef(0);
+  const lastPlacementAttemptRef = useRef<{
+    sourceCellId: string;
+    dayIndex: number;
+    startSlot: number;
+    endSlot: number;
+    participantIds?: string[];
+  } | null>(null);
+  const [rightDockCloseSignal, setRightDockCloseSignal] = useState(0);
+
+  const closeRightDockFan = useCallback(() => {
+    rightDockCloseSignalRef.current += 1;
+    setRightDockCloseSignal(rightDockCloseSignalRef.current);
+  }, []);
 
   const canSolve = role === "supervisor" && !historyMode;
   const notifyDraftMutation = useCallback(() => {
     onDraftMutated?.();
   }, [onDraftMutated]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 460px)");
+    const sync = () => setIsNarrowMobile(media.matches);
+    sync();
+    const onChange = () => sync();
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onLeftPanelState = (event: Event) => {
+      const custom = event as CustomEvent<{ gridId?: string; open?: boolean }>;
+      if (custom.detail?.gridId !== String(gridId)) return;
+      setLeftPanelOpen(Boolean(custom.detail?.open));
+    };
+    window.addEventListener(GRID_LEFT_PANEL_STATE_EVENT, onLeftPanelState as EventListener);
+    return () => window.removeEventListener(GRID_LEFT_PANEL_STATE_EVENT, onLeftPanelState as EventListener);
+  }, [gridId]);
   const solveSignatureStorageKey = `grid:${gridId}:last-solve-signature`;
 
   useEffect(() => {
@@ -615,8 +755,41 @@ export default function SolveOverlay({
       .map((id) => String(id));
   };
 
+  const normalizeUnitScopeIds = (value: unknown): string[] =>
+    normalizeIdArray(value).filter((id, idx, arr) => arr.indexOf(id) === idx);
+
+  const toApiId = (value: string) => (/^\d+$/.test(value) ? Number(value) : value);
+
   const rangesOverlap = (startA: number, endA: number, startB: number, endB: number) =>
     startA < endB && endA > startB;
+
+  const slotCount = useMemo(() => Math.max(0, Math.round(bodyHeight / rowPx)), [bodyHeight, rowPx]);
+
+  const clampSlotRange = useCallback(
+    (startSlot: number, endSlot: number) => {
+      const safeStart = Math.max(0, Math.min(slotCount - 1, Math.round(startSlot)));
+      const safeEnd = Math.max(safeStart + 1, Math.min(slotCount, Math.round(endSlot)));
+      return { startSlot: safeStart, endSlot: safeEnd };
+    },
+    [slotCount],
+  );
+
+  const getGridPointFromClient = useCallback(
+    (clientX: number, clientY: number) => {
+      const overlay = overlayRef.current;
+      if (!overlay) return null;
+      const rect = overlay.getBoundingClientRect();
+      const dayWidth = (rect.width - timeColPx) / daysCount;
+      if (!Number.isFinite(dayWidth) || dayWidth <= 0) return null;
+      const x = clientX - rect.left - timeColPx;
+      const y = clientY - rect.top;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      const dayIndex = Math.max(0, Math.min(daysCount - 1, Math.floor(x / dayWidth)));
+      const slot = Math.max(0, Math.min(slotCount - 1, Math.floor(y / rowPx)));
+      return { dayIndex, slot };
+    },
+    [daysCount, rowPx, slotCount, timeColPx],
+  );
 
   const stripForSignature = (value: any): any => {
     if (Array.isArray(value)) return sortByStableString(value.map((v) => stripForSignature(v)));
@@ -995,6 +1168,58 @@ export default function SolveOverlay({
   }, [gridId, historyMode, currentSchedule?.id]);
 
   useEffect(() => {
+    const scheduleId = Number(currentSchedule?.id ?? 0);
+    if (!scheduleId) {
+      setScheduleBlockages([]);
+      return;
+    }
+    let active = true;
+    (async () => {
+      setBlockagesBusy(true);
+      try {
+        const r = await fetch(`/api/schedule-blockages/?schedule=${encodeURIComponent(String(scheduleId))}`, {
+          cache: "no-store",
+        });
+        if (!r.ok) {
+          const txt = await r.text().catch(() => "");
+          throw new Error(txt || `Failed to load blockages (${r.status})`);
+        }
+        const data = await r.json().catch(() => ([]));
+        const list = Array.isArray(data) ? data : data.results ?? [];
+        const normalized = list
+          .map((raw: any) => {
+            const id = raw?.id;
+            const dayIndex = Number(raw?.day_index);
+            const startSlot = Number(raw?.start_slot);
+            const endSlot = Number(raw?.end_slot);
+            if (id == null || !Number.isFinite(dayIndex) || !Number.isFinite(startSlot) || !Number.isFinite(endSlot)) {
+              return null;
+            }
+            if (endSlot <= startSlot) return null;
+            return {
+              id: String(id),
+              schedule: Number(raw?.schedule ?? scheduleId),
+              day_index: dayIndex,
+              start_slot: startSlot,
+              end_slot: endSlot,
+              note: typeof raw?.note === "string" ? raw.note : "",
+              unit_ids: normalizeUnitScopeIds(raw?.unit_ids),
+            } satisfies ScheduleBlockage;
+          })
+          .filter((entry: ScheduleBlockage | null): entry is ScheduleBlockage => Boolean(entry));
+        if (active) setScheduleBlockages(normalized);
+      } catch {
+        if (active) setScheduleBlockages([]);
+      } finally {
+        if (active) setBlockagesBusy(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [blockagesRefreshTick, currentSchedule?.id, externalRefreshTick]);
+
+  useEffect(() => {
     let active = true;
     (async () => {
       try {
@@ -1154,10 +1379,12 @@ export default function SolveOverlay({
         const ctrange: Record<string, string> = {};
         const cdurationSlots: Record<string, number> = {};
         const crequiredPlacements: Record<string, number> = {};
+        const coverstaff: Record<string, boolean> = {};
         for (const c of clist) {
           if (c?.id != null) {
             const cid = String(c.id);
             cmap[cid] = c.name || `Cell ${c.id}`;
+            coverstaff[cid] = Boolean(c?.allow_overstaffing);
             const splitPartsCount = Array.isArray(c?.split_parts_min)
               ? c.split_parts_min
                   .map((part: unknown) => Number(part))
@@ -1307,7 +1534,9 @@ export default function SolveOverlay({
         }
         if (active) {
           setHasCells(clist.length > 0);
+          setGridAllowsOverstaffing(Boolean(gridAllowsOverstaffing));
           setCellNameById(cmap);
+          setCellAllowOverstaffById(coverstaff);
           setCellStaffsById(cstaffs);
           setCellColorById(ccolors);
           setCellTierCountsById(ctierCounts);
@@ -1671,6 +1900,17 @@ export default function SolveOverlay({
         readEntityId((placement as { source_cell_id?: unknown }).source_cell_id) ??
         String(placement.id);
       const assignedParticipants = normalizeIdArray((placement as { assigned_participants?: unknown }).assigned_participants);
+      const breaks = Array.isArray((placement as { breaks?: unknown }).breaks)
+        ? ((placement as { breaks?: unknown }).breaks as unknown[])
+            .map((entry) => {
+              const offsetMin = Number((entry as any)?.offset_min);
+              const durationMin = Number((entry as any)?.duration_min);
+              if (!Number.isFinite(offsetMin) || !Number.isFinite(durationMin)) return null;
+              if (durationMin <= 0) return null;
+              return { offset_min: Math.round(offsetMin), duration_min: Math.round(durationMin) };
+            })
+            .filter((entry): entry is BreakEntry => Boolean(entry))
+        : [];
       return {
         cell_id: String(placement.id),
         source_cell_id: sourceCellId,
@@ -1686,19 +1926,241 @@ export default function SolveOverlay({
             ? (bundleUnitsById[String(bundleId)] || []).map(String)
             : [],
         locked: Boolean(placement.locked),
+        breaks,
       };
     });
   }, [currentSchedule, bundleUnitsById]);
 
-  const filteredSchedule = useMemo(
-    () =>
-      selectedUnitId
-        ? schedule.filter(
-            (s: any) => Array.isArray(s.units) && s.units.map(String).includes(String(selectedUnitId)),
-          )
-        : schedule,
-    [schedule, selectedUnitId],
+  const isGlobalUnitScopeSelected = selectedUnitId === "*";
+  const scopedUnitId = selectedUnitId && selectedUnitId !== "*" ? String(selectedUnitId) : null;
+
+  const filteredSchedule = useMemo(() => {
+    if (scopedUnitId) {
+      return schedule.filter(
+        (s: any) => Array.isArray(s.units) && s.units.map(String).includes(scopedUnitId),
+      );
+    }
+    if (isGlobalUnitScopeSelected) {
+      return schedule.filter((s: any) => {
+        const rowUnits = Array.isArray(s.units) ? s.units.map(String) : [];
+        return rowUnits.length === 0;
+      });
+    }
+    return schedule;
+  }, [isGlobalUnitScopeSelected, schedule, scopedUnitId]);
+
+  const schedulePlacementById = useMemo(() => {
+    const map: Record<string, ScheduleRow> = {};
+    for (const row of schedule) {
+      const placementId = String(row.cell_id ?? "");
+      if (!placementId) continue;
+      map[placementId] = row;
+    }
+    return map;
+  }, [schedule]);
+
+  const buildCollisionMessage = useCallback(
+    (rawMessage: string, placementId: string | null) => {
+      const cleaned = stripNonFieldPrefix(rawMessage);
+      const formatDayLabel = (dayIndex: number) =>
+        dayLabels?.[dayIndex] || t("solve_overlay.day_with_index", { index: dayIndex + 1 });
+      const appendDayTimeContext = (base: string, dayIndex: number, startSlot: number, endSlot: number) => {
+        const day = formatDayLabel(dayIndex);
+        const time = formatSlotRange(dayStartMin, slotMin, Number(startSlot), Number(endSlot));
+        if (/\([^()]*:[^()]*\)$/.test(base.trim())) return base;
+        return `${base} (${day}: ${time})`;
+      };
+      const lowered = cleaned.toLowerCase();
+      if (
+        lowered.includes("schedule, source_cell, bundle, day_index, start_slot must make a unique set") ||
+        lowered.includes("must make a unique set")
+      ) {
+        return t("grid_schedule.multi_day_cells_cannot_overlap_themselves");
+      }
+      const overlapMatch = cleaned.match(
+        /Participant overlap with placement\s+(\d+):\s*shared participants\s*\[([^\]]*)\]/i,
+      );
+      if (overlapMatch) {
+        const collidedPlacementId = String(overlapMatch[1] ?? placementId ?? "").trim();
+        const rawParticipantIds = String(overlapMatch[2] ?? "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean);
+        const participantId = rawParticipantIds[0] || "";
+        const participantLabel =
+          (participantId && participantNameById[participantId]) ||
+          (participantId ? t("format.participant_with_id", { id: participantId }) : t("entity.participant"));
+        const row = collidedPlacementId ? schedulePlacementById[collidedPlacementId] : null;
+        if (row) {
+          const sourceCellId = String(row.source_cell_id ?? row.cell_id ?? collidedPlacementId);
+          const cellLabel = cellNameById[sourceCellId] || t("format.cell_with_id", { id: sourceCellId });
+          const cellTime = formatSlotRange(dayStartMin, slotMin, Number(row.start_slot), Number(row.end_slot));
+          const dayLabel = formatDayLabel(Number(row.day_index));
+          return t("solve_overlay.participant_has_cell_in_placement", {
+            participant: participantLabel,
+            cell: cellLabel,
+            day: dayLabel,
+            time: cellTime,
+          });
+        }
+      }
+
+      const impossibleMatch = cleaned.match(
+        /Participant\s+(\d+)\s+has impossible availability at day=([A-Za-z]+)\s+slots=\[([^\]]*)\]/i,
+      );
+      if (impossibleMatch) {
+        const participantId = String(impossibleMatch[1] ?? "").trim();
+        const dayToken = String(impossibleMatch[2] ?? "").trim().toLowerCase();
+        const slots = String(impossibleMatch[3] ?? "")
+          .split(",")
+          .map((value) => Number(value.trim()))
+          .filter((value) => Number.isFinite(value))
+          .sort((a, b) => a - b);
+        const startSlot = slots.length > 0 ? slots[0] : 0;
+        const endSlot = slots.length > 0 ? slots[slots.length - 1] + 1 : startSlot + 1;
+        const availabilityTime = formatSlotRange(dayStartMin, slotMin, startSlot, endSlot);
+        const dayIndex = DAY_LABEL_TO_INDEX[dayToken];
+        const dayLabel = Number.isFinite(dayIndex) ? formatDayLabel(Number(dayIndex)) : dayToken;
+        const participantLabel =
+          participantNameById[participantId] || t("format.participant_with_id", { id: participantId });
+        return t("solve_overlay.participant_unavailable_in_placement", {
+          participant: participantLabel,
+          day: dayLabel,
+          time: availabilityTime,
+        });
+      }
+
+      const blockageMatch = cleaned.match(
+        /Placement overlaps blockage\s+(\d+):\s*blocked slots\s*\[\s*(\d+)\s*,\s*(\d+)\s*\)/i,
+      );
+      if (blockageMatch) {
+        const blockageId = String(blockageMatch[1] ?? "").trim();
+        const blockedStart = Number(blockageMatch[2] ?? 0);
+        const blockedEnd = Number(blockageMatch[3] ?? 0);
+        const blockage = scheduleBlockages.find((entry) => String(entry.id) === blockageId);
+        const dayIndex = blockage ? Number(blockage.day_index) : null;
+        const dayLabel = dayIndex != null && Number.isFinite(dayIndex) ? formatDayLabel(dayIndex) : formatDayLabel(0);
+        const time = formatSlotRange(dayStartMin, slotMin, blockedStart, blockedEnd);
+        return t("solve_overlay.overlaps_existing_blockage", {
+          day: dayLabel,
+          time,
+        });
+      }
+
+      if (placementId) {
+        const row = schedulePlacementById[placementId];
+        if (row) {
+          return appendDayTimeContext(
+            cleaned,
+            Number(row.day_index),
+            Number(row.start_slot),
+            Number(row.end_slot),
+          );
+        }
+      }
+
+      return cleaned;
+    },
+    [cellNameById, dayLabels, dayStartMin, participantNameById, scheduleBlockages, schedulePlacementById, slotMin, t],
   );
+
+  const selectedBlockageUnitScopeIds = useMemo(
+    () => (scopedUnitId ? [scopedUnitId] : []),
+    [scopedUnitId],
+  );
+
+  const visibleScheduleBlockages = useMemo(() => {
+    if (isGlobalUnitScopeSelected) {
+      return scheduleBlockages.filter((blockage) => (blockage.unit_ids ?? []).length === 0);
+    }
+    if (!scopedUnitId) return scheduleBlockages;
+    return scheduleBlockages.filter((blockage) => {
+      const scope = blockage.unit_ids ?? [];
+      return scope.length === 0 || scope.includes(scopedUnitId);
+    });
+  }, [isGlobalUnitScopeSelected, scheduleBlockages, scopedUnitId]);
+
+  useEffect(() => {
+    if (!pinError) {
+      lastHandledPinErrorRef.current = null;
+      setPinErrorCard(null);
+      setPinErrorCardAnchor(null);
+      setCollisionBeatingPlacementId(null);
+      return;
+    }
+    if (lastHandledPinErrorRef.current === pinError) return;
+    lastHandledPinErrorRef.current = pinError;
+
+    const placementIds = extractPlacementIdsFromMessage(pinError);
+    const uniquePlacementId = placementIds.length === 1 ? placementIds[0] : null;
+    const message = buildCollisionMessage(pinError, uniquePlacementId);
+
+    if (!uniquePlacementId) {
+      setCollisionBeatingPlacementId(null);
+      setPinErrorCard({ message });
+      return;
+    }
+
+    const uniquePlacementRow = schedulePlacementById[uniquePlacementId];
+    const placementUnitIds = Array.isArray(uniquePlacementRow?.units)
+      ? uniquePlacementRow.units.map(String)
+      : [];
+    const requestedUnitTabId = placementUnitIds.length > 0 ? placementUnitIds[0] : "*";
+    if (requestedUnitTabId && selectedUnitId !== requestedUnitTabId && typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent<{ unitId: string }>(UNIT_TAB_SELECT_EVENT, {
+          detail: { unitId: requestedUnitTabId },
+        }),
+      );
+    }
+
+    setCollisionBeatingPlacementId(uniquePlacementId);
+
+    const selectorPlacementId = uniquePlacementId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    const queryTarget = () =>
+      document.querySelector<HTMLElement>(`[data-placement-id="${selectorPlacementId}"]`);
+
+    const placeCardNearTarget = () => {
+      setPinErrorCard({ message });
+      const target = queryTarget();
+      if (!target) return;
+    };
+
+    const scrollTarget = queryTarget();
+    if (scrollTarget) {
+      scrollTarget.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+    }
+    placeCardNearTarget();
+    const delayed = window.setTimeout(placeCardNearTarget, 380);
+    return () => window.clearTimeout(delayed);
+  }, [buildCollisionMessage, pinError, schedulePlacementById, selectedUnitId, topOffset]);
+
+  useEffect(() => {
+    if (!pinErrorCard) {
+      setPinErrorCardAnchor(null);
+      return;
+    }
+    const updateAnchor = () => {
+      const overlay = overlayRef.current;
+      if (!overlay) return;
+      const scheduleViewport =
+        (overlay.closest("[data-schedule-scroll]") as HTMLElement | null) ?? overlay;
+      const rect = scheduleViewport.getBoundingClientRect();
+      const left = Math.max(24, Math.min(window.innerWidth - 24, rect.left + rect.width / 2));
+      const top = Math.max(12, Math.min(window.innerHeight - 12, rect.bottom - 56));
+      setPinErrorCardAnchor({
+        left,
+        top,
+      });
+    };
+    updateAnchor();
+    window.addEventListener("scroll", updateAnchor, true);
+    window.addEventListener("resize", updateAnchor);
+    return () => {
+      window.removeEventListener("scroll", updateAnchor, true);
+      window.removeEventListener("resize", updateAnchor);
+    };
+  }, [pinErrorCard]);
 
   const overlapGroupMetaByPlacementId = useMemo<Record<string, OverlapGroupMeta>>(() => {
     type PlacementEntry = {
@@ -1793,14 +2255,14 @@ export default function SolveOverlay({
   }, [overlapCarouselTotalPages]);
 
   useEffect(() => {
-    if (overlapCarouselTotalPages <= 1 || dragState || isJiggleMode) return;
+    if (overlapCarouselTotalPages <= 1 || dragState || isJiggleMode || overlapCarouselPaused) return;
 
     const intervalId = window.setInterval(() => {
       setOverlapCarouselPage((prev) => (prev + 1) % overlapCarouselTotalPages);
     }, OVERLAP_CAROUSEL_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
-  }, [dragState, isJiggleMode, overlapCarouselTotalPages]);
+  }, [dragState, isJiggleMode, overlapCarouselPaused, overlapCarouselTotalPages]);
 
   const overlapCarouselDisplayByPlacementId = useMemo(() => {
     const next: Record<string, { isVisible: boolean }> = {};
@@ -1861,12 +2323,14 @@ export default function SolveOverlay({
           ? formatSlotRange(dayStartMin, slotMin, trMeta.startSlot, trMeta.endSlot)
           : t("grid_schedule.no_time_range");
         const cellBundles = (cellPinMetaById[cellKey]?.bundles || []).map(String);
-        const matchingBundles = selectedUnitId
+        const matchingBundles = scopedUnitId
           ? cellBundles.filter((bundleId) =>
-              (bundleUnitsById[bundleId] || []).map(String).includes(String(selectedUnitId)),
+              (bundleUnitsById[bundleId] || []).map(String).includes(scopedUnitId),
             )
+          : isGlobalUnitScopeSelected
+          ? cellBundles.filter((bundleId) => (bundleUnitsById[bundleId] || []).length === 0)
           : cellBundles;
-        if (selectedUnitId && matchingBundles.length === 0) return [];
+        if ((scopedUnitId || isGlobalUnitScopeSelected) && matchingBundles.length === 0) return [];
         const selectedBundleId = matchingBundles[0] ?? cellBundles[0] ?? null;
         const unitIds = selectedBundleId
           ? (bundleUnitsById[selectedBundleId] || []).map(String)
@@ -1893,11 +2357,20 @@ export default function SolveOverlay({
     cellRequiredPlacementsById,
     cellTimeRangeById,
     schedule,
-    selectedUnitId,
+    scopedUnitId,
+    isGlobalUnitScopeSelected,
     dayStartMin,
     slotMin,
     timeRangeMetaById,
   ]);
+
+  const participantScrollerItems = useMemo(
+    () =>
+      Object.entries(participantNameById)
+        .map(([id, name]) => ({ id, name: name || `#${id}` }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [participantNameById],
+  );
 
   useEffect(() => {
     setUnassignedFocusIndex((prev) => {
@@ -1943,6 +2416,40 @@ export default function SolveOverlay({
     scheduleViewMode === "published" &&
     Boolean(currentSchedule?.id) &&
     !historyMode;
+  const hasUnassignedCells = unassignedCells.length > 0;
+  const hasOverstaffableCells = useMemo(
+    () => gridAllowsOverstaffing && Object.values(cellAllowOverstaffById).some(Boolean),
+    [cellAllowOverstaffById, gridAllowsOverstaffing],
+  );
+  const isUnassignedToolActive = isJiggleMode && editToolMode === "unassigned";
+  const isBreakToolActive = isJiggleMode && editToolMode === "break";
+  const isBlockageToolActive = isJiggleMode && editToolMode === "blockage";
+  const isParticipantsToolActive = isJiggleMode && editToolMode === "participants";
+  const breakDialogDurationMin = Math.max(
+    slotMin,
+    (Math.max(1, breakDialogState.endSlot - breakDialogState.startSlot) * slotMin),
+  );
+  const breakDialogMaxPerBreak = Math.floor(breakDialogDurationMin / 2);
+  const breakDialogAllowedDurations = BREAK_DURATION_OPTIONS_MIN.filter((value) => value <= breakDialogMaxPerBreak);
+  const breakDialogValidOffsets = useMemo(() => {
+    const duration = breakDraftDurationMin;
+    if (!duration || duration <= 0) return [];
+    const maxOffset = breakDialogDurationMin - duration;
+    const offsets: number[] = [];
+    for (let offset = 0; offset <= maxOffset; offset += duration) {
+      offsets.push(offset);
+    }
+    return offsets;
+  }, [breakDialogDurationMin, breakDraftDurationMin]);
+  const breakDialogOffsetItems = useMemo(
+    () =>
+      breakDialogValidOffsets.map((offset) => {
+        const startMin = dayStartMin + breakDialogState.startSlot * slotMin + offset;
+        const endMin = startMin + breakDraftDurationMin;
+        return `${formatSlotRange(0, 1, startMin, endMin)} (${breakDraftDurationMin} min)`;
+      }),
+    [breakDialogState.startSlot, breakDialogValidOffsets, breakDraftDurationMin, dayStartMin, slotMin],
+  );
 
   const onSolvePressed = () => {
     if (!canUseSolve) return;
@@ -1960,6 +2467,60 @@ export default function SolveOverlay({
     }
     void runSolve();
   };
+
+  const closeEditModes = useCallback(() => {
+    setEditToolMode("none");
+    setIsJiggleMode(false);
+    setBlockageDraft(null);
+    setBlockageDragState(null);
+    closeRightDockFan();
+    clearLongPressTimer();
+    setDragState(null);
+  }, [closeRightDockFan]);
+
+  const activateEditTool = useCallback(
+    (tool: EditToolMode) => {
+      if (tool === "none") {
+        closeEditModes();
+        return;
+      }
+      setEditToolMode(tool);
+      setIsJiggleMode(true);
+      setPinError(null);
+      setBreakDialogError(null);
+      if (tool !== "blockage") {
+        setBlockageDraft(null);
+        setBlockageDragState(null);
+      }
+      if (tool !== "break") {
+        setBreakDialogState((prev) => ({ ...prev, open: false }));
+      }
+    },
+    [closeEditModes],
+  );
+
+  useEffect(() => {
+    if (editToolMode === "unassigned" && !hasUnassignedCells) {
+      closeEditModes();
+      return;
+    }
+    if (editToolMode === "participants" && !hasOverstaffableCells) {
+      closeEditModes();
+    }
+  }, [closeEditModes, editToolMode, hasOverstaffableCells, hasUnassignedCells]);
+
+  useEffect(() => {
+    if (!breakDialogState.open) return;
+    if (breakDialogAllowedDurations.length === 0) {
+      setBreakDraftDurationMin(5);
+      setBreakDraftOffsetMin(null);
+      return;
+    }
+    if (!breakDialogAllowedDurations.includes(breakDraftDurationMin as (typeof BREAK_DURATION_OPTIONS_MIN)[number])) {
+      setBreakDraftDurationMin(breakDialogAllowedDurations[0]);
+      setBreakDraftOffsetMin(null);
+    }
+  }, [breakDialogAllowedDurations, breakDialogState.open, breakDraftDurationMin]);
 
   const selectedHistoryEntry = useMemo(
     () => publishedHistorySchedules.find((entry) => entry.key === selectedHistoryKey) ?? null,
@@ -2217,7 +2778,7 @@ export default function SolveOverlay({
       timeLabel: string;
     };
 
-    const selectedUnit = selectedUnitId ? String(selectedUnitId) : null;
+    const selectedUnit = scopedUnitId;
     const targetDay = dragConstraintContext.targetDayIndex;
     const targetStart = dragConstraintContext.targetStartSlot;
     const targetEnd = dragConstraintContext.targetEndSlot;
@@ -2310,7 +2871,7 @@ export default function SolveOverlay({
     dragConstraintContext,
     participantNameById,
     schedule,
-    selectedUnitId,
+    scopedUnitId,
     slotMin,
     unitNameById,
   ]);
@@ -2574,15 +3135,155 @@ export default function SolveOverlay({
     }
   };
 
-  const clearLongPressTimer = () => {
+  function clearLongPressTimer() {
     if (longPressTimerRef.current != null) {
       window.clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+  }
+
+  const saveBreakDialog = async () => {
+    if (!breakDialogState.placementId) return;
+    if (breakDialogState.breaks.length > 2) {
+      setBreakDialogError("At most 2 breaks are allowed.");
+      return;
+    }
+    setBreakDialogBusy(true);
+    setBreakDialogError(null);
+    try {
+      const normalized = [...breakDialogState.breaks]
+        .map((entry) => ({
+          offset_min: Math.round(Number(entry.offset_min)),
+          duration_min: Math.round(Number(entry.duration_min)),
+        }))
+        .filter((entry) => Number.isFinite(entry.offset_min) && Number.isFinite(entry.duration_min))
+        .sort((a, b) => a.offset_min - b.offset_min);
+      await applyPlacementBreaks(breakDialogState.placementId, normalized);
+      setBreakDialogState((prev) => ({ ...prev, open: false }));
+      setBreakDraftOffsetMin(null);
+    } catch (error: unknown) {
+      setBreakDialogError(error instanceof Error ? error.message : "Could not update breaks.");
+    } finally {
+      setBreakDialogBusy(false);
+    }
   };
 
+  const applyPlacementBreaks = useCallback(
+    async (placementId: string, nextBreaks: BreakEntry[]) => {
+      if (!currentSchedule?.placements) return;
+      const previousPlacements = currentSchedule.placements;
+      const optimisticPlacements = previousPlacements.map((placement) =>
+        String(placement.id) === placementId ? { ...placement, breaks: nextBreaks } : placement,
+      );
+      setCurrentSchedule((prev) =>
+        prev
+          ? {
+              ...prev,
+              placements: optimisticPlacements,
+            }
+          : prev,
+      );
+      try {
+        const res = await fetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ breaks: nextBreaks }),
+        });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(parseApiErrorMessage(txt, `Failed to update breaks (${res.status})`));
+        }
+        notifyDraftMutation();
+      } catch (error: unknown) {
+        setCurrentSchedule((prev) =>
+          prev
+            ? {
+                ...prev,
+                placements: previousPlacements,
+              }
+            : prev,
+        );
+        throw error;
+      }
+    },
+    [currentSchedule, notifyDraftMutation],
+  );
+
+  const upsertBlockage = useCallback(
+    async (id: string, dayIndex: number, startSlot: number, endSlot: number, unitScopeIds: string[] = []) => {
+      const { startSlot: safeStart, endSlot: safeEnd } = clampSlotRange(startSlot, endSlot);
+      const res = await fetch(`/api/schedule-blockages/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          day_index: dayIndex,
+          start_slot: safeStart,
+          end_slot: safeEnd,
+          unit_ids: unitScopeIds.map(toApiId),
+        }),
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(parseApiErrorMessage(txt, `Failed to update blockage (${res.status})`));
+      }
+      notifyDraftMutation();
+      setBlockagesRefreshTick((prev) => prev + 1);
+    },
+    [clampSlotRange, notifyDraftMutation],
+  );
+
+  const createBlockage = useCallback(
+    async (dayIndex: number, startSlot: number, endSlot: number) => {
+      if (!currentSchedule?.id) return;
+      const { startSlot: safeStart, endSlot: safeEnd } = clampSlotRange(startSlot, endSlot);
+      const scopeIds = selectedBlockageUnitScopeIds.map(toApiId);
+      const res = await fetch("/api/schedule-blockages/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          schedule: currentSchedule.id,
+          day_index: dayIndex,
+          start_slot: safeStart,
+          end_slot: safeEnd,
+          note: "",
+          unit_ids: scopeIds,
+        }),
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(parseApiErrorMessage(txt, `Failed to create blockage (${res.status})`));
+      }
+      await res.json().catch(() => ({}));
+      notifyDraftMutation();
+      setBlockagesRefreshTick((prev) => prev + 1);
+    },
+    [clampSlotRange, currentSchedule?.id, notifyDraftMutation, selectedBlockageUnitScopeIds],
+  );
+
+  const deleteBlockage = useCallback(
+    async (id: string) => {
+      const previous = scheduleBlockages;
+      setScheduleBlockages((prev) => prev.filter((entry) => entry.id !== id));
+      try {
+        const res = await fetch(`/api/schedule-blockages/${encodeURIComponent(id)}`, {
+          method: "DELETE",
+        });
+        if (res.status !== 204) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(parseApiErrorMessage(txt, `Failed to delete blockage (${res.status})`));
+        }
+        notifyDraftMutation();
+        setBlockagesRefreshTick((prev) => prev + 1);
+      } catch (error: unknown) {
+        setScheduleBlockages(previous);
+        throw error;
+      }
+    },
+    [notifyDraftMutation, scheduleBlockages],
+  );
+
   const isInsideDeleteDropTarget = useCallback((clientX: number, clientY: number) => {
-    const el = deleteDropRef.current;
+    const el = document.querySelector<HTMLElement>("[data-left-delete-drop]");
     if (!el) return false;
     const rect = el.getBoundingClientRect();
     return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
@@ -2698,16 +3399,19 @@ export default function SolveOverlay({
     [currentSchedule, normalizeIdArray, notifyDraftMutation, previewMode, previewParticipantId],
   );
 
-  const isParticipantAvailableForPlacement = useCallback(
+  const getParticipantPlacementConflictMessage = useCallback(
     (
       participantId: string,
       dayIndex: number,
       startSlot: number,
       endSlot: number,
       excludePlacementId?: string,
-    ) => {
+    ): string | null => {
       const dayOfWeek = dayIndexByColumn[dayIndex] ?? dayIndex;
       const participantRules = availabilityRulesByParticipant[participantId] || [];
+      const participantLabel =
+        participantNameById[participantId] || t("format.participant_with_id", { id: participantId });
+      const dayLabel = dayLabels?.[dayIndex] || t("solve_overlay.day_with_index", { index: dayIndex + 1 });
       for (const rule of participantRules) {
         if (Number(rule.day_of_week) !== dayOfWeek) continue;
         const preference = String(rule.preference ?? "").toLowerCase();
@@ -2715,7 +3419,12 @@ export default function SolveOverlay({
         const ruleStartSlot = Math.round((parseClockToMin(String(rule.start_time)) - dayStartMin) / slotMin);
         const ruleEndSlot = Math.round((parseClockToMin(String(rule.end_time)) - dayStartMin) / slotMin);
         if (rangesOverlap(startSlot, endSlot, ruleStartSlot, ruleEndSlot)) {
-          return false;
+          const ruleTime = `${formatClockLabel(String(rule.start_time))} - ${formatClockLabel(String(rule.end_time))}`;
+          return t("solve_overlay.participant_unavailable_in_placement", {
+            participant: participantLabel,
+            day: dayLabel,
+            time: ruleTime,
+          });
         }
       }
 
@@ -2724,12 +3433,39 @@ export default function SolveOverlay({
         if (Number(row.day_index) !== dayIndex) continue;
         if (!rangesOverlap(startSlot, endSlot, Number(row.start_slot), Number(row.end_slot))) continue;
         const assigned = normalizeIdArray(row.assigned_participants);
-        if (assigned.includes(participantId)) return false;
+        if (assigned.includes(participantId)) {
+          const rowSourceCellId = String(row.source_cell_id ?? row.cell_id ?? "");
+          const cellLabel =
+            cellNameById[rowSourceCellId] || t("format.cell_with_id", { id: rowSourceCellId || row.cell_id });
+          const rowTime = formatSlotRange(
+            dayStartMin,
+            slotMin,
+            Number(row.start_slot),
+            Number(row.end_slot),
+          );
+          return t("solve_overlay.participant_has_cell_in_placement", {
+            participant: participantLabel,
+            cell: cellLabel,
+            day: dayLabel,
+            time: rowTime,
+          });
+        }
       }
 
-      return true;
+      return null;
     },
-    [availabilityRulesByParticipant, dayIndexByColumn, dayStartMin, normalizeIdArray, schedule, slotMin],
+    [
+      availabilityRulesByParticipant,
+      cellNameById,
+      dayIndexByColumn,
+      dayLabels,
+      dayStartMin,
+      normalizeIdArray,
+      participantNameById,
+      schedule,
+      slotMin,
+      t,
+    ],
   );
 
   const getPlacementAssignmentOptions = useCallback(
@@ -2769,6 +3505,7 @@ export default function SolveOverlay({
       const headcount = TIERS.reduce((sum, tier) => sum + Math.max(0, Number(tierCounts[tier] || 0)), 0);
       const previousAssigned =
         lastAssignedParticipantsByCellBundle[`${sourceCellId}|${normalizedBundleId}`] || [];
+      const conflictMessages: string[] = [];
 
       const options: PlacementAssignmentOption[] = [];
       const seen = new Set<string>();
@@ -2789,9 +3526,14 @@ export default function SolveOverlay({
         const members = Array.from(new Set((staffMembersByStaffId[staffId] || []).map(String)));
         if (members.length === 0) continue;
         if (headcount > 0 && members.length !== headcount) continue;
-        const allAvailable = members.every((participantId) =>
-          isParticipantAvailableForPlacement(participantId, dayIndex, startSlot, endSlot),
-        );
+        const allAvailable = members.every((participantId) => {
+          const conflict = getParticipantPlacementConflictMessage(participantId, dayIndex, startSlot, endSlot);
+          if (conflict) {
+            conflictMessages.push(conflict);
+            return false;
+          }
+          return true;
+        });
         if (!allAvailable) continue;
         const memberNames = members
           .map((participantId) => participantNameById[participantId] || `#${participantId}`)
@@ -2813,9 +3555,19 @@ export default function SolveOverlay({
           if (required === 0) continue;
           const poolCandidates = Array.from(new Set((tierPools[tier] || []).map(String)))
             .filter((participantId) => participantTierById[participantId] === tier)
-            .filter((participantId) =>
-              isParticipantAvailableForPlacement(participantId, dayIndex, startSlot, endSlot),
-            )
+            .filter((participantId) => {
+              const conflict = getParticipantPlacementConflictMessage(
+                participantId,
+                dayIndex,
+                startSlot,
+                endSlot,
+              );
+              if (conflict) {
+                conflictMessages.push(conflict);
+                return false;
+              }
+              return true;
+            })
             .sort((a, b) => (participantNameById[a] || a).localeCompare(participantNameById[b] || b));
           if (poolCandidates.length < required) {
             poolShortage = true;
@@ -2826,9 +3578,19 @@ export default function SolveOverlay({
 
         const previousIsValid =
           previousAssigned.length === headcount &&
-          previousAssigned.every((participantId) =>
-            isParticipantAvailableForPlacement(String(participantId), dayIndex, startSlot, endSlot),
-          ) &&
+          previousAssigned.every((participantId) => {
+            const conflict = getParticipantPlacementConflictMessage(
+              String(participantId),
+              dayIndex,
+              startSlot,
+              endSlot,
+            );
+            if (conflict) {
+              conflictMessages.push(conflict);
+              return false;
+            }
+            return true;
+          }) &&
           TIERS.every((tier) => {
             const required = Math.max(0, Number(tierCounts[tier] || 0));
             const actual = previousAssigned.filter(
@@ -2858,9 +3620,10 @@ export default function SolveOverlay({
       }
 
       if (options.length === 0) {
+        const firstConflict = conflictMessages.find((message) => message.trim().length > 0);
         return {
           options: [],
-          error: t("solve_overlay.no_valid_participants_for_slot"),
+          error: firstConflict || t("solve_overlay.no_valid_participants_for_slot"),
         };
       }
 
@@ -2872,7 +3635,7 @@ export default function SolveOverlay({
       cellStaffsById,
       cellTierCountsById,
       cellTierPoolsById,
-      isParticipantAvailableForPlacement,
+      getParticipantPlacementConflictMessage,
       lastAssignedParticipantsByCellBundle,
       participantNameById,
       participantTierById,
@@ -3015,6 +3778,12 @@ export default function SolveOverlay({
     ) => {
       const normalizedBundleId = String(bundleId);
       const endSlot = startSlot + durationSlots;
+      lastPlacementAttemptRef.current = {
+        sourceCellId,
+        dayIndex,
+        startSlot,
+        endSlot,
+      };
 
       if (currentSchedule?.id) {
         try {
@@ -3192,6 +3961,21 @@ export default function SolveOverlay({
         return;
       }
       const nextEndSlot = nextStartSlot + durationSlots;
+      const targetSourceCellId = String(
+        readEntityId((targetPlacement as { source_cell?: unknown }).source_cell) ??
+          readEntityId((targetPlacement as { source_cell_id?: unknown }).source_cell_id) ??
+          placementId,
+      );
+      const targetParticipants = normalizeIdArray(
+        (targetPlacement as { assigned_participants?: unknown }).assigned_participants,
+      );
+      lastPlacementAttemptRef.current = {
+        sourceCellId: targetSourceCellId,
+        dayIndex: nextDayIndex,
+        startSlot: nextStartSlot,
+        endSlot: nextEndSlot,
+        participantIds: targetParticipants,
+      };
       const previousPlacements = currentSchedule.placements;
       const updatedPlacements = previousPlacements.map((placement) =>
         String(placement.id) === placementId
@@ -3240,6 +4024,128 @@ export default function SolveOverlay({
     },
     [currentSchedule, notifyDraftMutation, t],
   );
+
+  useEffect(() => {
+    if (!blockageDraft) return;
+    const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== blockageDraft.pointerId) return;
+      const point = getGridPointFromClient(event.clientX, event.clientY);
+      if (!point) return;
+      if (point.dayIndex !== blockageDraft.dayIndex || point.slot !== blockageDraft.endSlot - 1) {
+        const startSlot = Math.min(blockageDraft.anchorSlot, point.slot);
+        const endSlot = Math.max(blockageDraft.anchorSlot, point.slot) + 1;
+        setBlockageDraft((prev) =>
+          prev && prev.pointerId === event.pointerId
+            ? { ...prev, dayIndex: point.dayIndex, startSlot, endSlot }
+            : prev,
+        );
+      }
+    };
+    const onPointerUp = (event: PointerEvent) => {
+      if (event.pointerId !== blockageDraft.pointerId) return;
+      const finalized = blockageDraft;
+      setBlockageDraft(null);
+      void createBlockage(finalized.dayIndex, finalized.startSlot, finalized.endSlot).catch((error: unknown) => {
+        setPinError(error instanceof Error ? error.message : "Could not create blockage.");
+      });
+    };
+    const onPointerCancel = (event: PointerEvent) => {
+      if (event.pointerId !== blockageDraft.pointerId) return;
+      setBlockageDraft(null);
+    };
+    window.addEventListener("pointermove", onPointerMove, { passive: true });
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+    };
+  }, [blockageDraft, createBlockage, getGridPointFromClient]);
+
+  useEffect(() => {
+    if (!blockageDragState) return;
+    const findCurrent = () => scheduleBlockages.find((entry) => entry.id === blockageDragState.blockageId) ?? null;
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== blockageDragState.pointerId) return;
+      const isInsideDelete = isInsideDeleteDropTarget(event.clientX, event.clientY);
+      setIsDeleteDropActive((prev) => (prev === isInsideDelete ? prev : isInsideDelete));
+      const current = findCurrent();
+      if (!current) return;
+      const point = getGridPointFromClient(event.clientX, event.clientY);
+      if (!point) return;
+
+      if (blockageDragState.mode === "move") {
+        const nextStart = Math.max(0, Math.min(slotCount - blockageDragState.durationSlots, Math.round((event.clientY - (overlayRef.current?.getBoundingClientRect().top ?? 0) - blockageDragState.grabOffsetY) / rowPx)));
+        const nextEnd = nextStart + blockageDragState.durationSlots;
+        setScheduleBlockages((prev) =>
+          prev.map((entry) =>
+            entry.id === blockageDragState.blockageId
+              ? { ...entry, day_index: point.dayIndex, start_slot: nextStart, end_slot: nextEnd }
+              : entry,
+          ),
+        );
+        return;
+      }
+
+      if (blockageDragState.mode === "resize-start") {
+        const nextStart = Math.max(0, Math.min(current.end_slot - 1, point.slot));
+        setScheduleBlockages((prev) =>
+          prev.map((entry) =>
+            entry.id === blockageDragState.blockageId ? { ...entry, start_slot: nextStart } : entry,
+          ),
+        );
+        return;
+      }
+
+      const nextEnd = Math.max(current.start_slot + 1, Math.min(slotCount, point.slot + 1));
+      setScheduleBlockages((prev) =>
+        prev.map((entry) =>
+          entry.id === blockageDragState.blockageId ? { ...entry, end_slot: nextEnd } : entry,
+        ),
+      );
+    };
+
+    const onPointerUp = (event: PointerEvent) => {
+      if (event.pointerId !== blockageDragState.pointerId) return;
+      const current = findCurrent();
+      const droppedOnDelete = isInsideDeleteDropTarget(event.clientX, event.clientY);
+      setBlockageDragState(null);
+      setIsDeleteDropActive(false);
+      if (!current) return;
+      if (droppedOnDelete) {
+        void deleteBlockage(current.id).catch((error: unknown) => {
+          setPinError(error instanceof Error ? error.message : "Could not delete blockage.");
+        });
+        return;
+      }
+      void upsertBlockage(
+        current.id,
+        current.day_index,
+        current.start_slot,
+        current.end_slot,
+        current.unit_ids ?? [],
+      ).catch((error: unknown) => {
+        setPinError(error instanceof Error ? error.message : "Could not update blockage.");
+      });
+    };
+
+    const onPointerCancel = (event: PointerEvent) => {
+      if (event.pointerId !== blockageDragState.pointerId) return;
+      setBlockageDragState(null);
+      setIsDeleteDropActive(false);
+    };
+
+    window.addEventListener("pointermove", onPointerMove, { passive: true });
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+    };
+  }, [blockageDragState, deleteBlockage, getGridPointFromClient, isInsideDeleteDropTarget, rowPx, scheduleBlockages, slotCount, upsertBlockage]);
 
   useEffect(() => {
     return () => clearLongPressTimer();
@@ -3350,6 +4256,18 @@ export default function SolveOverlay({
   }, [dragState]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent("shift:left-delete-state", {
+        detail: {
+          visible: isJiggleMode,
+          active: isDeleteDropActive,
+        },
+      }),
+    );
+  }, [isDeleteDropActive, isJiggleMode]);
+
+  useEffect(() => {
     if (!isJiggleMode) return;
     const dock = document.getElementById("sidedock");
     const prevOpacity = dock?.style.opacity ?? "";
@@ -3371,23 +4289,28 @@ export default function SolveOverlay({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
-      setDragState(null);
-      clearLongPressTimer();
-      setIsJiggleMode(false);
+      closeEditModes();
+      setBreakDialogState((prev) => ({ ...prev, open: false }));
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [isJiggleMode]);
+  }, [closeEditModes, isJiggleMode]);
 
-  
   useEffect(() => {
     if (canManualEditCards) return;
-    setIsJiggleMode(false);
-    clearLongPressTimer();
-    setDragState(null);
-  }, [canManualEditCards]);
+    closeEditModes();
+  }, [canManualEditCards, closeEditModes]);
+
+  useEffect(() => {
+    if (!isJiggleMode) {
+      setEditToolMode("none");
+      setBlockageDraft(null);
+      setBlockageDragState(null);
+      setHoveredJiggleCardKey(null);
+    }
+  }, [isJiggleMode]);
 
   useEffect(() => {
     if (!isJiggleMode) return;
@@ -3396,17 +4319,19 @@ export default function SolveOverlay({
       if (!target) return;
       if (target.closest("[data-schedule-scroll]")) return;
       if (target.closest("[data-unit-tabs]")) return;
-      if (target.closest("[data-jiggle-delete-drop]")) return;
+      if (target.closest("[data-left-delete-drop]")) return;
       if (target.closest("[data-jiggle-unassigned]")) return;
-      setIsJiggleMode(false);
-      clearLongPressTimer();
-      setDragState(null);
+      if (target.closest("[data-jiggle-participants]")) return;
+      if (target.closest("[data-jiggle-tools]")) return;
+      if (target.closest("[data-break-dialog]")) return;
+      closeEditModes();
+      setBreakDialogState((prev) => ({ ...prev, open: false }));
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown, true);
     };
-  }, [isJiggleMode]);
+  }, [closeEditModes, isJiggleMode]);
 
   const solveDisabledReason = !canSolve
     ? t("solve_overlay.solve_unavailable")
@@ -3767,16 +4692,50 @@ export default function SolveOverlay({
 
   return (
     <>
+      {pinErrorCard && pinErrorCardAnchor && (
+        <ScheduleErrorCard
+          message={pinErrorCard.message}
+          left={pinErrorCardAnchor.left}
+          top={pinErrorCardAnchor.top}
+          onClose={() => {
+            setPinError(null);
+            setPinErrorCard(null);
+            setPinErrorCardAnchor(null);
+            setCollisionBeatingPlacementId(null);
+          }}
+        />
+      )}
+
       {/* Schedule overlay */}
-      {!hideScheduleOverlay && filteredSchedule.length > 0 && (
+      {!hideScheduleOverlay && (filteredSchedule.length > 0 || visibleScheduleBlockages.length > 0 || isJiggleMode || blockageDraft != null) && (
         <div
           ref={overlayRef}
-          className="pointer-events-none absolute inset-x-0"
+          className={`absolute inset-x-0 ${
+            canManualEditCards && isBlockageToolActive ? "pointer-events-auto" : "pointer-events-none"
+          }`}
           style={{ top: topOffset, height: bodyHeight }}
+          onPointerDown={(event) => {
+            if (!canManualEditCards || !isBlockageToolActive) return;
+            if (dragState || blockageDragState || blockageDraft) return;
+            const target = event.target as HTMLElement | null;
+            if (!target) return;
+            if (target.closest("[data-placement-card]")) return;
+            if (target.closest("[data-schedule-blockage]")) return;
+            const point = getGridPointFromClient(event.clientX, event.clientY);
+            if (!point) return;
+            setBlockageDraft({
+              pointerId: event.pointerId,
+              anchorDayIndex: point.dayIndex,
+              anchorSlot: point.slot,
+              dayIndex: point.dayIndex,
+              startSlot: point.slot,
+              endSlot: point.slot + 1,
+            });
+          }}
         >
-          {pinError && (
-            <div className="absolute left-3 top-3 z-[120] rounded border border-red-200 bg-red-50 px-2.5 py-1 text-xs text-red-600">
-              {pinError}
+          {blockagesBusy && (
+            <div className="absolute left-3 top-12 z-[120] rounded border border-gray-200 bg-white/90 px-2.5 py-1 text-xs text-gray-600">
+              Loading blockages...
             </div>
           )}
           {dragCollisionCards.map((item, idx) => {
@@ -3911,6 +4870,129 @@ export default function SolveOverlay({
               </div>
             </div>
           )}
+          {visibleScheduleBlockages.map((blockage) => {
+            if (blockage.day_index < 0 || blockage.day_index >= daysCount) return null;
+            const top = blockage.start_slot * rowPx + 2;
+            const height = Math.max(8, (blockage.end_slot - blockage.start_slot) * rowPx - 4);
+            const left = `calc(${timeColPx}px + ${blockage.day_index} * ((100% - ${timeColPx}px) / ${daysCount}) + 4px)`;
+            const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 8px)`;
+            const canInteractBlockage = canManualEditCards && scheduleViewMode === "draft";
+            const canEditBlockage = canInteractBlockage && isJiggleMode;
+            const movingThis = blockageDragState?.blockageId === blockage.id;
+            return (
+              <div
+                key={`schedule-blockage-${blockage.id}`}
+                data-schedule-blockage
+                className={`absolute z-[47] rounded-2xl border border-gray-300/90 bg-transparent transition-[left,top,height] duration-150 ease-out ${
+                  canInteractBlockage ? "pointer-events-auto" : "pointer-events-none"
+                }`}
+                style={{ top, left, width, height }}
+                title={blockage.note || "Blocked window"}
+                onPointerDown={(event) => {
+                  if (!canInteractBlockage) return;
+                  if (!isJiggleMode) {
+                    clearLongPressTimer();
+                    longPressTimerRef.current = window.setTimeout(() => {
+                      setIsJiggleMode(true);
+                      closeRightDockFan();
+                      setEditToolMode("none");
+                      longPressTimerRef.current = null;
+                    }, 360);
+                    return;
+                  }
+                  if (!canEditBlockage) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const cardRect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+                  setBlockageDragState({
+                    pointerId: event.pointerId,
+                    blockageId: blockage.id,
+                    mode: "move",
+                    durationSlots: Math.max(1, blockage.end_slot - blockage.start_slot),
+                    grabOffsetY: event.clientY - cardRect.top,
+                  });
+                }}
+                onPointerUp={() => clearLongPressTimer()}
+                onPointerCancel={() => clearLongPressTimer()}
+                onPointerLeave={() => clearLongPressTimer()}
+                onDoubleClick={() => {
+                  if (!canEditBlockage) return;
+                  void deleteBlockage(blockage.id).catch((error: unknown) => {
+                    setPinError(error instanceof Error ? error.message : "Could not delete blockage.");
+                  });
+                }}
+              >
+                <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
+                  <GlassSurface
+                    width="100%"
+                    height="100%"
+                    borderRadius={16}
+                    backgroundOpacity={0.14}
+                    brightness={50}
+                    opacity={0.95}
+                    blur={11}
+                    displace={0.5}
+                    distortionScale={-180}
+                    saturation={1.35}
+                    className="h-full w-full"
+                    style={{ background: "rgba(255, 255, 255, 0.26)" }}
+                  />
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <span className="select-none text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400/60">
+                      Blocked
+                    </span>
+                  </div>
+                </div>
+                <div className="pointer-events-none absolute inset-0 rounded-2xl border border-white/60" />
+                {canEditBlockage && (
+                  <>
+                    <div
+                      className="absolute left-0 right-0 top-0 h-2 cursor-ns-resize"
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setBlockageDragState({
+                          pointerId: event.pointerId,
+                          blockageId: blockage.id,
+                          mode: "resize-start",
+                          durationSlots: Math.max(1, blockage.end_slot - blockage.start_slot),
+                          grabOffsetY: 0,
+                        });
+                      }}
+                    />
+                    <div
+                      className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize"
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setBlockageDragState({
+                          pointerId: event.pointerId,
+                          blockageId: blockage.id,
+                          mode: "resize-end",
+                          durationSlots: Math.max(1, blockage.end_slot - blockage.start_slot),
+                          grabOffsetY: 0,
+                        });
+                      }}
+                    />
+                  </>
+                )}
+                {movingThis && (
+                  <div className="pointer-events-none absolute inset-0 rounded-2xl border-2 border-sky-500/70" />
+                )}
+              </div>
+            );
+          })}
+          {blockageDraft && (
+            <div
+              className="absolute pointer-events-none z-[46] rounded-2xl border border-dashed border-gray-400 bg-white/25"
+              style={{
+                top: blockageDraft.startSlot * rowPx + 2,
+                left: `calc(${timeColPx}px + ${blockageDraft.dayIndex} * ((100% - ${timeColPx}px) / ${daysCount}) + 4px)`,
+                width: `calc(((100% - ${timeColPx}px) / ${daysCount}) - 8px)`,
+                height: Math.max(8, (blockageDraft.endSlot - blockageDraft.startSlot) * rowPx - 4),
+              }}
+            />
+          )}
           {filteredSchedule.map((s, idx) => {
             const col = s.day_index;
             if (col < 0 || col >= daysCount) return null;
@@ -3979,6 +5061,8 @@ export default function SolveOverlay({
               commentsPanelOpen &&
               Boolean(cardCommentPlacementKey) &&
               cardCommentPlacementKey === selectedCommentPlacementKey;
+            const isCollisionBeatingCard =
+              collisionBeatingPlacementId != null && placementId === collisionBeatingPlacementId;
             const isCommentHoveredCard =
               commentsPanelOpen &&
               Boolean(cardCommentPlacementKey) &&
@@ -4007,8 +5091,6 @@ export default function SolveOverlay({
               commentsPanelOpen && !isDraggingCard
                 ? isCommentFocusedCard
                   ? 1.08
-                  : isCommentHoveredCard
-                  ? 1.04
                   : 1
                 : 1;
             const transformParts: string[] = [];
@@ -4025,8 +5107,16 @@ export default function SolveOverlay({
               ? 52
               : undefined;
             const durationSlots = Math.max(1, s.end_slot - s.start_slot);
+            const placementDurationMin = Math.max(slotMin, durationSlots * slotMin);
+            const placementBreaks = Array.isArray(s.breaks) ? s.breaks : [];
+            const isOverstaffCell = Boolean(cellAllowOverstaffById[sourceCellId]);
+            const dimForParticipantsTool = isParticipantsToolActive && !isOverstaffCell;
             const cursorClass =
               commentsPanelOpen && commentAnchorForCard
+                ? "cursor-pointer"
+                : isBlockageToolActive
+                ? "cursor-default"
+                : isBreakToolActive
                 ? "cursor-pointer"
                 : canManualEditCards
                 ? isPlacementLocked
@@ -4038,6 +5128,8 @@ export default function SolveOverlay({
             return (
               <div
                 key={cardKey}
+                data-placement-card
+                data-placement-id={placementId || undefined}
                 className={`absolute pointer-events-auto ${cursorClass} ${
                   isDraggingCard ? "transition-none" : "transition-transform duration-150 ease-out"
                 }`}
@@ -4051,14 +5143,37 @@ export default function SolveOverlay({
                   transformOrigin: "center",
                 }}
                 onClick={(event) => {
-                  if (!commentsPanelOpen || !commentAnchorForCard) return;
                   const target = event.target as HTMLElement | null;
                   if (target?.closest("[data-card-lock-toggle]")) return;
+                  if (isBreakToolActive && canManualEditCards && placementId) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setBreakDialogError(null);
+                    const sortedBreaks = [...placementBreaks]
+                      .filter((entry) => Number.isFinite(entry.offset_min) && Number.isFinite(entry.duration_min))
+                      .sort((a, b) => a.offset_min - b.offset_min);
+                    const allowedDurations = BREAK_DURATION_OPTIONS_MIN.filter(
+                      (value) => value <= Math.floor(placementDurationMin / 2),
+                    );
+                    setBreakDraftDurationMin(allowedDurations[0] ?? 5);
+                    setBreakDraftOffsetMin(null);
+                    setBreakDialogState({
+                      open: true,
+                      placementId,
+                      sourceCellId,
+                      startSlot: s.start_slot,
+                      endSlot: s.end_slot,
+                      breaks: sortedBreaks,
+                    });
+                    return;
+                  }
+                  if (!commentsPanelOpen || !commentAnchorForCard) return;
                   setCommentAnchor(commentAnchorForCard);
                   setCommentError(null);
                 }}
                 onPointerDown={(event) => {
                   if (commentsPanelOpen) return;
+                  if (isBreakToolActive || isBlockageToolActive) return;
                   if (!canManualEditCards || isCardBusy || isPlacementLocked || !placementId) return;
                   clearLongPressTimer();
                   const cardRect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
@@ -4083,24 +5198,27 @@ export default function SolveOverlay({
                       grabOffsetY: event.clientY - cardRect.top,
                     });
                   };
-                  if (isJiggleMode) {
-                    startDrag();
+                  if (!isJiggleMode) {
+                    longPressTimerRef.current = window.setTimeout(() => {
+                      setIsJiggleMode(true);
+                      closeRightDockFan();
+                      setEditToolMode("none");
+                      longPressTimerRef.current = null;
+                    }, 360);
                     return;
                   }
-                  longPressTimerRef.current = window.setTimeout(() => {
-                    setIsJiggleMode(true);
-                    startDrag();
-                    longPressTimerRef.current = null;
-                  }, 360);
+                  startDrag();
                 }}
                 onPointerUp={() => clearLongPressTimer()}
                 onPointerCancel={() => clearLongPressTimer()}
                 onPointerEnter={() => {
+                  if (isJiggleMode) setHoveredJiggleCardKey(cardKey);
                   if (!commentsPanelOpen || !cardCommentPlacementKey) return;
                   setHoveredCommentPlacementKey(cardCommentPlacementKey);
                 }}
                 onPointerLeave={() => {
                   clearLongPressTimer();
+                  setHoveredJiggleCardKey((prev) => (prev === cardKey ? null : prev));
                   if (!cardCommentPlacementKey) return;
                   setHoveredCommentPlacementKey((prev) =>
                     prev === cardCommentPlacementKey ? null : prev,
@@ -4109,28 +5227,30 @@ export default function SolveOverlay({
               >
                 <div
                   className={`group relative w-full h-full rounded-md border px-2 py-2 text-[11px] ${
-                    isJiggleMode && !isPlacementLocked ? "shift-jiggle" : ""
+                    isJiggleMode && !isPlacementLocked && hoveredJiggleCardKey !== cardKey ? "shift-jiggle" : ""
                   }`}
                   style={{
                     backgroundColor: bg || "#f3f4f6",
                     borderColor: border,
                     color: textDark,
                     animationDelay: `${(idx % 6) * 35}ms`,
+                    opacity: dimForParticipantsTool ? 0.45 : 1,
+                    filter: dimForParticipantsTool ? "grayscale(0.65)" : "none",
                   }}
                 >
-                  {isCommentFocusedCard && (
+                  {(isCommentFocusedCard || isCollisionBeatingCard) && (
                     <>
                       <span
                         className="pointer-events-none absolute inset-0 rounded-md border-2 schedule-comment-ring"
-                        style={{ borderColor: bg || border }}
+                        style={{ borderColor: isCollisionBeatingCard ? "#ef4444" : bg || border }}
                       />
                       <span
                         className="pointer-events-none absolute inset-0 rounded-md border-2 schedule-comment-ring schedule-comment-ring-delay"
-                        style={{ borderColor: bg || border }}
+                        style={{ borderColor: isCollisionBeatingCard ? "#ef4444" : bg || border }}
                       />
                     </>
                   )}
-                  {canPinCards && (
+                  {canPinCards && (isJiggleMode || isPinnedVisual) && (
                     <button
                       type="button"
                       data-card-lock-toggle
@@ -4180,6 +5300,20 @@ export default function SolveOverlay({
                       />
                     </button>
                   )}
+                  {placementBreaks.map((entry, breakIndex) => {
+                    const breakStartRatio = placementDurationMin > 0 ? entry.offset_min / placementDurationMin : 0;
+                    const breakHeightRatio = placementDurationMin > 0 ? entry.duration_min / placementDurationMin : 0;
+                    return (
+                      <div
+                        key={`${cardKey}-break-${breakIndex}-${entry.offset_min}-${entry.duration_min}`}
+                        className="absolute left-0 right-0 rounded-sm bg-black/20"
+                        style={{
+                          top: `${Math.max(0, Math.min(100, breakStartRatio * 100))}%`,
+                          height: `${Math.max(2, Math.min(100, breakHeightRatio * 100))}%`,
+                        }}
+                      />
+                    );
+                  })}
                   <div className="flex h-full flex-col items-center justify-center text-center leading-tight">
                     <div className="font-semibold" style={{ color: textLight }}>{cellName}</div>
                     {assignmentLabel && <div className="px-1">{assignmentLabel}</div>}
@@ -4207,7 +5341,7 @@ export default function SolveOverlay({
       {!hideScheduleOverlay && overlapCarouselTotalPages > 1 && (
         <div
           className="fixed inset-x-0 z-[121] pointer-events-none"
-          style={{ bottom: selectedUnitId ? "3.75rem" : "0.9rem" }}
+          style={{ bottom: selectedUnitId ? "2.6rem" : "0.9rem" }}
           aria-hidden
         >
           <div className="flex justify-center">
@@ -4216,17 +5350,196 @@ export default function SolveOverlay({
                 <button
                   type="button"
                   key={`carousel-dot-${idx}`}
-                  className={`h-2 w-2 rounded-full transition-colors duration-200 ${
-                    idx === overlapCarouselPage ? "bg-gray-700" : "bg-gray-300"
-                  }`}
-                  onClick={() => setOverlapCarouselPage(idx)}
+                  className="inline-flex h-3 w-3 items-center justify-center rounded-full transition-all duration-200"
+                  onClick={() => {
+                    setOverlapCarouselPage(idx);
+                    if (overlapCarouselPaused) setOverlapCarouselPaused(false);
+                  }}
+                  onDoubleClick={() => {
+                    setOverlapCarouselPage(idx);
+                    setOverlapCarouselPaused(true);
+                  }}
                   aria-label={`${t("solve_overlay.carousel_view")} ${idx + 1}`}
-                />
+                >
+                  {idx === overlapCarouselPage ? (
+                    <span className="relative inline-flex h-3 w-3 items-center justify-center">
+                      <span
+                        className={`absolute h-2.5 w-2.5 rounded-full bg-gray-700 transition-all duration-200 ${
+                          overlapCarouselPaused ? "opacity-0 scale-75" : "opacity-100 scale-100"
+                        }`}
+                      />
+                      <span
+                        className={`absolute inline-flex items-center gap-[1px] transition-all duration-200 ${
+                          overlapCarouselPaused ? "opacity-100 scale-100" : "opacity-0 scale-75"
+                        }`}
+                      >
+                        <span className="h-[8px] w-[2px] rounded-[2px] bg-gray-700" />
+                        <span className="h-[8px] w-[2px] rounded-[2px] bg-gray-700" />
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="h-2.5 w-2.5 rounded-full bg-gray-300" />
+                  )}
+                </button>
               ))}
             </div>
           </div>
         </div>
       )}
+
+      <Dialog
+        open={breakDialogState.open}
+        onOpenChange={(open) => {
+          setBreakDialogState((prev) => ({ ...prev, open }));
+          if (!open) {
+            setBreakDialogError(null);
+            setBreakDraftOffsetMin(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[560px] z-[182]">
+          <div data-break-dialog>
+            <DialogHeader>
+              <DialogTitle>Breaks</DialogTitle>
+              <DialogDescription>
+                Choose duration and place breaks on valid internal slots.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-3 space-y-3">
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {breakDialogAllowedDurations.map((value) => (
+                  <button
+                    key={`break-duration-${value}`}
+                    type="button"
+                    className={`min-w-[76px] rounded border px-2 py-1 text-xs ${
+                      breakDraftDurationMin === value
+                        ? "border-black bg-black text-white"
+                        : "border-gray-300 bg-white text-gray-700"
+                    }`}
+                    onClick={() => {
+                      setBreakDraftDurationMin(value);
+                      setBreakDraftOffsetMin(null);
+                    }}
+                  >
+                    {value} min
+                  </button>
+                ))}
+              </div>
+
+              <div className="rounded border border-gray-200 bg-gray-50 px-3 py-4">
+                <AnimatedList
+                  key={`break-offset-list-${breakDraftDurationMin}-${breakDialogValidOffsets.join("-")}`}
+                  items={breakDialogOffsetItems}
+                  onItemSelect={(_, index) => setBreakDraftOffsetMin(breakDialogValidOffsets[index] ?? null)}
+                  showGradients={false}
+                  enableArrowNavigation={false}
+                  selectOnHover={false}
+                  displayScrollbar={false}
+                  selectedIndex={breakDialogValidOffsets.findIndex((v) => v === breakDraftOffsetMin)}
+                  maxVisibleItems={5}
+                  itemHeightPx={44}
+                  itemGapPx={8}
+                  listPaddingPx={8}
+                  centerItems
+                  className="!w-[380px] max-w-full mx-auto"
+                  itemClassName="!px-3 !py-2 hover:!bg-gray-100 [&_p]:!text-sm"
+                  selectedItemClassName="!bg-black !border-black [&_p]:!text-white"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="rounded border px-3 py-1.5 text-sm disabled:opacity-50"
+                  disabled={
+                    breakDialogState.breaks.length >= 2 ||
+                    breakDraftOffsetMin == null ||
+                    !Number.isFinite(breakDraftOffsetMin)
+                  }
+                  onClick={() => {
+                    if (breakDraftOffsetMin == null) return;
+                    const nextBreak: BreakEntry = {
+                      offset_min: breakDraftOffsetMin,
+                      duration_min: breakDraftDurationMin,
+                    };
+                    const overlaps = breakDialogState.breaks.some((entry) =>
+                      rangesOverlap(
+                        entry.offset_min,
+                        entry.offset_min + entry.duration_min,
+                        nextBreak.offset_min,
+                        nextBreak.offset_min + nextBreak.duration_min,
+                      ),
+                    );
+                    if (overlaps) {
+                      setBreakDialogError("Break overlaps an existing break.");
+                      return;
+                    }
+                    setBreakDialogError(null);
+                    setBreakDialogState((prev) => ({
+                      ...prev,
+                      breaks: [...prev.breaks, nextBreak].sort((a, b) => a.offset_min - b.offset_min),
+                    }));
+                  }}
+                >
+                  Add break
+                </button>
+                <span className="text-xs text-gray-500">Max 2 breaks</span>
+              </div>
+
+              <div className="space-y-2">
+                {breakDialogState.breaks.length === 0 ? (
+                  <div className="text-sm text-gray-500">No breaks added.</div>
+                ) : (
+                  breakDialogState.breaks.map((entry, index) => {
+                    const startMin = dayStartMin + breakDialogState.startSlot * slotMin + entry.offset_min;
+                    const endMin = startMin + entry.duration_min;
+                    return (
+                      <div key={`break-entry-${index}-${entry.offset_min}`} className="flex items-center justify-between rounded border px-2 py-1.5">
+                        <div className="text-sm">
+                          {formatSlotRange(0, 1, startMin, endMin)} - {entry.duration_min} min
+                        </div>
+                        <button
+                          type="button"
+                          className="text-xs text-red-600"
+                          onClick={() =>
+                            setBreakDialogState((prev) => ({
+                              ...prev,
+                              breaks: prev.breaks.filter((_, i) => i !== index),
+                            }))
+                          }
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {breakDialogError && <div className="text-sm text-red-600">{breakDialogError}</div>}
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="h-9 rounded border px-3 text-sm"
+                onClick={() => setBreakDialogState((prev) => ({ ...prev, open: false }))}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                className="h-9 rounded bg-black px-3 text-sm text-white disabled:opacity-60"
+                onClick={() => void saveBreakDialog()}
+                disabled={breakDialogBusy}
+              >
+                {breakDialogBusy ? t("common.saving") : t("common.save")}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={assignmentDialogOpen}
@@ -4912,7 +6225,7 @@ export default function SolveOverlay({
 
             <div className="p-4 flex-1 overflow-auto">
               <div className="w-[80%] mx-auto relative border rounded-lg bg-white overflow-hidden shadow-sm">
-                <div className="grid" style={{ gridTemplateColumns: `100px repeat(${daysCount}, 1fr)` }}>
+                <div className="grid select-none" style={{ gridTemplateColumns: `100px repeat(${daysCount}, 1fr)` }}>
                   <div className="bg-gray-50 border-b h-12" />
                   {Array.from({ length: daysCount }).map((_, index) => (
                     <div key={`preview-day-${index}`} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
@@ -4921,7 +6234,7 @@ export default function SolveOverlay({
                   ))}
                 </div>
 
-                <div data-schedule-scroll className="relative max-h-[70vh] overflow-y-auto hide-scrollbar">
+                <div data-schedule-scroll className="relative max-h-[70vh] overflow-y-auto hide-scrollbar select-none">
                   <div className="pointer-events-none absolute left-0 top-0 z-[2]" style={{ width: timeColPx, height: bodyHeight }}>
                     <div className="absolute inset-x-0 top-1 text-center text-xs text-gray-500">
                       {previewTimeLabel(0)}
@@ -5083,125 +6396,94 @@ export default function SolveOverlay({
         !isJiggleMode &&
         !suppressRightDock &&
         !commentsPanelOpen &&
+        !(isNarrowMobile && leftPanelOpen) &&
         canCommentCards && (
-        <div
-          className="fixed top-1/2 -translate-y-1/2 z-[140] pointer-events-none"
-          style={{ right: "1rem" }}
-        >
-          <div className="flex flex-col items-center gap-3">
-            <button
-              type="button"
-              title={t("solve_overlay.comments")}
-              onClick={() => onCommentsPanelOpenChange?.(true)}
-              className="w-12 h-12 rounded-full shadow-md border flex items-center justify-center pointer-events-auto transition-colors bg-black border-gray-800"
-            >
-              <MessageSquare className="w-5 h-5 text-white" />
-            </button>
-          </div>
-        </div>
+        <RightSideDock
+          visible={true}
+          publishedCommentOnly={true}
+          commentTitle={t("solve_overlay.comments")}
+          onCommentsPressed={() => onCommentsPanelOpenChange?.(true)}
+          error={null}
+          labels={{
+            add: "",
+            participants: "",
+            breaks: "",
+            blockages: "",
+            cells: "",
+            publishDraft: "",
+            nothingToPublish: "",
+            solving: "",
+          }}
+        />
       )}
 
       {/* Right-side solve dock */}
       {canSolve &&
         scheduleViewMode === "draft" &&
-        !isJiggleMode &&
         !suppressRightDock &&
-        !commentsPanelOpen && (
-        <div
-          className="fixed top-1/2 -translate-y-1/2 z-[140] pointer-events-none"
-          style={{ right: "1rem" }}
-        >
-          <div className="flex flex-col items-center gap-3">
-            <button
-              type="button"
-              title={solveDisabledReason}
-              onClick={() => {
-                onSolvePressed();
-              }}
-              disabled={!canUseSolve}
-              className={`w-12 h-12 rounded-full shadow-md border flex items-center justify-center pointer-events-auto disabled:cursor-not-allowed transition-colors ${
-                canUseSolve ? "bg-black border-gray-800" : "bg-gray-700 border-gray-600"
-              }`}
-              aria-disabled={!canUseSolve}
-            >
-              {canUseSolve ? (
-                <Lightbulb className="w-5 h-5 text-amber-300" />
-              ) : (
-                <LightbulbOff className="w-5 h-5 text-gray-300" />
-              )}
-            </button>
-
-            <button
-              type="button"
-              title={t("common.edit")}
-              onClick={() => {
-                setIsJiggleMode((prev) => !prev);
-              }}
-              disabled={!canManualEditCards}
-              className={`w-12 h-12 rounded-full shadow-md border flex items-center justify-center pointer-events-auto disabled:cursor-not-allowed transition-colors ${
-                canManualEditCards ? "bg-black border-gray-800" : "bg-gray-700 border-gray-600"
-              }`}
-              aria-disabled={!canManualEditCards}
-            >
-              <Edit className={`w-5 h-5 ${canManualEditCards ? "text-white" : "text-gray-300"}`} />
-            </button>
-
-            <button
-              type="button"
-              title={canPublishDraft ? t("solve_overlay.publish_draft_schedule") : t("solve_overlay.nothing_to_publish")}
-              onClick={() => {
-                void publishDraftSchedule();
-              }}
-              disabled={!canPublishDraft}
-              className={`w-12 h-12 rounded-full shadow-md border flex items-center justify-center pointer-events-auto disabled:cursor-not-allowed transition-colors ${
-                canPublishDraft ? "bg-black border-gray-800" : "bg-gray-700 border-gray-600"
-              }`}
-              aria-disabled={!canPublishDraft}
-            >
-              {isPublishing ? (
-                <Loader2 className="w-5 h-5 text-gray-200 animate-spin" />
-              ) : (
-                <Upload className={`w-5 h-5 ${canPublishDraft ? "text-white" : "text-gray-300"}`} />
-              )}
-            </button>
-          </div>
-          {error && <div className="mt-2 w-48 text-xs text-red-600 text-right">{error}</div>}
-          {isSolving && (
-            <div className="mt-1 w-48 text-xs text-gray-600 text-right">
-              {t("solve_overlay.solving")} {Math.round(solveElapsedMs / 100) / 10}s
-            </div>
-          )}
-        </div>
+        !commentsPanelOpen &&
+        !(isNarrowMobile && leftPanelOpen) && (
+        <RightSideDock
+          visible={true}
+          closeSignal={rightDockCloseSignal}
+          canUseSolve={canUseSolve}
+          solveDisabledReason={solveDisabledReason}
+          canManualEditCards={canManualEditCards}
+          hasOverstaffableCells={hasOverstaffableCells}
+          hasUnassignedCells={hasUnassignedCells}
+          isParticipantsToolActive={isParticipantsToolActive}
+          isBreakToolActive={isBreakToolActive}
+          isBlockageToolActive={isBlockageToolActive}
+          isUnassignedToolActive={isUnassignedToolActive}
+          canPublishDraft={canPublishDraft}
+          isPublishing={isPublishing}
+          isSolving={isSolving}
+          solveElapsedMs={solveElapsedMs}
+          error={error}
+          labels={{
+            add: t("common.add"),
+            participants: t("solve_overlay.participants"),
+            breaks: "Breaks",
+            blockages: "Blockages",
+            cells: "Cells",
+            publishDraft: t("solve_overlay.publish_draft_schedule"),
+            nothingToPublish: t("solve_overlay.nothing_to_publish"),
+            solving: t("solve_overlay.solving"),
+          }}
+          onSolvePressed={onSolvePressed}
+          onActivateTool={activateEditTool}
+          onPublishDraft={() => {
+            void publishDraftSchedule();
+          }}
+        />
       )}
 
-      {canManualEditCards && isJiggleMode && (
-        <div className="fixed left-4 top-1/2 -translate-y-1/2 z-[165] pointer-events-none">
-          <div
-            ref={deleteDropRef}
-            data-jiggle-delete-drop
-            className={`relative isolate w-12 h-12 rounded-full border shadow-md pointer-events-auto transition-all duration-150 flex items-center justify-center ${
-              isDeleteDropActive
-                ? "bg-red-600 border-red-700 scale-110"
-                : "bg-white border-gray-300"
-            }`}
-            title={t("solve_overlay.drop_to_remove_placement")}
-          >
-            <Trash2 className={`w-5 h-5 ${isDeleteDropActive ? "text-white" : "text-red-600"}`} />
-            <div
-              className={`absolute left-full top-1/2 -translate-y-1/2 ml-[-22px] h-44 w-9 overflow-hidden pointer-events-none transition-all duration-150 -z-10 ${
-                isDeleteDropActive ? "opacity-100 scale-100" : "opacity-0 scale-95"
-              }`}
-            >
-              <div
-                className="absolute top-1/2 left-0 h-[220px] w-[220px] -translate-y-1/2 -translate-x-[190px] rounded-full border-[6px] border-red-500/85 shadow-[0_0_34px_rgba(239,68,68,0.34)]"
-                style={{ background: "transparent" }}
-              />
+      {canManualEditCards && isParticipantsToolActive && (
+        <div className="fixed right-[-108px] top-1/2 -translate-y-1/2 z-[220] pointer-events-none" data-jiggle-participants>
+          <div className="w-[228px] pointer-events-auto">
+            <div className="relative h-[312px] overflow-y-auto overscroll-contain pl-1 pr-2">
+              <div className="space-y-2">
+                {participantScrollerItems.map((participant) => (
+                  <div
+                    key={`participant-tool-${participant.id}`}
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-[0_10px_16px_-14px_rgba(0,0,0,0.5)]"
+                  >
+                    <div className="truncate text-sm font-semibold text-gray-900">{participant.name}</div>
+                    <div className="text-[10px] text-gray-500">{participantTierById[participant.id] ?? "-"}</div>
+                  </div>
+                ))}
+                {participantScrollerItems.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-gray-300 bg-white/80 px-3 py-2 text-xs text-gray-500">
+                    {t("participants_page.no_participants")}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {canManualEditCards && isJiggleMode && (
+      {canManualEditCards && isUnassignedToolActive && (
         <div className="fixed right-[-108px] top-1/2 -translate-y-1/2 z-[220] pointer-events-none" data-jiggle-unassigned>
           <div className="w-[228px] pointer-events-auto">
             <div

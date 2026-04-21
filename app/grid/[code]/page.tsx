@@ -2,7 +2,7 @@
 import { backendFetchJSON } from "@/lib/backend";
 import { getCurrentUser } from "@/lib/auth";
 import type { Grid, Role } from "@/lib/types";
-import SideDock from "@/components/layout/SideDock";
+import LeftSideDock from "@/components/layout/LeftSideDock";
 import GridSchedulePanel from "@/components/grid/GridSchedulePanel";
 import { resolveGridByCode } from "./_helpers";
 import { t as translate } from "@/lib/i18n";
@@ -94,7 +94,7 @@ export default async function GridOverview({
 
   return (
     <div className="relative">
-      <SideDock
+      <LeftSideDock
         gridId={Number(grid.id)}
         gridCode={grid.grid_code || code}
         role={role}

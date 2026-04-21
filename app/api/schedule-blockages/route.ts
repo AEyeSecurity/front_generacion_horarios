@@ -1,0 +1,44 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getAccessToken } from "@/lib/cookies";
+
+const B = (process.env.BACKEND_URL || "").replace(/\/$/, "");
+
+export async function GET(req: NextRequest) {
+  const access = await getAccessToken();
+  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  const url = new URL(req.url);
+  const qs = url.searchParams.toString();
+  const res = await fetch(`${B}/api/schedule-blockages/${qs ? `?${qs}` : ""}`, {
+    headers: {
+      Authorization: `Bearer ${access}`,
+      cookie: req.headers.get("cookie") || "",
+    },
+    cache: "no-store",
+  });
+  const txt = await res.text().catch(() => "");
+  return new NextResponse(txt, {
+    status: res.status,
+    headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
+  });
+}
+
+export async function POST(req: NextRequest) {
+  const access = await getAccessToken();
+  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  const body = await req.text();
+  const res = await fetch(`${B}/api/schedule-blockages/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${access}`,
+      "content-type": "application/json",
+      cookie: req.headers.get("cookie") || "",
+    },
+    body,
+    cache: "no-store",
+  });
+  const txt = await res.text().catch(() => "");
+  return new NextResponse(txt, {
+    status: res.status,
+    headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
+  });
+}

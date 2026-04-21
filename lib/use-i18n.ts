@@ -45,8 +45,8 @@ export function useI18n(): I18nApi {
   }, []);
 
   const t = useCallback((key: I18nKey, params?: Params) => {
-    return translate(readDocumentPreferredLanguage(), key, params);
-  }, []);
+    return translate(locale, key, params);
+  }, [locale]);
 
   return { locale, t };
 }

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -39,6 +40,7 @@ function displayName(me: User): string {
 
 export default function UserMenu({ me }: { me: User }) {
   const { t } = useI18n();
+  const router = useRouter();
   const small = 32; // px
   const large = 64; // px
   const userId = String(me.id);
@@ -74,9 +76,13 @@ export default function UserMenu({ me }: { me: User }) {
 
   useEffect(() => {
     const explicit = readExplicitPreferredLanguage(userId);
-    const initial = explicit ?? backendPreferredLanguage ?? detectPreferredLanguageFromNavigator();
+    const initial = backendPreferredLanguage ?? explicit ?? detectPreferredLanguageFromNavigator();
     setLanguage(initial);
     setLanguageError(null);
+    if (backendPreferredLanguage) {
+      writeExplicitPreferredLanguage(userId, backendPreferredLanguage);
+      writeLastSyncedPreferredLanguage(userId, backendPreferredLanguage);
+    }
   }, [backendPreferredLanguage, userId]);
 
   useEffect(() => {
@@ -84,12 +90,9 @@ export default function UserMenu({ me }: { me: User }) {
   }, [language]);
 
   useEffect(() => {
+    if (backendPreferredLanguage) return;
     const explicit = readExplicitPreferredLanguage(userId);
     if (!explicit) return;
-    if (backendPreferredLanguage === explicit) {
-      writeLastSyncedPreferredLanguage(userId, explicit);
-      return;
-    }
 
     const lastSynced = readLastSyncedPreferredLanguage(userId);
     if (lastSynced === explicit) return;
@@ -164,7 +167,8 @@ export default function UserMenu({ me }: { me: User }) {
     }
     writeLastSyncedPreferredLanguage(userId, result.language);
     setLanguage(result.language);
-  }, [savePreferredLanguage, userId]);
+    router.refresh();
+  }, [router, savePreferredLanguage, userId]);
 
   const SmallAvatar = (
     <div
@@ -230,33 +234,6 @@ export default function UserMenu({ me }: { me: User }) {
         <div className="text-center">
           <div className="text-base font-semibold">{displayName(me)}</div>
         </div>
-        <div className="rounded-lg border border-gray-200 p-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t("common.language")}</div>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => void onLanguageSelect("en-US")}
-              className={`rounded border px-2 py-1.5 text-xs transition-colors ${
-                language === "en-US" ? "border-black bg-black text-white" : "border-gray-300 hover:bg-gray-50"
-              }`}
-              disabled={languageBusy}
-            >
-              {t("common.english")}
-            </button>
-            <button
-              type="button"
-              onClick={() => void onLanguageSelect("es-AR")}
-              className={`rounded border px-2 py-1.5 text-xs transition-colors ${
-                language === "es-AR" ? "border-black bg-black text-white" : "border-gray-300 hover:bg-gray-50"
-              }`}
-              disabled={languageBusy}
-            >
-              {t("common.spanish")}
-            </button>
-          </div>
-          {languageBusy && <div className="mt-2 text-xs text-gray-500">{t("user_menu.saving_language")}</div>}
-          {languageError && <div className="mt-2 text-xs text-red-600">{languageError}</div>}
-        </div>
         <div className="pt-2">
           {allowPasswordChange && (
             <>
@@ -276,6 +253,51 @@ export default function UserMenu({ me }: { me: User }) {
               {t("user_menu.log_out")}
             </button>
           </form>
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => void onLanguageSelect(language === "en-US" ? "es-AR" : "en-US")}
+              className={`relative h-6 w-10 rounded-full border p-0 transition-all duration-200 hover:scale-[1.02] ${
+                languageBusy ? "opacity-90 animate-pulse" : ""
+              }`}
+              style={{
+                color: "#111827",
+                backgroundColor: "rgba(255,255,255,0.9)",
+                borderColor: "rgba(209,213,219,0.95)",
+                boxShadow:
+                  "inset 1.5px 1.5px 3px rgba(15,23,42,0.14), inset -1.5px -1.5px 3px rgba(255,255,255,0.72), 0 1px 3px rgba(0,0,0,0.16)",
+              }}
+              title={`${t("common.language")}: ${language === "en-US" ? "EN" : "ES"}`}
+              aria-busy={languageBusy}
+              disabled={languageBusy}
+            >
+              <span
+                className={`pointer-events-none absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] font-semibold tracking-wide transition-opacity duration-200 ${
+                  language === "en-US" ? "opacity-100" : "opacity-45"
+                }`}
+              >
+                EN
+              </span>
+              <span
+                className={`pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] font-semibold tracking-wide transition-opacity duration-200 ${
+                  language === "es-AR" ? "opacity-100" : "opacity-45"
+                }`}
+              >
+                ES
+              </span>
+              <span
+                className="pointer-events-none absolute left-1 top-1 h-4 w-4 rounded-full border transition-transform duration-200 ease-out"
+                style={{
+                  backgroundColor: "#f8fafc",
+                  borderColor: "rgba(203,213,225,0.95)",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.2), inset 0 1px 1px rgba(255,255,255,0.3)",
+                  transform: `translateX(${language === "en-US" ? 0 : 16}px)`,
+                }}
+              />
+            </button>
+          </div>
+          {languageBusy && <div className="mt-2 text-right text-xs text-gray-500">{t("user_menu.saving_language")}</div>}
+          {languageError && <div className="mt-2 text-right text-xs text-red-600">{languageError}</div>}
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

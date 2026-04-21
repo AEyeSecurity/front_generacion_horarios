@@ -153,6 +153,8 @@ const EN_US = {
     "This participant has an Impossible availability rule in that time range.",
   "grid_schedule.could_not_move_placement": "Could not move placement.",
   "grid_schedule.could_not_place_cell": "Could not place cell.",
+  "grid_schedule.multi_day_cells_cannot_overlap_themselves":
+    "Multi-day cells cannot overlap with themselves.",
   "grid_schedule.drop_to_remove_participant": "Drop here to remove this participant from the placement",
   "grid_schedule.history_load_error": "Could not load draft history.",
   "grid_schedule.history_apply_error": "Could not apply draft history action.",
@@ -235,6 +237,12 @@ const EN_US = {
   "solve_overlay.no_timestamp": "No timestamp",
   "solve_overlay.no_valid_participants_for_slot":
     "No valid participants/staff are available at this slot (availability, overlap, or tier constraints).",
+  "solve_overlay.participant_unavailable_in_placement":
+    "Participant {participant} is unavailable in that placement ({day}: {time})",
+  "solve_overlay.participant_has_cell_in_placement":
+    "Participant {participant} has {cell} in that placement ({day}: {time})",
+  "solve_overlay.overlaps_existing_blockage":
+    "Overlaps existing blockage ({day}: {time})",
   "solve_overlay.nothing_to_publish": "Nothing to publish",
   "solve_overlay.objective_value": "Objective: {value}",
   "solve_overlay.only_selectable_can_be_chosen": "Only selectable candidates can be chosen.",
@@ -802,6 +810,8 @@ const ES_AR: Dictionary = {
     "Este participante tiene una regla de disponibilidad Imposible en ese rango horario.",
   "grid_schedule.could_not_move_placement": "No se pudo mover la asignacion.",
   "grid_schedule.could_not_place_cell": "No se pudo ubicar la celda.",
+  "grid_schedule.multi_day_cells_cannot_overlap_themselves":
+    "Las celdas divididas en varios dias no pueden superponerse consigo mismas.",
   "grid_schedule.drop_to_remove_participant": "Solta aqui para quitar este participante de la asignacion",
 
   "grid_solver_settings.day_heatmap_title": "Heatmap diario",
@@ -857,6 +867,14 @@ const ES_AR: Dictionary = {
   "solve_overlay.participants_panel_help": "Selecciona uno para abrir la vista de horario de candidatura.",
   "solve_overlay.no_assigned_participants_candidate": "No hay participantes asignados en esta candidatura.",
   "solve_overlay.no_participants_match_search": "Ningun participante coincide con la busqueda.",
+  "solve_overlay.no_valid_participants_for_slot":
+    "No hay participantes/staff validos disponibles en este bloque (disponibilidad, solapamiento o restricciones de categoria).",
+  "solve_overlay.participant_unavailable_in_placement":
+    "El participante {participant} no esta disponible en esa asignacion ({day}: {time})",
+  "solve_overlay.participant_has_cell_in_placement":
+    "El participante {participant} tiene {cell} en esa asignacion ({day}: {time})",
+  "solve_overlay.overlaps_existing_blockage":
+    "Se superpone con un bloqueo existente ({day}: {time})",
   "solve_overlay.staff_option": "Opcion de staff",
   "solve_overlay.tier_pools_option": "Opcion por categoria",
   "solve_overlay.publish": "Publicar",

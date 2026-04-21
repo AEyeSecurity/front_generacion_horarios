@@ -30,6 +30,8 @@ type GridConfig = {
   cell_size_min?: number | null;
   days_enabled?: number[] | null;
   allow_overstaffing?: boolean | null;
+  day_start?: string | null;
+  day_end?: string | null;
 };
 
 type Cell = {
@@ -66,6 +68,16 @@ const LOCK_VALIDATION_KEYS = [
 
 function clampInt(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function parseClockToMin(value: string | null | undefined) {
+  if (!value) return 0;
+  const parts = String(value).split(":");
+  if (parts.length < 2) return 0;
+  const hh = Number(parts[0]);
+  const mm = Number(parts[1]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return 0;
+  return hh * 60 + mm;
 }
 
 function arraysEqual(a: number[], b: number[]) {
@@ -222,8 +234,21 @@ function buildStaffingError(
   tierCounts: TierCounts,
   tierPools: TierPools,
   staffGroups: StaffOption[],
-  participantMap: Record<string, Participant>
+  participantMap: Record<string, Participant>,
+  participants: Participant[]
 ) {
+  const availableByTier: TierCounts = { ...EMPTY_TIER_COUNTS };
+  for (const participant of participants) {
+    if (participant.tier) {
+      availableByTier[participant.tier] += 1;
+    }
+  }
+  for (const tier of TIERS) {
+    if (tierCounts[tier] > availableByTier[tier]) {
+      return `${tier} tier count cannot exceed available participants (${availableByTier[tier]}).`;
+    }
+  }
+
   const headcount = TIERS.reduce((sum, tier) => sum + Math.max(0, Number(tierCounts[tier] || 0)), 0);
   if (headcount < 1) return "Headcount must be at least 1.";
 
@@ -331,7 +356,7 @@ export default function EditCellDialog({
     e.preventDefault();
   };
 
-  const [step, setStep] = React.useState<1 | 2 | 3>(1);
+  const [step, setStep] = React.useState<number>(1);
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [durationCells, setDurationCells] = React.useState<number>(1);
@@ -355,6 +380,8 @@ export default function EditCellDialog({
   const [units, setUnits] = React.useState<Unit[]>([]);
   const [bundles, setBundles] = React.useState<Bundle[]>([]);
   const [cellMin, setCellMin] = React.useState<number>(1);
+  const [enabledDaysCount, setEnabledDaysCount] = React.useState<number>(7);
+  const [horizonDayMinutes, setHorizonDayMinutes] = React.useState<number | null>(null);
   const [tierCounts, setTierCounts] = React.useState<TierCounts>({ ...EMPTY_TIER_COUNTS });
   const [tierPools, setTierPools] = React.useState<TierPools>({ ...EMPTY_TIER_POOLS });
   const [staffGroups, setStaffGroups] = React.useState<StaffOption[]>([]);
@@ -373,6 +400,20 @@ export default function EditCellDialog({
     () => Object.fromEntries(participants.map((p) => [String(p.id), p])) as Record<string, Participant>,
     [participants]
   );
+  const participantTierCaps = React.useMemo(() => {
+    const caps: TierCounts = { ...EMPTY_TIER_COUNTS };
+    for (const participant of participants) {
+      if (participant.tier) caps[participant.tier] += 1;
+    }
+    return caps;
+  }, [participants]);
+  const setTierCountsClamped = React.useCallback((next: TierCounts) => {
+    setTierCounts({
+      PRIMARY: clampInt(next.PRIMARY || 0, 0, participantTierCaps.PRIMARY),
+      SECONDARY: clampInt(next.SECONDARY || 0, 0, participantTierCaps.SECONDARY),
+      TERTIARY: clampInt(next.TERTIARY || 0, 0, participantTierCaps.TERTIARY),
+    });
+  }, [participantTierCaps]);
   const unitNameById = React.useMemo(
     () => Object.fromEntries(units.map((u) => [String(u.id), u.name || `Unit ${u.id}`])) as Record<string, string>,
     [units]
@@ -421,12 +462,30 @@ export default function EditCellDialog({
     () => multiDayEnabled && splitDaysSafe > 1 && durationCellsSafe % splitDaysSafe === 0,
     [multiDayEnabled, splitDaysSafe, durationCellsSafe]
   );
+  const maxDurationDayCells = React.useMemo(() => {
+    const minutesFromGrid = horizonDayMinutes && horizonDayMinutes > 0 ? horizonDayMinutes : 0;
+    if (minutesFromGrid > 0) {
+      return Math.max(1, Math.floor(minutesFromGrid / Math.max(1, cellMin)));
+    }
+    const spans = timeRanges
+      .map((range) => parseClockToMin(range.end_time) - parseClockToMin(range.start_time))
+      .filter((span) => span > 0);
+    if (spans.length === 0) return null;
+    return Math.max(1, Math.floor(Math.max(...spans) / Math.max(1, cellMin)));
+  }, [horizonDayMinutes, cellMin, timeRanges]);
+  const maxDurationCellsAllowed = React.useMemo(() => {
+    if (maxDurationDayCells == null) return null;
+    const dayFactor = multiDayEnabled ? Math.max(1, enabledDaysCount) : 1;
+    return Math.max(1, maxDurationDayCells * dayFactor);
+  }, [maxDurationDayCells, multiDayEnabled, enabledDaysCount]);
+  const hasTimeRangeOptions = timeRanges.length > 0;
+  const canShowMultiDayToggle = enabledDaysCount > 1;
+  const hasUnitsStep = units.length > 0;
 
   React.useEffect(() => {
     if (!multiDayEnabled) {
       if (equalSplit) setEqualSplit(false);
       if (splitOrderFlexible) setSplitOrderFlexible(false);
-      if (step === 3) setStep(2);
       return;
     }
     if (!canEnableMultiDay) {
@@ -438,6 +497,28 @@ export default function EditCellDialog({
       setSplitDays(splitDaysSafe);
     }
   }, [multiDayEnabled, equalSplit, splitOrderFlexible, step, canEnableMultiDay, splitDays, splitDaysSafe]);
+
+  React.useEffect(() => {
+    if (canShowMultiDayToggle) return;
+    if (!multiDayEnabled) return;
+    setMultiDayEnabled(false);
+    setEqualSplit(false);
+    setSplitOrderFlexible(false);
+  }, [canShowMultiDayToggle, multiDayEnabled]);
+
+  React.useEffect(() => {
+    setTierCounts((prev) => ({
+      PRIMARY: clampInt(prev.PRIMARY || 0, 0, participantTierCaps.PRIMARY),
+      SECONDARY: clampInt(prev.SECONDARY || 0, 0, participantTierCaps.SECONDARY),
+      TERTIARY: clampInt(prev.TERTIARY || 0, 0, participantTierCaps.TERTIARY),
+    }));
+  }, [participantTierCaps]);
+
+  React.useEffect(() => {
+    if (maxDurationCellsAllowed == null) return;
+    if (durationCellsSafe <= maxDurationCellsAllowed) return;
+    setDurationCells(maxDurationCellsAllowed);
+  }, [maxDurationCellsAllowed, durationCellsSafe]);
 
   React.useEffect(() => {
     if (!multiDayEnabled) return;
@@ -493,9 +574,22 @@ export default function EditCellDialog({
     if (splitPartsCells.some((part) => part < 1)) return false;
     return splitPartsCells.reduce((sum, part) => sum + part, 0) === durationCellsSafe;
   }, [multiDayEnabled, canEnableMultiDay, splitPartsCells, splitDaysSafe, durationCellsSafe]);
-  const totalSteps = multiDayEnabled ? 3 : 2;
-  const finalStep = totalSteps as 2 | 3;
+  const steps = React.useMemo(() => {
+    const flow: Array<"info" | "split" | "units" | "staffing"> = ["info"];
+    if (multiDayEnabled) flow.push("split");
+    if (hasUnitsStep) flow.push("units");
+    flow.push("staffing");
+    return flow;
+  }, [multiDayEnabled, hasUnitsStep]);
+  const totalSteps = steps.length;
+  const finalStep = totalSteps;
+  const currentStepKey = steps[Math.min(Math.max(step, 1), totalSteps) - 1] ?? "info";
   const accentColor = colorHex ?? "#111827";
+
+  React.useEffect(() => {
+    if (step <= totalSteps) return;
+    setStep(totalSteps);
+  }, [step, totalSteps]);
 
   React.useEffect(() => {
     if (!open || !cell) return;
@@ -512,6 +606,8 @@ export default function EditCellDialog({
     setSplitBoundaries([1]);
     setDragBoundaryIndex(null);
     setMaxSplitDays(7);
+    setEnabledDaysCount(7);
+    setHorizonDayMinutes(null);
     setTimeRangeId(cell.time_range != null ? String(cell.time_range) : "");
     setColorHex((cell.colorHex || cell.color_hex || null) as string | null);
     setColorMenuOpen(false);
@@ -573,6 +669,14 @@ export default function EditCellDialog({
           if (Array.isArray(g?.days_enabled)) {
             gridMaxDays = Math.max(1, Math.min(7, g.days_enabled.length));
             setMaxSplitDays(gridMaxDays);
+            setEnabledDaysCount(gridMaxDays);
+          }
+          const startMin = parseClockToMin(g?.day_start);
+          const endMin = parseClockToMin(g?.day_end);
+          if (endMin > startMin) {
+            setHorizonDayMinutes(endMin - startMin);
+          } else {
+            setHorizonDayMinutes(null);
           }
           const overstaffingEnabled = g?.allow_overstaffing !== false;
           setGridAllowsOverstaffing(overstaffingEnabled);
@@ -711,17 +815,40 @@ export default function EditCellDialog({
     })();
   }, [open, gridId, cell]);
 
-  const stepOneReady = Boolean(name.trim() && timeRangeId && durationCells >= 1 && activeBundleSets.length > 0);
-  const staffingError = buildStaffingError(tierCounts, tierPools, staffGroups, participantMap);
-  const canSubmit = stepOneReady && splitStepReady && !staffingError && !bundleSetsError;
-  const canAdvanceFromStepOne = stepOneReady && !bundleSetsError;
+  const stepOneReady = Boolean(
+    name.trim() &&
+      durationCellsSafe >= 1 &&
+      (maxDurationCellsAllowed == null || durationCellsSafe <= maxDurationCellsAllowed)
+  );
+  const unitsStepReady = !bundleSetsError;
+  const staffingError = buildStaffingError(tierCounts, tierPools, staffGroups, participantMap, participants);
+  const canSubmit = stepOneReady && splitStepReady && unitsStepReady && !staffingError && !bundleSetsError;
   const canAdvanceFromCurrentStep =
-    step === 1 ? canAdvanceFromStepOne : step === 2 && multiDayEnabled ? splitStepReady : false;
-  const showStaffingStep = step === finalStep;
-
-  const onMultiChange = (e: React.ChangeEvent<HTMLSelectElement>, setFn: (v: string[]) => void) => {
-    const vals = Array.from(e.target.selectedOptions).map((o) => o.value);
-    setFn(vals);
+    currentStepKey === "info"
+      ? stepOneReady
+      : currentStepKey === "split"
+      ? splitStepReady
+      : currentStepKey === "units"
+      ? unitsStepReady
+      : false;
+  const showStaffingStep = currentStepKey === "staffing";
+  const canOpenStep = (targetStep: number) => {
+    if (targetStep <= 1) return true;
+    for (let index = 1; index < targetStep; index += 1) {
+      const key = steps[index - 1];
+      if (key === "info" && !stepOneReady) return false;
+      if (key === "split" && !splitStepReady) return false;
+      if (key === "units" && !unitsStepReady) return false;
+    }
+    return true;
+  };
+  const toggleUnitSelection = (unitId: string) => {
+    const isSelected = unitIds.includes(unitId);
+    const isDisabled = usedUnitIds.has(unitId) && !isSelected;
+    if (isDisabled) return;
+    setUnitIds((prev) =>
+      prev.includes(unitId) ? prev.filter((value) => value !== unitId) : [...prev, unitId]
+    );
   };
 
   const onBoundaryChange = React.useCallback((index: number, value: number) => {
@@ -781,6 +908,7 @@ export default function EditCellDialog({
       return;
     }
 
+    if (!canShowMultiDayToggle) return;
     if (durationCellsSafe < 2) {
       setDurationCells(2);
     }
@@ -862,6 +990,10 @@ export default function EditCellDialog({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit || !cell) return;
+    if (maxDurationCellsAllowed != null && durationCellsSafe > maxDurationCellsAllowed) {
+      setErr(`Duration cannot exceed ${maxDurationCellsAllowed} cells for the selected horizon.`);
+      return;
+    }
     setSaving(true);
     setErr(null);
     try {
@@ -875,7 +1007,7 @@ export default function EditCellDialog({
         split_order_flexible: splitOrderFlexibleValue,
         duration_min: splitPartsMin.reduce((sum, part) => sum + part, 0),
         division_days: splitPartsMin.length,
-        time_range: Number(timeRangeId),
+        time_range: timeRangeId ? Number(timeRangeId) : null,
         colorHex: colorHex ?? null,
         headcount: inferredHeadcount,
         tier_counts: tierCounts,
@@ -890,7 +1022,15 @@ export default function EditCellDialog({
       }
 
       const desiredSets = activeBundleSets.map((set) => set.map(Number));
-      if (seriesCells.length === 1 && desiredSets.length > 1) {
+      if (!hasUnitsStep || desiredSets.length === 0) {
+        for (const seriesCell of seriesCells) {
+          const lockPayload = normalizeLockPayload(seriesCell, splitOrderFlexibleValue);
+          await patchCell(seriesCell.id, {
+            ...sharedPayload,
+            ...lockPayload,
+          });
+        }
+      } else if (seriesCells.length === 1 && desiredSets.length > 1) {
         const res = await fetch(`/api/cells/${cell.id}/extend_series`, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -973,19 +1113,14 @@ export default function EditCellDialog({
             {Array.from({ length: totalSteps }, (_, index) => {
               const idx = index + 1;
               const isActive = step === idx;
-              const canGo =
-                idx === 1
-                  ? true
-                  : idx === 2
-                  ? canAdvanceFromStepOne
-                  : canAdvanceFromStepOne && splitStepReady;
+              const canGo = canOpenStep(idx);
               return (
                 <React.Fragment key={idx}>
                   <button
                     type="button"
                     onClick={() => {
                       if (!canGo) return;
-                      setStep(idx as 1 | 2 | 3);
+                      setStep(idx);
                     }}
                     disabled={!canGo}
                     className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-semibold transition-colors ${
@@ -1011,7 +1146,7 @@ export default function EditCellDialog({
         {err && <div className="text-sm text-red-600 mb-2 whitespace-pre-wrap">{err}</div>}
 
         <form onSubmit={submit} className="space-y-4">
-          {step === 1 ? (
+          {currentStepKey === "info" ? (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
                 <div className="sm:col-span-4">
@@ -1020,32 +1155,49 @@ export default function EditCellDialog({
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-sm mb-1">{t("create_cell.duration_cells_required")}</label>
-                  <input className="w-full border rounded px-3 py-2 text-sm" type="number" min={1} step={1} value={durationCells} onChange={(e) => setDurationCells(Math.max(1, Number(e.target.value) || 1))} required />
+                  <input
+                    className="w-full border rounded px-3 py-2 text-sm"
+                    type="number"
+                    min={1}
+                    max={maxDurationCellsAllowed ?? undefined}
+                    step={1}
+                    value={durationCells}
+                    onChange={(e) => {
+                      const raw = Math.max(1, Number(e.target.value) || 1);
+                      const capped = maxDurationCellsAllowed == null ? raw : Math.min(raw, maxDurationCellsAllowed);
+                      setDurationCells(capped);
+                    }}
+                    required
+                  />
                   <div className="text-xs text-gray-500 mt-1">{t("create_cell.total_minutes", { minutes: durationCells * cellMin })}</div>
                 </div>
-                <div className="sm:col-span-2 flex items-end">
-                  <label className="inline-flex items-center gap-2 text-sm select-none">
-                    <input
-                      type="checkbox"
-                      checked={multiDayEnabled}
-                      onChange={(e) => onToggleMultiDay(e.target.checked)}
-                      disabled={!canEnableMultiDay && !multiDayEnabled}
-                      className="h-4 w-4"
-                    />
-                    {t("create_cell.more_than_day")}
-                  </label>
-                </div>
-                <div className="sm:col-span-4">
-                  <label className="block text-sm mb-1">{t("create_cell.time_range_required")}</label>
-                  <select className="w-full border rounded px-3 py-2 text-sm" value={timeRangeId} onChange={(e) => setTimeRangeId(e.target.value)} required>
-                    <option value="">{t("create_cell.select_option")}</option>
-                    {timeRanges.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name} ({t.start_time}-{t.end_time})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {canShowMultiDayToggle && (
+                  <div className="sm:col-span-2 flex items-end">
+                    <label className="inline-flex items-center gap-2 text-sm select-none">
+                      <input
+                        type="checkbox"
+                        checked={multiDayEnabled}
+                        onChange={(e) => onToggleMultiDay(e.target.checked)}
+                        disabled={!canEnableMultiDay && !multiDayEnabled}
+                        className="h-4 w-4"
+                      />
+                      {t("create_cell.more_than_day")}
+                    </label>
+                  </div>
+                )}
+                {hasTimeRangeOptions && (
+                  <div className="sm:col-span-4">
+                    <label className="block text-sm mb-1">{t("create_cell.time_range_required")}</label>
+                    <select className="w-full border rounded px-3 py-2 text-sm" value={timeRangeId} onChange={(e) => setTimeRangeId(e.target.value)}>
+                      <option value="">{t("create_cell.select_option")}</option>
+                      {timeRanges.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} ({t.start_time}-{t.end_time})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="sm:col-span-1 ml-auto">
                   <label className="block text-sm mb-1">{t("create_cell.color")}</label>
                   <div className="relative">
@@ -1078,7 +1230,7 @@ export default function EditCellDialog({
                   </div>
                 </div>
               </div>
-              {!canEnableMultiDay && (
+              {canShowMultiDayToggle && !canEnableMultiDay && (
                 <div className="text-xs text-gray-500">
                   {t("create_cell.more_than_day_unavailable")}
                 </div>
@@ -1089,107 +1241,122 @@ export default function EditCellDialog({
                 <textarea className="w-full border rounded px-3 py-2 text-sm resize-none" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm mb-1">{t("create_cell.units_required")}</label>
-                  <select multiple className="w-full border rounded px-3 py-2 text-sm h-28" value={unitIds} onChange={(e) => onMultiChange(e, setUnitIds)} required={bundleUnitSets.length === 0}>
-                    {units.map((u) => {
-                      const id = String(u.id);
-                      return (
-                        <option key={u.id} value={u.id} disabled={usedUnitIds.has(id) && !unitIds.includes(id)}>
-                          {u.name}
-                        </option>
-                      );
-                    })}
-                  </select>
-                    <div className="mt-2 flex items-center gap-2">
+            </>
+          ) : currentStepKey === "units" ? (
+            <>
+              <div className="rounded border p-3 space-y-4">
+                <div className="text-sm font-medium">{t("create_cell.units_required")}</div>
+                <div className="flex flex-wrap gap-2">
+                  {units.map((u) => {
+                    const id = String(u.id);
+                    const isSelected = unitIds.includes(id);
+                    const isDisabled = usedUnitIds.has(id) && !isSelected;
+                    return (
                       <button
+                        key={u.id}
                         type="button"
-                        onClick={saveCurrentUnitSet}
-                        disabled={unitIds.length === 0}
-                        className="px-3 py-2 rounded border text-sm disabled:opacity-50"
+                        className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                          isSelected
+                            ? "border-gray-900 bg-gray-900 text-white"
+                            : isDisabled
+                            ? "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed opacity-60"
+                            : "border-gray-300 bg-white text-gray-800 hover:bg-gray-50"
+                        }`}
+                        onClick={() => toggleUnitSelection(id)}
+                        disabled={isDisabled}
                       >
-                        {editingBundleIndex == null ? t("create_cell.save_bundle_set") : t("edit_cell.update_bundle_set")}
+                        {u.name}
                       </button>
-                      {editingBundleIndex != null && (
+                    );
+                  })}
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={saveCurrentUnitSet}
+                    disabled={unitIds.length === 0}
+                    className="px-3 py-2 rounded border text-sm disabled:opacity-50"
+                  >
+                    {editingBundleIndex == null ? t("create_cell.save_bundle_set") : t("edit_cell.update_bundle_set")}
+                  </button>
+                  {editingBundleIndex != null && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingBundleIndex(null);
+                        setUnitIds([]);
+                      }}
+                      className="px-3 py-2 rounded border text-sm"
+                    >
+                      {t("edit_cell.cancel_edit")}
+                    </button>
+                  )}
+                  <div className="text-xs text-gray-500">{t("create_cell.save_bundle_help")}</div>
+                </div>
+                {bundleSetsError && <div className="text-xs text-red-600 mt-2">{bundleSetsError}</div>}
+              </div>
+              <div>
+                <label className="block text-sm mb-1">{t("create_cell.saved_bundles")}</label>
+                {bundleUnitSets.length > 0 && (
+                  <div className="space-y-2">
+                    {bundleUnitSets.map((set, index) => (
+                      <div key={set.join(",")} className="flex items-center justify-between gap-3 rounded border px-3 py-2 text-sm">
                         <button
                           type="button"
                           onClick={() => {
-                            setEditingBundleIndex(null);
-                            setUnitIds([]);
+                            setEditingBundleIndex(index);
+                            setUnitIds(set);
                           }}
-                          className="px-3 py-2 rounded border text-sm"
+                          className={`min-w-0 flex-1 text-left ${editingBundleIndex === index ? "font-medium" : ""}`}
                         >
-                          {t("edit_cell.cancel_edit")}
+                          <span className="font-medium">{`Bundle ${index + 1}:`}</span>{" "}
+                          <span className="break-words">{(previewBundleSets[index] ?? set).map((id) => unitNameById[id] || `Unit ${id}`).join(" + ")}</span>
                         </button>
-                      )}
-                      <div className="text-xs text-gray-500">{t("create_cell.save_bundle_help")}</div>
-                    </div>
-                  {bundleSetsError && <div className="text-xs text-red-600 mt-2">{bundleSetsError}</div>}
-                </div>
-                <div>
-                  <label className="block text-sm mb-1">{t("create_cell.saved_bundles")}</label>
-                  {bundleUnitSets.length > 0 && (
-                    <div className="space-y-2">
-                      {bundleUnitSets.map((set, index) => (
-                        <div key={set.join(",")} className="flex items-center justify-between gap-3 rounded border px-3 py-2 text-sm">
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
                             onClick={() => {
                               setEditingBundleIndex(index);
                               setUnitIds(set);
                             }}
-                            className={`min-w-0 flex-1 text-left ${editingBundleIndex === index ? "font-medium" : ""}`}
+                            className="text-gray-500 hover:text-black"
+                            aria-label={`Edit bundle ${index + 1}`}
                           >
-                            <span className="font-medium">{`Bundle ${index + 1}:`}</span>{" "}
-                            <span className="break-words">{(previewBundleSets[index] ?? set).map((id) => unitNameById[id] || `Unit ${id}`).join(" + ")}</span>
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+                              <path d="M4 20h4l10-10-4-4L4 16v4zm11-13 4 4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
                           </button>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingBundleIndex(index);
-                                setUnitIds(set);
-                              }}
-                              className="text-gray-500 hover:text-black"
-                              aria-label={`Edit bundle ${index + 1}`}
-                            >
-                              <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-                                <path d="M4 20h4l10-10-4-4L4 16v4zm11-13 4 4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                              </svg>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setBundleUnitSets((prev) => prev.filter((_, i) => i !== index));
-                                if (editingBundleIndex === index) {
-                                  setEditingBundleIndex(null);
-                                  setUnitIds([]);
-                                } else if (editingBundleIndex != null && editingBundleIndex > index) {
-                                  setEditingBundleIndex(editingBundleIndex - 1);
-                                }
-                              }}
-                              className="text-gray-500 hover:text-black"
-                              aria-label={`Remove bundle ${index + 1}`}
-                            >
-                              <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-                                <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                              </svg>
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBundleUnitSets((prev) => prev.filter((_, i) => i !== index));
+                              if (editingBundleIndex === index) {
+                                setEditingBundleIndex(null);
+                                setUnitIds([]);
+                              } else if (editingBundleIndex != null && editingBundleIndex > index) {
+                                setEditingBundleIndex(editingBundleIndex - 1);
+                              }
+                            }}
+                            className="text-gray-500 hover:text-black"
+                            aria-label={`Remove bundle ${index + 1}`}
+                          >
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+                              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            </svg>
+                          </button>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                  {bundleUnitSets.length === 0 && (
-                    <div className="rounded border border-dashed px-3 py-4 text-xs text-gray-500">
-                      {t("edit_cell.no_bundle_sets_saved")}
-                    </div>
-                  )}
-                </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {bundleUnitSets.length === 0 && (
+                  <div className="rounded border border-dashed px-3 py-4 text-xs text-gray-500">
+                    {t("edit_cell.no_bundle_sets_saved")}
+                  </div>
+                )}
               </div>
             </>
-          ) : multiDayEnabled && step === 2 ? (
+          ) : currentStepKey === "split" ? (
             <>
               <div className="space-y-4">
                 <div className="flex flex-wrap items-start justify-center gap-3">
@@ -1199,9 +1366,14 @@ export default function EditCellDialog({
                       className="w-full border rounded px-3 py-2 text-sm"
                       type="number"
                       min={2}
+                      max={maxDurationCellsAllowed ?? undefined}
                       step={1}
                       value={durationCells}
-                      onChange={(e) => setDurationCells(Math.max(1, Number(e.target.value) || 1))}
+                      onChange={(e) => {
+                        const raw = Math.max(1, Number(e.target.value) || 1);
+                        const capped = maxDurationCellsAllowed == null ? raw : Math.min(raw, maxDurationCellsAllowed);
+                        setDurationCells(capped);
+                      }}
                     />
                     <div className="text-xs text-gray-500 mt-1">
                       {t("create_cell.total_minutes", { minutes: durationCellsSafe * cellMin })}
@@ -1345,13 +1517,13 @@ export default function EditCellDialog({
                   </label>
                 </div>
               )}
-              <CellStaffingEditor
-                participants={participants}
-                tierCounts={tierCounts}
-                onTierCountsChange={setTierCounts}
-                tierPools={tierPools}
-                onTierPoolsChange={setTierPools}
-                staffGroups={staffGroups}
+                <CellStaffingEditor
+                  participants={participants}
+                  tierCounts={tierCounts}
+                  onTierCountsChange={setTierCountsClamped}
+                  tierPools={tierPools}
+                  onTierPoolsChange={setTierPools}
+                  staffGroups={staffGroups}
                 onStaffGroupsChange={setStaffGroups}
               />
               {staffingError && (
@@ -1364,7 +1536,7 @@ export default function EditCellDialog({
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setStep((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3) : prev))}
+                  onClick={() => setStep((prev) => (prev > 1 ? prev - 1 : prev))}
                   disabled={step === 1}
                   className="h-9 w-9 rounded-full border text-sm flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
                   aria-label={t("create_cell.previous_step")}
@@ -1377,7 +1549,7 @@ export default function EditCellDialog({
                 {step < finalStep && (
                   <button
                     type="button"
-                    onClick={() => setStep((prev) => (prev < finalStep ? ((prev + 1) as 1 | 2 | 3) : prev))}
+                    onClick={() => setStep((prev) => (prev < finalStep ? prev + 1 : prev))}
                     disabled={!canAdvanceFromCurrentStep}
                     className="h-9 w-9 rounded-full border text-sm flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
                     aria-label={t("create_cell.next_step")}

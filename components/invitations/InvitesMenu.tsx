@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare } from "lucide-react";
+import { Bell } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -674,7 +674,7 @@ export default function InvitesMenu({ me }: { me: User }) {
           className="relative w-8 h-8 rounded-full inline-flex items-center justify-center hover:bg-gray-100"
           aria-label={t("invites_menu.invitations_aria")}
         >
-          <MessageSquare className="w-5 h-5 text-gray-700" />
+          <Bell className="w-5 h-5 text-gray-700" />
           {unseen && (
             <span className="absolute -top-0.5 -right-0.5 block w-2.5 h-2.5 bg-red-500 rounded-full" />
           )}

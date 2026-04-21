@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Redo2, RotateCcw, Trash2, Undo2 } from "lucide-react";
 import UnitTabs from "@/components/grid/UnitTabs";
 import SolveOverlay from "@/components/grid/SolveOverlay";
+import ScheduleErrorCard from "@/components/grid/ScheduleErrorCard";
 import GradualBlur from "@/components/animations/GradualBlur";
 import { formatSlotRange } from "@/lib/schedule";
 import {
@@ -174,6 +175,8 @@ const DAY_LABEL_TO_INDEX: Record<string, number> = {
   sat: 5,
   sun: 6,
 };
+const GRID_COMMENTS_PANEL_STATE_EVENT = "shift:grid-comments-panel-state";
+const GRID_LEFT_PANEL_STATE_EVENT = "shift:grid-left-panel-state";
 
 const readEntityId = (value: unknown): string | null => {
   if (value == null) return null;
@@ -298,6 +301,7 @@ export default function GridSchedulePanel({
   const [draftHistory, setDraftHistory] = useState<DraftHistory>(EMPTY_DRAFT_HISTORY);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyErrorAnchor, setHistoryErrorAnchor] = useState<{ left: number; top: number } | null>(null);
   const [contextRefreshTick, setContextRefreshTick] = useState(0);
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [dragPayload, setDragPayload] = useState<ParticipantDragPayload | null>(null);
@@ -310,6 +314,7 @@ export default function GridSchedulePanel({
   const deleteDropRef = useRef<HTMLDivElement | null>(null);
   const panelRootRef = useRef<HTMLDivElement | null>(null);
   const scheduleShellRef = useRef<HTMLElement | null>(null);
+  const scheduleScrollRef = useRef<HTMLDivElement | null>(null);
   const commentsOpenShellWidthPercent = 82;
   const commentsOpenShellLeftShiftPx = 50;
   const scheduleShellBaseStyleRef = useRef<{
@@ -362,6 +367,48 @@ export default function GridSchedulePanel({
       window.removeEventListener(GRID_COMMENTS_PANEL_TOGGLE_EVENT, onToggleCommentsPanel as EventListener);
     };
   }, [gridId, historyMode]);
+
+  useEffect(() => {
+    if (historyMode || typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent<{ gridId: string; open: boolean }>(GRID_COMMENTS_PANEL_STATE_EVENT, {
+        detail: { gridId: String(gridId), open: commentsPanelOpen },
+      }),
+    );
+  }, [commentsPanelOpen, gridId, historyMode]);
+
+  useEffect(() => {
+    if (historyMode || typeof window === "undefined") return;
+    const onLeftPanelState = (event: Event) => {
+      const custom = event as CustomEvent<{ gridId?: string; open?: boolean }>;
+      if (custom.detail?.gridId !== String(gridId)) return;
+      if (custom.detail?.open) setCommentsPanelOpen(false);
+    };
+    window.addEventListener(GRID_LEFT_PANEL_STATE_EVENT, onLeftPanelState as EventListener);
+    return () => window.removeEventListener(GRID_LEFT_PANEL_STATE_EVENT, onLeftPanelState as EventListener);
+  }, [gridId, historyMode]);
+
+  useEffect(() => {
+    if (!historyError) {
+      setHistoryErrorAnchor(null);
+      return;
+    }
+    const updateAnchor = () => {
+      const viewport = scheduleScrollRef.current;
+      if (!viewport) return;
+      const rect = viewport.getBoundingClientRect();
+      const left = Math.max(24, Math.min(window.innerWidth - 24, rect.left + rect.width / 2));
+      const top = Math.max(12, Math.min(window.innerHeight - 12, rect.bottom - 56));
+      setHistoryErrorAnchor({ left, top });
+    };
+    updateAnchor();
+    window.addEventListener("scroll", updateAnchor, true);
+    window.addEventListener("resize", updateAnchor);
+    return () => {
+      window.removeEventListener("scroll", updateAnchor, true);
+      window.removeEventListener("resize", updateAnchor);
+    };
+  }, [historyError]);
 
   useEffect(() => {
     if (!historyMode) return;
@@ -1498,7 +1545,7 @@ export default function GridSchedulePanel({
   return (
     <>
       <div ref={panelRootRef}>
-        <div className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
+        <div className="grid select-none" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
           <div className="bg-gray-50 border-b h-12 flex items-center justify-center px-1.5">
             {canUseDraftHistory && (
               <div className="inline-flex items-center gap-0.5">
@@ -1555,14 +1602,10 @@ export default function GridSchedulePanel({
         </div>
 
         <div
+          ref={scheduleScrollRef}
           data-schedule-scroll
-          className="relative max-h-[70vh] overflow-y-auto hide-scrollbar"
+          className="relative max-h-[70vh] overflow-y-auto hide-scrollbar select-none"
         >
-          {historyError && (
-            <div className="sticky top-2 left-0 z-[80] mx-3 my-2 rounded border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">
-              {historyError}
-            </div>
-          )}
           <div className="pointer-events-none absolute left-0 top-0 z-[2]" style={{ width: timeColPx, height: bodyHeight }}>
             <div className="absolute inset-x-0 top-1 text-center text-xs text-gray-500">{fmt(dayStartMin)}</div>
             {rows.slice(1).map((time, index) => (
@@ -1611,6 +1654,14 @@ export default function GridSchedulePanel({
 
           />
         </div>
+        {historyError && historyErrorAnchor && (
+          <ScheduleErrorCard
+            message={historyError}
+            left={historyErrorAnchor.left}
+            top={historyErrorAnchor.top}
+            onClose={() => setHistoryError(null)}
+          />
+        )}
 
       <GradualBlur
         target="parent"

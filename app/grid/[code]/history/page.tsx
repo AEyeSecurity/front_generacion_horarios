@@ -1,5 +1,5 @@
 import Link from "next/link";
-import SideDock from "@/components/layout/SideDock";
+import LeftSideDock from "@/components/layout/LeftSideDock";
 import GridSchedulePanel from "@/components/grid/GridSchedulePanel";
 import { backendFetchJSON } from "@/lib/backend";
 import { getCurrentUser } from "@/lib/auth";
@@ -104,7 +104,7 @@ export default async function GridHistoryPage({
 
   return (
     <div className="relative">
-      <SideDock
+      <LeftSideDock
         gridId={Number(grid.id)}
         gridCode={gridCode}
         role={role}

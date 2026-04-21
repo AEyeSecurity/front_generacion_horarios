@@ -63,7 +63,7 @@ export default function GridTopBarTools({ gridId, gridCode }: { gridId: number; 
         title={isPublishedView ? t("grid_topbar.switch_to_draft_view") : t("grid_topbar.switch_to_published_view")}
         aria-label={isPublishedView ? t("grid_topbar.switch_to_draft_view") : t("grid_topbar.switch_to_published_view")}
         onClick={toggleScheduleView}
-        className="relative h-8 w-[128px] rounded-full border p-0 transition-all duration-200 hover:scale-[1.01]"
+        className="relative h-8 w-[128px] rounded-full border p-0 transition-all duration-200 hover:scale-[1.01] max-[700px]:w-[74px]"
         style={{
           color: "#334155",
           backgroundColor: "#d8dee8",
@@ -72,16 +72,30 @@ export default function GridTopBarTools({ gridId, gridCode }: { gridId: number; 
             "inset 1.5px 1.5px 3px #8f98a7, inset -1.5px -1.5px 3px #e8edf4, 0 1px 3px rgba(0,0,0,0.14)",
         }}
       >
-        <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[11px] font-semibold tracking-wide text-slate-700">
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[11px] font-semibold tracking-wide text-slate-700 max-[700px]:hidden">
           {isPublishedView ? t("entity.published") : t("entity.draft")}
         </span>
+        <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 hidden h-6 w-6 items-center justify-center max-[700px]:inline-flex">
+          {isPublishedView ? <FileCheck2 className="h-3.5 w-3.5 text-slate-700" /> : <PencilLine className="h-3.5 w-3.5 text-slate-700" />}
+        </span>
         <span
-          className="pointer-events-none absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border transition-transform duration-200 ease-out"
+          className="pointer-events-none absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border transition-transform duration-200 ease-out max-[700px]:hidden"
           style={{
             backgroundColor: "#edf2f8",
             borderColor: "#b6bfcc",
             boxShadow: "0 1px 3px rgba(0,0,0,0.2), inset 0 1px 1px rgba(255,255,255,0.34)",
             transform: `translateX(${isPublishedView ? 96 : 0}px)`,
+          }}
+        >
+          {isPublishedView ? <PencilLine className="h-3.5 w-3.5 text-slate-700" /> : <FileCheck2 className="h-3.5 w-3.5 text-slate-700" />}
+        </span>
+        <span
+          className="pointer-events-none absolute left-1 top-1 hidden h-6 w-6 items-center justify-center rounded-full border transition-transform duration-200 ease-out max-[700px]:inline-flex"
+          style={{
+            backgroundColor: "#edf2f8",
+            borderColor: "#b6bfcc",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.2), inset 0 1px 1px rgba(255,255,255,0.34)",
+            transform: `translateX(${isPublishedView ? 42 : 0}px)`,
           }}
         >
           {isPublishedView ? <PencilLine className="h-3.5 w-3.5 text-slate-700" /> : <FileCheck2 className="h-3.5 w-3.5 text-slate-700" />}

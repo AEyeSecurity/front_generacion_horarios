@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import SolveOverlay from "@/components/grid/SolveOverlay";
 import type { ScheduleViewMode } from "@/lib/schedule-view";
 
 type Unit = { id: number | string; name: string };
+const UNIT_TAB_SELECT_EVENT = "shift:unit-tab:select";
 
 export default function UnitTabs({
   gridId,
@@ -48,18 +49,30 @@ export default function UnitTabs({
   historyGridCode?: string | null;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
-  const tabs = useMemo(
-    () =>
-      units
-        .filter((u) => {
-          const id = String(u.id).toLowerCase();
-          const name = (u.name || "").toLowerCase();
-          return id !== "all" && name !== "all";
-        })
-        .map((u) => ({ id: String(u.id), name: u.name })),
-    [units]
-  );
-  const effectiveSelected = selected ?? (tabs[0]?.id ?? null);
+  const tabs = useMemo(() => {
+    const unitTabs = units
+      .filter((u) => {
+        const id = String(u.id).toLowerCase();
+        const name = (u.name || "").toLowerCase();
+        return id !== "all" && name !== "all";
+      })
+      .map((u) => ({ id: String(u.id), name: u.name }));
+    return [{ id: "*", name: "*" }, ...unitTabs];
+  }, [units]);
+  const effectiveSelected = selected ?? (tabs.find((tab) => tab.id !== "*")?.id ?? tabs[0]?.id ?? null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onSelectRequested = (event: Event) => {
+      const customEvent = event as CustomEvent<{ unitId?: string | null }>;
+      const requested = customEvent.detail?.unitId != null ? String(customEvent.detail.unitId) : null;
+      if (!requested) return;
+      if (!tabs.some((tab) => tab.id === requested)) return;
+      setSelected(requested);
+    };
+    window.addEventListener(UNIT_TAB_SELECT_EVENT, onSelectRequested as EventListener);
+    return () => window.removeEventListener(UNIT_TAB_SELECT_EVENT, onSelectRequested as EventListener);
+  }, [tabs]);
 
   return (
     <>
