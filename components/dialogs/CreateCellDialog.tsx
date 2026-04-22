@@ -212,6 +212,28 @@ function normalizeUnitSet(ids: Array<string | number>) {
   return Array.from(new Set(ids.map(String))).sort((a, b) => Number(a) - Number(b));
 }
 
+function bundleKeyFromUnitIds(ids: Array<string | number>) {
+  return normalizeUnitSet(ids).join(",");
+}
+
+function readBundleIdFromApiPayload(payload: unknown): number | null {
+  if (!payload || typeof payload !== "object") return null;
+  const source = payload as Record<string, unknown>;
+  const direct = Number(source.id);
+  if (Number.isFinite(direct)) return direct;
+  const nestedBundle = source.bundle;
+  if (nestedBundle && typeof nestedBundle === "object") {
+    const nestedId = Number((nestedBundle as Record<string, unknown>).id);
+    if (Number.isFinite(nestedId)) return nestedId;
+  }
+  const nestedData = source.data;
+  if (nestedData && typeof nestedData === "object") {
+    const nestedId = Number((nestedData as Record<string, unknown>).id);
+    if (Number.isFinite(nestedId)) return nestedId;
+  }
+  return null;
+}
+
 function overlappingUnitIds(sets: string[][]) {
   const seen = new Set<string>();
   const duplicates = new Set<string>();
@@ -656,6 +678,72 @@ export default function CreateCellDialog({
     setErr(null);
   };
 
+  async function fetchBundlesSnapshot() {
+    const endpoints = [
+      `/api/bundles?grid=${gridId}`,
+      `/api/bundles/?grid=${gridId}`,
+    ];
+    for (const endpoint of endpoints) {
+      const response = await fetch(endpoint, { cache: "no-store" });
+      if (!response.ok) continue;
+      const payload = await response.json().catch(() => ([]));
+      const list = Array.isArray(payload) ? payload : payload?.results ?? [];
+      if (Array.isArray(list)) return list as Array<{ id: number | string; units?: Array<number | string> }>;
+    }
+    return [] as Array<{ id: number | string; units?: Array<number | string> }>;
+  }
+
+  async function ensureBundleId(unitSet: number[]) {
+    const targetKey = bundleKeyFromUnitIds(unitSet);
+    const snapshot = await fetchBundlesSnapshot();
+    const existing = snapshot.find((bundle) => bundleKeyFromUnitIds(bundle.units ?? []) === targetKey);
+    if (existing?.id != null) return Number(existing.id);
+
+    const inferredName = normalizeUnitSet(unitSet)
+      .map((unitId) => unitNameById[String(unitId)] || `Unit ${unitId}`)
+      .sort((a, b) => a.localeCompare(b))
+      .join(" + ");
+    const payloads = [
+      { grid: gridId, name: inferredName, unit_ids: unitSet },
+      { grid: gridId, name: inferredName, units: unitSet },
+      { grid: gridId, name: inferredName, unit_ids: unitSet, units: unitSet },
+      { grid_id: gridId, name: inferredName, unit_ids: unitSet, units: unitSet },
+    ];
+    const attemptErrors: string[] = [];
+
+    for (const payload of payloads) {
+      const res = await fetch(`/api/bundles`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const raw = await res.text().catch(() => "");
+      let data: unknown = null;
+      try {
+        data = raw ? JSON.parse(raw) : null;
+      } catch {
+        data = raw;
+      }
+
+      if (!res.ok) {
+        const detail =
+          typeof data === "string" && data.trim()
+            ? data.trim()
+            : parseStructuredApiError(data) || `status ${res.status}`;
+        attemptErrors.push(detail);
+        continue;
+      }
+
+      const bundleId = readBundleIdFromApiPayload(data);
+      if (bundleId != null) return bundleId;
+    }
+
+    if (attemptErrors.length > 0) {
+      throw new Error(`Failed to resolve bundle for the selected units.\n${attemptErrors[attemptErrors.length - 1]}`);
+    }
+    throw new Error("Failed to resolve bundle for the selected units.");
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
@@ -696,7 +784,9 @@ export default function CreateCellDialog({
           }
         : {
             ...template,
-            ...(selectedSets.length === 1 ? { units: selectedSets[0] } : {}),
+            ...(selectedSets.length === 1
+              ? { bundles: [await ensureBundleId(selectedSets[0])] }
+              : {}),
           };
 
       const res = await fetch(isBulk ? `/api/cells/bulk_create` : `/api/cells`, {

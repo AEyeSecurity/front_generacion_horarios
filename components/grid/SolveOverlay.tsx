@@ -111,6 +111,12 @@ type ScheduleBlockage = {
 
 type CandidateStatus = "OPTIMAL" | "FEASIBLE" | "INFEASIBLE" | "ERROR";
 
+type CandidatePreviewContext = {
+  schedule_id: number | null;
+  locked_placements: ScheduleRow[];
+  blockages: ScheduleBlockage[];
+};
+
 type SolveCandidate = {
   index: number;
   label?: string;
@@ -122,6 +128,7 @@ type SolveCandidate = {
   solver_stats?: Record<string, unknown>;
   weights?: Record<string, unknown>;
   delta?: Record<string, unknown>;
+  preview_context?: CandidatePreviewContext | null;
 };
 
 type PrecheckSeverity = "ERROR" | "WARNING" | string;
@@ -155,6 +162,7 @@ type SolveCandidatesResponse = {
   candidates?: SolveCandidate[];
   selectable_candidate_indexes?: number[];
   all_candidates_failed?: boolean;
+  preview_context?: CandidatePreviewContext;
   precheck?: PrecheckResponse;
   none_option?: {
     reason_options?: Array<string | { code?: string; label?: string; reason?: string; text?: string }>;
@@ -499,6 +507,18 @@ type BreakDialogState = {
 
 type EditToolMode = "none" | "break" | "blockage" | "unassigned" | "participants";
 
+type PendingCandidateRunSnapshot = {
+  run_id: string;
+  candidates: SolveCandidate[];
+  selectable_candidate_indexes: number[];
+  all_candidates_failed: boolean;
+  preference: Record<string, unknown> | null;
+  reject_reason_options: CandidateReasonOption[];
+  preview_context: CandidatePreviewContext | null;
+  pending_solve_signature: string | null;
+  preview_candidate_index: number | null;
+};
+
 export default function SolveOverlay({
   gridId,
   role,
@@ -587,6 +607,7 @@ export default function SolveOverlay({
   const [candidateBusy, setCandidateBusy] = useState(false);
   const [candidateError, setCandidateError] = useState<string | null>(null);
   const [pendingSolveSignature, setPendingSolveSignature] = useState<string | null>(null);
+  const [candidatePreviewContext, setCandidatePreviewContext] = useState<CandidatePreviewContext | null>(null);
   const [previewCandidateIndex, setPreviewCandidateIndex] = useState<number | null>(null);
   const [previewParticipantsOpen, setPreviewParticipantsOpen] = useState(false);
   const [previewParticipantId, setPreviewParticipantId] = useState<string | null>(null);
@@ -690,10 +711,76 @@ export default function SolveOverlay({
     return () => window.removeEventListener(GRID_LEFT_PANEL_STATE_EVENT, onLeftPanelState as EventListener);
   }, [gridId]);
   const solveSignatureStorageKey = `grid:${gridId}:last-solve-signature`;
+  const pendingCandidateStorageKey = `grid:${gridId}:pending-candidate-run`;
 
   useEffect(() => {
     setIsClientReady(true);
   }, []);
+
+  const persistPendingCandidateRun = useCallback(
+    (snapshot: PendingCandidateRunSnapshot | null) => {
+      if (typeof window === "undefined") return;
+      if (!snapshot) {
+        window.localStorage.removeItem(pendingCandidateStorageKey);
+        return;
+      }
+      window.localStorage.setItem(pendingCandidateStorageKey, JSON.stringify(snapshot));
+    },
+    [pendingCandidateStorageKey],
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!canSolve || scheduleViewMode !== "draft") return;
+    try {
+      const raw = window.localStorage.getItem(pendingCandidateStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<PendingCandidateRunSnapshot>;
+      const runId = typeof parsed.run_id === "string" ? parsed.run_id : "";
+      if (!runId) {
+        window.localStorage.removeItem(pendingCandidateStorageKey);
+        return;
+      }
+      const candidates = Array.isArray(parsed.candidates) ? parsed.candidates : [];
+      if (candidates.length === 0) {
+        window.localStorage.removeItem(pendingCandidateStorageKey);
+        return;
+      }
+      setCandidateRunId(runId);
+      setSolveCandidates(candidates);
+      setSelectableCandidateIndexes(
+        Array.isArray(parsed.selectable_candidate_indexes)
+          ? parsed.selectable_candidate_indexes.map((idx) => Number(idx)).filter((idx) => Number.isFinite(idx))
+          : [],
+      );
+      setAllCandidatesFailed(Boolean(parsed.all_candidates_failed));
+      setCandidatePreference(
+        parsed.preference && typeof parsed.preference === "object"
+          ? (parsed.preference as Record<string, unknown>)
+          : null,
+      );
+      const reasons = Array.isArray(parsed.reject_reason_options)
+        ? parsed.reject_reason_options.filter(
+            (item): item is CandidateReasonOption =>
+              Boolean(item && typeof item.code === "string" && typeof item.label === "string"),
+          )
+        : [];
+      setRejectReasonOptions(reasons);
+      setRejectReasonCode(reasons[0]?.code ?? "");
+      setCandidatePreviewContext(
+        parsed.preview_context && typeof parsed.preview_context === "object"
+          ? (parsed.preview_context as CandidatePreviewContext)
+          : null,
+      );
+      setPendingSolveSignature(
+        typeof parsed.pending_solve_signature === "string" ? parsed.pending_solve_signature : null,
+      );
+      const previewIdx = Number(parsed.preview_candidate_index);
+      setPreviewCandidateIndex(Number.isFinite(previewIdx) ? previewIdx : Number(candidates[0]?.index ?? 0));
+    } catch {
+      window.localStorage.removeItem(pendingCandidateStorageKey);
+    }
+  }, [canSolve, pendingCandidateStorageKey, scheduleViewMode]);
 
   useEffect(() => {
     if (!canSolve) return;
@@ -828,6 +915,143 @@ export default function SolveOverlay({
       .filter((v): v is CandidateReasonOption => Boolean(v));
   };
 
+  const normalizeScheduleRowFromAny = (raw: unknown, fallbackId: string): ScheduleRow | null => {
+    if (!raw || typeof raw !== "object") return null;
+    const source = raw as Record<string, unknown>;
+    const dayIndex = Number(source.day_index);
+    const startSlot = Number(source.start_slot);
+    const endSlot = Number(source.end_slot);
+    if (!Number.isFinite(dayIndex) || !Number.isFinite(startSlot) || !Number.isFinite(endSlot)) return null;
+    if (endSlot <= startSlot) return null;
+
+    const placementId =
+      readEntityId(source.id) ??
+      readEntityId(source.placement_id) ??
+      readEntityId(source.cell_id) ??
+      fallbackId;
+    const sourceCellId =
+      readEntityId(source.source_cell_id) ??
+      readEntityId(source.source_cell) ??
+      readEntityId(source.cell) ??
+      readEntityId(source.cell_id) ??
+      fallbackId;
+    const bundleId = readEntityId(source.bundle_id) ?? readEntityId(source.bundle);
+    const assignedParticipants = normalizeIdArray(
+      source.assigned_participants ?? source.participants,
+    );
+    const unitIds = normalizeIdArray(source.units ?? source.unit_ids);
+    const breaks = Array.isArray(source.breaks)
+      ? source.breaks
+          .map((entry) => {
+            const offsetMin = Number((entry as { offset_min?: unknown })?.offset_min);
+            const durationMin = Number((entry as { duration_min?: unknown })?.duration_min);
+            if (!Number.isFinite(offsetMin) || !Number.isFinite(durationMin)) return null;
+            if (durationMin <= 0) return null;
+            return {
+              offset_min: Math.max(0, Math.round(offsetMin)),
+              duration_min: Math.max(5, Math.round(durationMin)),
+            };
+          })
+          .filter((entry): entry is BreakEntry => Boolean(entry))
+      : [];
+
+    return {
+      cell_id: String(placementId),
+      source_cell_id: sourceCellId,
+      bundle_id: bundleId,
+      bundle: bundleId,
+      day_index: Math.max(0, Math.round(dayIndex)),
+      start_slot: Math.max(0, Math.round(startSlot)),
+      end_slot: Math.max(1, Math.round(endSlot)),
+      assigned_participants: assignedParticipants,
+      participants: assignedParticipants,
+      units: unitIds,
+      locked: Boolean(source.locked),
+      breaks,
+    };
+  };
+
+  const normalizeScheduleBlockageFromAny = (raw: unknown, fallbackId: string): ScheduleBlockage | null => {
+    if (!raw || typeof raw !== "object") return null;
+    const source = raw as Record<string, unknown>;
+    const dayIndex = Number(source.day_index);
+    const startSlot = Number(source.start_slot);
+    const endSlot = Number(source.end_slot);
+    if (!Number.isFinite(dayIndex) || !Number.isFinite(startSlot) || !Number.isFinite(endSlot)) return null;
+    if (endSlot <= startSlot) return null;
+    const scheduleId = Number(readEntityId(source.schedule) ?? readEntityId(source.schedule_id) ?? 0);
+    return {
+      id: String(readEntityId(source.id) ?? fallbackId),
+      schedule: Number.isFinite(scheduleId) ? scheduleId : 0,
+      day_index: Math.max(0, Math.round(dayIndex)),
+      start_slot: Math.max(0, Math.round(startSlot)),
+      end_slot: Math.max(1, Math.round(endSlot)),
+      note: typeof source.note === "string" ? source.note : undefined,
+      unit_ids: normalizeUnitScopeIds(source.unit_ids),
+    };
+  };
+
+  const normalizeCandidatePreviewContext = (raw: unknown): CandidatePreviewContext | null => {
+    if (!raw || typeof raw !== "object") return null;
+    const source = raw as Record<string, unknown>;
+    const scheduleIdRaw = Number(readEntityId(source.schedule_id) ?? readEntityId(source.schedule) ?? NaN);
+    const lockedPlacementsRaw = Array.isArray(source.locked_placements) ? source.locked_placements : [];
+    const blockagesRaw = Array.isArray(source.blockages) ? source.blockages : [];
+    return {
+      schedule_id: Number.isFinite(scheduleIdRaw) ? scheduleIdRaw : null,
+      locked_placements: lockedPlacementsRaw
+        .map((entry, index) => normalizeScheduleRowFromAny(entry, `locked-${index}`))
+        .filter((entry): entry is ScheduleRow => Boolean(entry)),
+      blockages: blockagesRaw
+        .map((entry, index) => normalizeScheduleBlockageFromAny(entry, `preview-blockage-${index}`))
+        .filter((entry): entry is ScheduleBlockage => Boolean(entry)),
+    };
+  };
+
+  const normalizeSolveCandidate = (raw: unknown, fallbackIndex: number): SolveCandidate | null => {
+    if (!raw || typeof raw !== "object") return null;
+    const source = raw as Record<string, unknown>;
+    const parsedIndex = Number(source.index ?? source.candidate_index ?? fallbackIndex);
+    if (!Number.isFinite(parsedIndex)) return null;
+    const scheduleRaw = Array.isArray(source.schedule)
+      ? source.schedule
+      : Array.isArray(source.placements)
+      ? source.placements
+      : [];
+    const normalizedSchedule = scheduleRaw
+      .map((entry, index) => normalizeScheduleRowFromAny(entry, `candidate-${parsedIndex}-${index}`))
+      .filter((entry): entry is ScheduleRow => Boolean(entry));
+
+    return {
+      index: parsedIndex,
+      label: typeof source.label === "string" ? source.label : undefined,
+      status: typeof source.status === "string" ? (source.status as CandidateStatus) : undefined,
+      objective_value:
+        typeof source.objective_value === "number" && Number.isFinite(source.objective_value)
+          ? source.objective_value
+          : null,
+      runtime_ms:
+        typeof source.runtime_ms === "number" && Number.isFinite(source.runtime_ms)
+          ? source.runtime_ms
+          : null,
+      schedule: normalizedSchedule,
+      violations: Array.isArray(source.violations) ? source.violations : [],
+      solver_stats:
+        source.solver_stats && typeof source.solver_stats === "object"
+          ? (source.solver_stats as Record<string, unknown>)
+          : undefined,
+      weights:
+        source.weights && typeof source.weights === "object"
+          ? (source.weights as Record<string, unknown>)
+          : undefined,
+      delta:
+        source.delta && typeof source.delta === "object"
+          ? (source.delta as Record<string, unknown>)
+          : undefined,
+      preview_context: normalizeCandidatePreviewContext(source.preview_context),
+    };
+  };
+
   const computeCurrentSolveInputSignature = async () => {
     const settingsKey = getGridSolverSettingsKey(gridId);
     const parsedSettings = parseGridSolverSettings(window.localStorage.getItem(settingsKey));
@@ -854,6 +1078,31 @@ export default function SolveOverlay({
     });
     const staffMembers = explicitStaffMembers.length > 0 ? explicitStaffMembers : derivedStaffMembers;
     const availabilityRules = getContextList(context?.availability_rules);
+    const scheduleCandidate =
+      (context?.schedule ??
+        context?.published_schedule ??
+        context?.latest ??
+        null) as Record<string, unknown> | null;
+    const rawSchedulePlacements = Array.isArray(scheduleCandidate?.placements)
+      ? scheduleCandidate.placements
+      : Array.isArray(scheduleCandidate?.schedule)
+      ? scheduleCandidate.schedule
+      : [];
+    const rawScheduleBlockages = Array.isArray(scheduleCandidate?.blockages)
+      ? scheduleCandidate.blockages
+      : Array.isArray(context?.blockages)
+      ? (context?.blockages as unknown[])
+      : [];
+    const schedulePlacements = rawSchedulePlacements
+      .map((entry, index) => normalizeScheduleRowFromAny(entry, `signature-placement-${index}`))
+      .filter((entry): entry is ScheduleRow => Boolean(entry));
+    const scheduleBlockages = rawScheduleBlockages
+      .map((entry, index) => normalizeScheduleBlockageFromAny(entry, `signature-blockage-${index}`))
+      .filter((entry): entry is ScheduleBlockage => Boolean(entry));
+    const scheduleUpdatedAt = Math.max(
+      parseTimestamp(scheduleCandidate?.updated_at),
+      parseTimestamp(scheduleCandidate?.created_at),
+    );
 
     const maxUpdatedAt = Math.max(
       getMaxUpdatedAt(cells),
@@ -863,6 +1112,9 @@ export default function SolveOverlay({
       getMaxUpdatedAt(staffs),
       getMaxUpdatedAt(staffMembers),
       getMaxUpdatedAt(availabilityRules),
+      getMaxUpdatedAt(rawSchedulePlacements),
+      getMaxUpdatedAt(rawScheduleBlockages),
+      scheduleUpdatedAt,
     );
 
     const signaturePayload = {
@@ -874,6 +1126,8 @@ export default function SolveOverlay({
       staffs: stripForSignature(staffs),
       staff_members: stripForSignature(staffMembers),
       availability_rules: stripForSignature(availabilityRules),
+      schedule_placements: stripForSignature(schedulePlacements),
+      schedule_blockages: stripForSignature(scheduleBlockages),
     };
 
     return {
@@ -1728,7 +1982,13 @@ export default function SolveOverlay({
         setPrecheckError(null);
         setPrecheckSignature(signature);
       }
-      const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+      const candidates = (Array.isArray(data.candidates) ? data.candidates : [])
+        .map((candidate, index) => normalizeSolveCandidate(candidate, index))
+        .filter((candidate): candidate is SolveCandidate => Boolean(candidate));
+      const previewContext =
+        normalizeCandidatePreviewContext(data.preview_context) ??
+        candidates.find((candidate) => candidate.preview_context != null)?.preview_context ??
+        null;
       const selectable = Array.isArray(data.selectable_candidate_indexes)
         ? data.selectable_candidate_indexes
             .map((idx) => Number(idx))
@@ -1744,6 +2004,7 @@ export default function SolveOverlay({
       setSelectableCandidateIndexes(selectable);
       setAllCandidatesFailed(Boolean(data.all_candidates_failed));
       setCandidatePreference(data.preference ?? null);
+      setCandidatePreviewContext(previewContext);
       setRejectReasonOptions(reasonOptions);
       setRejectReasonCode(reasonOptions[0]?.code ?? "");
       setRejectNote("");
@@ -1755,6 +2016,26 @@ export default function SolveOverlay({
           .map((candidate) => Number(candidate.index))
           .find((index) => Number.isFinite(index)) ?? null;
       setPreviewCandidateIndex(firstCandidateIndex);
+      setPreviewParticipantsOpen(false);
+      setPreviewParticipantId(null);
+      setPreviewSelectedUnitId(null);
+      setPreviewParticipantsQuery("");
+
+      if (data.run_id && candidates.length > 0) {
+        persistPendingCandidateRun({
+          run_id: data.run_id,
+          candidates,
+          selectable_candidate_indexes: selectable,
+          all_candidates_failed: Boolean(data.all_candidates_failed),
+          preference: data.preference ?? null,
+          reject_reason_options: reasonOptions,
+          preview_context: previewContext,
+          pending_solve_signature: signature,
+          preview_candidate_index: firstCandidateIndex,
+        });
+      } else {
+        persistPendingCandidateRun(null);
+      }
 
       if (skippedByPrecheck) {
         const fallbackPrecheck = normalizePrecheckResponse({
@@ -1797,6 +2078,14 @@ export default function SolveOverlay({
     router.refresh();
   }, [gridId, pathname, router]);
 
+  const hardReloadGridView = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.location.reload();
+      return;
+    }
+    refreshGridView();
+  }, [refreshGridView]);
+
   const chooseCandidate = async (candidateIndex: number) => {
     if (!candidateRunId) {
       setCandidateError(t("solve_overlay.missing_candidate_run_id"));
@@ -1836,7 +2125,8 @@ export default function SolveOverlay({
         window.localStorage.setItem(solveSignatureStorageKey, pendingSolveSignature);
         setInputSignature(pendingSolveSignature);
       }
-      refreshGridView();
+      persistPendingCandidateRun(null);
+      hardReloadGridView();
     } catch (e: any) {
       setCandidateError(e?.message || t("solve_overlay.could_not_choose_candidate"));
     } finally {
@@ -1874,7 +2164,8 @@ export default function SolveOverlay({
       }
       setCandidateDialogOpen(false);
       setError(t("solve_overlay.candidates_rejected_adjust_and_run_again"));
-      refreshGridView();
+      persistPendingCandidateRun(null);
+      hardReloadGridView();
     } catch (e: any) {
       setCandidateError(e?.message || t("solve_overlay.could_not_reject_candidates"));
     } finally {
@@ -2396,10 +2687,16 @@ export default function SolveOverlay({
   );
 
   const isInputUnchanged = Boolean(inputSignature);
+  const hasPendingCandidateResolution =
+    canSolve &&
+    scheduleViewMode === "draft" &&
+    Boolean(candidateRunId) &&
+    solveCandidates.length > 0;
   const canUseSolve =
     canSolve &&
     hasCells &&
     !isSolving &&
+    !hasPendingCandidateResolution &&
     !isInputUnchanged &&
     !isInputSignatureLoading &&
     !precheckBusy;
@@ -2410,7 +2707,10 @@ export default function SolveOverlay({
     currentSchedule.placements.length > 0 &&
     !isPublishing;
   const canPinCards = enablePinning && role === "supervisor" && scheduleViewMode === "draft";
-  const canManualEditCards = role === "supervisor" && scheduleViewMode === "draft";
+  const canManualEditCards =
+    role === "supervisor" &&
+    scheduleViewMode === "draft" &&
+    !hasPendingCandidateResolution;
   const canCommentCards =
     scheduleViewMode === "published" &&
     Boolean(currentSchedule?.id) &&
@@ -3079,6 +3379,7 @@ export default function SolveOverlay({
         throw new Error(txt || `Failed to update lock (${res.status})`);
       }
       notifyDraftMutation();
+      setPrecheckRefreshTick((prev) => prev + 1);
     } catch (e: unknown) {
       setCurrentSchedule((prev) =>
         prev
@@ -3188,6 +3489,7 @@ export default function SolveOverlay({
       }
       notifyDraftMutation();
       setBlockagesRefreshTick((prev) => prev + 1);
+      setPrecheckRefreshTick((prev) => prev + 1);
     },
     [clampSlotRange, notifyDraftMutation],
   );
@@ -3216,6 +3518,7 @@ export default function SolveOverlay({
       await res.json().catch(() => ({}));
       notifyDraftMutation();
       setBlockagesRefreshTick((prev) => prev + 1);
+      setPrecheckRefreshTick((prev) => prev + 1);
     },
     [clampSlotRange, currentSchedule?.id, notifyDraftMutation, selectedBlockageUnitScopeIds],
   );
@@ -3234,6 +3537,7 @@ export default function SolveOverlay({
         }
         notifyDraftMutation();
         setBlockagesRefreshTick((prev) => prev + 1);
+        setPrecheckRefreshTick((prev) => prev + 1);
       } catch (error: unknown) {
         setScheduleBlockages(previous);
         throw error;
@@ -4303,6 +4607,8 @@ export default function SolveOverlay({
     ? t("solve_overlay.precheck_could_not_run")
     : hasBlockingPrecheckErrors
     ? t("solve_overlay.precheck_blocking_fix_before_solve")
+    : hasPendingCandidateResolution
+    ? t("solve_overlay.resolve_pending_candidates")
     : isInputUnchanged
     ? t("solve_overlay.input_unchanged_latest_solution")
     : isInputSignatureLoading
@@ -4437,6 +4743,44 @@ export default function SolveOverlay({
   const previewIsParticipantMode = previewMode === "participant" && Boolean(previewParticipantId);
   const previewScheduleForCards = previewIsParticipantMode ? previewParticipantSchedule : previewScheduleByUnit;
 
+  const previewContextLockedPlacements = useMemo(() => {
+    if (!candidatePreviewContext) return [];
+    return Array.isArray(candidatePreviewContext.locked_placements)
+      ? candidatePreviewContext.locked_placements
+      : [];
+  }, [candidatePreviewContext]);
+
+  const previewContextBlockages = useMemo(() => {
+    if (!candidatePreviewContext) return [];
+    return Array.isArray(candidatePreviewContext.blockages)
+      ? candidatePreviewContext.blockages
+      : [];
+  }, [candidatePreviewContext]);
+
+  const previewLockedPlacementsForOverlay = useMemo(() => {
+    if (previewContextLockedPlacements.length === 0) return [];
+    if (previewIsParticipantMode) return previewContextLockedPlacements;
+    if (!previewSelectedUnitId) return previewContextLockedPlacements;
+    return previewContextLockedPlacements.filter((row) =>
+      getPreviewScheduleUnitIds(row).includes(previewSelectedUnitId),
+    );
+  }, [
+    getPreviewScheduleUnitIds,
+    previewContextLockedPlacements,
+    previewIsParticipantMode,
+    previewSelectedUnitId,
+  ]);
+
+  const previewBlockagesForOverlay = useMemo(() => {
+    if (previewContextBlockages.length === 0) return [];
+    if (previewIsParticipantMode || !previewSelectedUnitId) return previewContextBlockages;
+    return previewContextBlockages.filter((blockage) => {
+      const scope = Array.isArray(blockage.unit_ids) ? blockage.unit_ids.map(String) : [];
+      if (scope.length === 0) return true;
+      return scope.includes(previewSelectedUnitId);
+    });
+  }, [previewContextBlockages, previewIsParticipantMode, previewSelectedUnitId]);
+
   const previewParticipantName = previewParticipantId
     ? (participantNameById[previewParticipantId] || `#${previewParticipantId}`)
     : "";
@@ -4567,6 +4911,21 @@ export default function SolveOverlay({
     [previewCandidate, selectableCandidateSet, allCandidatesFailed],
   );
 
+  const openPendingCandidatePreview = useCallback(() => {
+    if (orderedCandidates.length === 0) return;
+    const fallbackIndex = Number(orderedCandidates[0].index);
+    const targetIndex =
+      previewCandidateIndex != null && Number.isFinite(Number(previewCandidateIndex))
+        ? Number(previewCandidateIndex)
+        : fallbackIndex;
+    setPreviewMode("candidate");
+    setPreviewParticipantId(null);
+    setPreviewSelectedUnitId(null);
+    setPreviewParticipantsOpen(false);
+    setPreviewParticipantsQuery("");
+    setPreviewCandidateIndex(targetIndex);
+  }, [orderedCandidates, previewCandidateIndex]);
+
   const openCandidatePreview = (candidateIndex: number) => {
     setPreviewMode("candidate");
     setPreviewParticipantId(null);
@@ -4576,6 +4935,24 @@ export default function SolveOverlay({
     setPreviewCandidateIndex(candidateIndex);
     setCandidateDialogOpen(false);
   };
+
+  useEffect(() => {
+    if (!previewCandidate) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (previewParticipantsOpen) {
+        setPreviewParticipantsOpen(false);
+        return;
+      }
+      setPreviewParticipantsOpen(false);
+      setPreviewParticipantsQuery("");
+      setPreviewParticipantId(null);
+      setPreviewMode("candidate");
+      setPreviewCandidateIndex(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [previewCandidate, previewParticipantsOpen]);
 
   const shiftPreviewCandidate = (direction: -1 | 1) => {
     if (orderedCandidates.length === 0) return;
@@ -6192,6 +6569,167 @@ export default function SolveOverlay({
                         </div>
                       );
                     })}
+
+                    {previewBlockagesForOverlay.map((blockage) => {
+                      const col = Number(blockage.day_index);
+                      if (col < 0 || col >= daysCount) return null;
+                      const top = blockage.start_slot * rowPx + 2;
+                      const height = Math.max(8, (blockage.end_slot - blockage.start_slot) * rowPx - 4);
+                      const left = `calc(${timeColPx}px + ${col} * ((100% - ${timeColPx}px) / ${daysCount}) + 4px)`;
+                      const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 8px)`;
+                      return (
+                        <div
+                          key={`preview-blockage-${blockage.id}`}
+                          className="absolute z-[7] rounded-2xl border border-gray-300/90 bg-transparent"
+                          style={{ top, left, width, height }}
+                        >
+                          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
+                            <GlassSurface
+                              width="100%"
+                              height="100%"
+                              borderRadius={16}
+                              backgroundOpacity={0.14}
+                              brightness={50}
+                              opacity={0.95}
+                              blur={11}
+                              displace={0.5}
+                              distortionScale={-180}
+                              saturation={1.35}
+                              className="h-full w-full"
+                              style={{ background: "rgba(255, 255, 255, 0.26)" }}
+                            />
+                            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                              <span className="select-none text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400/60">
+                                {t("solve_overlay.blocked_overlay_label")}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="pointer-events-none absolute inset-0 rounded-2xl border border-white/60" />
+                        </div>
+                      );
+                    })}
+
+                    {previewLockedPlacementsForOverlay.map((lockedPlacement, idx) => {
+                      const col = Number(lockedPlacement.day_index);
+                      if (col < 0 || col >= daysCount) return null;
+                      const sourceCellId = String(lockedPlacement.source_cell_id ?? lockedPlacement.cell_id);
+                      const rawTop = lockedPlacement.start_slot * rowPx;
+                      const rawHeight = Math.max(6, (lockedPlacement.end_slot - lockedPlacement.start_slot) * rowPx);
+                      const top = previewIsParticipantMode ? rawTop + rawHeight * 0.05 : rawTop;
+                      const height = previewIsParticipantMode ? Math.max(6, rawHeight * 0.9) : rawHeight;
+                      const left = `calc(${timeColPx}px + ${col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
+                      const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`;
+                      const cellName =
+                        cellNameById[sourceCellId] || t("format.cell_with_id", { id: sourceCellId });
+                      const timeLabel = formatSlotRange(
+                        dayStartMin,
+                        slotMin,
+                        lockedPlacement.start_slot,
+                        lockedPlacement.end_slot,
+                      );
+                      const staffIds = cellStaffsById[sourceCellId] || [];
+                      const bg = cellColorById[sourceCellId] || "";
+                      const colorIdx = CELL_COLOR_OPTIONS.findIndex((c) => c.toLowerCase() === bg.toLowerCase());
+                      const useColor = Boolean(bg && colorIdx >= 0);
+                      const textDark = useColor ? CELL_TEXT_DARK[colorIdx] : "#1f2937";
+                      const textLight = useColor ? CELL_TEXT_LIGHT[colorIdx] : "#111827";
+                      const border = useColor ? shadeHex(bg, -0.35) : "#e5e7eb";
+                      const pinTrackBg = useColor ? shadeHex(bg, 0.28) : "#cfd4dc";
+                      const pinTrackBorder = useColor ? shadeHex(bg, -0.12) : "#8f96a3";
+                      const pinKnobBg = useColor ? shadeHex(bg, 0.42) : "#e7ebf1";
+                      const pinTrackInsetDark = useColor ? shadeHex(bg, -0.24) : "#aeb4c0";
+                      const pinTrackInsetLight = useColor ? shadeHex(bg, 0.1) : "#edf1f6";
+                      const pinKnobBorder = useColor ? shadeHex(bg, -0.08) : "#b8bfc9";
+                      const pinColor = textDark;
+                      const pinKnobTranslatePx = 16;
+                      const bundleLabel = getPreviewBundleLabel(lockedPlacement);
+                      const assignedParticipantIds = Array.isArray(lockedPlacement.assigned_participants)
+                        ? lockedPlacement.assigned_participants.map(String).sort()
+                        : Array.isArray(lockedPlacement.participants)
+                        ? lockedPlacement.participants.map(String).sort()
+                        : [];
+                      let assignmentLabel = assignedParticipantIds
+                        .map((pid) => participantNameById[pid] || `#${pid}`)
+                        .join(assignedParticipantIds.length > 2 ? " + " : ", ");
+                      if (assignedParticipantIds.length > 0) {
+                        const matchedStaffId = staffIds.find((sid) => {
+                          const members = (staffMembersByStaffId[sid] || []).map(String).sort();
+                          return (
+                            members.length === assignedParticipantIds.length &&
+                            members.every((id, index) => id === assignedParticipantIds[index])
+                          );
+                        });
+                        if (matchedStaffId) {
+                          assignmentLabel = staffNameById[matchedStaffId] || t("format.staff_with_id", { id: matchedStaffId });
+                        }
+                      }
+                      const secondaryLabel = previewIsParticipantMode ? bundleLabel : assignmentLabel;
+                      const placementDurationMin = Math.max(
+                        slotMin,
+                        Math.max(1, lockedPlacement.end_slot - lockedPlacement.start_slot) * slotMin,
+                      );
+                      const placementBreaks = Array.isArray(lockedPlacement.breaks) ? lockedPlacement.breaks : [];
+                      return (
+                        <div
+                          key={`preview-locked-${lockedPlacement.cell_id}-${lockedPlacement.day_index}-${lockedPlacement.start_slot}-${idx}`}
+                          className="absolute z-[8] pointer-events-none"
+                          style={{ top, left, width, height }}
+                        >
+                          <div
+                            className="group relative w-full h-full rounded-md border px-2 py-2 text-[11px]"
+                            style={{
+                              backgroundColor: bg || "#f3f4f6",
+                              borderColor: border,
+                              color: textDark,
+                            }}
+                          >
+                            <div
+                              className="absolute left-2 bottom-2 z-10 h-6 w-10 rounded-full border p-0"
+                              style={{
+                                color: pinColor,
+                                backgroundColor: pinTrackBg,
+                                borderColor: pinTrackBorder,
+                                boxShadow: `inset 1.5px 1.5px 3px ${pinTrackInsetDark}, inset -1.5px -1.5px 3px ${pinTrackInsetLight}, 0 1px 3px rgba(0,0,0,0.16)`,
+                              }}
+                              title={t("solve_overlay.locked_overlay_label")}
+                            >
+                              <span className="pointer-events-none absolute top-1/2 -translate-y-1/2 left-1.5">
+                                <Lock className="h-3 w-3" style={{ opacity: 0.85 }} />
+                              </span>
+                              <span
+                                className="pointer-events-none absolute left-1 top-1 h-4 w-4 rounded-full border transition-transform duration-200 ease-out"
+                                style={{
+                                  backgroundColor: pinKnobBg,
+                                  borderColor: pinKnobBorder,
+                                  boxShadow: "0 1px 3px rgba(0,0,0,0.2), inset 0 1px 1px rgba(255,255,255,0.3)",
+                                  transform: `translateX(${pinKnobTranslatePx}px)`,
+                                }}
+                              />
+                            </div>
+                            {placementBreaks.map((entry, breakIndex) => {
+                              const breakStartRatio = placementDurationMin > 0 ? entry.offset_min / placementDurationMin : 0;
+                              const breakHeightRatio = placementDurationMin > 0 ? entry.duration_min / placementDurationMin : 0;
+                              return (
+                                <div
+                                  key={`preview-locked-break-${idx}-${breakIndex}-${entry.offset_min}-${entry.duration_min}`}
+                                  className="absolute left-0 right-0 rounded-sm bg-black/20"
+                                  style={{
+                                    top: `${Math.max(0, Math.min(100, breakStartRatio * 100))}%`,
+                                    height: `${Math.max(2, Math.min(100, breakHeightRatio * 100))}%`,
+                                  }}
+                                />
+                              );
+                            })}
+                            <div className="flex h-full flex-col items-center justify-center text-center leading-tight">
+                              <div className="font-semibold" style={{ color: textLight }}>{cellName}</div>
+                              {secondaryLabel && <div className="px-1">{secondaryLabel}</div>}
+                              <div className="h-2" />
+                              <div className="text-[10px] font-medium" style={{ color: textDark }}>{timeLabel}</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -6259,6 +6797,9 @@ export default function SolveOverlay({
         <RightSideDock
           visible={true}
           closeSignal={rightDockCloseSignal}
+          pendingCandidateReview={hasPendingCandidateResolution}
+          pendingCandidateTitle={t("solve_overlay.review_pending_candidates")}
+          showSolveNotification={hasPendingCandidateResolution}
           canUseSolve={canUseSolve}
           solveDisabledReason={solveDisabledReason}
           canManualEditCards={canManualEditCards}
@@ -6284,6 +6825,7 @@ export default function SolveOverlay({
             solving: t("solve_overlay.solving"),
           }}
           onSolvePressed={onSolvePressed}
+          onPendingReviewPressed={openPendingCandidatePreview}
           onActivateTool={activateEditTool}
           onPublishDraft={() => {
             void publishDraftSchedule();

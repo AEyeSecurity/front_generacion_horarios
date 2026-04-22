@@ -308,6 +308,24 @@ function bundleKeyFromUnitIds(ids: Array<string | number>) {
   return normalizeUnitSet(ids).join(",");
 }
 
+function readBundleIdFromApiPayload(payload: unknown): number | null {
+  if (!payload || typeof payload !== "object") return null;
+  const source = payload as Record<string, unknown>;
+  const direct = Number(source.id);
+  if (Number.isFinite(direct)) return direct;
+  const nestedBundle = source.bundle;
+  if (nestedBundle && typeof nestedBundle === "object") {
+    const nestedId = Number((nestedBundle as Record<string, unknown>).id);
+    if (Number.isFinite(nestedId)) return nestedId;
+  }
+  const nestedData = source.data;
+  if (nestedData && typeof nestedData === "object") {
+    const nestedId = Number((nestedData as Record<string, unknown>).id);
+    if (Number.isFinite(nestedId)) return nestedId;
+  }
+  return null;
+}
+
 function extractStaffMemberIds(staff: any): string[] {
   const raw = Array.isArray(staff?.members)
     ? staff.members
@@ -958,17 +976,44 @@ export default function EditCellDialog({
     }
   }
 
+  async function fetchBundlesSnapshot(): Promise<Bundle[]> {
+    const endpoints = [
+      `/api/bundles?grid=${gridId}`,
+      `/api/bundles/?grid=${gridId}`,
+    ];
+    for (const endpoint of endpoints) {
+      const response = await fetch(endpoint, { cache: "no-store" });
+      if (!response.ok) continue;
+      const payload = await response.json().catch(() => ([]));
+      const list = Array.isArray(payload) ? payload : payload?.results ?? [];
+      if (Array.isArray(list)) return list as Bundle[];
+    }
+    return [];
+  }
+
   async function ensureBundleId(unitSet: number[]) {
     const targetKey = bundleKeyFromUnitIds(unitSet);
-    const existing = bundles.find((bundle) => bundleKeyFromUnitIds(bundle.units ?? []) === targetKey);
-    if (existing?.id != null) return Number(existing.id);
+    const fromState = bundles.find((bundle) => bundleKeyFromUnitIds(bundle.units ?? []) === targetKey);
+    if (fromState?.id != null) return Number(fromState.id);
 
+    const snapshot = await fetchBundlesSnapshot();
+    const existing = snapshot.find((bundle) => bundleKeyFromUnitIds(bundle.units ?? []) === targetKey);
+    if (existing?.id != null) {
+      setBundles(snapshot);
+      return Number(existing.id);
+    }
+
+    const inferredName = normalizeUnitSet(unitSet)
+      .map((unitId) => unitNameById[String(unitId)] || `Unit ${unitId}`)
+      .sort((a, b) => a.localeCompare(b))
+      .join(" + ");
     const payloads = [
-      { grid: gridId, unit_ids: unitSet },
-      { unit_ids: unitSet },
-      { grid: gridId, units: unitSet },
-      { units: unitSet },
+      { grid: gridId, name: inferredName, unit_ids: unitSet },
+      { grid: gridId, name: inferredName, units: unitSet },
+      { grid: gridId, name: inferredName, unit_ids: unitSet, units: unitSet },
+      { grid_id: gridId, name: inferredName, unit_ids: unitSet, units: unitSet },
     ];
+    const attemptErrors: string[] = [];
 
     for (const payload of payloads) {
       const res = await fetch(`/api/bundles`, {
@@ -976,14 +1021,44 @@ export default function EditCellDialog({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) continue;
-      const data = await res.json().catch(() => null);
-      if (data?.id != null) {
-        setBundles((prev) => [...prev, data]);
-        return Number(data.id);
+      const raw = await res.text().catch(() => "");
+      let data: unknown = null;
+      try {
+        data = raw ? JSON.parse(raw) : null;
+      } catch {
+        data = raw;
+      }
+
+      if (!res.ok) {
+        const detail =
+          typeof data === "string" && data.trim()
+            ? data.trim()
+            : parseStructuredApiError(data) || `status ${res.status}`;
+        attemptErrors.push(detail);
+        continue;
+      }
+
+      const bundleId = readBundleIdFromApiPayload(data);
+      if (bundleId != null) {
+        const refreshed = await fetchBundlesSnapshot();
+        if (refreshed.length > 0) {
+          setBundles(refreshed);
+        } else if (data && typeof data === "object") {
+          setBundles((prev) => {
+            const next = [...prev];
+            const existingIndex = next.findIndex((bundle) => String(bundle.id) === String(bundleId));
+            if (existingIndex >= 0) next[existingIndex] = data as Bundle;
+            else next.push(data as Bundle);
+            return next;
+          });
+        }
+        return bundleId;
       }
     }
 
+    if (attemptErrors.length > 0) {
+      throw new Error(`Failed to resolve bundle for the selected units.\n${attemptErrors[attemptErrors.length - 1]}`);
+    }
     throw new Error("Failed to resolve bundle for the selected units.");
   }
 

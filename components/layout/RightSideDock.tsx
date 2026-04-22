@@ -12,6 +12,10 @@ type Props = {
   publishedCommentOnly?: boolean;
   commentTitle?: string;
   onCommentsPressed?: () => void;
+  pendingCandidateReview?: boolean;
+  pendingCandidateTitle?: string;
+  showSolveNotification?: boolean;
+  onPendingReviewPressed?: () => void;
   canUseSolve?: boolean;
   solveDisabledReason?: string;
   canManualEditCards?: boolean;
@@ -47,6 +51,10 @@ export default function RightSideDock({
   publishedCommentOnly = false,
   commentTitle = "Comments",
   onCommentsPressed,
+  pendingCandidateReview = false,
+  pendingCandidateTitle = "",
+  showSolveNotification = false,
+  onPendingReviewPressed,
   canUseSolve = false,
   solveDisabledReason = "",
   canManualEditCards = false,
@@ -75,6 +83,12 @@ export default function RightSideDock({
   useEffect(() => {
     setFanOpen(false);
   }, [closeSignal]);
+
+  useEffect(() => {
+    if (pendingCandidateReview) {
+      setFanOpen(false);
+    }
+  }, [pendingCandidateReview]);
 
   useEffect(() => {
     if (!fanOpen) return;
@@ -114,17 +128,33 @@ export default function RightSideDock({
         {!fanOpen && (
           <button
             type="button"
-            title={solveDisabledReason}
-            onClick={() => onSolvePressed?.()}
-            disabled={!canUseSolve}
-            className={`${bubbleClass} scale-75 opacity-90 ${canUseSolve ? "" : "opacity-70"} disabled:cursor-not-allowed`}
-            aria-disabled={!canUseSolve}
+            title={pendingCandidateReview ? pendingCandidateTitle : solveDisabledReason}
+            onClick={() => {
+              if (pendingCandidateReview) {
+                onPendingReviewPressed?.();
+                return;
+              }
+              onSolvePressed?.();
+            }}
+            disabled={pendingCandidateReview ? false : !canUseSolve}
+            className={`${bubbleClass} relative scale-75 opacity-90 ${pendingCandidateReview || canUseSolve ? "" : "opacity-70"} disabled:cursor-not-allowed`}
+            aria-disabled={pendingCandidateReview ? false : !canUseSolve}
           >
-            {canUseSolve ? <Lightbulb className={`w-5 h-5 ${iconClass}`} /> : <LightbulbOff className="w-5 h-5 text-gray-300" />}
+            {pendingCandidateReview || canUseSolve ? (
+              <Lightbulb className={`w-5 h-5 ${iconClass}`} />
+            ) : (
+              <LightbulbOff className="w-5 h-5 text-gray-300" />
+            )}
+            {showSolveNotification && (
+              <span className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white shadow-sm">
+                !
+              </span>
+            )}
           </button>
         )}
 
-        <div className="relative h-12 w-12 pointer-events-auto" data-jiggle-tools>
+        {!pendingCandidateReview && (
+          <div className="relative h-12 w-12 pointer-events-auto" data-jiggle-tools>
           <div
             className={`absolute inset-0 pointer-events-none transition-all duration-200 ${
               fanOpen ? "opacity-100 scale-100" : "opacity-0 scale-95"
@@ -226,9 +256,10 @@ export default function RightSideDock({
           >
             <Plus className={`w-5 h-5 ${iconClass} transition-transform duration-200 ${fanOpen ? "rotate-45" : "rotate-0"}`} />
           </button>
-        </div>
+          </div>
+        )}
 
-        {!fanOpen && (
+        {!pendingCandidateReview && !fanOpen && (
           <button
             type="button"
             title={canPublishDraft ? labels.publishDraft : labels.nothingToPublish}
