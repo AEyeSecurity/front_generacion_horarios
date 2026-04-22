@@ -1,4 +1,5 @@
 import type { ScheduleViewMode } from "@/lib/schedule-view";
+import { authFetch } from "@/lib/client-auth";
 
 type ScreenContextData = Record<string, unknown>;
 
@@ -57,7 +58,7 @@ export async function fetchGridScreenContext(
     if (entry?.etag) headers["if-none-match"] = entry.etag;
     if (entry?.lastModified) headers["if-modified-since"] = entry.lastModified;
 
-    const res = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}/screen-context/?view=${view}`, {
+    const res = await authFetch(`/api/grids/${encodeURIComponent(String(gridId))}/screen-context/?view=${view}`, {
       cache: "no-store",
       headers,
       signal: options.signal,

@@ -1,6 +1,6 @@
 import { backendFetchJSON } from "@/lib/backend";
 import type { Role } from "@/lib/types";
-import { getCurrentUser } from "@/lib/auth";
+import { requireUserOrRedirect } from "@/lib/auth";
 import { ParticipantsHeader } from "@/components/grid/headers";
 import Link from "next/link";
 import { resolveGridByCode } from "../_helpers";
@@ -10,19 +10,17 @@ export default async function ParticipantsPage({ params }: { params: Promise<{ c
   const { code } = await params;
   const grid = await resolveGridByCode(code);
   const id = String(grid.id);
-  const me = await getCurrentUser();
+  const me = await requireUserOrRedirect(`/grid/${encodeURIComponent(grid.grid_code || code)}/participants`);
   const t = (key: Parameters<typeof getTranslation>[1]) => getTranslation(me?.preferred_language, key);
 
   let role: Role = "viewer";
   try {
-    if (me) {
-      const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
-      const list = Array.isArray(data) ? data : data.results ?? [];
-      const mine = list.find(
-        (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
-      );
-      role = (mine?.role ?? "viewer") as Role;
-    }
+    const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
+    const list = Array.isArray(data) ? data : data.results ?? [];
+    const mine = list.find(
+      (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
+    );
+    role = (mine?.role ?? "viewer") as Role;
   } catch {}
 
   const gridName = grid.name;

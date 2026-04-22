@@ -1,6 +1,6 @@
 import GridSolverSettingsForm from "@/components/grid/GridSolverSettingsForm";
 import { backendFetchJSON } from "@/lib/backend";
-import { getCurrentUser } from "@/lib/auth";
+import { requireUserOrRedirect } from "@/lib/auth";
 import { resolveGridByCode } from "../_helpers";
 import { getTranslation } from "@/lib/i18n";
 
@@ -12,7 +12,7 @@ export default async function GridSettingsPage({
   const { code } = await params;
   const grid = await resolveGridByCode(code);
   const id = String(grid.id);
-  const me = await getCurrentUser();
+  const me = await requireUserOrRedirect(`/grid/${encodeURIComponent(grid.grid_code || code)}/settings`);
   const t = (key: Parameters<typeof getTranslation>[1]) => getTranslation(me?.preferred_language, key);
   let canConfigure = false;
 

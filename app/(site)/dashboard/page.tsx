@@ -1,8 +1,9 @@
 // app/(site)/dashboard/page.tsx
 import Link from "next/link";
-import { requireUser } from "@/lib/auth";
+import { requireUserOrRedirect } from "@/lib/auth";
 import type { ApiList, Grid } from "@/lib/types";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import RecentProjects from "@/components/dashboard/RecentProjects";
 import { getTranslation } from "@/lib/i18n";
 
@@ -10,7 +11,7 @@ type GridsResp = ApiList<Grid> | Grid[];
 const norm = (r: GridsResp) => (Array.isArray(r) ? r : (r.results ?? []));
 
 export default async function DashboardPage() {
-  const me = await requireUser();
+  const me = await requireUserOrRedirect("/dashboard");
   const t = (key: Parameters<typeof getTranslation>[1]) => getTranslation(me.preferred_language, key);
 
   const h = await headers();
@@ -23,6 +24,9 @@ export default async function DashboardPage() {
     headers: { cookie },
     cache: "no-store",
   });
+  if (res.status === 401) {
+    redirect(`/login?next=${encodeURIComponent("/dashboard")}`);
+  }
   if (!res.ok) throw new Error(`Failed to load grids (${res.status})`);
   const grids = norm(await res.json());
 

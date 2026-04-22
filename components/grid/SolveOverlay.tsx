@@ -39,10 +39,11 @@ import {
 } from "@/lib/screen-context";
 import RightSideDock from "@/components/layout/RightSideDock";
 import GlassSurface from "@/components/ui/GlassSurface";
-import AnimatedList from "@/components/navigation/AnimatedList";
 import ScheduleErrorCard from "@/components/grid/ScheduleErrorCard";
+import BreakDialog from "@/components/grid/BreakDialog";
 import type { ScheduleViewMode } from "@/lib/schedule-view";
 import { useI18n } from "@/lib/use-i18n";
+import { authFetch } from "@/lib/client-auth";
 
 const shadeHex = (hex: string, amt: number) => {
   if (!/^#([0-9a-f]{6})$/i.test(hex)) return hex;
@@ -242,7 +243,6 @@ const DAY_LABEL_TO_INDEX: Record<string, number> = {
 };
 
 const OVERLAP_CAROUSEL_INTERVAL_MS = 2500;
-const BREAK_DURATION_OPTIONS_MIN = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 420, 480] as const;
 const UNIT_TAB_SELECT_EVENT = "shift:unit-tab:select";
 const GRID_LEFT_PANEL_STATE_EVENT = "shift:grid-left-panel-state";
 
@@ -608,7 +608,6 @@ export default function SolveOverlay({
     breaks: [],
   });
   const [breakDraftDurationMin, setBreakDraftDurationMin] = useState<number>(5);
-  const [breakDraftOffsetMin, setBreakDraftOffsetMin] = useState<number | null>(null);
   const [breakDialogBusy, setBreakDialogBusy] = useState(false);
   const [breakDialogError, setBreakDialogError] = useState<string | null>(null);
   const [scheduleBlockages, setScheduleBlockages] = useState<ScheduleBlockage[]>([]);
@@ -902,7 +901,7 @@ export default function SolveOverlay({
         Object.keys(sanitizedSolverParams).length > 0
           ? { solver_params: sanitizedSolverParams }
           : {};
-      const res = await fetch(`/api/grids/${gridId}/precheck/`, {
+      const res = await authFetch(`/api/grids/${gridId}/precheck/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
@@ -958,7 +957,7 @@ export default function SolveOverlay({
       scheduleViewMode === "published"
         ? `/api/grids/${gridId}/published-schedule/`
         : `/api/grids/${gridId}/schedule/`;
-    const r = await fetch(endpoint, { cache: "no-store" });
+    const r = await authFetch(endpoint, { cache: "no-store" });
     if (r.status === 404) return null;
     if (!r.ok) {
       const txt = await r.text().catch(() => "");
@@ -994,7 +993,7 @@ export default function SolveOverlay({
       setHistoryPanelBusy(true);
       setHistoryPanelError(null);
       try {
-        const res = await fetch(`/api/grids/${gridId}/published-schedules/`, { cache: "no-store" });
+        const res = await authFetch(`/api/grids/${gridId}/published-schedules/`, { cache: "no-store" });
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
           throw new Error(txt || `Failed to load published versions (${res.status})`);
@@ -1115,7 +1114,7 @@ export default function SolveOverlay({
     (async () => {
       setCommentsLoading(true);
       try {
-        const r = await fetch(
+        const r = await authFetch(
           `/api/placement-comments/?schedule=${encodeURIComponent(String(scheduleId))}&grid=${encodeURIComponent(String(gridId))}`,
           { cache: "no-store" },
         );
@@ -1177,7 +1176,7 @@ export default function SolveOverlay({
     (async () => {
       setBlockagesBusy(true);
       try {
-        const r = await fetch(`/api/schedule-blockages/?schedule=${encodeURIComponent(String(scheduleId))}`, {
+        const r = await authFetch(`/api/schedule-blockages/?schedule=${encodeURIComponent(String(scheduleId))}`, {
           cache: "no-store",
         });
         if (!r.ok) {
@@ -1254,7 +1253,7 @@ export default function SolveOverlay({
           const gridEndpoints = [`/api/grids/${gridId}/`, `/api/grids/${gridId}`];
           for (const endpoint of gridEndpoints) {
             try {
-              const res = await fetch(endpoint, { cache: "no-store" });
+              const res = await authFetch(endpoint, { cache: "no-store" });
               if (!res.ok) continue;
               const payload = (await res.json().catch(() => ({}))) as { allow_overstaffing?: unknown };
               if (typeof payload.allow_overstaffing === "boolean") {
@@ -1286,7 +1285,7 @@ export default function SolveOverlay({
           let cellsFromApi: any[] = [];
           for (const endpoint of candidateEndpoints) {
             try {
-              const res = await fetch(endpoint, { cache: "no-store" });
+              const res = await authFetch(endpoint, { cache: "no-store" });
               if (!res.ok) continue;
               const payload = await res.json().catch(() => ({}));
               cellsFromApi = Array.isArray(payload)
@@ -1710,7 +1709,7 @@ export default function SolveOverlay({
       }
 
       const sanitizedSolverParams = sanitizeSolverParamsForSolve(solverParams);
-      const r = await fetch(`/api/grids/${gridId}/solve-candidates/`, {
+      const r = await authFetch(`/api/grids/${gridId}/solve-candidates/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -1806,7 +1805,7 @@ export default function SolveOverlay({
     setCandidateBusy(true);
     setCandidateError(null);
     try {
-      const res = await fetch(
+      const res = await authFetch(
         `/api/grids/${gridId}/solve-candidates/${encodeURIComponent(candidateRunId)}/choose/`,
         {
           method: "POST",
@@ -1858,7 +1857,7 @@ export default function SolveOverlay({
     setCandidateBusy(true);
     setCandidateError(null);
     try {
-      const res = await fetch(
+      const res = await authFetch(
         `/api/grids/${gridId}/solve-candidates/${encodeURIComponent(candidateRunId)}/reject/`,
         {
           method: "POST",
@@ -2429,27 +2428,6 @@ export default function SolveOverlay({
     slotMin,
     (Math.max(1, breakDialogState.endSlot - breakDialogState.startSlot) * slotMin),
   );
-  const breakDialogMaxPerBreak = Math.floor(breakDialogDurationMin / 2);
-  const breakDialogAllowedDurations = BREAK_DURATION_OPTIONS_MIN.filter((value) => value <= breakDialogMaxPerBreak);
-  const breakDialogValidOffsets = useMemo(() => {
-    const duration = breakDraftDurationMin;
-    if (!duration || duration <= 0) return [];
-    const maxOffset = breakDialogDurationMin - duration;
-    const offsets: number[] = [];
-    for (let offset = 0; offset <= maxOffset; offset += duration) {
-      offsets.push(offset);
-    }
-    return offsets;
-  }, [breakDialogDurationMin, breakDraftDurationMin]);
-  const breakDialogOffsetItems = useMemo(
-    () =>
-      breakDialogValidOffsets.map((offset) => {
-        const startMin = dayStartMin + breakDialogState.startSlot * slotMin + offset;
-        const endMin = startMin + breakDraftDurationMin;
-        return `${formatSlotRange(0, 1, startMin, endMin)} (${breakDraftDurationMin} min)`;
-      }),
-    [breakDialogState.startSlot, breakDialogValidOffsets, breakDraftDurationMin, dayStartMin, slotMin],
-  );
 
   const onSolvePressed = () => {
     if (!canUseSolve) return;
@@ -2509,19 +2487,6 @@ export default function SolveOverlay({
     }
   }, [closeEditModes, editToolMode, hasOverstaffableCells, hasUnassignedCells]);
 
-  useEffect(() => {
-    if (!breakDialogState.open) return;
-    if (breakDialogAllowedDurations.length === 0) {
-      setBreakDraftDurationMin(5);
-      setBreakDraftOffsetMin(null);
-      return;
-    }
-    if (!breakDialogAllowedDurations.includes(breakDraftDurationMin as (typeof BREAK_DURATION_OPTIONS_MIN)[number])) {
-      setBreakDraftDurationMin(breakDialogAllowedDurations[0]);
-      setBreakDraftOffsetMin(null);
-    }
-  }, [breakDialogAllowedDurations, breakDialogState.open, breakDraftDurationMin]);
-
   const selectedHistoryEntry = useMemo(
     () => publishedHistorySchedules.find((entry) => entry.key === selectedHistoryKey) ?? null,
     [publishedHistorySchedules, selectedHistoryKey],
@@ -2550,7 +2515,7 @@ export default function SolveOverlay({
       if (typeof selectedHistoryEntry.publishedVersion === "number") {
         query.set("published_version", String(selectedHistoryEntry.publishedVersion));
       }
-      const res = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}/schedule/export?${query.toString()}`, {
+      const res = await authFetch(`/api/grids/${encodeURIComponent(String(gridId))}/schedule/export?${query.toString()}`, {
         method: "GET",
       });
       if (!res.ok) {
@@ -2588,7 +2553,7 @@ export default function SolveOverlay({
       if (typeof selectedHistoryEntry.publishedVersion === "number") {
         payload.published_version = selectedHistoryEntry.publishedVersion;
       }
-      const res = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}/schedule/restore-published/`, {
+      const res = await authFetch(`/api/grids/${encodeURIComponent(String(gridId))}/schedule/restore-published/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
@@ -3040,7 +3005,7 @@ export default function SolveOverlay({
         start_slot: commentAnchor.startSlot,
         text: commentDraft.trim(),
       };
-      const res = await fetch("/api/placement-comments/", {
+      const res = await authFetch("/api/placement-comments/", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
@@ -3104,7 +3069,7 @@ export default function SolveOverlay({
     );
     setPinBusyKey(cardKey);
     try {
-      const res = await fetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+      const res = await authFetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ locked: nextLocked }),
@@ -3144,10 +3109,6 @@ export default function SolveOverlay({
 
   const saveBreakDialog = async () => {
     if (!breakDialogState.placementId) return;
-    if (breakDialogState.breaks.length > 2) {
-      setBreakDialogError("At most 2 breaks are allowed.");
-      return;
-    }
     setBreakDialogBusy(true);
     setBreakDialogError(null);
     try {
@@ -3160,7 +3121,6 @@ export default function SolveOverlay({
         .sort((a, b) => a.offset_min - b.offset_min);
       await applyPlacementBreaks(breakDialogState.placementId, normalized);
       setBreakDialogState((prev) => ({ ...prev, open: false }));
-      setBreakDraftOffsetMin(null);
     } catch (error: unknown) {
       setBreakDialogError(error instanceof Error ? error.message : "Could not update breaks.");
     } finally {
@@ -3184,7 +3144,7 @@ export default function SolveOverlay({
           : prev,
       );
       try {
-        const res = await fetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+        const res = await authFetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ breaks: nextBreaks }),
@@ -3212,7 +3172,7 @@ export default function SolveOverlay({
   const upsertBlockage = useCallback(
     async (id: string, dayIndex: number, startSlot: number, endSlot: number, unitScopeIds: string[] = []) => {
       const { startSlot: safeStart, endSlot: safeEnd } = clampSlotRange(startSlot, endSlot);
-      const res = await fetch(`/api/schedule-blockages/${encodeURIComponent(id)}`, {
+      const res = await authFetch(`/api/schedule-blockages/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -3237,7 +3197,7 @@ export default function SolveOverlay({
       if (!currentSchedule?.id) return;
       const { startSlot: safeStart, endSlot: safeEnd } = clampSlotRange(startSlot, endSlot);
       const scopeIds = selectedBlockageUnitScopeIds.map(toApiId);
-      const res = await fetch("/api/schedule-blockages/", {
+      const res = await authFetch("/api/schedule-blockages/", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -3265,7 +3225,7 @@ export default function SolveOverlay({
       const previous = scheduleBlockages;
       setScheduleBlockages((prev) => prev.filter((entry) => entry.id !== id));
       try {
-        const res = await fetch(`/api/schedule-blockages/${encodeURIComponent(id)}`, {
+        const res = await authFetch(`/api/schedule-blockages/${encodeURIComponent(id)}`, {
           method: "DELETE",
         });
         if (res.status !== 204) {
@@ -3330,7 +3290,7 @@ export default function SolveOverlay({
 
         try {
           if (nextAssigned.length === 0) {
-            const deleteRes = await fetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+            const deleteRes = await authFetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
               method: "DELETE",
             });
             if (!deleteRes.ok) {
@@ -3338,7 +3298,7 @@ export default function SolveOverlay({
               throw new Error(txt || `${t("solve_overlay.could_not_remove_placement")} (${deleteRes.status})`);
             }
           } else {
-            const patchRes = await fetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+            const patchRes = await authFetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
               method: "PATCH",
               headers: { "content-type": "application/json" },
               body: JSON.stringify({
@@ -3376,7 +3336,7 @@ export default function SolveOverlay({
           : prev,
       );
       try {
-        const res = await fetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+        const res = await authFetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
           method: "DELETE",
         });
         if (!res.ok) {
@@ -3695,7 +3655,7 @@ export default function SolveOverlay({
       );
 
       try {
-        const res = await fetch(`/api/schedule-placements/`, {
+        const res = await authFetch(`/api/schedule-placements/`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -3787,7 +3747,7 @@ export default function SolveOverlay({
 
       if (currentSchedule?.id) {
         try {
-          const res = await fetch(`/api/grids/${gridId}/schedule/placement-options/`, {
+          const res = await authFetch(`/api/grids/${gridId}/schedule/placement-options/`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
@@ -3996,7 +3956,7 @@ export default function SolveOverlay({
           : prev,
       );
       try {
-        const res = await fetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+        const res = await authFetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -4510,7 +4470,7 @@ export default function SolveOverlay({
       try {
         let loaded: any[] = [];
         for (const endpoint of endpoints) {
-          const res = await fetch(endpoint, { cache: "no-store" });
+          const res = await authFetch(endpoint, { cache: "no-store" });
           if (!res.ok) continue;
           const data = await res.json().catch(() => ([]));
           loaded = Array.isArray(data) ? data : data?.results ?? [];
@@ -4663,7 +4623,7 @@ export default function SolveOverlay({
     setIsPublishing(true);
     setError(null);
     try {
-      const res = await fetch(`/api/grids/${gridId}/schedule/publish/`, {
+      const res = await authFetch(`/api/grids/${gridId}/schedule/publish/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
       });
@@ -4674,7 +4634,7 @@ export default function SolveOverlay({
 
       writeGridScheduleViewMode(gridId, "published");
 
-      const latestPublished = await fetch(`/api/grids/${gridId}/published-schedule/`, {
+      const latestPublished = await authFetch(`/api/grids/${gridId}/published-schedule/`, {
         cache: "no-store",
       });
       if (latestPublished.ok) {
@@ -5152,11 +5112,7 @@ export default function SolveOverlay({
                     const sortedBreaks = [...placementBreaks]
                       .filter((entry) => Number.isFinite(entry.offset_min) && Number.isFinite(entry.duration_min))
                       .sort((a, b) => a.offset_min - b.offset_min);
-                    const allowedDurations = BREAK_DURATION_OPTIONS_MIN.filter(
-                      (value) => value <= Math.floor(placementDurationMin / 2),
-                    );
-                    setBreakDraftDurationMin(allowedDurations[0] ?? 5);
-                    setBreakDraftOffsetMin(null);
+                    setBreakDraftDurationMin(Math.max(5, Math.min(Math.floor(placementDurationMin / 2), 30)));
                     setBreakDialogState({
                       open: true,
                       placementId,
@@ -5387,159 +5343,36 @@ export default function SolveOverlay({
         </div>
       )}
 
-      <Dialog
+      <BreakDialog
         open={breakDialogState.open}
+        sourceCellId={breakDialogState.sourceCellId}
+        startSlot={breakDialogState.startSlot}
+        endSlot={breakDialogState.endSlot}
+        breaks={breakDialogState.breaks}
+        breakDraftDurationMin={breakDraftDurationMin}
+        breakDialogBusy={breakDialogBusy}
+        breakDialogError={breakDialogError}
+        dayStartMin={dayStartMin}
+        slotMin={slotMin}
+        cellNameById={cellNameById}
+        cellColorById={cellColorById}
+        t={t}
         onOpenChange={(open) => {
           setBreakDialogState((prev) => ({ ...prev, open }));
-          if (!open) {
-            setBreakDialogError(null);
-            setBreakDraftOffsetMin(null);
-          }
+          if (!open) setBreakDialogError(null);
         }}
-      >
-        <DialogContent className="sm:max-w-[560px] z-[182]">
-          <div data-break-dialog>
-            <DialogHeader>
-              <DialogTitle>Breaks</DialogTitle>
-              <DialogDescription>
-                Choose duration and place breaks on valid internal slots.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="mt-3 space-y-3">
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                {breakDialogAllowedDurations.map((value) => (
-                  <button
-                    key={`break-duration-${value}`}
-                    type="button"
-                    className={`min-w-[76px] rounded border px-2 py-1 text-xs ${
-                      breakDraftDurationMin === value
-                        ? "border-black bg-black text-white"
-                        : "border-gray-300 bg-white text-gray-700"
-                    }`}
-                    onClick={() => {
-                      setBreakDraftDurationMin(value);
-                      setBreakDraftOffsetMin(null);
-                    }}
-                  >
-                    {value} min
-                  </button>
-                ))}
-              </div>
-
-              <div className="rounded border border-gray-200 bg-gray-50 px-3 py-4">
-                <AnimatedList
-                  key={`break-offset-list-${breakDraftDurationMin}-${breakDialogValidOffsets.join("-")}`}
-                  items={breakDialogOffsetItems}
-                  onItemSelect={(_, index) => setBreakDraftOffsetMin(breakDialogValidOffsets[index] ?? null)}
-                  showGradients={false}
-                  enableArrowNavigation={false}
-                  selectOnHover={false}
-                  displayScrollbar={false}
-                  selectedIndex={breakDialogValidOffsets.findIndex((v) => v === breakDraftOffsetMin)}
-                  maxVisibleItems={5}
-                  itemHeightPx={44}
-                  itemGapPx={8}
-                  listPaddingPx={8}
-                  centerItems
-                  className="!w-[380px] max-w-full mx-auto"
-                  itemClassName="!px-3 !py-2 hover:!bg-gray-100 [&_p]:!text-sm"
-                  selectedItemClassName="!bg-black !border-black [&_p]:!text-white"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="rounded border px-3 py-1.5 text-sm disabled:opacity-50"
-                  disabled={
-                    breakDialogState.breaks.length >= 2 ||
-                    breakDraftOffsetMin == null ||
-                    !Number.isFinite(breakDraftOffsetMin)
-                  }
-                  onClick={() => {
-                    if (breakDraftOffsetMin == null) return;
-                    const nextBreak: BreakEntry = {
-                      offset_min: breakDraftOffsetMin,
-                      duration_min: breakDraftDurationMin,
-                    };
-                    const overlaps = breakDialogState.breaks.some((entry) =>
-                      rangesOverlap(
-                        entry.offset_min,
-                        entry.offset_min + entry.duration_min,
-                        nextBreak.offset_min,
-                        nextBreak.offset_min + nextBreak.duration_min,
-                      ),
-                    );
-                    if (overlaps) {
-                      setBreakDialogError("Break overlaps an existing break.");
-                      return;
-                    }
-                    setBreakDialogError(null);
-                    setBreakDialogState((prev) => ({
-                      ...prev,
-                      breaks: [...prev.breaks, nextBreak].sort((a, b) => a.offset_min - b.offset_min),
-                    }));
-                  }}
-                >
-                  Add break
-                </button>
-                <span className="text-xs text-gray-500">Max 2 breaks</span>
-              </div>
-
-              <div className="space-y-2">
-                {breakDialogState.breaks.length === 0 ? (
-                  <div className="text-sm text-gray-500">No breaks added.</div>
-                ) : (
-                  breakDialogState.breaks.map((entry, index) => {
-                    const startMin = dayStartMin + breakDialogState.startSlot * slotMin + entry.offset_min;
-                    const endMin = startMin + entry.duration_min;
-                    return (
-                      <div key={`break-entry-${index}-${entry.offset_min}`} className="flex items-center justify-between rounded border px-2 py-1.5">
-                        <div className="text-sm">
-                          {formatSlotRange(0, 1, startMin, endMin)} - {entry.duration_min} min
-                        </div>
-                        <button
-                          type="button"
-                          className="text-xs text-red-600"
-                          onClick={() =>
-                            setBreakDialogState((prev) => ({
-                              ...prev,
-                              breaks: prev.breaks.filter((_, i) => i !== index),
-                            }))
-                          }
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              {breakDialogError && <div className="text-sm text-red-600">{breakDialogError}</div>}
-            </div>
-
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                className="h-9 rounded border px-3 text-sm"
-                onClick={() => setBreakDialogState((prev) => ({ ...prev, open: false }))}
-              >
-                {t("common.cancel")}
-              </button>
-              <button
-                type="button"
-                className="h-9 rounded bg-black px-3 text-sm text-white disabled:opacity-60"
-                onClick={() => void saveBreakDialog()}
-                disabled={breakDialogBusy}
-              >
-                {breakDialogBusy ? t("common.saving") : t("common.save")}
-              </button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+        setBreakDraftDurationMin={setBreakDraftDurationMin}
+        setBreakDialogError={setBreakDialogError}
+        setBreaks={(updater) =>
+          setBreakDialogState((prev) => ({
+            ...prev,
+            breaks: updater(prev.breaks),
+          }))
+        }
+        onSave={() => {
+          void saveBreakDialog();
+        }}
+      />
 
       <Dialog
         open={assignmentDialogOpen}

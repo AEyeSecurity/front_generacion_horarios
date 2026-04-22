@@ -2,7 +2,7 @@ import Link from "next/link";
 import LeftSideDock from "@/components/layout/LeftSideDock";
 import GridSchedulePanel from "@/components/grid/GridSchedulePanel";
 import { backendFetchJSON } from "@/lib/backend";
-import { getCurrentUser } from "@/lib/auth";
+import { requireUserOrRedirect } from "@/lib/auth";
 import type { Role } from "@/lib/types";
 import { resolveGridByCode, resolveScheduleByGridCode } from "../_helpers";
 
@@ -17,7 +17,7 @@ export default async function GridHistoryPage({
   const grid = await resolveGridByCode(code);
   const gridId = String(grid.id);
   const gridCode = grid.grid_code || code;
-  const me = await getCurrentUser();
+  const me = await requireUserOrRedirect(`/grid/${encodeURIComponent(gridCode)}/history`);
 
   const toMin = (hhmmss: string) => {
     const [h, m] = hhmmss.split(":").map(Number);

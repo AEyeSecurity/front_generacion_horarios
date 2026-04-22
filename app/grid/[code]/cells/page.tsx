@@ -1,5 +1,5 @@
 import { backendFetchJSON } from "@/lib/backend";
-import { getCurrentUser } from "@/lib/auth";
+import { requireUserOrRedirect } from "@/lib/auth";
 import type { Role } from "@/lib/types";
 import CellsCardSwap from "@/components/grid/CellsCardSwap";
 import { CellsHeader } from "@/components/grid/headers";
@@ -15,6 +15,8 @@ export default async function GridCellsPage({
   const { code } = await params;
   const grid = await resolveGridByCode(code);
   const id = String(grid.id);
+  const nextPath = `/grid/${encodeURIComponent(grid.grid_code || code)}/cells`;
+  const me = await requireUserOrRedirect(nextPath);
   const gridBase = `/grid/${encodeURIComponent(grid.grid_code || code)}`;
 
   let bundles: { id: number | string; name?: string }[] = [];
@@ -34,31 +36,26 @@ export default async function GridCellsPage({
   let role: Role = "viewer";
   let selfPid: number | null = null;
   try {
-    const me = await getCurrentUser();
-    if (me) {
-      try {
-        const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
-        const list = Array.isArray(data) ? data : data.results ?? [];
-        const mine = list.find(
-          (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
-        );
-        role = (mine?.role ?? "viewer") as Role;
-      } catch {}
-      try {
-        let plist: any[] = [];
-        try {
-          const pdata = await backendFetchJSON<any>(`/api/participants/?grid=${id}`);
-          plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
-        } catch {
-          const pdata = await backendFetchJSON<any>(`/api/participants?grid=${id}`);
-          plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
-        }
-        const myp = plist.find(
-          (p: any) => (p.user_id ?? (typeof p.user === "number" ? p.user : p.user?.id)) === me.id
-        );
-        if (myp?.id != null) selfPid = Number(myp.id);
-      } catch {}
+    const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
+    const list = Array.isArray(data) ? data : data.results ?? [];
+    const mine = list.find(
+      (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
+    );
+    role = (mine?.role ?? "viewer") as Role;
+  } catch {}
+  try {
+    let plist: any[] = [];
+    try {
+      const pdata = await backendFetchJSON<any>(`/api/participants/?grid=${id}`);
+      plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
+    } catch {
+      const pdata = await backendFetchJSON<any>(`/api/participants?grid=${id}`);
+      plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
     }
+    const myp = plist.find(
+      (p: any) => (p.user_id ?? (typeof p.user === "number" ? p.user : p.user?.id)) === me.id
+    );
+    if (myp?.id != null) selfPid = Number(myp.id);
   } catch {}
 
   const days = (grid.days_enabled || []).map((i) => EN_DAY[i] ?? String(i));

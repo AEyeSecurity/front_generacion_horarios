@@ -1,7 +1,8 @@
 import { GridTopBar } from "@/components/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { requireUserOrRedirect, isAuthApiError } from "@/lib/auth";
 import { backendFetchJSON } from "@/lib/backend";
 import type { Role } from "@/lib/types";
+import { redirect } from "next/navigation";
 import { resolveGridByCode, resolveScheduleByGridId } from "./_helpers";
 
 export default async function GridByCodeLayout({
@@ -12,7 +13,7 @@ export default async function GridByCodeLayout({
   params: Promise<{ code: string }>;
 }) {
   const { code } = await params;
-  const me = await getCurrentUser();
+  const me = await requireUserOrRedirect(`/grid/${encodeURIComponent(code)}`);
 
   let gridId = 0;
   let gridName = "Grid";
@@ -25,7 +26,11 @@ export default async function GridByCodeLayout({
     gridId = Number(grid.id);
     gridName = grid.name;
     gridCode = grid.grid_code ?? code;
-  } catch {}
+  } catch (error: unknown) {
+    if (isAuthApiError(error)) {
+      redirect(`/login?next=${encodeURIComponent(`/grid/${encodeURIComponent(code)}`)}`);
+    }
+  }
 
   if (gridId && me) {
     try {

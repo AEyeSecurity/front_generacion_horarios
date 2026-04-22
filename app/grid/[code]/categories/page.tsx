@@ -1,6 +1,6 @@
 import { backendFetchJSON } from "@/lib/backend";
 import type { Role } from "@/lib/types";
-import { getCurrentUser } from "@/lib/auth";
+import { requireUserOrRedirect } from "@/lib/auth";
 import { CategoriesHeader } from "@/components/grid/headers";
 import { resolveGridByCode } from "../_helpers";
 
@@ -8,18 +8,16 @@ export default async function CategoriesPage({ params }: { params: Promise<{ cod
   const { code } = await params;
   const grid = await resolveGridByCode(code);
   const id = String(grid.id);
+  const me = await requireUserOrRedirect(`/grid/${encodeURIComponent(grid.grid_code || code)}/categories`);
 
   let role: Role = "viewer";
   try {
-    const me = await getCurrentUser();
-    if (me) {
-      const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
-      const list = Array.isArray(data) ? data : data.results ?? [];
-      const mine = list.find(
-        (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
-      );
-      role = (mine?.role ?? "viewer") as Role;
-    }
+    const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
+    const list = Array.isArray(data) ? data : data.results ?? [];
+    const mine = list.find(
+      (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
+    );
+    role = (mine?.role ?? "viewer") as Role;
   } catch {}
 
   const gridName = grid.name;

@@ -1,11 +1,12 @@
 // app/grid/[code]/page.tsx
 import { backendFetchJSON } from "@/lib/backend";
-import { getCurrentUser } from "@/lib/auth";
+import { requireUserOrRedirect, isAuthApiError } from "@/lib/auth";
 import type { Grid, Role } from "@/lib/types";
 import LeftSideDock from "@/components/layout/LeftSideDock";
 import GridSchedulePanel from "@/components/grid/GridSchedulePanel";
 import { resolveGridByCode } from "./_helpers";
 import { t as translate } from "@/lib/i18n";
+import { redirect } from "next/navigation";
 
 const DAY_KEYS = [
   "day.mon_short",
@@ -24,11 +25,15 @@ export default async function GridOverview({
   params: Promise<{ code: string }>;
 }) {
   const { code } = await params;
+  const nextPath = `/grid/${encodeURIComponent(code)}`;
 
   let grid: Grid;
   try {
     grid = await resolveGridByCode(code);
   } catch (e: any) {
+    if (isAuthApiError(e)) {
+      redirect(`/login?next=${encodeURIComponent(nextPath)}`);
+    }
     return (
       <div className="space-y-3">
         <h1 className="text-xl font-semibold">{translate("en-US", "grid_overview.not_found")}</h1>
@@ -42,7 +47,7 @@ export default async function GridOverview({
     );
   }
   const id = String(grid.id);
-  const me = await getCurrentUser();
+  const me = await requireUserOrRedirect(nextPath);
   const t = (key: Parameters<typeof translate>[1], params?: Record<string, string | number>) =>
     translate(me?.preferred_language, key, params);
 

@@ -16,6 +16,7 @@ import {
 import { GRID_COMMENTS_PANEL_TOGGLE_EVENT } from "@/lib/grid-comments-panel";
 import { fetchGridScreenContext, getContextList, invalidateGridScreenContext } from "@/lib/screen-context";
 import { useI18n } from "@/lib/use-i18n";
+import { authFetch } from "@/lib/client-auth";
 
 type Unit = { id: number | string; name: string };
 
@@ -495,7 +496,7 @@ export default function GridSchedulePanel({
           const gridEndpoints = [`/api/grids/${gridId}/`, `/api/grids/${gridId}`];
           for (const endpoint of gridEndpoints) {
             try {
-              const res = await fetch(endpoint, { cache: "no-store" });
+              const res = await authFetch(endpoint, { cache: "no-store" });
               if (!res.ok) continue;
               const payload = (await res.json().catch(() => ({}))) as { allow_overstaffing?: unknown };
               if (typeof payload.allow_overstaffing === "boolean") {
@@ -526,7 +527,7 @@ export default function GridSchedulePanel({
           let cellsFromApi: Cell[] = [];
           for (const endpoint of candidateEndpoints) {
             try {
-              const res = await fetch(endpoint, { cache: "no-store" });
+              const res = await authFetch(endpoint, { cache: "no-store" });
               if (!res.ok) continue;
               const payload = await res.json().catch(() => ({}));
               cellsFromApi = Array.isArray(payload)
@@ -917,7 +918,7 @@ export default function GridSchedulePanel({
       return;
     }
     try {
-      const res = await fetch(`/api/grids/${gridId}/schedule/history/`, { cache: "no-store" });
+      const res = await authFetch(`/api/grids/${gridId}/schedule/history/`, { cache: "no-store" });
       if (!res.ok) {
         const raw = await res.text().catch(() => "");
         throw new Error(raw || `${t("grid_schedule.history_load_error")} (${res.status})`);
@@ -970,7 +971,7 @@ export default function GridSchedulePanel({
       setHistoryBusy(true);
       setHistoryError(null);
       try {
-        const res = await fetch(endpoint, {
+        const res = await authFetch(endpoint, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
@@ -1215,7 +1216,7 @@ export default function GridSchedulePanel({
       try {
         if (nextAssigned.length === 0) {
           setSchedulePlacements((prev) => prev.filter((placement) => String(placement.id) !== placementId));
-          const res = await fetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+          const res = await authFetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
             method: "DELETE",
           });
           if (!res.ok) {
@@ -1234,7 +1235,7 @@ export default function GridSchedulePanel({
           ...placement,
           assigned_participants: nextAssigned,
         }));
-        const res = await fetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+        const res = await authFetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -1295,7 +1296,7 @@ export default function GridSchedulePanel({
 
       setParticipantEditBusy(true);
       try {
-        const res = await fetch(`/api/schedule-placements/${encodeURIComponent(payload.placementId)}`, {
+        const res = await authFetch(`/api/schedule-placements/${encodeURIComponent(payload.placementId)}`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -1408,7 +1409,7 @@ export default function GridSchedulePanel({
             ...placement,
             assigned_participants: mergedAssigned,
           }));
-          const patchRes = await fetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+          const patchRes = await authFetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
             method: "PATCH",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
@@ -1426,7 +1427,7 @@ export default function GridSchedulePanel({
             );
           }
         } else {
-          const res = await fetch(`/api/schedule-placements/`, {
+          const res = await authFetch(`/api/schedule-placements/`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
@@ -1474,7 +1475,7 @@ export default function GridSchedulePanel({
                 const mergedAssignedApi = mergedAssigned.map((participantId) =>
                   /^\d+$/.test(participantId) ? Number(participantId) : participantId,
                 );
-                const patchRes = await fetch(
+                const patchRes = await authFetch(
                   `/api/schedule-placements/${encodeURIComponent(String(concurrentSameDayPlacement.id))}`,
                   {
                     method: "PATCH",

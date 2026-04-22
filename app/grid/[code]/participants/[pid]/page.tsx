@@ -1,5 +1,5 @@
 import { backendFetchJSON } from "@/lib/backend";
-import { getCurrentUser } from "@/lib/auth";
+import { requireUserOrRedirect } from "@/lib/auth";
 import type { Role } from "@/lib/types";
 import ParticipantDetailContent from "@/components/participants/ParticipantDetailContent";
 import { resolveGridByCode } from "../../_helpers";
@@ -31,6 +31,9 @@ export default async function ParticipantAvailabilityPage({
   const grid = await resolveGridByCode(code);
   const id = String(grid.id);
   const sp = await searchParams;
+  const me = await requireUserOrRedirect(
+    `/grid/${encodeURIComponent(grid.grid_code || code)}/participants/${encodeURIComponent(pid)}${sp?.view === "schedule" ? "?view=schedule" : ""}`,
+  );
   const initialView = sp?.view === "schedule" ? "schedule" : "rules";
 
   const fetchParticipant = async (participantId: string) => {
@@ -66,18 +69,14 @@ export default async function ParticipantAvailabilityPage({
   const participantLinked = Boolean((participant as any).user_id ?? (participant as any).user);
 
   let role: Role = "viewer";
-  let meId: number | null = null;
+  let meId: number | null = me.id ?? null;
   try {
-    const me = await getCurrentUser();
-    meId = me?.id ?? null;
-    if (me) {
-      const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
-      const list = Array.isArray(data) ? data : data.results ?? [];
-      const mine = list.find(
-        (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id,
-      );
-      role = (mine?.role ?? "viewer") as Role;
-    }
+    const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
+    const list = Array.isArray(data) ? data : data.results ?? [];
+    const mine = list.find(
+      (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id,
+    );
+    role = (mine?.role ?? "viewer") as Role;
   } catch {}
 
   const participantUserId =
@@ -118,4 +117,3 @@ export default async function ParticipantAvailabilityPage({
     </div>
   );
 }
-
