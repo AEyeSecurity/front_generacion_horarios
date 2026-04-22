@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, BadgeCheck, Trash2 } from "lucide-react";
+import { ArrowLeft, BadgeCheck } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 import type { Role } from "@/lib/types";
@@ -18,6 +18,7 @@ import {
   parseGridSolverSettings,
 } from "@/lib/grid-solver-settings";
 import { useI18n } from "@/lib/use-i18n";
+import DeleteDropBubble from "@/components/layout/DeleteDropBubble";
 
 type Rule = {
   id: number;
@@ -1240,28 +1241,13 @@ export default function ParticipantDetailContent({
 
       {view === "rules" && ruleMove && (
         <div className="fixed left-4 top-1/2 -translate-y-1/2 z-[190] pointer-events-none">
-          <div
+          <DeleteDropBubble
             ref={ruleDeleteDropRef}
-            data-jiggle-delete-drop
-            className={`relative isolate w-12 h-12 rounded-full border shadow-md flex items-center justify-center pointer-events-auto transition-all duration-150 ${
-              isRuleDeleteDropActive
-                ? "bg-red-600 border-red-700 scale-110"
-                : "bg-white border-gray-300"
-            }`}
+            visible={Boolean(ruleMove)}
+            active={isRuleDeleteDropActive}
             title="Drop here to delete rule"
-          >
-            <Trash2 className={`w-5 h-5 ${isRuleDeleteDropActive ? "text-white" : "text-red-600"}`} />
-            <div
-              className={`absolute left-full top-1/2 -translate-y-1/2 ml-[-22px] h-44 w-9 overflow-hidden pointer-events-none transition-all duration-150 -z-10 ${
-                isRuleDeleteDropActive ? "opacity-100 scale-100" : "opacity-0 scale-95"
-              }`}
-            >
-              <div
-                className="absolute top-1/2 left-0 h-[220px] w-[220px] -translate-y-1/2 -translate-x-[190px] rounded-full border-[6px] border-red-500/85 shadow-[0_0_34px_rgba(239,68,68,0.34)]"
-                style={{ background: "transparent" }}
-              />
-            </div>
-          </div>
+            dataAttribute="data-jiggle-delete-drop"
+          />
         </div>
       )}
 

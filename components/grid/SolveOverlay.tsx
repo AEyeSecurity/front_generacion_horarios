@@ -636,7 +636,6 @@ export default function SolveOverlay({
   const [blockagesRefreshTick, setBlockagesRefreshTick] = useState(0);
   const [blockageDraft, setBlockageDraft] = useState<BlockageDraft | null>(null);
   const [blockageDragState, setBlockageDragState] = useState<BlockageDragState | null>(null);
-  const [unassignedFocusIndex, setUnassignedFocusIndex] = useState(0);
   const [cellAllowOverstaffById, setCellAllowOverstaffById] = useState<Record<string, boolean>>({});
   const [gridAllowsOverstaffing, setGridAllowsOverstaffing] = useState(false);
   const [overlapCarouselPage, setOverlapCarouselPage] = useState(0);
@@ -2657,17 +2656,10 @@ export default function SolveOverlay({
   const participantScrollerItems = useMemo(
     () =>
       Object.entries(participantNameById)
-        .map(([id, name]) => ({ id, name: name || `#${id}` }))
+        .map(([id, name]) => ({ id, name: name || `#${id}`, tier: participantTierById[id] ?? "-" }))
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [participantNameById],
+    [participantNameById, participantTierById],
   );
-
-  useEffect(() => {
-    setUnassignedFocusIndex((prev) => {
-      if (unassignedCells.length <= 1) return 0;
-      return Math.max(0, Math.min(unassignedCells.length - 1, prev));
-    });
-  }, [unassignedCells.length]);
 
   const precheckDiagnostics = useMemo(
     () => getPrecheckDiagnostics(precheck),
@@ -2775,6 +2767,45 @@ export default function SolveOverlay({
       }
     },
     [closeEditModes],
+  );
+
+  const handleUnassignedScrollerGrabStart = useCallback(
+    (payload: {
+      cardKey: string;
+      sourceCellId: string;
+      sourceBundleId: string;
+      cellName: string;
+      durationSlots: number;
+      pointerId: number;
+      clientX: number;
+      clientY: number;
+      grabOffsetX: number;
+      grabOffsetY: number;
+      offsetX: number;
+      offsetY: number;
+    }) => {
+      if (!canManualEditCards || !isJiggleMode) return;
+      clearLongPressTimer();
+      setPinError(null);
+      setDragState({
+        dragType: "unassigned",
+        cardKey: payload.cardKey,
+        sourceCellId: payload.sourceCellId,
+        sourceBundleId: payload.sourceBundleId,
+        cellName: payload.cellName,
+        originalDayIndex: null,
+        originalStartSlot: null,
+        durationSlots: Math.max(1, Number(payload.durationSlots) || 1),
+        pointerId: payload.pointerId,
+        clientX: payload.clientX,
+        clientY: payload.clientY,
+        offsetX: payload.offsetX,
+        offsetY: payload.offsetY,
+        grabOffsetX: payload.grabOffsetX,
+        grabOffsetY: payload.grabOffsetY,
+      });
+    },
+    [canManualEditCards, clearLongPressTimer, isJiggleMode],
   );
 
   useEffect(() => {
@@ -4530,23 +4561,6 @@ export default function SolveOverlay({
       }),
     );
   }, [isDeleteDropActive, isJiggleMode]);
-
-  useEffect(() => {
-    if (!isJiggleMode) return;
-    const dock = document.getElementById("sidedock");
-    const prevOpacity = dock?.style.opacity ?? "";
-    const prevPointerEvents = dock?.style.pointerEvents ?? "";
-    if (dock) {
-      dock.style.opacity = "0";
-      dock.style.pointerEvents = "none";
-      dock.style.transition = "opacity 140ms ease";
-    }
-    return () => {
-      if (!dock) return;
-      dock.style.opacity = prevOpacity;
-      dock.style.pointerEvents = prevPointerEvents;
-    };
-  }, [isJiggleMode]);
 
   useEffect(() => {
     if (!isJiggleMode) return;
@@ -6824,6 +6838,25 @@ export default function SolveOverlay({
             nothingToPublish: t("solve_overlay.nothing_to_publish"),
             solving: t("solve_overlay.solving"),
           }}
+          participantScrollerItems={participantScrollerItems}
+          unassignedCellItems={unassignedCells.map((cell) => ({
+            id: String(cell.id),
+            name: cell.name,
+            color: cell.color || "",
+            timeLabel: cell.timeLabel,
+            durationSlots: Math.max(1, Number(cell.durationSlots) || 1),
+            canGrab: Boolean(
+              canManualEditCards &&
+                isJiggleMode &&
+                cell.selectedBundleId != null &&
+                cell.canGrabForCurrentTab,
+            ),
+            selectedBundleId: cell.selectedBundleId != null ? String(cell.selectedBundleId) : null,
+          }))}
+          onUnassignedGrabStart={handleUnassignedScrollerGrabStart}
+          onUnassignedGrabBlocked={() => {
+            setPinError(t("solve_overlay.select_matching_unit_tab_before_placing"));
+          }}
           onSolvePressed={onSolvePressed}
           onPendingReviewPressed={openPendingCandidatePreview}
           onActivateTool={activateEditTool}
@@ -6831,160 +6864,6 @@ export default function SolveOverlay({
             void publishDraftSchedule();
           }}
         />
-      )}
-
-      {canManualEditCards && isParticipantsToolActive && (
-        <div className="fixed right-[-108px] top-1/2 -translate-y-1/2 z-[220] pointer-events-none" data-jiggle-participants>
-          <div className="w-[228px] pointer-events-auto">
-            <div className="relative h-[312px] overflow-y-auto overscroll-contain pl-1 pr-2">
-              <div className="space-y-2">
-                {participantScrollerItems.map((participant) => (
-                  <div
-                    key={`participant-tool-${participant.id}`}
-                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-[0_10px_16px_-14px_rgba(0,0,0,0.5)]"
-                  >
-                    <div className="truncate text-sm font-semibold text-gray-900">{participant.name}</div>
-                    <div className="text-[10px] text-gray-500">{participantTierById[participant.id] ?? "-"}</div>
-                  </div>
-                ))}
-                {participantScrollerItems.length === 0 && (
-                  <div className="rounded-xl border border-dashed border-gray-300 bg-white/80 px-3 py-2 text-xs text-gray-500">
-                    {t("participants_page.no_participants")}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {canManualEditCards && isUnassignedToolActive && (
-        <div className="fixed right-[-108px] top-1/2 -translate-y-1/2 z-[220] pointer-events-none" data-jiggle-unassigned>
-          <div className="w-[228px] pointer-events-auto">
-            <div
-              className="relative h-[312px] pr-2 overflow-visible overscroll-contain"
-              onWheel={(event) => {
-                event.stopPropagation();
-                if (unassignedCells.length <= 1) return;
-                event.preventDefault();
-                const dir = event.deltaY > 0 ? 1 : event.deltaY < 0 ? -1 : 0;
-                if (!dir) return;
-                setUnassignedFocusIndex((prev) =>
-                  Math.max(0, Math.min(unassignedCells.length - 1, prev + dir)),
-                );
-              }}
-            >
-              {unassignedCells.map((cell, index) => {
-                const distance = index - unassignedFocusIndex;
-                if (Math.abs(distance) > 2) return null;
-                const cardKey = `unassigned-${cell.id}`;
-                const colorIdx = CELL_COLOR_OPTIONS.findIndex(
-                  (color) => color.toLowerCase() === (cell.color || "").toLowerCase(),
-                );
-                const useColor = Boolean(cell.color && colorIdx >= 0);
-                const bg = useColor ? cell.color : "#9CA3AF";
-                const textDark = useColor ? CELL_TEXT_DARK[colorIdx] : "#111827";
-                const textLight = useColor ? CELL_TEXT_LIGHT[colorIdx] : "#F9FAFB";
-                const border = useColor ? shadeHex(bg, -0.33) : "#6B7280";
-                const absDistance = Math.abs(distance);
-                const scale = absDistance === 0 ? 1 : absDistance === 1 ? 0.78 : 0.62;
-                const opacity = absDistance === 0 ? 1 : absDistance === 1 ? 0.92 : 0.82;
-                const cardHeight = absDistance === 0 ? 86 : 52;
-                const baseCenterY = 156;
-                const visualNearHeight = 52 * 0.78;
-                const visualFarHeight = 52 * 0.62;
-                const sign = distance === 0 ? 0 : distance > 0 ? 1 : -1;
-                const nearOffset = 52;
-                const nearToFarOffset = visualNearHeight / 2 + visualFarHeight / 2;
-                const yOffset =
-                  absDistance === 0
-                    ? 0
-                    : absDistance === 1
-                    ? nearOffset
-                    : nearOffset + nearToFarOffset;
-                const y = baseCenterY + sign * yOffset;
-                const z = 120 - absDistance * 20;
-                const isDraggingCard = dragState?.cardKey === cardKey;
-                const dragTranslateX = isDraggingCard ? dragState.clientX - dragState.offsetX : 0;
-                const dragTranslateY = isDraggingCard ? dragState.clientY - dragState.offsetY : 0;
-                const canGrabCard =
-                  canManualEditCards &&
-                  isJiggleMode &&
-                  Boolean(cell.selectedBundleId) &&
-                  cell.canGrabForCurrentTab;
-                return (
-                  <div
-                    key={`unassigned-cell-${cell.id}`}
-                    className={`absolute left-0 right-2 rounded-xl border px-3 py-2 shadow-[0_12px_18px_-14px_rgba(0,0,0,0.55)] ${
-                      isDraggingCard ? "transition-none" : "transition-transform duration-150"
-                    } ${
-                      canGrabCard ? (isDraggingCard ? "cursor-grabbing" : "cursor-grab") : "cursor-not-allowed"
-                    }`}
-                    style={{
-                      top: `${y - cardHeight / 2}px`,
-                      height: `${cardHeight}px`,
-                      backgroundColor: bg,
-                      borderColor: border,
-                      transform: isDraggingCard
-                        ? `translate(${dragTranslateX}px, ${dragTranslateY}px) scale(1)`
-                        : `scale(${scale})`,
-                      opacity: canGrabCard ? opacity : Math.max(0.45, opacity * 0.6),
-                      zIndex: isDraggingCard ? 320 : z,
-                      willChange: isDraggingCard ? "transform" : undefined,
-                    }}
-                    onPointerDown={(event) => {
-                      if (!canManualEditCards || !isJiggleMode) return;
-                      if (!canGrabCard || cell.selectedBundleId == null) {
-                        setPinError(t("solve_overlay.select_matching_unit_tab_before_placing"));
-                        return;
-                      }
-                      clearLongPressTimer();
-                      const cardRect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
-                      setPinError(null);
-                      setDragState({
-                        dragType: "unassigned",
-                        cardKey,
-                        sourceCellId: String(cell.id),
-                        sourceBundleId: cell.selectedBundleId,
-                        cellName: cell.name,
-                        originalDayIndex: null,
-                        originalStartSlot: null,
-                        durationSlots: Math.max(1, Number(cell.durationSlots) || 1),
-                        pointerId: event.pointerId,
-                        clientX: event.clientX,
-                        clientY: event.clientY,
-                        offsetX: event.clientX,
-                        offsetY: event.clientY,
-                        grabOffsetX: event.clientX - cardRect.left,
-                        grabOffsetY: event.clientY - cardRect.top,
-                      });
-                    }}
-                    onPointerUp={() => clearLongPressTimer()}
-                    onPointerCancel={() => clearLongPressTimer()}
-                    onPointerLeave={() => clearLongPressTimer()}
-                  >
-                    <div className="flex h-full w-full items-center justify-start text-left">
-                      <div className="min-w-0 w-full">
-                        <div
-                          className="truncate text-xs font-semibold"
-                          style={{ color: textLight }}
-                          title={cell.name}
-                        >
-                          {cell.name}
-                        </div>
-                        {absDistance === 0 && (
-                          <div className="mt-1 text-[10px] font-medium" style={{ color: textDark }}>
-                            {cell.timeLabel}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
       )}
 
     </>

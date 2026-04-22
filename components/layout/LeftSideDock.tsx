@@ -3,10 +3,10 @@
 import { MouseEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import SidePanel from "./SidePanel";
-import { Users, Tags, User as UserIcon, LayoutGrid, Trash2 } from "lucide-react";
+import { Users, Tags, User as UserIcon, LayoutGrid } from "lucide-react";
 import type { Role } from "@/lib/types";
 import { useI18n } from "@/lib/use-i18n";
-import GlassSurface from "@/components/ui/GlassSurface";
+import DeleteDropBubble from "@/components/layout/DeleteDropBubble";
 
 type Tab = "participants" | "categories";
 const SHEET_ANIM_MS = 240;
@@ -146,7 +146,9 @@ export default function LeftSideDock({
       <div className="pointer-events-none">
         <div
           id="sidedock"
-          className="fixed left-4 top-1/2 -translate-y-1/2 z-[150] flex flex-col gap-3 pointer-events-auto"
+          className={`fixed left-4 top-1/2 -translate-y-1/2 z-[150] flex flex-col gap-3 pointer-events-auto transition-opacity duration-150 ${
+            showDeleteDrop ? "opacity-0 pointer-events-none" : "opacity-100"
+          }`}
         >
           <DockButton title={t("side_dock.my_availability")} onClick={gotoSelf}>
             <UserIcon className={`w-5 h-5 ${selfParticipantId ? "" : "opacity-50"}`} />
@@ -160,7 +162,9 @@ export default function LeftSideDock({
     <div className="pointer-events-none">
       <div
         id="sidedock"
-        className="fixed left-4 top-1/2 -translate-y-1/2 z-[150] flex flex-col gap-3 pointer-events-auto"
+        className={`fixed left-4 top-1/2 -translate-y-1/2 z-[150] flex flex-col gap-3 pointer-events-auto transition-opacity duration-150 ${
+          showDeleteDrop ? "opacity-0 pointer-events-none" : "opacity-100"
+        }`}
       >
         <DockButton
           title={t("side_dock.participants")}
@@ -192,42 +196,11 @@ export default function LeftSideDock({
       />
       {showDeleteDrop && (
         <div className="fixed left-4 top-1/2 -translate-y-1/2 z-[165] pointer-events-none">
-          <div className="relative h-12 w-12">
-            <div
-              className={`absolute left-[-96px] top-[-86px] pointer-events-none transition-all duration-200 -z-10 ${
-                deleteDropActive ? "opacity-100 scale-100" : "opacity-0 scale-95"
-              }`}
-            >
-              <div className="absolute left-0 top-0 h-[220px] w-[220px] rounded-full bg-red-500/35 shadow-[0_12px_30px_rgba(239,68,68,0.35)]" />
-              <GlassSurface
-                width={220}
-                height={220}
-                borderRadius={999}
-                backgroundOpacity={0.14}
-                brightness={50}
-                opacity={0.95}
-                blur={14}
-                displace={0.65}
-                distortionScale={-210}
-                redOffset={30}
-                greenOffset={0}
-                blueOffset={0}
-                saturation={1.8}
-                mixBlendMode="screen"
-                className="pointer-events-none absolute left-0 top-0"
-                style={{ background: "rgba(255, 255, 255, 0.26)" }}
-              />
-            </div>
-            <div
-              data-left-delete-drop
-              className={`relative isolate w-12 h-12 rounded-full border border-gray-200 shadow-md pointer-events-auto transition-all duration-150 flex items-center justify-center scale-75 opacity-90 ${
-                deleteDropActive ? "bg-white ring-2 ring-red-400" : "bg-white"
-              }`}
-              title={t("solve_overlay.drop_to_remove_placement")}
-            >
-              <Trash2 className="w-5 h-5 text-red-600" />
-            </div>
-          </div>
+          <DeleteDropBubble
+            visible={showDeleteDrop}
+            active={deleteDropActive}
+            title={t("solve_overlay.drop_to_remove_placement")}
+          />
         </div>
       )}
     </div>
