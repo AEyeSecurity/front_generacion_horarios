@@ -666,6 +666,10 @@ export default function SolveOverlay({
   const [gridAllowsOverstaffing, setGridAllowsOverstaffing] = useState(false);
   const [overlapCarouselPage, setOverlapCarouselPage] = useState(0);
   const [overlapCarouselPaused, setOverlapCarouselPaused] = useState(false);
+  const [previewOverlapCarouselPage, setPreviewOverlapCarouselPage] = useState(0);
+  const [previewOverlapCarouselPaused, setPreviewOverlapCarouselPaused] = useState(false);
+  const [mainCarouselCenterX, setMainCarouselCenterX] = useState<number | null>(null);
+  const [previewCarouselCenterX, setPreviewCarouselCenterX] = useState<number | null>(null);
   const [precheckDialogState, setPrecheckDialogState] = useState<PrecheckDialogState>({
     open: false,
     blocking: false,
@@ -695,23 +699,10 @@ export default function SolveOverlay({
   const longPressTimerRef = useRef<number | null>(null);
   const participantDropGhostTimersRef = useRef<number[]>([]);
   const participantDropGhostTokenRef = useRef(0);
-  const pegmanGhostRef = useRef<HTMLDivElement | null>(null);
-  const participantDragMotionRef = useRef({
-    prevX: 0,
-    prevY: 0,
-    prevT: 0,
-    lastMoveTs: 0,
-    hoverValid: false,
-    arm: { value: 0, vel: 0, target: 0 },
-    leg: { value: 0, vel: 0, target: 0 },
-    tilt: { value: 0, vel: 0, target: 0 },
-    legBase: { value: 25, vel: 0, target: 25 },
-    shadowScale: { value: 1, vel: 0, target: 1 },
-    shadowOpacity: { value: 0.2, vel: 0, target: 0.2 },
-    rafId: null as number | null,
-  });
   const lastHandledPinErrorRef = useRef<string | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
+  const mainScheduleScrollRef = useRef<HTMLDivElement | null>(null);
+  const previewScheduleScrollRef = useRef<HTMLDivElement | null>(null);
   const rightDockCloseSignalRef = useRef(0);
   const lastPlacementAttemptRef = useRef<{
     sourceCellId: string;
@@ -2587,14 +2578,22 @@ export default function SolveOverlay({
   }, [overlapCarouselTotalPages]);
 
   useEffect(() => {
-    if (overlapCarouselTotalPages <= 1 || dragState || isJiggleMode || overlapCarouselPaused) return;
+    if (
+      overlapCarouselTotalPages <= 1 ||
+      dragState ||
+      isJiggleMode ||
+      overlapCarouselPaused ||
+      commentsPanelOpen
+    ) {
+      return;
+    }
 
     const intervalId = window.setInterval(() => {
       setOverlapCarouselPage((prev) => (prev + 1) % overlapCarouselTotalPages);
     }, OVERLAP_CAROUSEL_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
-  }, [dragState, isJiggleMode, overlapCarouselPaused, overlapCarouselTotalPages]);
+  }, [commentsPanelOpen, dragState, isJiggleMode, overlapCarouselPaused, overlapCarouselTotalPages]);
 
   const overlapCarouselDisplayByPlacementId = useMemo(() => {
     const next: Record<string, { isVisible: boolean }> = {};
@@ -2614,6 +2613,75 @@ export default function SolveOverlay({
     }
     return next;
   }, [overlapCarouselPage, overlapCarouselTotalPages, overlapGroupMetaByPlacementId]);
+
+  const updateCarouselCenterFromElement = useCallback(
+    (element: HTMLElement | null, setter: (value: number | null) => void) => {
+      if (!element) {
+        setter(null);
+        return;
+      }
+      const rect = element.getBoundingClientRect();
+      setter(rect.left + rect.width / 2);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const explicit = mainScheduleScrollRef.current;
+    const fallback =
+      (overlayRef.current?.closest("[data-schedule-scroll]") as HTMLElement | null) ?? null;
+    const element = explicit ?? fallback;
+    if (!element) {
+      setMainCarouselCenterX(null);
+      return;
+    }
+    const update = () => updateCarouselCenterFromElement(element, setMainCarouselCenterX);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [
+    filteredSchedule.length,
+    hideScheduleOverlay,
+    historyMode,
+    commentsPanelOpen,
+    leftPanelOpen,
+    isNarrowMobile,
+    historyMode,
+    selectedUnitId,
+    updateCarouselCenterFromElement,
+  ]);
+
+  useEffect(() => {
+    const element = previewScheduleScrollRef.current;
+    if (!element) {
+      setPreviewCarouselCenterX(null);
+      return;
+    }
+    const update = () => updateCarouselCenterFromElement(element, setPreviewCarouselCenterX);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [
+    candidateDialogOpen,
+    previewMode,
+    previewCandidateIndex,
+    previewSelectedUnitId,
+    updateCarouselCenterFromElement,
+  ]);
 
   useEffect(() => {
     if (!Array.isArray(schedule) || schedule.length === 0) return;
@@ -3035,17 +3103,6 @@ export default function SolveOverlay({
     [clearParticipantDropGhostTimers],
   );
 
-  const getParticipantTierColor = useCallback(
-    (participantId: string) => {
-      const tier = participantTierById[String(participantId)];
-      if (tier === "PRIMARY") return "#F59E0B";
-      if (tier === "SECONDARY") return "#3B82F6";
-      if (tier === "TERTIARY") return "#10B981";
-      return "#111827";
-    },
-    [participantTierById],
-  );
-
   const evaluateParticipantDropTarget = useCallback(
     (clientX: number, clientY: number, participantId: string) => {
       const rawTarget = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
@@ -3226,71 +3283,8 @@ export default function SolveOverlay({
   }, [bodyHeight, daysCount, dragState, rowPx, timeColPx]);
 
   useEffect(() => {
-    if (dragState?.dragType !== "participant-tool") {
-      if (participantDragMotionRef.current.rafId != null) {
-        window.cancelAnimationFrame(participantDragMotionRef.current.rafId);
-        participantDragMotionRef.current.rafId = null;
-      }
-      setParticipantDragHoverPlacementId(null);
-      return;
-    }
-
-    const motion = participantDragMotionRef.current;
-    motion.prevX = dragState.clientX;
-    motion.prevY = dragState.clientY;
-    motion.prevT = Date.now();
-    motion.lastMoveTs = motion.prevT;
-    motion.hoverValid = false;
-    motion.arm = { value: 0, vel: 0, target: 0 };
-    motion.leg = { value: 0, vel: 0, target: 0 };
-    motion.tilt = { value: 0, vel: 0, target: 0 };
-    motion.legBase = { value: 25, vel: 0, target: 25 };
-    motion.shadowScale = { value: 1, vel: 0, target: 1 };
-    motion.shadowOpacity = { value: 0.2, vel: 0, target: 0.2 };
-
-    const springStep = (node: { value: number; vel: number; target: number }, stiffness: number, damping: number) => {
-      node.vel += (node.target - node.value) * stiffness;
-      node.vel *= damping;
-      node.value += node.vel;
-    };
-
-    const tick = () => {
-      const node = pegmanGhostRef.current;
-      if (!node) {
-        motion.rafId = window.requestAnimationFrame(tick);
-        return;
-      }
-      springStep(motion.arm, 0.19, 0.74);
-      springStep(motion.leg, 0.18, 0.74);
-      springStep(motion.tilt, 0.2, 0.76);
-      springStep(motion.legBase, 0.2, 0.76);
-      springStep(motion.shadowScale, 0.16, 0.78);
-      springStep(motion.shadowOpacity, 0.16, 0.8);
-
-      const now = Date.now();
-      const isIdle = now - motion.lastMoveTs > 500;
-      const bobY = isIdle ? Math.sin(now / 240) * 1.5 : 0;
-
-      node.style.setProperty("--tilt", `${motion.tilt.value.toFixed(3)}deg`);
-      node.style.setProperty("--arm-l", `${(-motion.arm.value).toFixed(3)}deg`);
-      node.style.setProperty("--arm-r", `${motion.arm.value.toFixed(3)}deg`);
-      node.style.setProperty("--leg-l", `${motion.leg.value.toFixed(3)}deg`);
-      node.style.setProperty("--leg-r", `${(-motion.leg.value).toFixed(3)}deg`);
-      node.style.setProperty("--leg-base", `${motion.legBase.value.toFixed(3)}deg`);
-      node.style.setProperty("--shadow-scale", `${Math.max(0.72, motion.shadowScale.value).toFixed(3)}`);
-      node.style.setProperty("--shadow-opacity", `${Math.max(0.1, Math.min(0.42, motion.shadowOpacity.value)).toFixed(3)}`);
-      node.style.setProperty("--bob-y", `${bobY.toFixed(3)}px`);
-
-      motion.rafId = window.requestAnimationFrame(tick);
-    };
-
-    motion.rafId = window.requestAnimationFrame(tick);
-    return () => {
-      if (motion.rafId != null) {
-        window.cancelAnimationFrame(motion.rafId);
-        motion.rafId = null;
-      }
-    };
+    if (dragState?.dragType === "participant-tool") return;
+    setParticipantDragHoverPlacementId(null);
   }, [dragState]);
 
   const dragTimeRangeGuide = useMemo(() => {
@@ -3429,6 +3423,9 @@ export default function SolveOverlay({
     const targetEnd = dragConstraintContext.targetEndSlot;
     const bundleUnits = dragConstraintContext.bundleUnitIds;
     const participantIds = new Set(dragConstraintContext.participantIds);
+    const draggedCellAllowsOverstaff = Boolean(
+      cellAllowOverstaffById[dragConstraintContext.sourceCellId] || gridAllowsOverstaffing,
+    );
 
     const byCategory: Record<CollisionCategory, CollisionCard[]> = {
       "active-unit": [],
@@ -3446,6 +3443,9 @@ export default function SolveOverlay({
       if (rowCol < 0 || rowCol >= daysCount) continue;
 
       const rowSourceCellId = String(row.source_cell_id ?? row.cell_id);
+      const rowCellAllowsOverstaff = Boolean(
+        cellAllowOverstaffById[rowSourceCellId] || gridAllowsOverstaffing,
+      );
       const rowCellName = cellNameById[rowSourceCellId] || `Cell ${rowSourceCellId}`;
       const rowBundleId = (row as { bundle_id?: string | number; bundle?: string | number }).bundle_id
         ?? (row as { bundle_id?: string | number; bundle?: string | number }).bundle;
@@ -3471,24 +3471,28 @@ export default function SolveOverlay({
       };
 
       if (selectedUnit && rowUnits.includes(selectedUnit)) {
-        byCategory["active-unit"].push({
-          ...base,
-          category: "active-unit",
-          unitName: unitNameById[selectedUnit] || `Unit ${selectedUnit}`,
-        });
-        continue;
+        if (!draggedCellAllowsOverstaff || !rowCellAllowsOverstaff) {
+          byCategory["active-unit"].push({
+            ...base,
+            category: "active-unit",
+            unitName: unitNameById[selectedUnit] || `Unit ${selectedUnit}`,
+          });
+          continue;
+        }
       }
 
       const bundleMatch = rowUnits.find(
         (unitId) => bundleUnits.includes(unitId) && (!selectedUnit || unitId !== selectedUnit),
       );
       if (bundleMatch) {
-        byCategory["bundle-unit"].push({
-          ...base,
-          category: "bundle-unit",
-          unitName: unitNameById[bundleMatch] || `Unit ${bundleMatch}`,
-        });
-        continue;
+        if (!draggedCellAllowsOverstaff || !rowCellAllowsOverstaff) {
+          byCategory["bundle-unit"].push({
+            ...base,
+            category: "bundle-unit",
+            unitName: unitNameById[bundleMatch] || `Unit ${bundleMatch}`,
+          });
+          continue;
+        }
       }
 
       const participantMatch = rowParticipants.find((pid) => participantIds.has(pid));
@@ -3509,12 +3513,14 @@ export default function SolveOverlay({
     );
   }, [
     bundleUnitsById,
+    cellAllowOverstaffById,
     cellNameById,
     dayIndexByColumn,
     dayStartMin,
     daysCount,
     dragConstraintContext,
     participantNameById,
+    gridAllowsOverstaffing,
     schedule,
     scopedUnitId,
     slotMin,
@@ -3638,6 +3644,18 @@ export default function SolveOverlay({
     if (!commentsPanelOpen || canCommentCards) return;
     onCommentsPanelOpenChange?.(false);
   }, [canCommentCards, commentsPanelOpen, onCommentsPanelOpenChange]);
+
+  useEffect(() => {
+    if (!commentsPanelOpen) return;
+    setCommentAnchor(null);
+    setHoveredCommentPlacementKey(null);
+  }, [commentsPanelOpen, overlapCarouselPage]);
+
+  useEffect(() => {
+    if (!commentsPanelOpen) return;
+    setCommentAnchor(null);
+    setHoveredCommentPlacementKey(null);
+  }, [commentsPanelOpen, selectedUnitId]);
 
   const activePlacementComments = useMemo(() => {
     if (!commentAnchor) return [];
@@ -4794,13 +4812,16 @@ export default function SolveOverlay({
   useEffect(() => {
     return () => {
       clearLongPressTimer();
-      clearParticipantDropGhostTimers();
-      if (participantDragMotionRef.current.rafId != null) {
-        window.cancelAnimationFrame(participantDragMotionRef.current.rafId);
-        participantDragMotionRef.current.rafId = null;
-      }
     };
-  }, [clearLongPressTimer, clearParticipantDropGhostTimers]);
+  }, [clearLongPressTimer]);
+
+  // Unmount-only cleanup for drop ghost timers and RAF physics loop.
+  useEffect(() => {
+    return () => {
+      clearParticipantDropGhostTimers();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!dragState) return;
@@ -4809,28 +4830,8 @@ export default function SolveOverlay({
       const isInsideDelete = isInsideDeleteDropTarget(event.clientX, event.clientY);
       setIsDeleteDropActive((prev) => (prev === isInsideDelete ? prev : isInsideDelete));
       if (dragState.dragType === "participant-tool") {
-        const motion = participantDragMotionRef.current;
-        const now = Date.now();
-        const dt = Math.max(1, now - motion.prevT);
-        const vx = (event.clientX - motion.prevX) / dt;
-        const vy = (event.clientY - motion.prevY) / dt;
-        motion.prevX = event.clientX;
-        motion.prevY = event.clientY;
-        motion.prevT = now;
-        motion.lastMoveTs = now;
-        const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-        motion.arm.target = clamp(vx * 30, -20, 20);
-        motion.leg.target = clamp(vy * 25, -15, 15);
-        motion.tilt.target = clamp(vx * 15, -8, 8);
-
         const target = evaluateParticipantDropTarget(event.clientX, event.clientY, String(dragState.participantId));
         const hoverValid = Boolean(target.canDrop && target.placementId);
-        motion.hoverValid = hoverValid;
-        motion.legBase.target = hoverValid ? 12 : 25;
-        const speed = Math.min(1, Math.hypot(vx, vy) * 0.8);
-        const verticalEnergy = Math.min(1, Math.abs(vy) * 1.4);
-        motion.shadowScale.target = (hoverValid ? 1.36 : 1.02) + speed * 0.12 + verticalEnergy * 0.16;
-        motion.shadowOpacity.target = (hoverValid ? 0.34 : 0.2) + speed * 0.04 + verticalEnergy * 0.05;
         setParticipantDragHoverPlacementId(hoverValid && target.placementId ? String(target.placementId) : null);
       } else {
         setParticipantDragHoverPlacementId(null);
@@ -4867,6 +4868,10 @@ export default function SolveOverlay({
             participantId,
             participantName: activeDrag.participantName,
           });
+          const safetyGhostCleanupTimer = window.setTimeout(() => {
+            setParticipantDropGhost(null);
+          }, 600);
+          participantDropGhostTimersRef.current.push(safetyGhostCleanupTimer);
           if (target.reason === "already_assigned") {
             setPinError("Participant already assigned");
           } else if (target.reason === "capacity") {
@@ -4883,6 +4888,10 @@ export default function SolveOverlay({
           participantId,
           participantName: activeDrag.participantName,
         });
+        const safetyGhostCleanupTimer = window.setTimeout(() => {
+          setParticipantDropGhost(null);
+        }, 600);
+        participantDropGhostTimersRef.current.push(safetyGhostCleanupTimer);
 
         const placementId = String(target.placementId);
         const targetPlacement = target.placement;
@@ -5223,6 +5232,123 @@ export default function SolveOverlay({
   const previewIsParticipantMode = previewMode === "participant" && Boolean(previewParticipantId);
   const previewScheduleForCards = previewIsParticipantMode ? previewParticipantSchedule : previewScheduleByUnit;
 
+  const previewOverlapGroupMeta = useMemo<Record<string, OverlapGroupMeta>>(() => {
+    type PlacementEntry = {
+      placementId: string;
+      dayIndex: number;
+      startSlot: number;
+      endSlot: number;
+    };
+
+    const rowsByDay = new Map<number, PlacementEntry[]>();
+    for (const row of previewScheduleForCards) {
+      const placementId = String(row.cell_id ?? "");
+      const dayIndex = Number(row.day_index);
+      const startSlot = Number(row.start_slot);
+      const endSlot = Number(row.end_slot);
+      if (!placementId) continue;
+      if (!Number.isFinite(dayIndex) || !Number.isFinite(startSlot) || !Number.isFinite(endSlot)) continue;
+      if (endSlot <= startSlot) continue;
+      const dayRows = rowsByDay.get(dayIndex) ?? [];
+      dayRows.push({ placementId, dayIndex, startSlot, endSlot });
+      rowsByDay.set(dayIndex, dayRows);
+    }
+
+    const nextMeta: Record<string, OverlapGroupMeta> = {};
+
+    for (const [dayIndex, dayRows] of rowsByDay.entries()) {
+      const orderedRows = [...dayRows].sort(
+        (a, b) =>
+          a.startSlot - b.startSlot ||
+          a.endSlot - b.endSlot ||
+          a.placementId.localeCompare(b.placementId),
+      );
+      const laneEndByIndex: number[] = [];
+      const placementLaneAssignments: Array<{ placementId: string; laneIndex: number }> = [];
+
+      for (const row of orderedRows) {
+        let laneIndex = -1;
+        for (let idx = 0; idx < laneEndByIndex.length; idx += 1) {
+          if (laneEndByIndex[idx] <= row.startSlot) {
+            laneIndex = idx;
+            break;
+          }
+        }
+        if (laneIndex < 0) {
+          laneIndex = laneEndByIndex.length;
+          laneEndByIndex.push(row.endSlot);
+        } else {
+          laneEndByIndex[laneIndex] = row.endSlot;
+        }
+        placementLaneAssignments.push({ placementId: row.placementId, laneIndex });
+      }
+
+      const laneCount = Math.max(1, laneEndByIndex.length);
+      for (const assignment of placementLaneAssignments) {
+        nextMeta[assignment.placementId] = {
+          dayIndex,
+          groupSize: laneCount,
+          groupPosition: assignment.laneIndex,
+        };
+      }
+    }
+
+    return nextMeta;
+  }, [previewScheduleForCards]);
+
+  const previewOverlapCarouselTotalPages = useMemo(() => {
+    let maxGroupSize = 1;
+    for (const meta of Object.values(previewOverlapGroupMeta)) {
+      maxGroupSize = Math.max(maxGroupSize, meta.groupSize);
+    }
+    return Math.max(1, maxGroupSize);
+  }, [previewOverlapGroupMeta]);
+
+  useEffect(() => {
+    setPreviewOverlapCarouselPage((prev) => {
+      if (previewOverlapCarouselTotalPages <= 1) return 0;
+      return (
+        ((prev % previewOverlapCarouselTotalPages) + previewOverlapCarouselTotalPages) %
+        previewOverlapCarouselTotalPages
+      );
+    });
+  }, [previewOverlapCarouselTotalPages]);
+
+  useEffect(() => {
+    if (
+      previewOverlapCarouselTotalPages <= 1 ||
+      dragState ||
+      isJiggleMode ||
+      previewOverlapCarouselPaused
+    ) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      setPreviewOverlapCarouselPage((prev) => (prev + 1) % previewOverlapCarouselTotalPages);
+    }, OVERLAP_CAROUSEL_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+  }, [dragState, isJiggleMode, previewOverlapCarouselPaused, previewOverlapCarouselTotalPages]);
+
+  const previewOverlapDisplayByPlacementId = useMemo(() => {
+    const next: Record<string, { isVisible: boolean }> = {};
+    const normalizedPage =
+      previewOverlapCarouselTotalPages <= 1
+        ? 0
+        : ((previewOverlapCarouselPage % previewOverlapCarouselTotalPages) +
+            previewOverlapCarouselTotalPages) %
+          previewOverlapCarouselTotalPages;
+    for (const [placementId, meta] of Object.entries(previewOverlapGroupMeta)) {
+      const size = Math.max(1, Number(meta.groupSize) || 1);
+      next[placementId] = {
+        isVisible:
+          previewOverlapCarouselTotalPages <= 1
+            ? true
+            : normalizedPage < size && normalizedPage === meta.groupPosition,
+      };
+    }
+    return next;
+  }, [previewOverlapCarouselPage, previewOverlapCarouselTotalPages, previewOverlapGroupMeta]);
+
   const previewContextLockedPlacements = useMemo(() => {
     if (!candidatePreviewContext) return [];
     return Array.isArray(candidatePreviewContext.locked_placements)
@@ -5507,6 +5633,8 @@ export default function SolveOverlay({
     }
   };
 
+  const shouldHideScheduleOverlay = hideScheduleOverlay && !historyMode;
+
   return (
     <>
       {pinErrorCard && pinErrorCardAnchor && (
@@ -5524,7 +5652,11 @@ export default function SolveOverlay({
       )}
 
       {/* Schedule overlay */}
-      {!hideScheduleOverlay && (filteredSchedule.length > 0 || visibleScheduleBlockages.length > 0 || isJiggleMode || blockageDraft != null) && (
+      {!shouldHideScheduleOverlay &&
+        (filteredSchedule.length > 0 ||
+          visibleScheduleBlockages.length > 0 ||
+          isJiggleMode ||
+          blockageDraft != null) && (
         <div
           ref={overlayRef}
           className={`absolute inset-x-0 ${
@@ -5999,7 +6131,18 @@ export default function SolveOverlay({
                     return;
                   }
                   if (!commentsPanelOpen || !commentAnchorForCard) return;
-                  setCommentAnchor(commentAnchorForCard);
+                  const clickedKey = buildPlacementKey(
+                    commentAnchorForCard.scheduleId,
+                    commentAnchorForCard.sourceCellId,
+                    commentAnchorForCard.bundleId,
+                    commentAnchorForCard.dayIndex,
+                    commentAnchorForCard.startSlot,
+                  );
+                  if (clickedKey === selectedCommentPlacementKey) {
+                    setCommentAnchor(null);
+                  } else {
+                    setCommentAnchor(commentAnchorForCard);
+                  }
                   setCommentError(null);
                 }}
                 onPointerDown={(event) => {
@@ -6176,51 +6319,53 @@ export default function SolveOverlay({
         </div>
       )}
 
-      {!hideScheduleOverlay && overlapCarouselTotalPages > 1 && (
+      {!(hideScheduleOverlay && !historyMode) && overlapCarouselTotalPages > 1 && (
         <div
-          className="fixed inset-x-0 z-[121] pointer-events-none"
-          style={{ bottom: selectedUnitId ? "2.6rem" : "0.9rem" }}
+          className="fixed z-[121] pointer-events-none"
+          style={{
+            bottom: selectedUnitId ? "2.6rem" : "0.9rem",
+            left: mainCarouselCenterX ?? "50vw",
+            transform: "translateX(-50%)",
+          }}
           aria-hidden
         >
-          <div className="flex justify-center">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white/90 px-2 py-1 shadow-sm pointer-events-auto">
-              {Array.from({ length: overlapCarouselTotalPages }).map((_, idx) => (
-                <button
-                  type="button"
-                  key={`carousel-dot-${idx}`}
-                  className="inline-flex h-3 w-3 items-center justify-center rounded-full transition-all duration-200"
-                  onClick={() => {
-                    setOverlapCarouselPage(idx);
-                    if (overlapCarouselPaused) setOverlapCarouselPaused(false);
-                  }}
-                  onDoubleClick={() => {
-                    setOverlapCarouselPage(idx);
-                    setOverlapCarouselPaused(true);
-                  }}
-                  aria-label={`${t("solve_overlay.carousel_view")} ${idx + 1}`}
-                >
-                  {idx === overlapCarouselPage ? (
-                    <span className="relative inline-flex h-3 w-3 items-center justify-center">
-                      <span
-                        className={`absolute h-2.5 w-2.5 rounded-full bg-gray-700 transition-all duration-200 ${
-                          overlapCarouselPaused ? "opacity-0 scale-75" : "opacity-100 scale-100"
-                        }`}
-                      />
-                      <span
-                        className={`absolute inline-flex items-center gap-[1px] transition-all duration-200 ${
-                          overlapCarouselPaused ? "opacity-100 scale-100" : "opacity-0 scale-75"
-                        }`}
-                      >
-                        <span className="h-[8px] w-[2px] rounded-[2px] bg-gray-700" />
-                        <span className="h-[8px] w-[2px] rounded-[2px] bg-gray-700" />
-                      </span>
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white/90 px-2 py-1 shadow-sm pointer-events-auto">
+            {Array.from({ length: overlapCarouselTotalPages }).map((_, idx) => (
+              <button
+                type="button"
+                key={`carousel-dot-${idx}`}
+                className="inline-flex h-3 w-3 items-center justify-center rounded-full transition-all duration-200"
+                onClick={() => {
+                  setOverlapCarouselPage(idx);
+                  if (overlapCarouselPaused) setOverlapCarouselPaused(false);
+                }}
+                onDoubleClick={() => {
+                  setOverlapCarouselPage(idx);
+                  setOverlapCarouselPaused(true);
+                }}
+                aria-label={`${t("solve_overlay.carousel_view")} ${idx + 1}`}
+              >
+                {idx === overlapCarouselPage ? (
+                  <span className="relative inline-flex h-3 w-3 items-center justify-center">
+                    <span
+                      className={`absolute h-2.5 w-2.5 rounded-full bg-gray-700 transition-all duration-200 ${
+                        overlapCarouselPaused ? "opacity-0 scale-75" : "opacity-100 scale-100"
+                      }`}
+                    />
+                    <span
+                      className={`absolute inline-flex items-center gap-[1px] transition-all duration-200 ${
+                        overlapCarouselPaused ? "opacity-100 scale-100" : "opacity-0 scale-75"
+                      }`}
+                    >
+                      <span className="h-[8px] w-[2px] rounded-[2px] bg-gray-700" />
+                      <span className="h-[8px] w-[2px] rounded-[2px] bg-gray-700" />
                     </span>
-                  ) : (
-                    <span className="h-2.5 w-2.5 rounded-full bg-gray-300" />
-                  )}
-                </button>
-              ))}
-            </div>
+                  </span>
+                ) : (
+                  <span className="h-2.5 w-2.5 rounded-full bg-gray-300" />
+                )}
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -6949,7 +7094,11 @@ export default function SolveOverlay({
                   ))}
                 </div>
 
-                <div data-schedule-scroll className="relative max-h-[70vh] overflow-y-auto hide-scrollbar select-none">
+                <div
+                  ref={previewScheduleScrollRef}
+                  data-schedule-scroll
+                  className="relative max-h-[70vh] overflow-y-auto hide-scrollbar select-none"
+                >
                   <div className="pointer-events-none absolute left-0 top-0 z-[2]" style={{ width: timeColPx, height: bodyHeight }}>
                     <div className="absolute inset-x-0 top-1 text-center text-xs text-gray-500">
                       {previewTimeLabel(0)}
@@ -7019,6 +7168,11 @@ export default function SolveOverlay({
                       const col = s.day_index;
                       if (col < 0 || col >= daysCount) return null;
                       const sourceCellId = String(s.source_cell_id ?? s.cell_id);
+                      const placementId = String(s.cell_id ?? "");
+                      const overlapMeta = placementId
+                        ? previewOverlapDisplayByPlacementId[placementId]
+                        : undefined;
+                      if (overlapMeta && !overlapMeta.isVisible) return null;
                       const cardKey = `${sourceCellId}-${s.day_index}-${s.start_slot}-${idx}`;
                       const rawTop = s.start_slot * rowPx;
                       const rawHeight = Math.max(6, (s.end_slot - s.start_slot) * rowPx);
@@ -7237,6 +7391,56 @@ export default function SolveOverlay({
                     })}
                   </div>
                 </div>
+                {previewOverlapCarouselTotalPages > 1 && (
+                  <div
+                    className="fixed z-[181] pointer-events-none"
+                    style={{
+                      bottom: previewIsParticipantMode ? "1rem" : "2.8rem",
+                      left: previewCarouselCenterX ?? "50vw",
+                      transform: "translateX(-50%)",
+                    }}
+                    aria-hidden
+                  >
+                    <div className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white/90 px-2 py-1 shadow-sm pointer-events-auto">
+                      {Array.from({ length: previewOverlapCarouselTotalPages }).map((_, idx) => (
+                        <button
+                          type="button"
+                          key={`preview-carousel-dot-${idx}`}
+                          className="inline-flex h-3 w-3 items-center justify-center rounded-full transition-all duration-200"
+                          onClick={() => {
+                            setPreviewOverlapCarouselPage(idx);
+                            if (previewOverlapCarouselPaused) setPreviewOverlapCarouselPaused(false);
+                          }}
+                          onDoubleClick={() => {
+                            setPreviewOverlapCarouselPage(idx);
+                            setPreviewOverlapCarouselPaused(true);
+                          }}
+                          aria-label={`${t("solve_overlay.carousel_view")} ${idx + 1}`}
+                        >
+                          {idx === previewOverlapCarouselPage ? (
+                            <span className="relative inline-flex h-3 w-3 items-center justify-center">
+                              <span
+                                className={`absolute h-2.5 w-2.5 rounded-full bg-gray-700 transition-all duration-200 ${
+                                  previewOverlapCarouselPaused ? "opacity-0 scale-75" : "opacity-100 scale-100"
+                                }`}
+                              />
+                              <span
+                                className={`absolute inline-flex items-center gap-[1px] transition-all duration-200 ${
+                                  previewOverlapCarouselPaused ? "opacity-100 scale-100" : "opacity-0 scale-75"
+                                }`}
+                              >
+                                <span className="h-[8px] w-[2px] rounded-[2px] bg-gray-700" />
+                                <span className="h-[8px] w-[2px] rounded-[2px] bg-gray-700" />
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="h-2.5 w-2.5 rounded-full bg-gray-300" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -7373,92 +7577,14 @@ export default function SolveOverlay({
           className="fixed z-[300] pointer-events-none"
           style={{
             left: dragState.clientX,
-            top: dragState.clientY - 7,
-            transform: "translate(-50%, 0)",
+            top: dragState.clientY,
+            transform: "translate(-50%, -10px)",
           }}
         >
-          <div
-            ref={pegmanGhostRef}
-            className="relative select-none animate-[pegman-pop-in_200ms_cubic-bezier(0.34,1.56,0.64,1)]"
-            style={
-              {
-                ["--tilt" as string]: "0deg",
-                ["--arm-l" as string]: "0deg",
-                ["--arm-r" as string]: "0deg",
-                ["--leg-l" as string]: "0deg",
-                ["--leg-r" as string]: "0deg",
-                ["--leg-base" as string]: "25deg",
-                ["--shadow-scale" as string]: "1",
-                ["--shadow-opacity" as string]: "0.2",
-                ["--bob-y" as string]: "0px",
-              } as React.CSSProperties
-            }
-          >
-            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 whitespace-nowrap rounded-md bg-white/90 backdrop-blur-sm border border-gray-200 px-2 py-0.5 text-sm font-semibold text-gray-900 shadow-sm max-w-[220px] truncate">
+          <div className="relative select-none">
+            <div className="whitespace-nowrap rounded-lg bg-white border border-gray-300 px-2.5 py-1 text-[12px] font-bold text-gray-900 shadow-md max-w-[220px] truncate">
               {dragState.participantName}
             </div>
-
-            <div
-              className="relative h-[52px] w-[34px]"
-              style={{ transform: "translateY(var(--bob-y)) rotate(var(--tilt))" }}
-            >
-              <div
-                className="absolute left-1/2 top-0 h-[14px] w-[14px] -translate-x-1/2 rounded-full border border-black/10"
-                style={{ backgroundColor: getParticipantTierColor(dragState.participantId) }}
-              />
-
-              <div
-                className="absolute left-1/2 top-[12px] h-[16px] w-[12px] -translate-x-1/2 rounded-[7px] border border-black/10"
-                style={{ backgroundColor: getParticipantTierColor(dragState.participantId) }}
-              />
-
-              <div
-                className="absolute left-[8px] top-[15px] h-[12px] w-[2px] rounded-full border border-black/10"
-                style={{
-                  backgroundColor: getParticipantTierColor(dragState.participantId),
-                  transformOrigin: "top center",
-                  transform: "rotate(calc(-22deg + var(--arm-l)))",
-                  transition: "transform 120ms ease-out",
-                }}
-              />
-              <div
-                className="absolute right-[8px] top-[15px] h-[12px] w-[2px] rounded-full border border-black/10"
-                style={{
-                  backgroundColor: getParticipantTierColor(dragState.participantId),
-                  transformOrigin: "top center",
-                  transform: "rotate(calc(22deg + var(--arm-r)))",
-                  transition: "transform 120ms ease-out",
-                }}
-              />
-
-              <div
-                className="absolute left-[13px] top-[28px] h-[14px] w-[2px] rounded-full border border-black/10"
-                style={{
-                  backgroundColor: getParticipantTierColor(dragState.participantId),
-                  transformOrigin: "top center",
-                  transform: "rotate(calc(var(--leg-base) + var(--leg-l)))",
-                  transition: "transform 120ms ease-out",
-                }}
-              />
-              <div
-                className="absolute right-[13px] top-[28px] h-[14px] w-[2px] rounded-full border border-black/10"
-                style={{
-                  backgroundColor: getParticipantTierColor(dragState.participantId),
-                  transformOrigin: "top center",
-                  transform: "rotate(calc(-1 * var(--leg-base) + var(--leg-r)))",
-                  transition: "transform 120ms ease-out",
-                }}
-              />
-            </div>
-
-            <div
-              className="absolute left-1/2 top-[46px] h-[6px] w-[20px] -translate-x-1/2 rounded-full bg-black/20 blur-[1px]"
-              style={{
-                transform: "scale(var(--shadow-scale))",
-                opacity: "var(--shadow-opacity)",
-                transition: "transform 120ms ease-out, opacity 120ms ease-out",
-              }}
-            />
           </div>
         </div>
       )}
@@ -7467,17 +7593,17 @@ export default function SolveOverlay({
           className="fixed z-[300] pointer-events-none"
           style={{
             left: participantDropGhost.x,
-            top: participantDropGhost.y - 7,
+            top: participantDropGhost.y,
             transform:
               participantDropGhost.mode === "valid"
                 ? participantDropGhost.phase === "start"
-                  ? "translate(-50%, 0) scaleX(1.15) scaleY(0.8)"
+                  ? "translate(-50%, -10px) scaleX(1.04) scaleY(0.96)"
                   : participantDropGhost.phase === "rebound"
-                  ? "translate(-50%, -1px) scaleX(0.95) scaleY(1.08)"
-                  : "translate(-50%, -8px) scale(0.8)"
+                  ? "translate(-50%, -12px) scaleX(0.98) scaleY(1.02)"
+                  : "translate(-50%, -16px) scale(0.92)"
                 : participantDropGhost.phase === "start"
-                ? "translate(-50%, 0) scale(1)"
-                : "translate(-50%, 60px) scale(0.95)",
+                ? "translate(-50%, -10px) scale(1)"
+                : "translate(-50%, 28px) scale(0.95)",
             opacity:
               participantDropGhost.mode === "valid"
                 ? participantDropGhost.phase === "end"
@@ -7495,52 +7621,12 @@ export default function SolveOverlay({
           }}
         >
           <div className="relative select-none">
-            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 whitespace-nowrap rounded-md bg-white/90 backdrop-blur-sm border border-gray-200 px-2 py-0.5 text-sm font-semibold text-gray-900 shadow-sm max-w-[220px] truncate">
+            <div className="whitespace-nowrap rounded-lg bg-white border border-gray-300 px-2.5 py-1 text-[12px] font-bold text-gray-900 shadow-md max-w-[220px] truncate">
               {participantDropGhost.participantName}
             </div>
-            <div className="relative h-[52px] w-[34px]">
-              <div
-                className="absolute left-1/2 top-0 h-[14px] w-[14px] -translate-x-1/2 rounded-full border border-black/10"
-                style={{ backgroundColor: getParticipantTierColor(participantDropGhost.participantId) }}
-              />
-              <div
-                className="absolute left-1/2 top-[12px] h-[16px] w-[12px] -translate-x-1/2 rounded-[7px] border border-black/10"
-                style={{ backgroundColor: getParticipantTierColor(participantDropGhost.participantId) }}
-              />
-              <div
-                className="absolute left-[8px] top-[15px] h-[12px] w-[2px] rounded-full border border-black/10"
-                style={{ backgroundColor: getParticipantTierColor(participantDropGhost.participantId), transform: "rotate(-10deg)" }}
-              />
-              <div
-                className="absolute right-[8px] top-[15px] h-[12px] w-[2px] rounded-full border border-black/10"
-                style={{ backgroundColor: getParticipantTierColor(participantDropGhost.participantId), transform: "rotate(10deg)" }}
-              />
-              <div
-                className="absolute left-[13px] top-[28px] h-[14px] w-[2px] rounded-full border border-black/10"
-                style={{ backgroundColor: getParticipantTierColor(participantDropGhost.participantId), transform: "rotate(18deg)" }}
-              />
-              <div
-                className="absolute right-[13px] top-[28px] h-[14px] w-[2px] rounded-full border border-black/10"
-                style={{ backgroundColor: getParticipantTierColor(participantDropGhost.participantId), transform: "rotate(-18deg)" }}
-              />
-            </div>
-            <div className="absolute left-1/2 top-[46px] h-[6px] w-[20px] -translate-x-1/2 rounded-full bg-black/20 blur-[1px]" />
           </div>
         </div>
       )}
-      <style jsx>{`
-        @keyframes pegman-pop-in {
-          0% {
-            transform: scale(0);
-          }
-          70% {
-            transform: scale(1.1);
-          }
-          100% {
-            transform: scale(1);
-          }
-        }
-      `}</style>
 
     </>
   );
