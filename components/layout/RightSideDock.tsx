@@ -76,6 +76,25 @@ type Props = {
     offsetY: number;
   }) => void;
   onUnassignedGrabBlocked?: () => void;
+  onParticipantGrabStart?: (payload: {
+    cardKey: string;
+    participantId: string;
+    participantName: string;
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    grabOffsetX: number;
+    grabOffsetY: number;
+    offsetX: number;
+    offsetY: number;
+  }) => void;
+  participantDragVisual?: {
+    cardKey: string;
+    clientX: number;
+    clientY: number;
+    offsetX: number;
+    offsetY: number;
+  } | null;
   onSolvePressed?: () => void;
   onActivateTool?: (tool: ToolKey) => void;
   onPublishDraft?: () => void;
@@ -122,6 +141,8 @@ export default function RightSideDock({
   unassignedCellItems = [],
   onUnassignedGrabStart,
   onUnassignedGrabBlocked,
+  onParticipantGrabStart,
+  participantDragVisual = null,
   onSolvePressed,
   onActivateTool,
   onPublishDraft,
@@ -386,6 +407,7 @@ export default function RightSideDock({
               {participantScrollerItems.map((participant, index) => {
                 const distance = index - participantFocusIndex;
                 if (Math.abs(distance) > 2) return null;
+                const cardKey = `participant-tool-${participant.id}`;
                 const absDistance = Math.abs(distance);
                 const scale = absDistance === 0 ? 1 : absDistance === 1 ? 0.78 : 0.62;
                 const opacity = absDistance === 0 ? 1 : absDistance === 1 ? 0.92 : 0.82;
@@ -404,18 +426,38 @@ export default function RightSideDock({
                     : nearOffset + nearToFarOffset;
                 const y = baseCenterY + sign * yOffset;
                 const z = 120 - absDistance * 20;
+                const isDraggingCard = participantDragVisual?.cardKey === cardKey;
                 return (
                   <div
-                    key={`participant-tool-${participant.id}`}
-                    className="absolute left-0 right-2 rounded-xl border px-3 py-2 shadow-[0_12px_18px_-14px_rgba(0,0,0,0.55)] transition-transform duration-150"
+                    key={cardKey}
+                    className={`absolute left-0 right-2 rounded-xl border px-3 py-2 shadow-[0_12px_18px_-14px_rgba(0,0,0,0.55)] ${
+                      isDraggingCard
+                        ? "transition-all duration-150 ease-out cursor-grabbing pointer-events-none"
+                        : "transition-transform duration-150 cursor-grab"
+                    }`}
                     style={{
                       top: `${y - cardHeight / 2}px`,
                       height: `${cardHeight}px`,
-                      transform: `scale(${scale})`,
-                      opacity,
+                      transform: `scale(${isDraggingCard ? Math.max(0.56, scale * 0.9) : scale})`,
+                      opacity: isDraggingCard ? 0 : opacity,
                       zIndex: z,
                       backgroundColor: absDistance === 0 ? "#FFFFFF" : "#F3F4F6",
                       borderColor: absDistance === 0 ? "#D1D5DB" : "#E5E7EB",
+                    }}
+                    onPointerDown={(event) => {
+                      const cardRect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+                      onParticipantGrabStart?.({
+                        cardKey,
+                        participantId: String(participant.id),
+                        participantName: participant.name,
+                        pointerId: event.pointerId,
+                        clientX: event.clientX,
+                        clientY: event.clientY,
+                        grabOffsetX: event.clientX - cardRect.left,
+                        grabOffsetY: event.clientY - cardRect.top,
+                        offsetX: event.clientX,
+                        offsetY: event.clientY,
+                      });
                     }}
                   >
                     <div className="flex h-full w-full items-center justify-start text-left">

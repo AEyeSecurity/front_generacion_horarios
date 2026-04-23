@@ -442,7 +442,7 @@ type Props = {
   historyGridCode?: string | null;
 };
 
-type DragState = {
+type PlacementOrUnassignedDragState = {
   dragType: "placement" | "unassigned";
   cardKey: string;
   placementId?: string;
@@ -460,6 +460,22 @@ type DragState = {
   grabOffsetX: number;
   grabOffsetY: number;
 };
+
+type ParticipantToolDragState = {
+  dragType: "participant-tool";
+  cardKey: string;
+  participantId: string;
+  participantName: string;
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  offsetX: number;
+  offsetY: number;
+  grabOffsetX: number;
+  grabOffsetY: number;
+};
+
+type DragState = PlacementOrUnassignedDragState | ParticipantToolDragState;
 
 type TierKey = "PRIMARY" | "SECONDARY" | "TERTIARY";
 
@@ -618,6 +634,16 @@ export default function SolveOverlay({
   const [hoveredJiggleCardKey, setHoveredJiggleCardKey] = useState<string | null>(null);
   const [isJiggleMode, setIsJiggleMode] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [participantDragHoverPlacementId, setParticipantDragHoverPlacementId] = useState<string | null>(null);
+  const [participantDropGhost, setParticipantDropGhost] = useState<{
+    token: number;
+    mode: "valid" | "invalid";
+    phase: "start" | "rebound" | "end";
+    x: number;
+    y: number;
+    participantId: string;
+    participantName: string;
+  } | null>(null);
   const [isDeleteDropActive, setIsDeleteDropActive] = useState(false);
   const [editToolMode, setEditToolMode] = useState<EditToolMode>("none");
   const [breakDialogState, setBreakDialogState] = useState<BreakDialogState>({
@@ -667,6 +693,23 @@ export default function SolveOverlay({
   const [restoringHistoryVersion, setRestoringHistoryVersion] = useState(false);
   const [exportingHistoryVersion, setExportingHistoryVersion] = useState(false);
   const longPressTimerRef = useRef<number | null>(null);
+  const participantDropGhostTimersRef = useRef<number[]>([]);
+  const participantDropGhostTokenRef = useRef(0);
+  const pegmanGhostRef = useRef<HTMLDivElement | null>(null);
+  const participantDragMotionRef = useRef({
+    prevX: 0,
+    prevY: 0,
+    prevT: 0,
+    lastMoveTs: 0,
+    hoverValid: false,
+    arm: { value: 0, vel: 0, target: 0 },
+    leg: { value: 0, vel: 0, target: 0 },
+    tilt: { value: 0, vel: 0, target: 0 },
+    legBase: { value: 25, vel: 0, target: 25 },
+    shadowScale: { value: 1, vel: 0, target: 1 },
+    shadowOpacity: { value: 0.2, vel: 0, target: 0.2 },
+    rafId: null as number | null,
+  });
   const lastHandledPinErrorRef = useRef<string | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const rightDockCloseSignalRef = useRef(0);
@@ -2653,12 +2696,93 @@ export default function SolveOverlay({
     timeRangeMetaById,
   ]);
 
+  const eligibleParticipantIdsByCellId = useMemo(() => {
+    const out: Record<string, Set<string>> = {};
+    const allCellIds = new Set<string>([
+      ...Object.keys(cellNameById).map(String),
+      ...Object.keys(cellPinMetaById).map(String),
+      ...Object.keys(cellTierPoolsById).map(String),
+      ...Object.keys(cellStaffsById).map(String),
+    ]);
+    for (const cellId of allCellIds) {
+      const nextSet = new Set<string>();
+      const tierPools = cellTierPoolsById[cellId] || ({} as Record<TierKey, string[]>);
+      for (const tier of ["PRIMARY", "SECONDARY", "TERTIARY"] as TierKey[]) {
+        for (const participantId of tierPools[tier] || []) {
+          nextSet.add(String(participantId));
+        }
+      }
+      for (const staffId of cellStaffsById[cellId] || []) {
+        for (const participantId of staffMembersByStaffId[String(staffId)] || []) {
+          nextSet.add(String(participantId));
+        }
+      }
+      out[cellId] = nextSet;
+    }
+    return out;
+  }, [cellNameById, cellPinMetaById, cellTierPoolsById, cellStaffsById, staffMembersByStaffId]);
+
+  const getCellHeadcount = useCallback(
+    (sourceCellId: string) =>
+      TIERS.reduce((sum, tier) => sum + Math.max(0, Number(cellTierCountsById[sourceCellId]?.[tier] || 0)), 0),
+    [cellTierCountsById],
+  );
+
+  const isParticipantEligibleByTierPools = useCallback(
+    (sourceCellId: string, participantId: string) => {
+      const noTierRequirements = TIERS.every(
+        (tier) => Math.max(0, Number(cellTierCountsById[sourceCellId]?.[tier] || 0)) === 0,
+      );
+      if (noTierRequirements) return true;
+      const tierPools = cellTierPoolsById[sourceCellId] || ({} as Record<TierKey, string[]>);
+      return TIERS.some((tier) => (tierPools[tier] || []).map(String).includes(String(participantId)));
+    },
+    [cellTierCountsById, cellTierPoolsById],
+  );
+
   const participantScrollerItems = useMemo(
-    () =>
-      Object.entries(participantNameById)
-        .map(([id, name]) => ({ id, name: name || `#${id}`, tier: participantTierById[id] ?? "-" }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [participantNameById, participantTierById],
+    () => {
+      const allParticipants = Object.entries(participantNameById)
+        .map(([id, name]) => ({ id, name: name || `#${id}`, tier: participantTierById[id] ?? "-" }));
+
+      if (!scopedUnitId && !isGlobalUnitScopeSelected) {
+        return allParticipants.sort((a, b) => a.name.localeCompare(b.name));
+      }
+
+      const relevantCellIds = Object.keys(cellPinMetaById).flatMap((cellId) => {
+        const bundles = (cellPinMetaById[cellId]?.bundles || []).map(String);
+        const matchingBundles = scopedUnitId
+          ? bundles.filter((bundleId) => (bundleUnitsById[bundleId] || []).map(String).includes(scopedUnitId))
+          : isGlobalUnitScopeSelected
+          ? bundles.filter((bundleId) => (bundleUnitsById[bundleId] || []).length === 0)
+          : bundles;
+        if ((scopedUnitId || isGlobalUnitScopeSelected) && matchingBundles.length === 0) return [];
+        return [String(cellId)];
+      });
+
+      const eligible = new Set<string>();
+      for (const cellId of relevantCellIds) {
+        for (const participantId of eligibleParticipantIdsByCellId[String(cellId)] || []) {
+          eligible.add(String(participantId));
+        }
+      }
+
+      return allParticipants
+        .filter((participant) => eligible.has(String(participant.id)))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    },
+    [
+      scopedUnitId,
+      isGlobalUnitScopeSelected,
+      cellPinMetaById,
+      bundleUnitsById,
+      cellTierPoolsById,
+      cellStaffsById,
+      staffMembersByStaffId,
+      participantNameById,
+      participantTierById,
+      eligibleParticipantIdsByCellId,
+    ],
   );
 
   const precheckDiagnostics = useMemo(
@@ -2808,6 +2932,162 @@ export default function SolveOverlay({
     [canManualEditCards, clearLongPressTimer, isJiggleMode],
   );
 
+  const handleParticipantScrollerGrabStart = useCallback(
+    (payload: {
+      cardKey: string;
+      participantId: string;
+      participantName: string;
+      pointerId: number;
+      clientX: number;
+      clientY: number;
+      grabOffsetX: number;
+      grabOffsetY: number;
+      offsetX: number;
+      offsetY: number;
+    }) => {
+      if (!canManualEditCards || !isJiggleMode) return;
+      clearLongPressTimer();
+      setPinError(null);
+      setDragState({
+        dragType: "participant-tool",
+        cardKey: payload.cardKey,
+        participantId: payload.participantId,
+        participantName: payload.participantName,
+        pointerId: payload.pointerId,
+        clientX: payload.clientX,
+        clientY: payload.clientY,
+        offsetX: payload.offsetX,
+        offsetY: payload.offsetY,
+        grabOffsetX: payload.grabOffsetX,
+        grabOffsetY: payload.grabOffsetY,
+      });
+    },
+    [canManualEditCards, clearLongPressTimer, isJiggleMode],
+  );
+
+  const clearParticipantDropGhostTimers = useCallback(() => {
+    for (const timer of participantDropGhostTimersRef.current) {
+      window.clearTimeout(timer);
+    }
+    participantDropGhostTimersRef.current = [];
+  }, []);
+
+  const triggerParticipantDropGhost = useCallback(
+    (
+      mode: "valid" | "invalid",
+      payload: { x: number; y: number; participantId: string; participantName: string },
+    ) => {
+      clearParticipantDropGhostTimers();
+      participantDropGhostTokenRef.current += 1;
+      const token = participantDropGhostTokenRef.current;
+      setParticipantDropGhost({
+        token,
+        mode,
+        phase: "start",
+        x: payload.x,
+        y: payload.y,
+        participantId: payload.participantId,
+        participantName: payload.participantName,
+      });
+      if (mode === "valid") {
+        const reboundTimer = window.setTimeout(() => {
+          setParticipantDropGhost((prev) =>
+            prev && prev.token === token
+              ? {
+                  ...prev,
+                  phase: "rebound",
+                }
+              : prev,
+          );
+        }, 95);
+        const fadeTimer = window.setTimeout(() => {
+          setParticipantDropGhost((prev) =>
+            prev && prev.token === token
+              ? {
+                  ...prev,
+                  phase: "end",
+                }
+              : prev,
+          );
+        }, 250);
+        const cleanupTimer = window.setTimeout(() => {
+          setParticipantDropGhost((prev) => (prev && prev.token === token ? null : prev));
+        }, 420);
+        participantDropGhostTimersRef.current.push(reboundTimer, fadeTimer, cleanupTimer);
+        return;
+      }
+
+      const fallTimer = window.setTimeout(() => {
+        setParticipantDropGhost((prev) =>
+          prev && prev.token === token
+            ? {
+                ...prev,
+                phase: "end",
+              }
+            : prev,
+        );
+      }, 16);
+      const cleanupTimer = window.setTimeout(() => {
+        setParticipantDropGhost((prev) => (prev && prev.token === token ? null : prev));
+      }, 240);
+      participantDropGhostTimersRef.current.push(fallTimer, cleanupTimer);
+    },
+    [clearParticipantDropGhostTimers],
+  );
+
+  const getParticipantTierColor = useCallback(
+    (participantId: string) => {
+      const tier = participantTierById[String(participantId)];
+      if (tier === "PRIMARY") return "#F59E0B";
+      if (tier === "SECONDARY") return "#3B82F6";
+      if (tier === "TERTIARY") return "#10B981";
+      return "#111827";
+    },
+    [participantTierById],
+  );
+
+  const evaluateParticipantDropTarget = useCallback(
+    (clientX: number, clientY: number, participantId: string) => {
+      const rawTarget = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+      const placementElement = rawTarget?.closest("[data-placement-id]") as HTMLElement | null;
+      const placementId = placementElement?.getAttribute("data-placement-id");
+      if (!placementId || !currentSchedule?.placements) {
+        return { placementId: null as string | null, placement: null as ScheduleRow | null, sourceCellId: null as string | null, existingAssigned: [] as string[], canDrop: false, reason: "empty" as const };
+      }
+      const placement =
+        currentSchedule.placements.find((entry) => String(entry.id) === String(placementId)) ?? null;
+      if (!placement) {
+        return { placementId: String(placementId), placement: null as ScheduleRow | null, sourceCellId: null as string | null, existingAssigned: [] as string[], canDrop: false, reason: "empty" as const };
+      }
+      const sourceCellId = String(
+        readEntityId((placement as { source_cell?: unknown }).source_cell) ??
+          readEntityId((placement as { source_cell_id?: unknown }).source_cell_id) ??
+          placementId,
+      );
+      const existingAssigned = normalizeIdArray((placement as { assigned_participants?: unknown }).assigned_participants);
+      if (existingAssigned.includes(participantId)) {
+        return { placementId: String(placementId), placement, sourceCellId, existingAssigned, canDrop: false, reason: "already_assigned" as const };
+      }
+      const overstaffAllowed = Boolean(cellAllowOverstaffById[sourceCellId]);
+      const headcount = getCellHeadcount(sourceCellId);
+      if (!overstaffAllowed && existingAssigned.length >= headcount) {
+        return { placementId: String(placementId), placement, sourceCellId, existingAssigned, canDrop: false, reason: "capacity" as const };
+      }
+      const eligibleByTier = isParticipantEligibleByTierPools(sourceCellId, participantId);
+      if (!eligibleByTier) {
+        return { placementId: String(placementId), placement, sourceCellId, existingAssigned, canDrop: false, reason: "ineligible" as const };
+      }
+      return { placementId: String(placementId), placement, sourceCellId, existingAssigned, canDrop: true, reason: null as null };
+    },
+    [
+      cellAllowOverstaffById,
+      currentSchedule?.placements,
+      getCellHeadcount,
+      isParticipantEligibleByTierPools,
+      normalizeIdArray,
+    ],
+  );
+
   useEffect(() => {
     if (editToolMode === "unassigned" && !hasUnassignedCells) {
       closeEditModes();
@@ -2917,6 +3197,7 @@ export default function SolveOverlay({
 
   const dragPreview = useMemo(() => {
     if (!dragState) return null;
+    if (dragState.dragType === "participant-tool") return null;
     const overlay = overlayRef.current;
     if (!overlay) return null;
     const rect = overlay.getBoundingClientRect();
@@ -2943,6 +3224,74 @@ export default function SolveOverlay({
       sourceCellId: dragState.sourceCellId,
     };
   }, [bodyHeight, daysCount, dragState, rowPx, timeColPx]);
+
+  useEffect(() => {
+    if (dragState?.dragType !== "participant-tool") {
+      if (participantDragMotionRef.current.rafId != null) {
+        window.cancelAnimationFrame(participantDragMotionRef.current.rafId);
+        participantDragMotionRef.current.rafId = null;
+      }
+      setParticipantDragHoverPlacementId(null);
+      return;
+    }
+
+    const motion = participantDragMotionRef.current;
+    motion.prevX = dragState.clientX;
+    motion.prevY = dragState.clientY;
+    motion.prevT = Date.now();
+    motion.lastMoveTs = motion.prevT;
+    motion.hoverValid = false;
+    motion.arm = { value: 0, vel: 0, target: 0 };
+    motion.leg = { value: 0, vel: 0, target: 0 };
+    motion.tilt = { value: 0, vel: 0, target: 0 };
+    motion.legBase = { value: 25, vel: 0, target: 25 };
+    motion.shadowScale = { value: 1, vel: 0, target: 1 };
+    motion.shadowOpacity = { value: 0.2, vel: 0, target: 0.2 };
+
+    const springStep = (node: { value: number; vel: number; target: number }, stiffness: number, damping: number) => {
+      node.vel += (node.target - node.value) * stiffness;
+      node.vel *= damping;
+      node.value += node.vel;
+    };
+
+    const tick = () => {
+      const node = pegmanGhostRef.current;
+      if (!node) {
+        motion.rafId = window.requestAnimationFrame(tick);
+        return;
+      }
+      springStep(motion.arm, 0.19, 0.74);
+      springStep(motion.leg, 0.18, 0.74);
+      springStep(motion.tilt, 0.2, 0.76);
+      springStep(motion.legBase, 0.2, 0.76);
+      springStep(motion.shadowScale, 0.16, 0.78);
+      springStep(motion.shadowOpacity, 0.16, 0.8);
+
+      const now = Date.now();
+      const isIdle = now - motion.lastMoveTs > 500;
+      const bobY = isIdle ? Math.sin(now / 240) * 1.5 : 0;
+
+      node.style.setProperty("--tilt", `${motion.tilt.value.toFixed(3)}deg`);
+      node.style.setProperty("--arm-l", `${(-motion.arm.value).toFixed(3)}deg`);
+      node.style.setProperty("--arm-r", `${motion.arm.value.toFixed(3)}deg`);
+      node.style.setProperty("--leg-l", `${motion.leg.value.toFixed(3)}deg`);
+      node.style.setProperty("--leg-r", `${(-motion.leg.value).toFixed(3)}deg`);
+      node.style.setProperty("--leg-base", `${motion.legBase.value.toFixed(3)}deg`);
+      node.style.setProperty("--shadow-scale", `${Math.max(0.72, motion.shadowScale.value).toFixed(3)}`);
+      node.style.setProperty("--shadow-opacity", `${Math.max(0.1, Math.min(0.42, motion.shadowOpacity.value)).toFixed(3)}`);
+      node.style.setProperty("--bob-y", `${bobY.toFixed(3)}px`);
+
+      motion.rafId = window.requestAnimationFrame(tick);
+    };
+
+    motion.rafId = window.requestAnimationFrame(tick);
+    return () => {
+      if (motion.rafId != null) {
+        window.cancelAnimationFrame(motion.rafId);
+        motion.rafId = null;
+      }
+    };
+  }, [dragState]);
 
   const dragTimeRangeGuide = useMemo(() => {
     if (!dragPreview) return null;
@@ -4443,8 +4792,15 @@ export default function SolveOverlay({
   }, [blockageDragState, deleteBlockage, getGridPointFromClient, isInsideDeleteDropTarget, rowPx, scheduleBlockages, slotCount, upsertBlockage]);
 
   useEffect(() => {
-    return () => clearLongPressTimer();
-  }, []);
+    return () => {
+      clearLongPressTimer();
+      clearParticipantDropGhostTimers();
+      if (participantDragMotionRef.current.rafId != null) {
+        window.cancelAnimationFrame(participantDragMotionRef.current.rafId);
+        participantDragMotionRef.current.rafId = null;
+      }
+    };
+  }, [clearLongPressTimer, clearParticipantDropGhostTimers]);
 
   useEffect(() => {
     if (!dragState) return;
@@ -4452,6 +4808,33 @@ export default function SolveOverlay({
       if (event.pointerId !== dragState.pointerId) return;
       const isInsideDelete = isInsideDeleteDropTarget(event.clientX, event.clientY);
       setIsDeleteDropActive((prev) => (prev === isInsideDelete ? prev : isInsideDelete));
+      if (dragState.dragType === "participant-tool") {
+        const motion = participantDragMotionRef.current;
+        const now = Date.now();
+        const dt = Math.max(1, now - motion.prevT);
+        const vx = (event.clientX - motion.prevX) / dt;
+        const vy = (event.clientY - motion.prevY) / dt;
+        motion.prevX = event.clientX;
+        motion.prevY = event.clientY;
+        motion.prevT = now;
+        motion.lastMoveTs = now;
+        const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+        motion.arm.target = clamp(vx * 30, -20, 20);
+        motion.leg.target = clamp(vy * 25, -15, 15);
+        motion.tilt.target = clamp(vx * 15, -8, 8);
+
+        const target = evaluateParticipantDropTarget(event.clientX, event.clientY, String(dragState.participantId));
+        const hoverValid = Boolean(target.canDrop && target.placementId);
+        motion.hoverValid = hoverValid;
+        motion.legBase.target = hoverValid ? 12 : 25;
+        const speed = Math.min(1, Math.hypot(vx, vy) * 0.8);
+        const verticalEnergy = Math.min(1, Math.abs(vy) * 1.4);
+        motion.shadowScale.target = (hoverValid ? 1.36 : 1.02) + speed * 0.12 + verticalEnergy * 0.16;
+        motion.shadowOpacity.target = (hoverValid ? 0.34 : 0.2) + speed * 0.04 + verticalEnergy * 0.05;
+        setParticipantDragHoverPlacementId(hoverValid && target.placementId ? String(target.placementId) : null);
+      } else {
+        setParticipantDragHoverPlacementId(null);
+      }
       setDragState((prev) =>
         prev && prev.pointerId === event.pointerId
           ? {
@@ -4471,6 +4854,83 @@ export default function SolveOverlay({
       setIsDeleteDropActive(false);
       if (droppedOnDelete && activeDrag.dragType === "placement" && activeDrag.placementId) {
         void deleteSchedulePlacement(activeDrag.placementId);
+        return;
+      }
+      if (activeDrag.dragType === "participant-tool") {
+        const participantId = String(activeDrag.participantId);
+        const target = evaluateParticipantDropTarget(event.clientX, event.clientY, participantId);
+        setParticipantDragHoverPlacementId(null);
+        if (!target.canDrop || !target.placementId || !target.placement) {
+          triggerParticipantDropGhost("invalid", {
+            x: event.clientX,
+            y: event.clientY,
+            participantId,
+            participantName: activeDrag.participantName,
+          });
+          if (target.reason === "already_assigned") {
+            setPinError("Participant already assigned");
+          } else if (target.reason === "capacity") {
+            setPinError("This placement is already at capacity.");
+          } else if (target.reason === "ineligible") {
+            setPinError(`${activeDrag.participantName} is not eligible for this cell.`);
+          }
+          return;
+        }
+
+        triggerParticipantDropGhost("valid", {
+          x: event.clientX,
+          y: event.clientY,
+          participantId,
+          participantName: activeDrag.participantName,
+        });
+
+        const placementId = String(target.placementId);
+        const targetPlacement = target.placement;
+        const existingAssigned = target.existingAssigned;
+        const mergedAssigned = Array.from(new Set([...existingAssigned, participantId]));
+        const mergedAssignedApi = mergedAssigned.map((id) => (/^\d+$/.test(id) ? Number(id) : id));
+        const previousPlacements = currentSchedule?.placements ?? [];
+        if (!Array.isArray(previousPlacements) || previousPlacements.length === 0) return;
+        const optimisticPlacements = previousPlacements.map((placement) =>
+          String(placement.id) === String(placementId)
+            ? {
+                ...placement,
+                assigned_participants: mergedAssigned,
+                participants: mergedAssigned,
+              }
+            : placement,
+        );
+        setCurrentSchedule((prev) =>
+          prev
+            ? {
+                ...prev,
+                placements: optimisticPlacements,
+              }
+            : prev,
+        );
+        void (async () => {
+          try {
+            const res = await authFetch(`/api/schedule-placements/${encodeURIComponent(String(placementId))}`, {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ assigned_participants: mergedAssignedApi }),
+            });
+            if (!res.ok) {
+              throw new Error("Could not assign participant");
+            }
+            notifyDraftMutation();
+          } catch (error: unknown) {
+            setCurrentSchedule((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    placements: previousPlacements,
+                  }
+                : prev,
+            );
+            setPinError(error instanceof Error ? error.message : "Could not assign participant");
+          }
+        })();
         return;
       }
 
@@ -4522,6 +4982,7 @@ export default function SolveOverlay({
     const onPointerCancel = (event: PointerEvent) => {
       if (event.pointerId !== dragState.pointerId) return;
       setDragState(null);
+      setParticipantDragHoverPlacementId(null);
       setIsDeleteDropActive(false);
     };
 
@@ -4535,18 +4996,23 @@ export default function SolveOverlay({
     };
   }, [
     bodyHeight,
+    currentSchedule,
     daysCount,
     deleteSchedulePlacement,
     dragState,
+    evaluateParticipantDropTarget,
     isInsideDeleteDropTarget,
+    notifyDraftMutation,
     patchPlacementPosition,
     requestUnassignedPlacement,
     rowPx,
     timeColPx,
+    triggerParticipantDropGhost,
   ]);
 
   useEffect(() => {
     if (dragState) return;
+    setParticipantDragHoverPlacementId(null);
     setIsDeleteDropActive(false);
   }, [dragState]);
 
@@ -5461,7 +5927,25 @@ export default function SolveOverlay({
             const placementDurationMin = Math.max(slotMin, durationSlots * slotMin);
             const placementBreaks = Array.isArray(s.breaks) ? s.breaks : [];
             const isOverstaffCell = Boolean(cellAllowOverstaffById[sourceCellId]);
-            const dimForParticipantsTool = isParticipantsToolActive && !isOverstaffCell;
+            const activeDraggedParticipantId =
+              dragState?.dragType === "participant-tool" ? String(dragState.participantId) : null;
+            const dimForParticipantsTool =
+              isParticipantsToolActive && !activeDraggedParticipantId && !isOverstaffCell;
+            const participantEligibleForCell = activeDraggedParticipantId
+              ? isParticipantEligibleByTierPools(sourceCellId, activeDraggedParticipantId)
+              : false;
+            const participantAlreadyAssigned = activeDraggedParticipantId
+              ? assignedParticipantIds.includes(activeDraggedParticipantId)
+              : false;
+            const hasCapacityForDraggedParticipant =
+              Boolean(cellAllowOverstaffById[sourceCellId]) ||
+              assignedParticipantIds.length < getCellHeadcount(sourceCellId);
+            const canDropDraggedParticipant =
+              Boolean(activeDraggedParticipantId) &&
+              hasCapacityForDraggedParticipant &&
+              participantEligibleForCell &&
+              !participantAlreadyAssigned;
+            const dimForDraggedParticipant = Boolean(activeDraggedParticipantId) && !canDropDraggedParticipant;
             const cursorClass =
               commentsPanelOpen && commentAnchorForCard
                 ? "cursor-pointer"
@@ -5481,7 +5965,7 @@ export default function SolveOverlay({
                 key={cardKey}
                 data-placement-card
                 data-placement-id={placementId || undefined}
-                className={`absolute pointer-events-auto ${cursorClass} ${
+                className={`absolute ${dimForDraggedParticipant ? "pointer-events-none" : "pointer-events-auto"} ${cursorClass} ${
                   isDraggingCard ? "transition-none" : "transition-transform duration-150 ease-out"
                 }`}
                 style={{
@@ -5575,14 +6059,21 @@ export default function SolveOverlay({
                 <div
                   className={`group relative w-full h-full rounded-md border px-2 py-2 text-[11px] ${
                     isJiggleMode && !isPlacementLocked && hoveredJiggleCardKey !== cardKey ? "shift-jiggle" : ""
+                  } ${
+                    activeDraggedParticipantId &&
+                    canDropDraggedParticipant &&
+                    participantDragHoverPlacementId != null &&
+                    String(participantDragHoverPlacementId) === String(placementId)
+                      ? "ring-2 ring-amber-400/70"
+                      : ""
                   }`}
                   style={{
                     backgroundColor: bg || "#f3f4f6",
                     borderColor: border,
                     color: textDark,
                     animationDelay: `${(idx % 6) * 35}ms`,
-                    opacity: dimForParticipantsTool ? 0.45 : 1,
-                    filter: dimForParticipantsTool ? "grayscale(0.65)" : "none",
+                    opacity: dimForParticipantsTool || dimForDraggedParticipant ? 0.35 : 1,
+                    filter: dimForParticipantsTool || dimForDraggedParticipant ? "grayscale(0.65)" : "none",
                   }}
                 >
                   {(isCommentFocusedCard || isCollisionBeatingCard) && (
@@ -6860,11 +7351,196 @@ export default function SolveOverlay({
           onSolvePressed={onSolvePressed}
           onPendingReviewPressed={openPendingCandidatePreview}
           onActivateTool={activateEditTool}
+          onParticipantGrabStart={handleParticipantScrollerGrabStart}
+          participantDragVisual={
+            dragState?.dragType === "participant-tool"
+              ? {
+                  cardKey: dragState.cardKey,
+                  clientX: dragState.clientX,
+                  clientY: dragState.clientY,
+                  offsetX: dragState.offsetX,
+                  offsetY: dragState.offsetY,
+                }
+              : null
+          }
           onPublishDraft={() => {
             void publishDraftSchedule();
           }}
         />
       )}
+      {dragState?.dragType === "participant-tool" && (
+        <div
+          className="fixed z-[300] pointer-events-none"
+          style={{
+            left: dragState.clientX,
+            top: dragState.clientY - 7,
+            transform: "translate(-50%, 0)",
+          }}
+        >
+          <div
+            ref={pegmanGhostRef}
+            className="relative select-none animate-[pegman-pop-in_200ms_cubic-bezier(0.34,1.56,0.64,1)]"
+            style={
+              {
+                ["--tilt" as string]: "0deg",
+                ["--arm-l" as string]: "0deg",
+                ["--arm-r" as string]: "0deg",
+                ["--leg-l" as string]: "0deg",
+                ["--leg-r" as string]: "0deg",
+                ["--leg-base" as string]: "25deg",
+                ["--shadow-scale" as string]: "1",
+                ["--shadow-opacity" as string]: "0.2",
+                ["--bob-y" as string]: "0px",
+              } as React.CSSProperties
+            }
+          >
+            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 whitespace-nowrap rounded-md bg-white/90 backdrop-blur-sm border border-gray-200 px-2 py-0.5 text-sm font-semibold text-gray-900 shadow-sm max-w-[220px] truncate">
+              {dragState.participantName}
+            </div>
+
+            <div
+              className="relative h-[52px] w-[34px]"
+              style={{ transform: "translateY(var(--bob-y)) rotate(var(--tilt))" }}
+            >
+              <div
+                className="absolute left-1/2 top-0 h-[14px] w-[14px] -translate-x-1/2 rounded-full border border-black/10"
+                style={{ backgroundColor: getParticipantTierColor(dragState.participantId) }}
+              />
+
+              <div
+                className="absolute left-1/2 top-[12px] h-[16px] w-[12px] -translate-x-1/2 rounded-[7px] border border-black/10"
+                style={{ backgroundColor: getParticipantTierColor(dragState.participantId) }}
+              />
+
+              <div
+                className="absolute left-[8px] top-[15px] h-[12px] w-[2px] rounded-full border border-black/10"
+                style={{
+                  backgroundColor: getParticipantTierColor(dragState.participantId),
+                  transformOrigin: "top center",
+                  transform: "rotate(calc(-22deg + var(--arm-l)))",
+                  transition: "transform 120ms ease-out",
+                }}
+              />
+              <div
+                className="absolute right-[8px] top-[15px] h-[12px] w-[2px] rounded-full border border-black/10"
+                style={{
+                  backgroundColor: getParticipantTierColor(dragState.participantId),
+                  transformOrigin: "top center",
+                  transform: "rotate(calc(22deg + var(--arm-r)))",
+                  transition: "transform 120ms ease-out",
+                }}
+              />
+
+              <div
+                className="absolute left-[13px] top-[28px] h-[14px] w-[2px] rounded-full border border-black/10"
+                style={{
+                  backgroundColor: getParticipantTierColor(dragState.participantId),
+                  transformOrigin: "top center",
+                  transform: "rotate(calc(var(--leg-base) + var(--leg-l)))",
+                  transition: "transform 120ms ease-out",
+                }}
+              />
+              <div
+                className="absolute right-[13px] top-[28px] h-[14px] w-[2px] rounded-full border border-black/10"
+                style={{
+                  backgroundColor: getParticipantTierColor(dragState.participantId),
+                  transformOrigin: "top center",
+                  transform: "rotate(calc(-1 * var(--leg-base) + var(--leg-r)))",
+                  transition: "transform 120ms ease-out",
+                }}
+              />
+            </div>
+
+            <div
+              className="absolute left-1/2 top-[46px] h-[6px] w-[20px] -translate-x-1/2 rounded-full bg-black/20 blur-[1px]"
+              style={{
+                transform: "scale(var(--shadow-scale))",
+                opacity: "var(--shadow-opacity)",
+                transition: "transform 120ms ease-out, opacity 120ms ease-out",
+              }}
+            />
+          </div>
+        </div>
+      )}
+      {participantDropGhost && (
+        <div
+          className="fixed z-[300] pointer-events-none"
+          style={{
+            left: participantDropGhost.x,
+            top: participantDropGhost.y - 7,
+            transform:
+              participantDropGhost.mode === "valid"
+                ? participantDropGhost.phase === "start"
+                  ? "translate(-50%, 0) scaleX(1.15) scaleY(0.8)"
+                  : participantDropGhost.phase === "rebound"
+                  ? "translate(-50%, -1px) scaleX(0.95) scaleY(1.08)"
+                  : "translate(-50%, -8px) scale(0.8)"
+                : participantDropGhost.phase === "start"
+                ? "translate(-50%, 0) scale(1)"
+                : "translate(-50%, 60px) scale(0.95)",
+            opacity:
+              participantDropGhost.mode === "valid"
+                ? participantDropGhost.phase === "end"
+                  ? 0
+                  : 1
+                : participantDropGhost.phase === "start"
+                ? 1
+                : 0,
+            transition:
+              participantDropGhost.mode === "valid"
+                ? participantDropGhost.phase === "rebound"
+                  ? "transform 170ms cubic-bezier(0.22,1,0.36,1), opacity 160ms ease-out"
+                  : "transform 140ms ease-out, opacity 150ms ease-out"
+                : "transform 200ms ease-in, opacity 200ms ease-in",
+          }}
+        >
+          <div className="relative select-none">
+            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 whitespace-nowrap rounded-md bg-white/90 backdrop-blur-sm border border-gray-200 px-2 py-0.5 text-sm font-semibold text-gray-900 shadow-sm max-w-[220px] truncate">
+              {participantDropGhost.participantName}
+            </div>
+            <div className="relative h-[52px] w-[34px]">
+              <div
+                className="absolute left-1/2 top-0 h-[14px] w-[14px] -translate-x-1/2 rounded-full border border-black/10"
+                style={{ backgroundColor: getParticipantTierColor(participantDropGhost.participantId) }}
+              />
+              <div
+                className="absolute left-1/2 top-[12px] h-[16px] w-[12px] -translate-x-1/2 rounded-[7px] border border-black/10"
+                style={{ backgroundColor: getParticipantTierColor(participantDropGhost.participantId) }}
+              />
+              <div
+                className="absolute left-[8px] top-[15px] h-[12px] w-[2px] rounded-full border border-black/10"
+                style={{ backgroundColor: getParticipantTierColor(participantDropGhost.participantId), transform: "rotate(-10deg)" }}
+              />
+              <div
+                className="absolute right-[8px] top-[15px] h-[12px] w-[2px] rounded-full border border-black/10"
+                style={{ backgroundColor: getParticipantTierColor(participantDropGhost.participantId), transform: "rotate(10deg)" }}
+              />
+              <div
+                className="absolute left-[13px] top-[28px] h-[14px] w-[2px] rounded-full border border-black/10"
+                style={{ backgroundColor: getParticipantTierColor(participantDropGhost.participantId), transform: "rotate(18deg)" }}
+              />
+              <div
+                className="absolute right-[13px] top-[28px] h-[14px] w-[2px] rounded-full border border-black/10"
+                style={{ backgroundColor: getParticipantTierColor(participantDropGhost.participantId), transform: "rotate(-18deg)" }}
+              />
+            </div>
+            <div className="absolute left-1/2 top-[46px] h-[6px] w-[20px] -translate-x-1/2 rounded-full bg-black/20 blur-[1px]" />
+          </div>
+        </div>
+      )}
+      <style jsx>{`
+        @keyframes pegman-pop-in {
+          0% {
+            transform: scale(0);
+          }
+          70% {
+            transform: scale(1.1);
+          }
+          100% {
+            transform: scale(1);
+          }
+        }
+      `}</style>
 
     </>
   );
