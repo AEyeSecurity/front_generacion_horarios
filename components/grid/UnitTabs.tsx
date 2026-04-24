@@ -54,39 +54,57 @@ export default function UnitTabs({
   const [hasUnitlessPlacements, setHasUnitlessPlacements] = useState(false);
   const [hasNoUnitCells, setHasNoUnitCells] = useState(false);
   const [blockageGlobalModeActive, setBlockageGlobalModeActive] = useState(false);
+
+  const unitTabs = useMemo(
+    () =>
+      units
+        .filter((u) => {
+          const id = String(u.id).toLowerCase();
+          const name = (u.name || "").toLowerCase();
+          return id !== "all" && name !== "all";
+        })
+        .map((u) => ({ id: String(u.id), name: u.name })),
+    [units],
+  );
+
   const tabs = useMemo(() => {
-    const unitTabs = units
-      .filter((u) => {
-        const id = String(u.id).toLowerCase();
-        const name = (u.name || "").toLowerCase();
-        return id !== "all" && name !== "all";
-      })
-      .map((u) => ({ id: String(u.id), name: u.name }));
+    if (unitTabs.length === 0) {
+      if (blockageGlobalModeActive) return [{ id: GLOBAL_BLOCKAGE_TAB_ID, name: "🌐" }];
+      return [{ id: NO_UNIT_TAB_ID, name: "No-Unit" }];
+    }
+
     const showGlobeGlobalTab = blockageGlobalModeActive;
     const showNoUnitTab = !blockageGlobalModeActive && (hasUnitlessPlacements || hasNoUnitCells);
     if (showGlobeGlobalTab) return [{ id: GLOBAL_BLOCKAGE_TAB_ID, name: "🌐" }, ...unitTabs];
     if (showNoUnitTab) return [{ id: NO_UNIT_TAB_ID, name: "No-Unit" }, ...unitTabs];
     return unitTabs;
-  }, [blockageGlobalModeActive, hasNoUnitCells, hasUnitlessPlacements, units]);
+  }, [blockageGlobalModeActive, hasNoUnitCells, hasUnitlessPlacements, unitTabs]);
+
   const effectiveSelected =
     selected ??
-    (blockageGlobalModeActive
+    (unitTabs.length === 0
+      ? NO_UNIT_TAB_ID
+      : blockageGlobalModeActive
       ? (tabs.find((tab) => tab.id === GLOBAL_BLOCKAGE_TAB_ID)?.id ?? tabs[0]?.id ?? null)
       : (tabs.find((tab) => tab.id !== NO_UNIT_TAB_ID && tab.id !== GLOBAL_BLOCKAGE_TAB_ID)?.id ??
         tabs[0]?.id ??
         null));
 
+  const hideTabBar = tabs.length === 1 && tabs[0].id === NO_UNIT_TAB_ID && !blockageGlobalModeActive;
+
   useEffect(() => {
     if (selected && !tabs.some((tab) => tab.id === selected)) {
       setSelected(
-        blockageGlobalModeActive
+        unitTabs.length === 0
+          ? NO_UNIT_TAB_ID
+          : blockageGlobalModeActive
           ? (tabs.find((tab) => tab.id === GLOBAL_BLOCKAGE_TAB_ID)?.id ?? tabs[0]?.id ?? null)
           : (tabs.find((tab) => tab.id !== NO_UNIT_TAB_ID && tab.id !== GLOBAL_BLOCKAGE_TAB_ID)?.id ??
             tabs[0]?.id ??
             null),
       );
     }
-  }, [blockageGlobalModeActive, selected, tabs]);
+  }, [blockageGlobalModeActive, selected, tabs, unitTabs.length]);
 
   useEffect(() => {
     if (!blockageGlobalModeActive) return;
@@ -136,7 +154,7 @@ export default function UnitTabs({
         historyGridCode={historyGridCode}
       />
 
-      {tabs.length > 0 && (
+      {!hideTabBar && tabs.length > 0 && (
         <div data-unit-tabs className="fixed bottom-0 left-0 right-0 z-[40] pointer-events-none">
           <div className="max-w-5xl mx-auto flex items-end gap-2 px-4 pt-2 pb-0 overflow-x-auto overflow-y-hidden pointer-events-auto">
             {tabs.map((t) => (

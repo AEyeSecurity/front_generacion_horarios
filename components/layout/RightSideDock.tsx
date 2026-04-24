@@ -65,7 +65,7 @@ type Props = {
   onUnassignedGrabStart?: (payload: {
     cardKey: string;
     sourceCellId: string;
-    sourceBundleId: string;
+    sourceBundleId: string | null;
     cellName: string;
     durationSlots: number;
     pointerId: number;
@@ -542,7 +542,7 @@ export default function RightSideDock({
                       zIndex: z,
                     }}
                     onPointerDown={(event) => {
-                      if (!cell.canGrab || !cell.selectedBundleId) {
+                      if (!cell.canGrab) {
                         onUnassignedGrabBlocked?.();
                         return;
                       }
@@ -550,7 +550,7 @@ export default function RightSideDock({
                       onUnassignedGrabStart?.({
                         cardKey,
                         sourceCellId: String(cell.id),
-                        sourceBundleId: String(cell.selectedBundleId),
+                        sourceBundleId: cell.selectedBundleId != null ? String(cell.selectedBundleId) : null,
                         cellName: cell.name,
                         durationSlots: Math.max(1, Number(cell.durationSlots) || 1),
                         pointerId: event.pointerId,

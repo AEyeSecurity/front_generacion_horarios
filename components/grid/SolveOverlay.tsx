@@ -496,7 +496,7 @@ type PlacementAssignmentOption = {
 
 type PendingPlacementRequest = {
   sourceCellId: string;
-  bundleId: string | number;
+  bundleId: string | number | null;
   dayIndex: number;
   startSlot: number;
   durationSlots: number;
@@ -2776,19 +2776,20 @@ export default function SolveOverlay({
           : isNoUnitScopeSelected
           ? cellBundles.filter((bundleId) => (bundleUnitsById[bundleId] || []).length === 0)
           : cellBundles;
-        if ((scopedUnitId || isNoUnitScopeSelected) && matchingBundles.length === 0) {
-          if (!(isNoUnitScopeSelected && cellBundles.length === 0 && globalNoUnitBundles.length === 1)) {
-            return [];
-          }
-        }
+        const noUnitFallbackBundleId =
+          isNoUnitScopeSelected && globalNoUnitBundles.length > 0 ? globalNoUnitBundles[0] : undefined;
         const selectedBundleId =
           matchingBundles[0] ??
+          noUnitFallbackBundleId ??
           cellBundles[0] ??
-          (isNoUnitScopeSelected && globalNoUnitBundles.length === 1 ? globalNoUnitBundles[0] : null);
+          null;
+        if (scopedUnitId && matchingBundles.length === 0) return [];
+        if (isNoUnitScopeSelected && matchingBundles.length === 0 && !selectedBundleId) return [];
         const unitIds = selectedBundleId
           ? (bundleUnitsById[selectedBundleId] || []).map(String)
           : [];
-        const canGrabForCurrentTab = selectedBundleId != null;
+        const canGrabForCurrentTab =
+          selectedBundleId != null || (isNoUnitScopeSelected && cellBundles.length === 0);
         return [{
           id: cellKey,
           name,
@@ -2816,6 +2817,17 @@ export default function SolveOverlay({
     slotMin,
     timeRangeMetaById,
   ]);
+
+  const resolveNoUnitBundleIdForCell = useCallback(
+    (sourceCellId: string): string | null => {
+      const cellBundles = (cellPinMetaById[String(sourceCellId)]?.bundles || []).map(String);
+      const cellNoUnitBundle = cellBundles.find((bundleId) => (bundleUnitsById[bundleId] || []).length === 0);
+      if (cellNoUnitBundle) return cellNoUnitBundle;
+      const globalNoUnitBundle = Object.entries(bundleUnitsById).find(([, unitIds]) => (unitIds || []).length === 0);
+      return globalNoUnitBundle ? String(globalNoUnitBundle[0]) : null;
+    },
+    [bundleUnitsById, cellPinMetaById],
+  );
 
   const eligibleParticipantIdsByCellId = useMemo(() => {
     const out: Record<string, Set<string>> = {};
@@ -3033,7 +3045,7 @@ export default function SolveOverlay({
     (payload: {
       cardKey: string;
       sourceCellId: string;
-      sourceBundleId: string;
+      sourceBundleId: string | null;
       cellName: string;
       durationSlots: number;
       pointerId: number;
@@ -4213,12 +4225,12 @@ export default function SolveOverlay({
   const getPlacementAssignmentOptions = useCallback(
     (
       sourceCellId: string,
-      bundleId: string | number,
+      bundleId: string | number | null,
       dayIndex: number,
       startSlot: number,
       endSlot: number,
     ): { options: PlacementAssignmentOption[]; error?: string } => {
-      const normalizedBundleId = String(bundleId);
+      const normalizedBundleId = bundleId == null ? "__no_bundle__" : String(bundleId);
       const bundleUnitIds = (bundleUnitsById[normalizedBundleId] || []).map(String);
       const isNoUnitBundle = bundleUnitIds.length === 0;
 
@@ -4390,7 +4402,7 @@ export default function SolveOverlay({
   const createSchedulePlacement = useCallback(
     async (
       sourceCellId: string,
-      bundleId: string | number,
+      bundleId: string | number | null,
       nextDayIndex: number,
       nextStartSlot: number,
       durationSlots: number,
@@ -4405,7 +4417,7 @@ export default function SolveOverlay({
       const normalizedSourceCell =
         /^\d+$/.test(String(sourceCellId)) ? Number(sourceCellId) : sourceCellId;
       const normalizedBundle =
-        /^\d+$/.test(String(bundleId)) ? Number(bundleId) : bundleId;
+        bundleId == null ? null : /^\d+$/.test(String(bundleId)) ? Number(bundleId) : bundleId;
       const normalizedAssignedParticipants = assignedParticipantIds
         .map((id) => (/^\d+$/.test(String(id)) ? Number(id) : id))
         .filter((id) => id != null);
@@ -4476,7 +4488,7 @@ export default function SolveOverlay({
           locked: Boolean((raw as any).locked),
         };
 
-        const assignedKey = `${String(normalizedSourceCell)}|${String(normalizedBundle)}`;
+        const assignedKey = `${String(normalizedSourceCell)}|${String(normalizedBundle ?? "__no_bundle__")}`;
         if (createdPlacement.assigned_participants.length > 0) {
           setLastAssignedParticipantsByCellBundle((prev) => ({
             ...prev,
@@ -4513,12 +4525,12 @@ export default function SolveOverlay({
   const requestUnassignedPlacement = useCallback(
     async (
       sourceCellId: string,
-      bundleId: string | number,
+      bundleId: string | number | null,
       dayIndex: number,
       startSlot: number,
       durationSlots: number,
     ) => {
-      const normalizedBundleId = String(bundleId);
+      const normalizedBundleId = bundleId == null ? null : String(bundleId);
       const endSlot = startSlot + durationSlots;
       lastPlacementAttemptRef.current = {
         sourceCellId,
@@ -4535,7 +4547,12 @@ export default function SolveOverlay({
             body: JSON.stringify({
               schedule_id: currentSchedule.id,
               source_cell_id: sourceCellId,
-              bundle_id: /^\d+$/.test(normalizedBundleId) ? Number(normalizedBundleId) : normalizedBundleId,
+              bundle_id:
+                normalizedBundleId == null
+                  ? null
+                  : /^\d+$/.test(normalizedBundleId)
+                  ? Number(normalizedBundleId)
+                  : normalizedBundleId,
               day_index: dayIndex,
               start_slot: startSlot,
               end_slot: endSlot,
@@ -4574,7 +4591,7 @@ export default function SolveOverlay({
                     : t("solve_overlay.tier_pools_assignment_label", { names: participantLabel });
                 const recommendedByBackend = Boolean(assignment?.recommended);
                 const previousAssigned =
-                  lastAssignedParticipantsByCellBundle[`${sourceCellId}|${normalizedBundleId}`] || [];
+                  lastAssignedParticipantsByCellBundle[`${sourceCellId}|${normalizedBundleId ?? "__no_bundle__"}`] || [];
                 const recommendedByPrevious =
                   !recommendedByBackend &&
                   previousAssigned.length === participantIds.length &&
@@ -5054,13 +5071,16 @@ export default function SolveOverlay({
         return;
       }
       if (activeDrag.dragType === "unassigned") {
-        if (activeDrag.sourceBundleId == null) {
+        const resolvedBundleId =
+          activeDrag.sourceBundleId ??
+          (isNoUnitScopeSelected ? resolveNoUnitBundleIdForCell(activeDrag.sourceCellId) : null);
+        if (resolvedBundleId == null) {
           setPinError(t("solve_overlay.select_matching_unit_tab_before_placing"));
           return;
         }
         void requestUnassignedPlacement(
           activeDrag.sourceCellId,
-          activeDrag.sourceBundleId,
+          resolvedBundleId,
           droppedDay,
           droppedStart,
           activeDrag.durationSlots,
@@ -5094,7 +5114,10 @@ export default function SolveOverlay({
     notifyDraftMutation,
     patchPlacementPosition,
     requestUnassignedPlacement,
+    resolveNoUnitBundleIdForCell,
     rowPx,
+    isNoUnitScopeSelected,
+    t,
     timeColPx,
     triggerParticipantDropGhost,
   ]);
@@ -7627,7 +7650,6 @@ export default function SolveOverlay({
             canGrab: Boolean(
               canManualEditCards &&
                 isJiggleMode &&
-                cell.selectedBundleId != null &&
                 cell.canGrabForCurrentTab,
             ),
             selectedBundleId: cell.selectedBundleId != null ? String(cell.selectedBundleId) : null,
