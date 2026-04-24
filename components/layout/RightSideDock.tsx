@@ -38,6 +38,7 @@ type Props = {
   canManualEditCards?: boolean;
   hasOverstaffableCells?: boolean;
   hasUnassignedCells?: boolean;
+  hasPlacedCells?: boolean;
   isParticipantsToolActive?: boolean;
   isBreakToolActive?: boolean;
   isBlockageToolActive?: boolean;
@@ -127,6 +128,7 @@ export default function RightSideDock({
   canManualEditCards = false,
   hasOverstaffableCells = false,
   hasUnassignedCells = false,
+  hasPlacedCells = false,
   isParticipantsToolActive = false,
   isBreakToolActive = false,
   isBlockageToolActive = false,
@@ -294,7 +296,7 @@ export default function RightSideDock({
                   title: labels.breaks,
                   icon: <Coffee className="h-5 w-5" />,
                   active: isBreakToolActive,
-                  disabled: false,
+                  disabled: !hasPlacedCells,
                   onClick: () => onActivateTool?.("break"),
                   angle: -26,
                 },

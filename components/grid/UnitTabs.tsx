@@ -6,6 +6,8 @@ import type { ScheduleViewMode } from "@/lib/schedule-view";
 
 type Unit = { id: number | string; name: string };
 const UNIT_TAB_SELECT_EVENT = "shift:unit-tab:select";
+const NO_UNIT_TAB_ID = "__no_unit__";
+const GLOBAL_BLOCKAGE_TAB_ID = "__global__";
 
 export default function UnitTabs({
   gridId,
@@ -49,6 +51,9 @@ export default function UnitTabs({
   historyGridCode?: string | null;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const [hasUnitlessPlacements, setHasUnitlessPlacements] = useState(false);
+  const [hasNoUnitCells, setHasNoUnitCells] = useState(false);
+  const [blockageGlobalModeActive, setBlockageGlobalModeActive] = useState(false);
   const tabs = useMemo(() => {
     const unitTabs = units
       .filter((u) => {
@@ -57,9 +62,37 @@ export default function UnitTabs({
         return id !== "all" && name !== "all";
       })
       .map((u) => ({ id: String(u.id), name: u.name }));
-    return [{ id: "*", name: "*" }, ...unitTabs];
-  }, [units]);
-  const effectiveSelected = selected ?? (tabs.find((tab) => tab.id !== "*")?.id ?? tabs[0]?.id ?? null);
+    const showGlobeGlobalTab = blockageGlobalModeActive;
+    const showNoUnitTab = !blockageGlobalModeActive && (hasUnitlessPlacements || hasNoUnitCells);
+    if (showGlobeGlobalTab) return [{ id: GLOBAL_BLOCKAGE_TAB_ID, name: "🌐" }, ...unitTabs];
+    if (showNoUnitTab) return [{ id: NO_UNIT_TAB_ID, name: "No-Unit" }, ...unitTabs];
+    return unitTabs;
+  }, [blockageGlobalModeActive, hasNoUnitCells, hasUnitlessPlacements, units]);
+  const effectiveSelected =
+    selected ??
+    (blockageGlobalModeActive
+      ? (tabs.find((tab) => tab.id === GLOBAL_BLOCKAGE_TAB_ID)?.id ?? tabs[0]?.id ?? null)
+      : (tabs.find((tab) => tab.id !== NO_UNIT_TAB_ID && tab.id !== GLOBAL_BLOCKAGE_TAB_ID)?.id ??
+        tabs[0]?.id ??
+        null));
+
+  useEffect(() => {
+    if (selected && !tabs.some((tab) => tab.id === selected)) {
+      setSelected(
+        blockageGlobalModeActive
+          ? (tabs.find((tab) => tab.id === GLOBAL_BLOCKAGE_TAB_ID)?.id ?? tabs[0]?.id ?? null)
+          : (tabs.find((tab) => tab.id !== NO_UNIT_TAB_ID && tab.id !== GLOBAL_BLOCKAGE_TAB_ID)?.id ??
+            tabs[0]?.id ??
+            null),
+      );
+    }
+  }, [blockageGlobalModeActive, selected, tabs]);
+
+  useEffect(() => {
+    if (!blockageGlobalModeActive) return;
+    if (!tabs.some((tab) => tab.id === GLOBAL_BLOCKAGE_TAB_ID)) return;
+    setSelected((prev) => (prev === GLOBAL_BLOCKAGE_TAB_ID ? prev : GLOBAL_BLOCKAGE_TAB_ID));
+  }, [blockageGlobalModeActive, tabs]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -94,6 +127,11 @@ export default function UnitTabs({
         onDraftMutated={onDraftMutated}
         commentsPanelOpen={commentsPanelOpen}
         onCommentsPanelOpenChange={onCommentsPanelOpenChange}
+        onGlobalScopeMetaChange={({ hasUnitlessPlacements, hasNoUnitCells, blockageGlobalModeActive }) => {
+          setHasUnitlessPlacements(hasUnitlessPlacements);
+          setHasNoUnitCells(hasNoUnitCells);
+          setBlockageGlobalModeActive(blockageGlobalModeActive);
+        }}
         historyMode={historyMode}
         historyGridCode={historyGridCode}
       />

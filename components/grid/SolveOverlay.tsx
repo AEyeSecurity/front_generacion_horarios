@@ -253,6 +253,8 @@ const DAY_LABEL_TO_INDEX: Record<string, number> = {
 const OVERLAP_CAROUSEL_INTERVAL_MS = 2500;
 const UNIT_TAB_SELECT_EVENT = "shift:unit-tab:select";
 const GRID_LEFT_PANEL_STATE_EVENT = "shift:grid-left-panel-state";
+const NO_UNIT_TAB_ID = "__no_unit__";
+const GLOBAL_BLOCKAGE_TAB_ID = "__global__";
 
 const parseClockToMin = (value: string) => {
   const [h, m] = String(value ?? "").split(":");
@@ -438,6 +440,11 @@ type Props = {
   onDraftMutated?: () => void;
   commentsPanelOpen?: boolean;
   onCommentsPanelOpenChange?: (open: boolean) => void;
+  onGlobalScopeMetaChange?: (meta: {
+    hasUnitlessPlacements: boolean;
+    hasNoUnitCells: boolean;
+    blockageGlobalModeActive: boolean;
+  }) => void;
   historyMode?: boolean;
   historyGridCode?: string | null;
 };
@@ -555,6 +562,7 @@ export default function SolveOverlay({
   onDraftMutated,
   commentsPanelOpen = false,
   onCommentsPanelOpenChange,
+  onGlobalScopeMetaChange,
   historyMode = false,
   historyGridCode = null,
 }: Props) {
@@ -699,9 +707,10 @@ export default function SolveOverlay({
   const longPressTimerRef = useRef<number | null>(null);
   const participantDropGhostTimersRef = useRef<number[]>([]);
   const participantDropGhostTokenRef = useRef(0);
+  const commentManuallyDeselectedRef = useRef(false);
   const lastHandledPinErrorRef = useRef<string | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
-  const mainScheduleScrollRef = useRef<HTMLDivElement | null>(null);
+  const mainScheduleScrollRef = useRef<HTMLElement | null>(null);
   const previewScheduleScrollRef = useRef<HTMLDivElement | null>(null);
   const rightDockCloseSignalRef = useRef(0);
   const lastPlacementAttemptRef = useRef<{
@@ -2254,8 +2263,15 @@ export default function SolveOverlay({
     });
   }, [currentSchedule, bundleUnitsById]);
 
-  const isGlobalUnitScopeSelected = selectedUnitId === "*";
-  const scopedUnitId = selectedUnitId && selectedUnitId !== "*" ? String(selectedUnitId) : null;
+  const isNoUnitScopeSelected = selectedUnitId === NO_UNIT_TAB_ID || selectedUnitId === "*";
+  const isGlobalBlockageScopeSelected = selectedUnitId === GLOBAL_BLOCKAGE_TAB_ID;
+  const scopedUnitId =
+    selectedUnitId &&
+    selectedUnitId !== NO_UNIT_TAB_ID &&
+    selectedUnitId !== GLOBAL_BLOCKAGE_TAB_ID &&
+    selectedUnitId !== "*"
+      ? String(selectedUnitId)
+      : null;
 
   const filteredSchedule = useMemo(() => {
     if (scopedUnitId) {
@@ -2263,14 +2279,32 @@ export default function SolveOverlay({
         (s: any) => Array.isArray(s.units) && s.units.map(String).includes(scopedUnitId),
       );
     }
-    if (isGlobalUnitScopeSelected) {
+    if (isNoUnitScopeSelected) {
       return schedule.filter((s: any) => {
         const rowUnits = Array.isArray(s.units) ? s.units.map(String) : [];
         return rowUnits.length === 0;
       });
     }
     return schedule;
-  }, [isGlobalUnitScopeSelected, schedule, scopedUnitId]);
+  }, [isNoUnitScopeSelected, schedule, scopedUnitId]);
+
+  const hasUnitlessPlacements = useMemo(
+    () =>
+      schedule.some((row) => {
+        const rowUnits = Array.isArray(row.units) ? row.units.map(String) : [];
+        return rowUnits.length === 0;
+      }),
+    [schedule],
+  );
+  const hasNoUnitCells = useMemo(
+    () =>
+      Object.entries(cellPinMetaById).some(([, pinMeta]) => {
+        const bundles = Array.isArray(pinMeta?.bundles) ? pinMeta.bundles.map(String) : [];
+        if (bundles.length === 0) return true;
+        return bundles.some((bundleId) => (bundleUnitsById[bundleId] || []).length === 0);
+      }),
+    [bundleUnitsById, cellPinMetaById],
+  );
 
   const schedulePlacementById = useMemo(() => {
     const map: Record<string, ScheduleRow> = {};
@@ -2388,12 +2422,15 @@ export default function SolveOverlay({
   );
 
   const selectedBlockageUnitScopeIds = useMemo(
-    () => (scopedUnitId ? [scopedUnitId] : []),
-    [scopedUnitId],
+    () => {
+      if (isGlobalBlockageScopeSelected) return [];
+      return scopedUnitId ? [scopedUnitId] : [];
+    },
+    [isGlobalBlockageScopeSelected, scopedUnitId],
   );
 
   const visibleScheduleBlockages = useMemo(() => {
-    if (isGlobalUnitScopeSelected) {
+    if (isNoUnitScopeSelected || isGlobalBlockageScopeSelected) {
       return scheduleBlockages.filter((blockage) => (blockage.unit_ids ?? []).length === 0);
     }
     if (!scopedUnitId) return scheduleBlockages;
@@ -2401,7 +2438,7 @@ export default function SolveOverlay({
       const scope = blockage.unit_ids ?? [];
       return scope.length === 0 || scope.includes(scopedUnitId);
     });
-  }, [isGlobalUnitScopeSelected, scheduleBlockages, scopedUnitId]);
+  }, [isGlobalBlockageScopeSelected, isNoUnitScopeSelected, scheduleBlockages, scopedUnitId]);
 
   useEffect(() => {
     if (!pinError) {
@@ -2428,7 +2465,7 @@ export default function SolveOverlay({
     const placementUnitIds = Array.isArray(uniquePlacementRow?.units)
       ? uniquePlacementRow.units.map(String)
       : [];
-    const requestedUnitTabId = placementUnitIds.length > 0 ? placementUnitIds[0] : "*";
+    const requestedUnitTabId = placementUnitIds.length > 0 ? placementUnitIds[0] : NO_UNIT_TAB_ID;
     if (requestedUnitTabId && selectedUnitId !== requestedUnitTabId && typeof window !== "undefined") {
       window.dispatchEvent(
         new CustomEvent<{ unitId: string }>(UNIT_TAB_SELECT_EVENT, {
@@ -2627,6 +2664,13 @@ export default function SolveOverlay({
   );
 
   useEffect(() => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    const scrollEl = overlay.closest("[data-schedule-scroll]") as HTMLElement | null;
+    mainScheduleScrollRef.current = scrollEl;
+  }, [filteredSchedule.length, hideScheduleOverlay, historyMode]);
+
+  useEffect(() => {
     const explicit = mainScheduleScrollRef.current;
     const fallback =
       (overlayRef.current?.closest("[data-schedule-scroll]") as HTMLElement | null) ?? null;
@@ -2653,7 +2697,6 @@ export default function SolveOverlay({
     commentsPanelOpen,
     leftPanelOpen,
     isNarrowMobile,
-    historyMode,
     selectedUnitId,
     updateCarouselCenterFromElement,
   ]);
@@ -2723,15 +2766,25 @@ export default function SolveOverlay({
           ? formatSlotRange(dayStartMin, slotMin, trMeta.startSlot, trMeta.endSlot)
           : t("grid_schedule.no_time_range");
         const cellBundles = (cellPinMetaById[cellKey]?.bundles || []).map(String);
+        const globalNoUnitBundles = Object.entries(bundleUnitsById)
+          .filter(([, unitIds]) => (unitIds || []).length === 0)
+          .map(([bundleId]) => String(bundleId));
         const matchingBundles = scopedUnitId
           ? cellBundles.filter((bundleId) =>
               (bundleUnitsById[bundleId] || []).map(String).includes(scopedUnitId),
             )
-          : isGlobalUnitScopeSelected
+          : isNoUnitScopeSelected
           ? cellBundles.filter((bundleId) => (bundleUnitsById[bundleId] || []).length === 0)
           : cellBundles;
-        if ((scopedUnitId || isGlobalUnitScopeSelected) && matchingBundles.length === 0) return [];
-        const selectedBundleId = matchingBundles[0] ?? cellBundles[0] ?? null;
+        if ((scopedUnitId || isNoUnitScopeSelected) && matchingBundles.length === 0) {
+          if (!(isNoUnitScopeSelected && cellBundles.length === 0 && globalNoUnitBundles.length === 1)) {
+            return [];
+          }
+        }
+        const selectedBundleId =
+          matchingBundles[0] ??
+          cellBundles[0] ??
+          (isNoUnitScopeSelected && globalNoUnitBundles.length === 1 ? globalNoUnitBundles[0] : null);
         const unitIds = selectedBundleId
           ? (bundleUnitsById[selectedBundleId] || []).map(String)
           : [];
@@ -2758,7 +2811,7 @@ export default function SolveOverlay({
     cellTimeRangeById,
     schedule,
     scopedUnitId,
-    isGlobalUnitScopeSelected,
+    isNoUnitScopeSelected,
     dayStartMin,
     slotMin,
     timeRangeMetaById,
@@ -2813,7 +2866,7 @@ export default function SolveOverlay({
       const allParticipants = Object.entries(participantNameById)
         .map(([id, name]) => ({ id, name: name || `#${id}`, tier: participantTierById[id] ?? "-" }));
 
-      if (!scopedUnitId && !isGlobalUnitScopeSelected) {
+      if (!scopedUnitId && !isNoUnitScopeSelected) {
         return allParticipants.sort((a, b) => a.name.localeCompare(b.name));
       }
 
@@ -2821,10 +2874,10 @@ export default function SolveOverlay({
         const bundles = (cellPinMetaById[cellId]?.bundles || []).map(String);
         const matchingBundles = scopedUnitId
           ? bundles.filter((bundleId) => (bundleUnitsById[bundleId] || []).map(String).includes(scopedUnitId))
-          : isGlobalUnitScopeSelected
+          : isNoUnitScopeSelected
           ? bundles.filter((bundleId) => (bundleUnitsById[bundleId] || []).length === 0)
           : bundles;
-        if ((scopedUnitId || isGlobalUnitScopeSelected) && matchingBundles.length === 0) return [];
+        if ((scopedUnitId || isNoUnitScopeSelected) && matchingBundles.length === 0) return [];
         return [String(cellId)];
       });
 
@@ -2841,7 +2894,7 @@ export default function SolveOverlay({
     },
     [
       scopedUnitId,
-      isGlobalUnitScopeSelected,
+      isNoUnitScopeSelected,
       cellPinMetaById,
       bundleUnitsById,
       cellTierPoolsById,
@@ -2900,6 +2953,7 @@ export default function SolveOverlay({
     Boolean(currentSchedule?.id) &&
     !historyMode;
   const hasUnassignedCells = unassignedCells.length > 0;
+  const hasPlacedCells = Array.isArray(currentSchedule?.placements) && currentSchedule.placements.length > 0;
   const hasOverstaffableCells = useMemo(
     () => gridAllowsOverstaffing && Object.values(cellAllowOverstaffById).some(Boolean),
     [cellAllowOverstaffById, gridAllowsOverstaffing],
@@ -2908,6 +2962,20 @@ export default function SolveOverlay({
   const isBreakToolActive = isJiggleMode && editToolMode === "break";
   const isBlockageToolActive = isJiggleMode && editToolMode === "blockage";
   const isParticipantsToolActive = isJiggleMode && editToolMode === "participants";
+
+  useEffect(() => {
+    onGlobalScopeMetaChange?.({
+      hasUnitlessPlacements,
+      hasNoUnitCells,
+      blockageGlobalModeActive: canManualEditCards && isBlockageToolActive,
+    });
+  }, [
+    canManualEditCards,
+    hasNoUnitCells,
+    hasUnitlessPlacements,
+    isBlockageToolActive,
+    onGlobalScopeMetaChange,
+  ]);
   const breakDialogDurationMin = Math.max(
     slotMin,
     (Math.max(1, breakDialogState.endSlot - breakDialogState.startSlot) * slotMin),
@@ -3150,10 +3218,14 @@ export default function SolveOverlay({
       closeEditModes();
       return;
     }
+    if (editToolMode === "break" && !hasPlacedCells) {
+      closeEditModes();
+      return;
+    }
     if (editToolMode === "participants" && !hasOverstaffableCells) {
       closeEditModes();
     }
-  }, [closeEditModes, editToolMode, hasOverstaffableCells, hasUnassignedCells]);
+  }, [closeEditModes, editToolMode, hasOverstaffableCells, hasPlacedCells, hasUnassignedCells]);
 
   const selectedHistoryEntry = useMemo(
     () => publishedHistorySchedules.find((entry) => entry.key === selectedHistoryKey) ?? null,
@@ -3611,12 +3683,16 @@ export default function SolveOverlay({
   ]);
 
   useEffect(() => {
-    if (!commentsPanelOpen) return;
+    if (!commentsPanelOpen) {
+      commentManuallyDeselectedRef.current = false;
+      return;
+    }
     if (commentPlacementOptions.length === 0) {
       setCommentAnchor(null);
       return;
     }
     if (!commentAnchor) {
+      if (commentManuallyDeselectedRef.current) return;
       setCommentAnchor(commentPlacementOptions[0].anchor);
       return;
     }
@@ -3629,12 +3705,14 @@ export default function SolveOverlay({
         Number(option.anchor.startSlot) === Number(commentAnchor.startSlot),
     );
     if (!hasCurrent) {
+      commentManuallyDeselectedRef.current = false;
       setCommentAnchor(commentPlacementOptions[0].anchor);
     }
   }, [commentAnchor, commentPlacementOptions, commentsPanelOpen]);
 
   useEffect(() => {
     if (commentsPanelOpen) return;
+    commentManuallyDeselectedRef.current = false;
     setCommentError(null);
     setCommentBusy(false);
     setHoveredCommentPlacementKey(null);
@@ -3647,12 +3725,14 @@ export default function SolveOverlay({
 
   useEffect(() => {
     if (!commentsPanelOpen) return;
+    commentManuallyDeselectedRef.current = true;
     setCommentAnchor(null);
     setHoveredCommentPlacementKey(null);
   }, [commentsPanelOpen, overlapCarouselPage]);
 
   useEffect(() => {
     if (!commentsPanelOpen) return;
+    commentManuallyDeselectedRef.current = true;
     setCommentAnchor(null);
     setHoveredCommentPlacementKey(null);
   }, [commentsPanelOpen, selectedUnitId]);
@@ -4140,18 +4220,18 @@ export default function SolveOverlay({
     ): { options: PlacementAssignmentOption[]; error?: string } => {
       const normalizedBundleId = String(bundleId);
       const bundleUnitIds = (bundleUnitsById[normalizedBundleId] || []).map(String);
-      if (bundleUnitIds.length === 0) {
-        return { options: [], error: t("solve_overlay.selected_bundle_has_no_units") };
-      }
+      const isNoUnitBundle = bundleUnitIds.length === 0;
 
-      const unitOverlap = schedule.some((row) => {
-        if (Number(row.day_index) !== dayIndex) return false;
-        if (!rangesOverlap(startSlot, endSlot, Number(row.start_slot), Number(row.end_slot))) return false;
-        const rowUnits = Array.isArray(row.units) ? row.units.map(String) : [];
-        return rowUnits.some((unitId) => bundleUnitIds.includes(unitId));
-      });
-      if (unitOverlap) {
-        return { options: [], error: t("solve_overlay.cannot_place_cell_bundle_unit_occupied") };
+      if (!isNoUnitBundle) {
+        const unitOverlap = schedule.some((row) => {
+          if (Number(row.day_index) !== dayIndex) return false;
+          if (!rangesOverlap(startSlot, endSlot, Number(row.start_slot), Number(row.end_slot))) return false;
+          const rowUnits = Array.isArray(row.units) ? row.units.map(String) : [];
+          return rowUnits.some((unitId) => bundleUnitIds.includes(unitId));
+        });
+        if (unitOverlap) {
+          return { options: [], error: t("solve_overlay.cannot_place_cell_bundle_unit_occupied") };
+        }
       }
 
       const tierCounts = cellTierCountsById[sourceCellId] || {
@@ -6139,8 +6219,10 @@ export default function SolveOverlay({
                     commentAnchorForCard.startSlot,
                   );
                   if (clickedKey === selectedCommentPlacementKey) {
+                    commentManuallyDeselectedRef.current = true;
                     setCommentAnchor(null);
                   } else {
+                    commentManuallyDeselectedRef.current = false;
                     setCommentAnchor(commentAnchorForCard);
                   }
                   setCommentError(null);
@@ -6319,7 +6401,7 @@ export default function SolveOverlay({
         </div>
       )}
 
-      {!(hideScheduleOverlay && !historyMode) && overlapCarouselTotalPages > 1 && (
+      {!shouldHideScheduleOverlay && overlapCarouselTotalPages > 1 && (
         <div
           className="fixed z-[121] pointer-events-none"
           style={{
@@ -6709,6 +6791,7 @@ export default function SolveOverlay({
                       onChange={(event) => {
                         const selected = commentPlacementOptions.find((option) => option.key === event.target.value);
                         if (!selected) return;
+                        commentManuallyDeselectedRef.current = false;
                         setCommentAnchor(selected.anchor);
                         setCommentError(null);
                       }}
@@ -7514,6 +7597,7 @@ export default function SolveOverlay({
           canManualEditCards={canManualEditCards}
           hasOverstaffableCells={hasOverstaffableCells}
           hasUnassignedCells={hasUnassignedCells}
+          hasPlacedCells={hasPlacedCells}
           isParticipantsToolActive={isParticipantsToolActive}
           isBreakToolActive={isBreakToolActive}
           isBlockageToolActive={isBlockageToolActive}
