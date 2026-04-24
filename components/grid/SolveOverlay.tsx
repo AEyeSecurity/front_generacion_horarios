@@ -592,6 +592,7 @@ export default function SolveOverlay({
   const [cellPinMetaById, setCellPinMetaById] = useState<Record<string, CellPinMeta>>({});
   const [cellTimeRangeById, setCellTimeRangeById] = useState<Record<string, string>>({});
   const [cellDurationSlotsById, setCellDurationSlotsById] = useState<Record<string, number>>({});
+  const [cellSplitPartSlotsById, setCellSplitPartSlotsById] = useState<Record<string, number[]>>({});
   const [cellRequiredPlacementsById, setCellRequiredPlacementsById] = useState<Record<string, number>>({});
   const [bundleUnitsById, setBundleUnitsById] = useState<Record<string, string[]>>({});
   const [bundleNameById, setBundleNameById] = useState<Record<string, string>>({});
@@ -707,6 +708,7 @@ export default function SolveOverlay({
   const longPressTimerRef = useRef<number | null>(null);
   const participantDropGhostTimersRef = useRef<number[]>([]);
   const participantDropGhostTokenRef = useRef(0);
+  const hasAttemptedDraftBootstrapRef = useRef(false);
   const commentManuallyDeselectedRef = useRef(false);
   const lastHandledPinErrorRef = useRef<string | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -1263,6 +1265,77 @@ export default function SolveOverlay({
     return normalizeScheduleResource(raw);
   }, [gridId, normalizeScheduleResource, scheduleViewMode]);
 
+  const ensureDraftSchedule = useCallback(async (): Promise<ScheduleResource | null> => {
+    if (scheduleViewMode !== "draft") return null;
+    if (currentSchedule?.id) return currentSchedule;
+    const fetched = await fetchCurrentSchedule();
+    if (fetched?.id) {
+      setCurrentSchedule(fetched);
+      return fetched;
+    }
+    invalidateGridScreenContext(gridId, "draft");
+    try {
+      const context = await fetchGridScreenContext(gridId, "draft", { force: true });
+      const contextSchedule = normalizeScheduleResource({
+        schedule: context?.schedule ?? context?.latest ?? context?.published_schedule ?? null,
+      });
+      if (contextSchedule?.id) {
+        setCurrentSchedule(contextSchedule);
+        return contextSchedule;
+      }
+    } catch {
+      // fallback to schedule bootstrap attempt
+    }
+    if (!hasAttemptedDraftBootstrapRef.current) {
+      hasAttemptedDraftBootstrapRef.current = true;
+      const bootstrapPayloads: Array<Record<string, unknown>> = [
+        {},
+        { status: "draft" },
+      ];
+      for (const payload of bootstrapPayloads) {
+        try {
+          const res = await authFetch(`/api/grids/${gridId}/schedule/`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) continue;
+          const raw = await res.json().catch(() => ({} as Record<string, unknown>));
+          const bootstrapped =
+            normalizeScheduleResource(raw) ??
+            normalizeScheduleResource({ schedule: raw }) ??
+            (Number((raw as any)?.id)
+              ? ({
+                  ...(raw as Record<string, unknown>),
+                  id: Number((raw as any).id),
+                  placements: Array.isArray((raw as any).placements) ? (raw as any).placements : [],
+                } as ScheduleResource)
+              : null);
+          if (bootstrapped?.id) {
+            setCurrentSchedule(bootstrapped);
+            return bootstrapped;
+          }
+          invalidateGridScreenContext(gridId, "draft");
+          const context = await fetchGridScreenContext(gridId, "draft", { force: true });
+          const contextSchedule = normalizeScheduleResource({
+            schedule: context?.schedule ?? context?.latest ?? context?.published_schedule ?? null,
+          });
+          if (contextSchedule?.id) {
+            setCurrentSchedule(contextSchedule);
+            return contextSchedule;
+          }
+        } catch {
+          // try next payload shape
+        }
+      }
+    }
+    return null;
+  }, [currentSchedule, fetchCurrentSchedule, gridId, normalizeScheduleResource, scheduleViewMode]);
+
+  useEffect(() => {
+    hasAttemptedDraftBootstrapRef.current = false;
+  }, [gridId]);
+
   const readPublishedVersion = (value: unknown): number | null => {
     const raw = (value ?? {}) as Record<string, unknown>;
     const candidate = Number(
@@ -1673,6 +1746,7 @@ export default function SolveOverlay({
         const cpins: Record<string, CellPinMeta> = {};
         const ctrange: Record<string, string> = {};
         const cdurationSlots: Record<string, number> = {};
+        const csplitPartSlots: Record<string, number[]> = {};
         const crequiredPlacements: Record<string, number> = {};
         const coverstaff: Record<string, boolean> = {};
         for (const c of clist) {
@@ -1685,6 +1759,12 @@ export default function SolveOverlay({
                   .map((part: unknown) => Number(part))
                   .filter((part: number) => Number.isFinite(part) && part > 0).length
               : 0;
+            const splitPartSlots = Array.isArray(c?.split_parts_min)
+              ? c.split_parts_min
+                  .map((part: unknown) => Math.max(1, Math.ceil((Number(part) || 0) / slotMin)))
+                  .filter((part: number) => Number.isFinite(part) && part > 0)
+              : [];
+            csplitPartSlots[cid] = splitPartSlots;
             const legacyDivisionDays = Number(c?.division_days ?? 0);
             crequiredPlacements[cid] = Math.max(
               1,
@@ -1839,6 +1919,7 @@ export default function SolveOverlay({
           setCellPinMetaById(cpins);
           setCellTimeRangeById(ctrange);
           setCellDurationSlotsById(cdurationSlots);
+          setCellSplitPartSlotsById(csplitPartSlots);
           setCellRequiredPlacementsById(crequiredPlacements);
           setBundleUnitsById(bundleUnitsMap);
           setBundleNameById(bundleNamesMap);
@@ -2753,7 +2834,8 @@ export default function SolveOverlay({
         const cellKey = String(cellId);
         const requiredPlacements = Math.max(1, Number(cellRequiredPlacementsById[cellKey] ?? 1));
         const currentPlacements = Number(placedCountBySourceCell[cellKey] ?? 0);
-        const needsPlacement = currentPlacements < requiredPlacements;
+        const remainingPlacements = Math.max(0, requiredPlacements - currentPlacements);
+        const needsPlacement = remainingPlacements > 0;
         if (!needsPlacement) return [];
         const trId = cellTimeRangeById[cellKey];
         const trMeta = trId ? timeRangeMetaById[trId] : undefined;
@@ -2761,7 +2843,15 @@ export default function SolveOverlay({
           trMeta
             ? Math.max(1, trMeta.endSlot - trMeta.startSlot)
             : null;
-        const durationSlots = cellDurationSlotsById[cellKey] ?? trDurationSlots ?? 1;
+        const splitPartSlots = Array.isArray(cellSplitPartSlotsById[cellKey]) ? cellSplitPartSlotsById[cellKey] : [];
+        const nextSplitPartSlot =
+          splitPartSlots.length > 0
+            ? splitPartSlots[Math.min(currentPlacements, splitPartSlots.length - 1)]
+            : null;
+        const baseDurationSlots = Math.max(1, Number(cellDurationSlotsById[cellKey] ?? trDurationSlots ?? 1) || 1);
+        const evenlySplitFallbackSlots =
+          requiredPlacements > 1 ? Math.max(1, Math.ceil(baseDurationSlots / requiredPlacements)) : null;
+        const durationSlots = nextSplitPartSlot ?? evenlySplitFallbackSlots ?? baseDurationSlots;
         const timeLabel = trMeta
           ? formatSlotRange(dayStartMin, slotMin, trMeta.startSlot, trMeta.endSlot)
           : t("grid_schedule.no_time_range");
@@ -2784,7 +2874,9 @@ export default function SolveOverlay({
           cellBundles[0] ??
           null;
         if (scopedUnitId && matchingBundles.length === 0) return [];
-        if (isNoUnitScopeSelected && matchingBundles.length === 0 && !selectedBundleId) return [];
+        if (isNoUnitScopeSelected && matchingBundles.length === 0 && !selectedBundleId && cellBundles.length > 0) {
+          return [];
+        }
         const unitIds = selectedBundleId
           ? (bundleUnitsById[selectedBundleId] || []).map(String)
           : [];
@@ -2796,6 +2888,8 @@ export default function SolveOverlay({
           color: cellColorById[cellKey] || "",
           timeLabel,
           durationSlots,
+          remainingPlacements,
+          totalPlacements: requiredPlacements,
           selectedBundleId,
           unitIds,
           canGrabForCurrentTab,
@@ -2808,6 +2902,7 @@ export default function SolveOverlay({
     cellDurationSlotsById,
     cellNameById,
     cellPinMetaById,
+    cellSplitPartSlotsById,
     cellRequiredPlacementsById,
     cellTimeRangeById,
     schedule,
@@ -2817,17 +2912,6 @@ export default function SolveOverlay({
     slotMin,
     timeRangeMetaById,
   ]);
-
-  const resolveNoUnitBundleIdForCell = useCallback(
-    (sourceCellId: string): string | null => {
-      const cellBundles = (cellPinMetaById[String(sourceCellId)]?.bundles || []).map(String);
-      const cellNoUnitBundle = cellBundles.find((bundleId) => (bundleUnitsById[bundleId] || []).length === 0);
-      if (cellNoUnitBundle) return cellNoUnitBundle;
-      const globalNoUnitBundle = Object.entries(bundleUnitsById).find(([, unitIds]) => (unitIds || []).length === 0);
-      return globalNoUnitBundle ? String(globalNoUnitBundle[0]) : null;
-    },
-    [bundleUnitsById, cellPinMetaById],
-  );
 
   const eligibleParticipantIdsByCellId = useMemo(() => {
     const out: Record<string, Set<string>> = {};
@@ -3986,14 +4070,19 @@ export default function SolveOverlay({
 
   const createBlockage = useCallback(
     async (dayIndex: number, startSlot: number, endSlot: number) => {
-      if (!currentSchedule?.id) return;
+      const scheduleForBlockage =
+        currentSchedule?.id ? currentSchedule : await ensureDraftSchedule();
+      if (!scheduleForBlockage?.id) {
+        setPinError(t("grid_schedule.no_draft_schedule_error"));
+        return;
+      }
       const { startSlot: safeStart, endSlot: safeEnd } = clampSlotRange(startSlot, endSlot);
       const scopeIds = selectedBlockageUnitScopeIds.map(toApiId);
       const res = await authFetch("/api/schedule-blockages/", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          schedule: currentSchedule.id,
+          schedule: scheduleForBlockage.id,
           day_index: dayIndex,
           start_slot: safeStart,
           end_slot: safeEnd,
@@ -4010,7 +4099,7 @@ export default function SolveOverlay({
       setBlockagesRefreshTick((prev) => prev + 1);
       setPrecheckRefreshTick((prev) => prev + 1);
     },
-    [clampSlotRange, currentSchedule?.id, notifyDraftMutation, selectedBlockageUnitScopeIds],
+    [clampSlotRange, currentSchedule, ensureDraftSchedule, notifyDraftMutation, selectedBlockageUnitScopeIds, t],
   );
 
   const deleteBlockage = useCallback(
@@ -4408,11 +4497,30 @@ export default function SolveOverlay({
       durationSlots: number,
       assignedParticipantIds: string[] = [],
     ) => {
-      if (!currentSchedule?.id) {
-        setPinError(t("grid_schedule.no_draft_schedule_error"));
+      if (hasPendingCandidateResolution) {
+        setPinError(t("solve_overlay.resolve_pending_candidates"));
         return;
       }
-      const scheduleId = Number(currentSchedule.id);
+      const scheduleForPlacement = await ensureDraftSchedule();
+      if (!scheduleForPlacement?.id) {
+        let hasStoredPendingCandidate = false;
+        if (typeof window !== "undefined") {
+          try {
+            const raw = window.localStorage.getItem(pendingCandidateStorageKey);
+            const parsed = raw ? (JSON.parse(raw) as Partial<PendingCandidateRunSnapshot>) : null;
+            hasStoredPendingCandidate = Boolean(parsed && typeof parsed.run_id === "string" && parsed.run_id.trim());
+          } catch {
+            hasStoredPendingCandidate = false;
+          }
+        }
+        setPinError(
+          hasStoredPendingCandidate
+            ? t("solve_overlay.resolve_pending_candidates")
+            : t("grid_schedule.no_draft_schedule_error"),
+        );
+        return;
+      }
+      const scheduleId = Number(scheduleForPlacement.id);
       const nextEndSlot = nextStartSlot + durationSlots;
       const normalizedSourceCell =
         /^\d+$/.test(String(sourceCellId)) ? Number(sourceCellId) : sourceCellId;
@@ -4423,8 +4531,8 @@ export default function SolveOverlay({
         .filter((id) => id != null);
 
       const tempId = `temp-${sourceCellId}-${Date.now()}`;
-      const previousPlacements = Array.isArray(currentSchedule.placements)
-        ? currentSchedule.placements
+      const previousPlacements = Array.isArray(scheduleForPlacement.placements)
+        ? scheduleForPlacement.placements
         : [];
       const tempPlacement = {
         id: tempId,
@@ -4519,7 +4627,14 @@ export default function SolveOverlay({
         setPinError(error instanceof Error ? error.message : t("grid_schedule.could_not_place_cell"));
       }
     },
-    [currentSchedule, normalizeIdArray, notifyDraftMutation, t],
+    [
+      ensureDraftSchedule,
+      hasPendingCandidateResolution,
+      normalizeIdArray,
+      notifyDraftMutation,
+      pendingCandidateStorageKey,
+      t,
+    ],
   );
 
   const requestUnassignedPlacement = useCallback(
@@ -4539,13 +4654,20 @@ export default function SolveOverlay({
         endSlot,
       };
 
-      if (currentSchedule?.id) {
+      if (hasPendingCandidateResolution) {
+        setPinError(t("solve_overlay.resolve_pending_candidates"));
+        return;
+      }
+
+      const scheduleForPlacement = await ensureDraftSchedule();
+
+      if (scheduleForPlacement?.id) {
         try {
           const res = await authFetch(`/api/grids/${gridId}/schedule/placement-options/`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
-              schedule_id: currentSchedule.id,
+              schedule_id: scheduleForPlacement.id,
               source_cell_id: sourceCellId,
               bundle_id:
                 normalizedBundleId == null
@@ -4682,13 +4804,15 @@ export default function SolveOverlay({
     },
     [
       createSchedulePlacement,
-      currentSchedule?.id,
+      ensureDraftSchedule,
       getPlacementAssignmentOptions,
       gridId,
+      hasPendingCandidateResolution,
       lastAssignedParticipantsByCellBundle,
       normalizeIdArray,
       participantNameById,
       staffNameById,
+      t,
     ],
   );
 
@@ -5071,16 +5195,13 @@ export default function SolveOverlay({
         return;
       }
       if (activeDrag.dragType === "unassigned") {
-        const resolvedBundleId =
-          activeDrag.sourceBundleId ??
-          (isNoUnitScopeSelected ? resolveNoUnitBundleIdForCell(activeDrag.sourceCellId) : null);
-        if (resolvedBundleId == null) {
+        if (activeDrag.sourceBundleId == null && !isNoUnitScopeSelected) {
           setPinError(t("solve_overlay.select_matching_unit_tab_before_placing"));
           return;
         }
         void requestUnassignedPlacement(
           activeDrag.sourceCellId,
-          resolvedBundleId,
+          activeDrag.sourceBundleId ?? null,
           droppedDay,
           droppedStart,
           activeDrag.durationSlots,
@@ -5114,7 +5235,6 @@ export default function SolveOverlay({
     notifyDraftMutation,
     patchPlacementPosition,
     requestUnassignedPlacement,
-    resolveNoUnitBundleIdForCell,
     rowPx,
     isNoUnitScopeSelected,
     t,
@@ -5755,7 +5875,7 @@ export default function SolveOverlay({
       )}
 
       {/* Schedule overlay */}
-      {!shouldHideScheduleOverlay &&
+      {(!shouldHideScheduleOverlay || isBlockageToolActive) &&
         (filteredSchedule.length > 0 ||
           visibleScheduleBlockages.length > 0 ||
           isJiggleMode ||
@@ -7647,6 +7767,8 @@ export default function SolveOverlay({
             color: cell.color || "",
             timeLabel: cell.timeLabel,
             durationSlots: Math.max(1, Number(cell.durationSlots) || 1),
+            remainingPlacements: Math.max(0, Number(cell.remainingPlacements) || 0),
+            totalPlacements: Math.max(1, Number(cell.totalPlacements) || 1),
             canGrab: Boolean(
               canManualEditCards &&
                 isJiggleMode &&

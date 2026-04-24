@@ -55,8 +55,10 @@ export async function fetchGridScreenContext(
   const request = (async () => {
     const entry = contextCache.get(key);
     const headers: HeadersInit = {};
-    if (entry?.etag) headers["if-none-match"] = entry.etag;
-    if (entry?.lastModified) headers["if-modified-since"] = entry.lastModified;
+    if (!options.force) {
+      if (entry?.etag) headers["if-none-match"] = entry.etag;
+      if (entry?.lastModified) headers["if-modified-since"] = entry.lastModified;
+    }
 
     const res = await authFetch(`/api/grids/${encodeURIComponent(String(gridId))}/screen-context/?view=${view}`, {
       cache: "no-store",

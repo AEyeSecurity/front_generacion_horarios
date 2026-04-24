@@ -19,6 +19,8 @@ type UnassignedCellItem = {
   color: string;
   timeLabel: string;
   durationSlots: number;
+  remainingPlacements?: number;
+  totalPlacements?: number;
   canGrab: boolean;
   selectedBundleId: string | null;
 };
@@ -461,17 +463,17 @@ export default function RightSideDock({
                         offsetY: event.clientY,
                       });
                     }}
-                  >
-                    <div className="flex h-full w-full items-center justify-start text-left">
-                      <div className="min-w-0 w-full">
-                        <div className="truncate text-xs font-semibold text-gray-900" title={participant.name}>
-                          {participant.name}
+                    >
+                      <div className="flex h-full w-full items-center justify-start text-left">
+                        <div className="min-w-0 w-full">
+                          <div className="truncate text-xs font-semibold text-gray-900" title={participant.name}>
+                            {participant.name}
+                          </div>
+                          {absDistance === 0 && (
+                            <div className="mt-1 text-[10px] font-medium text-gray-500">{participant.tier || "-"}</div>
+                          )}
                         </div>
-                        {absDistance === 0 && (
-                          <div className="mt-1 text-[10px] font-medium text-gray-500">{participant.tier || "-"}</div>
-                        )}
                       </div>
-                    </div>
                   </div>
                 );
               })}
@@ -563,6 +565,15 @@ export default function RightSideDock({
                       });
                     }}
                   >
+                    {absDistance === 0 && (
+                      <div
+                        className="absolute right-2 top-2 rounded-full bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold leading-none"
+                        style={{ color: textLight }}
+                      >
+                        {Math.max(0, Number(cell.remainingPlacements) || 0)}/
+                        {Math.max(1, Number(cell.totalPlacements) || 1)}
+                      </div>
+                    )}
                     <div className="flex h-full w-full items-center justify-start text-left">
                       <div className="min-w-0 w-full">
                         <div
