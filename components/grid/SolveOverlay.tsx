@@ -5875,10 +5875,12 @@ export default function SolveOverlay({
       )}
 
       {/* Schedule overlay */}
-      {(!shouldHideScheduleOverlay || isBlockageToolActive) &&
+      {(!shouldHideScheduleOverlay || isBlockageToolActive || isUnassignedToolActive) &&
         (filteredSchedule.length > 0 ||
           visibleScheduleBlockages.length > 0 ||
           isJiggleMode ||
+          isBlockageToolActive ||
+          isUnassignedToolActive ||
           blockageDraft != null) && (
         <div
           ref={overlayRef}
