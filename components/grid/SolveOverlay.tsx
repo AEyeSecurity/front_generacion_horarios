@@ -44,6 +44,7 @@ import BreakDialog from "@/components/grid/BreakDialog";
 import type { ScheduleViewMode } from "@/lib/schedule-view";
 import { useI18n } from "@/lib/use-i18n";
 import { authFetch } from "@/lib/client-auth";
+import { readGridTierEnabled } from "@/lib/grid-tier";
 
 const shadeHex = (hex: string, amt: number) => {
   if (!/^#([0-9a-f]{6})$/i.test(hex)) return hex;
@@ -673,6 +674,7 @@ export default function SolveOverlay({
   const [blockageDragState, setBlockageDragState] = useState<BlockageDragState | null>(null);
   const [cellAllowOverstaffById, setCellAllowOverstaffById] = useState<Record<string, boolean>>({});
   const [gridAllowsOverstaffing, setGridAllowsOverstaffing] = useState(false);
+  const [gridTierEnabled, setGridTierEnabled] = useState(true);
   const [overlapCarouselPage, setOverlapCarouselPage] = useState(0);
   const [overlapCarouselPaused, setOverlapCarouselPaused] = useState(false);
   const [previewOverlapCarouselPage, setPreviewOverlapCarouselPage] = useState(0);
@@ -1611,13 +1613,16 @@ export default function SolveOverlay({
         trlist = getContextList(context?.time_ranges);
         arlist = getContextList(context?.availability_rules);
 
-        const resolveGridAllowsOverstaffing = async () => {
+        const resolveGridSettings = async () => {
+          let allowOverstaffing: boolean | null = null;
+          let tierEnabled = true;
           const contextGrid = context?.grid;
           if (contextGrid && typeof contextGrid === "object") {
             const fromContext = (contextGrid as { allow_overstaffing?: unknown }).allow_overstaffing;
             if (typeof fromContext === "boolean") {
-              return fromContext;
+              allowOverstaffing = fromContext;
             }
+            tierEnabled = readGridTierEnabled(contextGrid, tierEnabled);
           }
           const gridEndpoints = [`/api/grids/${gridId}/`, `/api/grids/${gridId}`];
           for (const endpoint of gridEndpoints) {
@@ -1625,16 +1630,16 @@ export default function SolveOverlay({
               const res = await authFetch(endpoint, { cache: "no-store" });
               if (!res.ok) continue;
               const payload = (await res.json().catch(() => ({}))) as { allow_overstaffing?: unknown };
-              if (typeof payload.allow_overstaffing === "boolean") {
-                return payload.allow_overstaffing;
-              }
+              if (typeof payload.allow_overstaffing === "boolean") allowOverstaffing = payload.allow_overstaffing;
+              tierEnabled = readGridTierEnabled(payload, tierEnabled);
+              break;
             } catch {
               // try next endpoint
             }
           }
-          return true;
+          return { allowOverstaffing: allowOverstaffing ?? true, tierEnabled };
         };
-        const gridAllowsOverstaffing = await resolveGridAllowsOverstaffing();
+        const gridSettings = await resolveGridSettings();
 
         const hasOwn = (obj: unknown, key: string) =>
           Boolean(obj && typeof obj === "object" && Object.prototype.hasOwnProperty.call(obj, key));
@@ -1778,14 +1783,25 @@ export default function SolveOverlay({
             else if (c?.color_hex) ccolors[cid] = c.color_hex;
             if (Array.isArray(c.staffs)) cstaffs[cid] = normalizeIdArray(c.staffs);
             const rawTierCounts = (c?.tier_counts ?? {}) as Partial<Record<TierKey, unknown>>;
-            ctierCounts[cid] = {
+            const computedTierCounts = {
               PRIMARY: Math.max(0, Number(rawTierCounts.PRIMARY ?? 0) || 0),
               SECONDARY: Math.max(0, Number(rawTierCounts.SECONDARY ?? 0) || 0),
               TERTIARY: Math.max(0, Number(rawTierCounts.TERTIARY ?? 0) || 0),
             };
+            const totalTierCount =
+              computedTierCounts.PRIMARY + computedTierCounts.SECONDARY + computedTierCounts.TERTIARY;
+            if (totalTierCount < 1) {
+              const headcountFallback = Math.max(0, Number(c?.headcount ?? 0) || 0);
+              if (headcountFallback > 0) {
+                computedTierCounts.PRIMARY = headcountFallback;
+              }
+            }
+            ctierCounts[cid] = computedTierCounts;
             const rawTierPools = (c?.tier_pools ?? {}) as Partial<Record<TierKey, unknown>>;
+            const eligibleFallback = normalizeIdArray(c?.eligible_participants);
+            const primaryPool = normalizeIdArray(rawTierPools.PRIMARY);
             ctierPools[cid] = {
-              PRIMARY: normalizeIdArray(rawTierPools.PRIMARY),
+              PRIMARY: primaryPool.length > 0 ? primaryPool : eligibleFallback,
               SECONDARY: normalizeIdArray(rawTierPools.SECONDARY),
               TERTIARY: normalizeIdArray(rawTierPools.TERTIARY),
             };
@@ -1909,7 +1925,8 @@ export default function SolveOverlay({
         }
         if (active) {
           setHasCells(clist.length > 0);
-          setGridAllowsOverstaffing(Boolean(gridAllowsOverstaffing));
+          setGridAllowsOverstaffing(Boolean(gridSettings.allowOverstaffing));
+          setGridTierEnabled(Boolean(gridSettings.tierEnabled));
           setCellNameById(cmap);
           setCellAllowOverstaffById(coverstaff);
           setCellStaffsById(cstaffs);
@@ -2960,7 +2977,11 @@ export default function SolveOverlay({
   const participantScrollerItems = useMemo(
     () => {
       const allParticipants = Object.entries(participantNameById)
-        .map(([id, name]) => ({ id, name: name || `#${id}`, tier: participantTierById[id] ?? "-" }));
+        .map(([id, name]) => ({
+          id,
+          name: name || `#${id}`,
+          tier: gridTierEnabled ? participantTierById[id] ?? null : null,
+        }));
 
       if (!scopedUnitId && !isNoUnitScopeSelected) {
         return allParticipants.sort((a, b) => a.name.localeCompare(b.name));
@@ -2998,6 +3019,7 @@ export default function SolveOverlay({
       staffMembersByStaffId,
       participantNameById,
       participantTierById,
+      gridTierEnabled,
       eligibleParticipantIdsByCellId,
     ],
   );
@@ -7786,6 +7808,7 @@ export default function SolveOverlay({
           onPendingReviewPressed={openPendingCandidatePreview}
           onActivateTool={activateEditTool}
           onParticipantGrabStart={handleParticipantScrollerGrabStart}
+          showParticipantTier={gridTierEnabled}
           participantDragVisual={
             dragState?.dragType === "participant-tool"
               ? {

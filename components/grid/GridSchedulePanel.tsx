@@ -1182,6 +1182,11 @@ export default function GridSchedulePanel({
         (tier) => Number(tierCounts[tier] || 0) > 0,
       );
       if (!hasAnyTierRequirement) return true;
+      const hasSecondaryOrTertiaryRequirement =
+        Number(tierCounts.SECONDARY || 0) > 0 || Number(tierCounts.TERTIARY || 0) > 0;
+      const hasAnyParticipantTier = Object.values(participantTierById).some((tier) => tier != null);
+      // Non-tier grids keep headcount in PRIMARY and participants without tier.
+      if (!hasSecondaryOrTertiaryRequirement && !hasAnyParticipantTier) return true;
       if (!participantTier) return false;
       return Number(tierCounts[participantTier] || 0) > 0;
     },

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatSlotRange } from "@/lib/schedule";
+import { readGridTierEnabled } from "@/lib/grid-tier";
 import {
   getGridScheduleViewModeKey,
   readGridScheduleViewMode,
@@ -104,6 +105,7 @@ export default function ParticipantScheduleOverlay({
   const [cellColorById, setCellColorById] = useState<Record<string, string>>({});
   const [bundleNameById, setBundleNameById] = useState<Record<string, string>>({});
   const [participants, setParticipants] = useState<ParticipantLite[]>([]);
+  const [gridTierEnabled, setGridTierEnabled] = useState(true);
   const [otherFocusIndex, setOtherFocusIndex] = useState(0);
   const [scheduleViewMode, setScheduleViewMode] = useState<ScheduleViewMode>("draft");
 
@@ -166,10 +168,11 @@ export default function ParticipantScheduleOverlay({
     let active = true;
     (async () => {
       try {
-        const [rc, rb, rp] = await Promise.all([
+        const [rc, rb, rp, rg] = await Promise.all([
           fetch(`/api/cells?grid=${gridId}`, { cache: "no-store" }),
           fetch(`/api/bundles?grid=${gridId}`, { cache: "no-store" }),
           fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" }),
+          fetch(`/api/grids/${gridId}/`, { cache: "no-store" }).catch(() => null),
         ]);
 
         const cdata = await rc.json().catch(() => ([]));
@@ -210,11 +213,16 @@ export default function ParticipantScheduleOverlay({
             };
           });
 
+        const tierEnabled = rg?.ok
+          ? readGridTierEnabled(await rg.json().catch(() => null), true)
+          : true;
+
         if (active) {
           setCellNameById(cmap);
           setCellColorById(ccolors);
           setBundleNameById(bmap);
           setParticipants(pitems);
+          setGridTierEnabled(tierEnabled);
         }
       } catch {}
     })();
@@ -305,7 +313,7 @@ export default function ParticipantScheduleOverlay({
               {otherParticipants.map((participant, index) => {
                 const distance = index - otherFocusIndex;
                 if (Math.abs(distance) > 2) return null;
-                const tierStyle = participant.tier
+                const tierStyle = gridTierEnabled && participant.tier
                   ? PARTICIPANT_TIER_STYLE[participant.tier]
                   : null;
                 const absDistance = Math.abs(distance);
@@ -359,11 +367,11 @@ export default function ParticipantScheduleOverlay({
                         >
                           {participant.name}
                         </div>
-                        {absDistance === 0 && (
+                        {absDistance === 0 && gridTierEnabled && participant.tier ? (
                           <div className="mt-1 text-[10px] font-medium" style={{ color: tierColor }}>
-                            {participant.tier ?? "NO TIER"}
+                            {participant.tier}
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   </button>

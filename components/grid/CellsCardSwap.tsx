@@ -6,6 +6,7 @@ import CardSwap, { Card } from "@/components/animations/CardSwap";
 import EditCellDialog from "@/components/dialogs/EditCellDialog";
 import { ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
 import { CELL_COLOR_OPTIONS, CELL_TEXT_DARK, CELL_TEXT_LIGHT } from "@/lib/cell-colors";
+import { readGridTierEnabled } from "@/lib/grid-tier";
 import { useI18n } from "@/lib/use-i18n";
 
 const shadeHex = (hex: string, amt: number) => {
@@ -34,6 +35,7 @@ type Cell = {
   headcount?: number | null;
   tier_counts?: Partial<Record<"PRIMARY" | "SECONDARY" | "TERTIARY", number>> | null;
   tier_pools?: Partial<Record<"PRIMARY" | "SECONDARY" | "TERTIARY", Array<number | string>>> | null;
+  eligible_participants?: Array<number | string> | null;
   staff_options_resolved?: Array<{ staff?: string | number; members?: Array<string | number> }> | null;
   colorHex?: string | null;
   color_hex?: string | null;
@@ -121,6 +123,7 @@ export default function CellsCardSwap({
   const [editCell, setEditCell] = useState<Cell | null>(null);
   const [staffNameById, setStaffNameById] = useState<Record<string, string>>({});
   const [participantNameById, setParticipantNameById] = useState<Record<string, string>>({});
+  const [gridTierEnabled, setGridTierEnabled] = useState(true);
 
   const perStack = 5;
   const pages = useMemo(() => {
@@ -142,19 +145,26 @@ export default function CellsCardSwap({
     let active = true;
     (async () => {
       try {
-        const rs = await fetch(`/api/staffs?grid=${gridId}`, { cache: "no-store" });
-        const sdata = await rs.json().catch(() => ([]));
+        const [staffRes, participantsRes, gridRes] = await Promise.all([
+          fetch(`/api/staffs?grid=${gridId}`, { cache: "no-store" }),
+          fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" }),
+          fetch(`/api/grids/${gridId}/`, { cache: "no-store" }).catch(() => null),
+        ]);
+        const sdata = await staffRes.json().catch(() => ([]));
         const slist = Array.isArray(sdata) ? sdata : sdata.results ?? [];
         const smap: Record<string, string> = {};
         for (const s of slist) {
           if (s?.id != null) smap[String(s.id)] = s.name || `Staff ${s.id}`;
         }
-        const rp = await fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" });
-        const pdata = await rp.json().catch(() => ([]));
+        const pdata = await participantsRes.json().catch(() => ([]));
         const plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
         const pmap: Record<string, string> = {};
         for (const p of plist) {
           if (p?.id != null) pmap[String(p.id)] = `${p.name}${p.surname ? " " + p.surname : ""}`;
+        }
+        if (gridRes?.ok) {
+          const gridData = await gridRes.json().catch(() => null);
+          if (active) setGridTierEnabled(readGridTierEnabled(gridData, true));
         }
         if (active) {
           setStaffNameById(smap);
@@ -226,6 +236,9 @@ export default function CellsCardSwap({
                 ? staffIds.map((sid) => staffNameById[sid] || `Staff ${sid}`)
                 : [];
               const tierPools = (cell.tier_pools ?? {}) as Partial<Record<TierKey, Array<number | string>>>;
+              const eligibleParticipants = Array.isArray(cell.eligible_participants)
+                ? cell.eligible_participants.map(String)
+                : [];
               return (
                 <Card
                   key={group.key}
@@ -294,17 +307,33 @@ export default function CellsCardSwap({
                       <div className="text-xs font-medium" style={{ color: textLight || undefined }}>
                         Eligible Participants
                       </div>
-                      <div className="grid grid-cols-3 gap-3 text-xs">
-                        {TIERS.map((tier) => {
-                          const ids = Array.isArray(tierPools[tier]) ? tierPools[tier]! : [];
-                          const names = ids.map((id) => participantNameById[String(id)] || `#${id}`).join(", ");
-                          return (
-                            <div key={tier} className="min-w-0">
-                              <div className="break-words leading-relaxed">{names || "-"}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      {gridTierEnabled ? (
+                        <div className="grid grid-cols-3 gap-3 text-xs">
+                          {TIERS.map((tier) => {
+                            const ids = Array.isArray(tierPools[tier]) ? tierPools[tier]! : [];
+                            const names = ids.map((id) => participantNameById[String(id)] || `#${id}`).join(", ");
+                            return (
+                              <div key={tier} className="min-w-0">
+                                <div className="break-words leading-relaxed">{names || "-"}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-xs break-words leading-relaxed">
+                          {Array.from(
+                            new Set(
+                              [
+                                ...Object.values(tierPools).flatMap((ids) => (Array.isArray(ids) ? ids : [])),
+                                ...eligibleParticipants,
+                              ]
+                                .map((id) => String(id))
+                            )
+                          )
+                            .map((id) => participantNameById[id] || `#${id}`)
+                            .join(", ") || "-"}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </Card>

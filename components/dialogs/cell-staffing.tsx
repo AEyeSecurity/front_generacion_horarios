@@ -70,6 +70,7 @@ export function buildParticipantsByTier(participants: Participant[]) {
 
 type StaffingEditorProps = {
   participants: Participant[];
+  tierEnabled?: boolean;
   tierCounts: TierCounts;
   onTierCountsChange: (value: TierCounts) => void;
   tierPools: TierPools;
@@ -138,8 +139,43 @@ function TierCountControls({
   );
 }
 
+function HeadcountControls({
+  headcount,
+  maxHeadcount,
+  onHeadcountChange,
+}: {
+  headcount: number;
+  maxHeadcount: number;
+  onHeadcountChange: (value: number) => void;
+}) {
+  const safeHeadcount = Math.max(0, Math.floor(headcount || 0));
+  return (
+    <div className="rounded border bg-gray-50 p-3">
+      <div className="text-sm font-medium mb-2">Headcount</div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="w-8 h-8 rounded border"
+          onClick={() => onHeadcountChange(Math.max(0, safeHeadcount - 1))}
+        >
+          -
+        </button>
+        <div className="min-w-[2rem] text-center text-sm">{safeHeadcount}</div>
+        <button
+          type="button"
+          className="w-8 h-8 rounded border"
+          onClick={() => onHeadcountChange(Math.min(Math.max(1, maxHeadcount), safeHeadcount + 1))}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function CellStaffingEditor({
   participants,
+  tierEnabled = true,
   tierCounts,
   onTierCountsChange,
   tierPools,
@@ -148,6 +184,7 @@ export function CellStaffingEditor({
   onStaffGroupsChange,
 }: StaffingEditorProps) {
   const { t } = useI18n();
+  const usingTiers = tierEnabled !== false;
   const participantsByTier = React.useMemo(() => buildParticipantsByTier(participants), [participants]);
   const participantMap = React.useMemo(
     () => Object.fromEntries(participants.map((p) => [String(p.id), p])) as Record<string, Participant>,
@@ -175,7 +212,10 @@ export function CellStaffingEditor({
     }
   }, []);
 
-  const headcount = React.useMemo(() => TIERS.reduce((sum, tier) => sum + tierCounts[tier], 0), [tierCounts]);
+  const headcount = React.useMemo(() => {
+    if (!usingTiers) return Math.max(0, Number(tierCounts.PRIMARY) || 0);
+    return TIERS.reduce((sum, tier) => sum + tierCounts[tier], 0);
+  }, [tierCounts, usingTiers]);
   const canBuildGroups = headcount > 1;
   const draftCounts = React.useMemo(() => countMembersByTier(groupDraft, participantMap), [groupDraft, participantMap]);
   const memberGroupIndex = React.useMemo(() => {
@@ -191,11 +231,13 @@ export function CellStaffingEditor({
       const id = String(participant.id);
       if (!canBuildGroups) return false;
       if (lockedIds.has(id)) return false;
-      if (!participant.tier) return false;
-      if (tierCounts[participant.tier] <= 0) return false;
+      if (usingTiers) {
+        if (!participant.tier) return false;
+        if (tierCounts[participant.tier] <= 0) return false;
+      }
       return true;
     },
-    [canBuildGroups, lockedIds, tierCounts]
+    [canBuildGroups, lockedIds, tierCounts, usingTiers]
   );
 
   React.useEffect(() => {
@@ -215,10 +257,15 @@ export function CellStaffingEditor({
 
   const togglePool = (tier: Tier, id: string) => {
     if (lockedIds.has(id)) return;
-    const set = new Set(tierPools[tier]);
+    const targetTier: Tier = usingTiers ? tier : "PRIMARY";
+    const set = new Set(tierPools[targetTier]);
     if (set.has(id)) set.delete(id);
     else set.add(id);
-    onTierPoolsChange({ ...tierPools, [tier]: Array.from(set).sort() });
+    onTierPoolsChange({
+      ...tierPools,
+      [targetTier]: Array.from(set).sort(),
+      ...(usingTiers ? {} : { SECONDARY: [], TERTIARY: [] }),
+    });
   };
 
   const canToggleDraftMember = React.useCallback(
@@ -226,12 +273,13 @@ export function CellStaffingEditor({
       const id = String(participant.id);
       if (lockedIds.has(id)) return false;
       if (groupDraft.includes(id)) return true;
-      if (!canBuildGroups || !groupMode || !participant.tier) return false;
+      if (!canBuildGroups || !groupMode) return false;
+      if (usingTiers && !participant.tier) return false;
       if (groupDraft.length >= headcount) return false;
-      if (draftCounts[participant.tier] >= tierCounts[participant.tier]) return false;
+      if (usingTiers && participant.tier && draftCounts[participant.tier] >= tierCounts[participant.tier]) return false;
       return true;
     },
-    [lockedIds, groupDraft, canBuildGroups, groupMode, headcount, draftCounts, tierCounts]
+    [lockedIds, groupDraft, canBuildGroups, groupMode, headcount, draftCounts, tierCounts, usingTiers]
   );
 
   const toggleDraftMember = (participant: Participant) => {
@@ -245,20 +293,30 @@ export function CellStaffingEditor({
   const addGroup = () => {
     const normalized = Array.from(new Set(groupDraft)).sort();
     if (normalized.length !== headcount) return;
-    const counts: TierCounts = { ...EMPTY_TIER_COUNTS };
-    for (const id of normalized) {
-      const participant = participantMap[id];
-      const tier = participant?.tier;
-      if (!tier) return;
-      counts[tier] += 1;
+    if (usingTiers) {
+      const counts: TierCounts = { ...EMPTY_TIER_COUNTS };
+      for (const id of normalized) {
+        const participant = participantMap[id];
+        const tier = participant?.tier;
+        if (!tier) return;
+        counts[tier] += 1;
+      }
+      if (TIERS.some((tier) => counts[tier] !== tierCounts[tier])) return;
     }
-    if (TIERS.some((tier) => counts[tier] !== tierCounts[tier])) return;
     onStaffGroupsChange([...staffGroups, { members: normalized }]);
-    onTierPoolsChange({
-      PRIMARY: tierPools.PRIMARY.filter((id) => !normalized.includes(id)),
-      SECONDARY: tierPools.SECONDARY.filter((id) => !normalized.includes(id)),
-      TERTIARY: tierPools.TERTIARY.filter((id) => !normalized.includes(id)),
-    });
+    if (usingTiers) {
+      onTierPoolsChange({
+        PRIMARY: tierPools.PRIMARY.filter((id) => !normalized.includes(id)),
+        SECONDARY: tierPools.SECONDARY.filter((id) => !normalized.includes(id)),
+        TERTIARY: tierPools.TERTIARY.filter((id) => !normalized.includes(id)),
+      });
+    } else {
+      onTierPoolsChange({
+        PRIMARY: tierPools.PRIMARY.filter((id) => !normalized.includes(id)),
+        SECONDARY: [],
+        TERTIARY: [],
+      });
+    }
     setGroupDraft([]);
     setGroupMode(false);
   };
@@ -296,25 +354,33 @@ export function CellStaffingEditor({
       toggleDraftMember(participant);
       return;
     }
-    if (!participant.tier) return;
     const id = String(participant.id);
-    const inPool = tierPools[participant.tier].includes(id);
-    if (tierCounts[participant.tier] === 0 && !inPool) return;
-    togglePool(participant.tier, id);
+    if (usingTiers) {
+      if (!participant.tier) return;
+      const inPool = tierPools[participant.tier].includes(id);
+      if (tierCounts[participant.tier] === 0 && !inPool) return;
+      togglePool(participant.tier, id);
+      return;
+    }
+    togglePool("PRIMARY", id);
   };
 
   const chipClassName = (participant: Participant) => {
     const id = String(participant.id);
     const inDraft = groupDraft.includes(id);
     const locked = memberGroupIndex.has(id);
-    const inPool = participant.tier ? tierPools[participant.tier].includes(id) : false;
+    const inPool = usingTiers
+      ? participant.tier
+        ? tierPools[participant.tier].includes(id)
+        : false
+      : tierPools.PRIMARY.includes(id);
     if (inDraft) {
       return "border-black bg-black text-white shadow-sm";
     }
     if (locked) {
       return "border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed";
     }
-    if (participant.tier && tierCounts[participant.tier] === 0 && !inPool) {
+    if (usingTiers && participant.tier && tierCounts[participant.tier] === 0 && !inPool) {
       return "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed";
     }
     if (inPool) {
@@ -325,7 +391,21 @@ export function CellStaffingEditor({
 
   return (
     <div className="space-y-5">
-      <TierCountControls tierCounts={tierCounts} onTierCountsChange={onTierCountsChange} />
+      {usingTiers ? (
+        <TierCountControls tierCounts={tierCounts} onTierCountsChange={onTierCountsChange} />
+      ) : (
+        <HeadcountControls
+          headcount={headcount}
+          maxHeadcount={Math.max(1, participants.length)}
+          onHeadcountChange={(next) =>
+            onTierCountsChange({
+              PRIMARY: Math.max(0, Math.min(Math.max(1, participants.length), Math.round(next || 0))),
+              SECONDARY: 0,
+              TERTIARY: 0,
+            })
+          }
+        />
+      )}
 
       <div className="rounded border p-3 space-y-4">
         <div className="flex items-start justify-between gap-4">
@@ -374,63 +454,106 @@ export function CellStaffingEditor({
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {TIERS.map((tier) => (
-            <div key={tier} className="rounded border bg-white p-3">
-              <div className="text-sm font-medium mb-3">
-                {tier === "PRIMARY" ? t("tier.primary") : tier === "SECONDARY" ? t("tier.secondary") : t("tier.tertiary")}
+        {usingTiers ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {TIERS.map((tier) => (
+              <div key={tier} className="rounded border bg-white p-3">
+                <div className="text-sm font-medium mb-3">
+                  {tier === "PRIMARY" ? t("tier.primary") : tier === "SECONDARY" ? t("tier.secondary") : t("tier.tertiary")}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {participantsByTier[tier].map((participant) => {
+                    const id = String(participant.id);
+                    const locked = memberGroupIndex.has(id);
+                    const inDraft = groupDraft.includes(id);
+                    const draftDisabled = groupMode && !canToggleDraftMember(participant);
+                    const inPool = tierPools[tier].includes(id);
+                    const poolDisabled = !groupMode && (locked || (tierCounts[tier] === 0 && !inPool));
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        className={`rounded-full border px-3 py-1.5 text-sm transition ${chipClassName(participant)} ${
+                          draftDisabled || poolDisabled ? "opacity-50" : ""
+                        }`}
+                        onPointerDown={() => {
+                          if (!groupMode) startLongPress(participant);
+                        }}
+                        onPointerUp={clearLongPress}
+                        onPointerLeave={clearLongPress}
+                        onPointerCancel={clearLongPress}
+                        onClick={() => handleChipClick(participant)}
+                        disabled={groupMode ? !canToggleDraftMember(participant) && !inDraft : poolDisabled}
+                        title={
+                          locked
+                            ? `Locked in group ${Number(memberGroupIndex.get(id)) + 1}`
+                            : inDraft
+                            ? "In current draft group"
+                            : tierCounts[tier] === 0 && !inPool
+                            ? "Tier count is 0"
+                            : inPool
+                            ? "In eligible pool"
+                            : undefined
+                        }
+                      >
+                        <span>{participantLabel(participant)}</span>
+                        {locked && (
+                          <span className="ml-2 text-[10px] uppercase tracking-wide">
+                            G{Number(memberGroupIndex.get(id)) + 1}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  {participantsByTier[tier].length === 0 && (
+                    <div className="text-xs text-gray-500">{t("cell_staffing.no_participants_tier")}</div>
+                  )}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {participantsByTier[tier].map((participant) => {
-                  const id = String(participant.id);
-                  const locked = memberGroupIndex.has(id);
-                  const inDraft = groupDraft.includes(id);
-                  const draftDisabled = groupMode && !canToggleDraftMember(participant);
-                  const inPool = tierPools[tier].includes(id);
-                  const poolDisabled = !groupMode && (locked || (tierCounts[tier] === 0 && !inPool));
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      className={`rounded-full border px-3 py-1.5 text-sm transition ${chipClassName(participant)} ${
-                        draftDisabled || poolDisabled ? "opacity-50" : ""
-                      }`}
-                      onPointerDown={() => {
-                        if (!groupMode) startLongPress(participant);
-                      }}
-                      onPointerUp={clearLongPress}
-                      onPointerLeave={clearLongPress}
-                      onPointerCancel={clearLongPress}
-                      onClick={() => handleChipClick(participant)}
-                      disabled={groupMode ? !canToggleDraftMember(participant) && !inDraft : poolDisabled}
-                      title={
-                        locked
-                          ? `Locked in group ${Number(memberGroupIndex.get(id)) + 1}`
-                          : inDraft
-                          ? "In current draft group"
-                          : tierCounts[tier] === 0 && !inPool
-                          ? "Tier count is 0"
-                          : inPool
-                          ? "In eligible pool"
-                          : undefined
-                      }
-                    >
-                      <span>{participantLabel(participant)}</span>
-                      {locked && (
-                        <span className="ml-2 text-[10px] uppercase tracking-wide">
-                          G{Number(memberGroupIndex.get(id)) + 1}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-                {participantsByTier[tier].length === 0 && (
-                  <div className="text-xs text-gray-500">{t("cell_staffing.no_participants_tier")}</div>
-                )}
-              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded border bg-white p-3">
+            <div className="text-sm font-medium mb-3">Eligible participants</div>
+            <div className="flex flex-wrap gap-2">
+              {participants.map((participant) => {
+                const id = String(participant.id);
+                const locked = memberGroupIndex.has(id);
+                const inDraft = groupDraft.includes(id);
+                const draftDisabled = groupMode && !canToggleDraftMember(participant);
+                const poolDisabled = !groupMode && locked;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`rounded-full border px-3 py-1.5 text-sm transition ${chipClassName(participant)} ${
+                      draftDisabled || poolDisabled ? "opacity-50" : ""
+                    }`}
+                    onPointerDown={() => {
+                      if (!groupMode) startLongPress(participant);
+                    }}
+                    onPointerUp={clearLongPress}
+                    onPointerLeave={clearLongPress}
+                    onPointerCancel={clearLongPress}
+                    onClick={() => handleChipClick(participant)}
+                    disabled={groupMode ? !canToggleDraftMember(participant) && !inDraft : poolDisabled}
+                    title={locked ? `Locked in group ${Number(memberGroupIndex.get(id)) + 1}` : undefined}
+                  >
+                    <span>{participantLabel(participant)}</span>
+                    {locked && (
+                      <span className="ml-2 text-[10px] uppercase tracking-wide">
+                        G{Number(memberGroupIndex.get(id)) + 1}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+              {participants.length === 0 && (
+                <div className="text-xs text-gray-500">{t("cell_staffing.no_participants_tier")}</div>
+              )}
             </div>
-          ))}
-        </div>
+          </div>
+        )}
 
         {headcount > 1 && staffGroups.length > 0 && (
           <div className="space-y-2">

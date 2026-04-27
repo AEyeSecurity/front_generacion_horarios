@@ -101,6 +101,7 @@ type Props = {
   onSolvePressed?: () => void;
   onActivateTool?: (tool: ToolKey) => void;
   onPublishDraft?: () => void;
+  showParticipantTier?: boolean;
 };
 
 const shadeHex = (hex: string, amt: number) => {
@@ -150,6 +151,7 @@ export default function RightSideDock({
   onSolvePressed,
   onActivateTool,
   onPublishDraft,
+  showParticipantTier = true,
 }: Props) {
   const bubbleClass =
     "w-12 h-12 rounded-full shadow-md border border-gray-200 bg-white flex items-center justify-center transition-all duration-200 pointer-events-auto";
@@ -469,9 +471,9 @@ export default function RightSideDock({
                           <div className="truncate text-xs font-semibold text-gray-900" title={participant.name}>
                             {participant.name}
                           </div>
-                          {absDistance === 0 && (
-                            <div className="mt-1 text-[10px] font-medium text-gray-500">{participant.tier || "-"}</div>
-                          )}
+                          {absDistance === 0 && showParticipantTier && participant.tier ? (
+                            <div className="mt-1 text-[10px] font-medium text-gray-500">{participant.tier}</div>
+                          ) : null}
                         </div>
                       </div>
                   </div>

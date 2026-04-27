@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/use-i18n";
+import ElasticSlider from "@/components/ElasticSlider";
+import Stepper, { Step } from "@/components/Stepper";
 
 type Grid = {
   id: number;
@@ -28,7 +30,7 @@ const PRIORITY_DEFAULT: Record<PriorityCode, number> = {
   P5: 5,
   P6: 5,
   P9: 5,
-  P10: 5,
+  P10: 3,
 };
 
 const ALWAYS_PRIORITY_CODES: PriorityCode[] = ["P1", "P2", "P3", "P6", "P9", "P10"];
@@ -94,6 +96,7 @@ export default function NewGridPage() {
     P9: false,
     P10: false,
   });
+  const [useDefaultWizardOnSubmit, setUseDefaultWizardOnSubmit] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -195,7 +198,9 @@ export default function NewGridPage() {
   }
 
   function setPriority(code: PriorityCode, raw: number) {
-    const next = Math.max(1, Math.min(10, Math.round(raw)));
+    const max = code === "P10" ? 5 : 10;
+    const next = Math.max(1, Math.min(max, Math.round(raw)));
+    setUseDefaultWizardOnSubmit(false);
     setPriorities((prev) => ({ ...prev, [code]: next }));
     setPriorityTouched((prev) => ({ ...prev, [code]: true }));
   }
@@ -272,7 +277,7 @@ export default function NewGridPage() {
     const priorityPayload: Partial<Record<PriorityCode, number>> = {};
     for (const code of activePriorityCodes) {
       if (useDefaults || priorityTouched[code]) {
-        priorityPayload[code] = useDefaults ? 5 : priorities[code];
+        priorityPayload[code] = useDefaults ? PRIORITY_DEFAULT[code] : priorities[code];
       }
     }
     if (Object.keys(priorityPayload).length > 0) {
@@ -351,6 +356,34 @@ export default function NewGridPage() {
   const questionCardClass =
     "rounded-xl border border-gray-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
 
+  function handleStepChange(nextStep: number) {
+    const target = nextStep as 1 | 2 | 3 | 4;
+    if (target === 2 && !step1Valid) {
+      void validateBeforeSubmit();
+      return;
+    }
+    if ((target === 3 || target === 4) && !step2Valid) {
+      setErr(tt("solver_wizard.q1_required", "Please select an organization type."));
+      return;
+    }
+    setErr(null);
+    setStep(target);
+  }
+
+  function jumpToConfirmWithDefaults() {
+    if (!step1Valid) {
+      void validateBeforeSubmit();
+      return;
+    }
+    if (!q1OrganizationType) {
+      setErr(tt("solver_wizard.q1_required", "Please select an organization type."));
+      return;
+    }
+    setUseDefaultWizardOnSubmit(true);
+    setErr(null);
+    setStep(4);
+  }
+
   return (
     <div className="min-h-screen bg-[#f0ebf8] py-10 px-4">
       <div className="max-w-3xl mx-auto space-y-4">
@@ -366,45 +399,65 @@ export default function NewGridPage() {
             </p>
           </div>
 
-          <div className="px-6 pt-4">
-            <div className="flex items-center justify-center gap-0 select-none">
-              {[1, 2, 3, 4].map((idx) => {
-                const stepIdx = idx as 1 | 2 | 3 | 4;
-                const isActive = step === stepIdx;
-                const enabled = canGoToStep(stepIdx);
+          <div className="p-6">
+            <Stepper
+              currentStep={step}
+              onStepChange={handleStepChange}
+              onFinalStepCompleted={() => void createGridAndWizard(useDefaultWizardOnSubmit)}
+              backButtonText={tt("solver_wizard.previous_step", "Previous")}
+              nextButtonText={tt("solver_wizard.next_step", "Next")}
+              completeButtonText={loading ? tt("solver_wizard.creating", "Creating...") : tt("solver_wizard.create_grid", "Create Grid")}
+              nextButtonProps={{
+                disabled:
+                  loading ||
+                  (step === 1 && !step1Valid) ||
+                  (step === 2 && !step2Valid),
+              }}
+              backButtonProps={{ disabled: loading }}
+              stepCircleContainerClassName="mt-4 max-w-full rounded-xl border-0 shadow-none"
+              stepContainerClassName="px-2 py-0"
+              contentClassName="px-0"
+              footerClassName="px-0 pb-0"
+              className="min-h-0 p-0"
+              renderStepIndicator={({ step: stepNumber, currentStep, onStepClick }) => {
+                const stepIdx = stepNumber as 1 | 2 | 3 | 4;
+                const enabled = canGoToStep(stepIdx) && !loading;
+                const isActive = currentStep === stepNumber;
+                const isComplete = currentStep > stepNumber;
                 return (
-                  <div key={idx} className="flex items-center">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!enabled || loading) return;
-                        setStep(stepIdx);
-                        setErr(null);
-                      }}
-                      disabled={!enabled || loading}
-                      className={`h-9 w-9 rounded-full border-2 text-sm font-semibold transition-colors ${
-                        isActive
-                          ? "border-black bg-black text-white"
-                          : enabled
-                          ? "border-gray-300 bg-white text-gray-700"
-                          : "border-gray-200 bg-gray-100 text-gray-400"
-                      }`}
-                      aria-label={tt("solver_wizard.go_to_step", "Go to step {step}", { step: idx })}
-                    >
-                      {idx}
-                    </button>
-                    {idx < 4 ? <div className={`h-0.5 w-10 ${step > stepIdx ? "bg-black" : "bg-gray-300"}`} /> : null}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!enabled) return;
+                      onStepClick(stepNumber);
+                    }}
+                    disabled={!enabled}
+                    className={`h-9 w-9 rounded-full border-2 text-sm font-semibold transition-colors ${
+                      isComplete || isActive
+                        ? "border-black bg-black text-white"
+                        : enabled
+                        ? "border-gray-300 bg-white text-gray-700"
+                        : "border-gray-200 bg-gray-100 text-gray-400"
+                    }`}
+                    aria-label={tt("solver_wizard.go_to_step", "Go to step {step}", { step: stepNumber })}
+                  >
+                    {isComplete ? (
+                      <svg viewBox="0 0 24 24" className="mx-auto h-4 w-4" aria-hidden="true">
+                        <path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ) : isActive ? (
+                      <span className="mx-auto block h-2.5 w-2.5 rounded-full bg-white" />
+                    ) : (
+                      stepNumber
+                    )}
+                  </button>
                 );
-              })}
-            </div>
-          </div>
-
-          <div className="p-6 space-y-4">
-            {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
-
-            {step === 1 ? (
-              <section className={questionCardClass}>
+              }}
+            >
+              <Step>
+                <div className="space-y-4">
+                  {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
+                  <section className={questionCardClass}>
                 <h2 className="text-base font-medium text-gray-900">{tt("solver_wizard.section_basics", "Grid basics")}</h2>
                 <div className="mt-4 space-y-4">
                   <div>
@@ -474,10 +527,13 @@ export default function NewGridPage() {
                   </div>
                 </div>
               </section>
-            ) : null}
+                </div>
+              </Step>
 
-            {step === 2 ? (
-              <section className={questionCardClass}>
+              <Step>
+                <div className="space-y-4">
+                  {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
+                  <section className={questionCardClass}>
                 <h2 className="text-base font-medium text-gray-900">{tt("solver_wizard.section_questions", "Questions")}</h2>
 
                 <div className="mt-4 space-y-5">
@@ -525,7 +581,7 @@ export default function NewGridPage() {
                   {q1OrganizationType ? (
                     <button
                       type="button"
-                      onClick={() => void createGridAndWizard(true)}
+                      onClick={jumpToConfirmWithDefaults}
                       disabled={loading}
                       className="text-sm text-gray-500 underline underline-offset-2 disabled:opacity-50"
                     >
@@ -676,50 +732,65 @@ export default function NewGridPage() {
                   </div>
                 </div>
               </section>
-            ) : null}
+                </div>
+              </Step>
 
-            {step === 3 ? (
-              <section className={questionCardClass}>
+              <Step>
+                <div className="space-y-4">
+                  {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
+                  <section className={questionCardClass}>
                 <h2 className="text-base font-medium text-gray-900">{tt("solver_wizard.section_priorities", "Priorities")}</h2>
                 <p className="mt-1 text-xs text-gray-500">{tt("solver_wizard.priorities_optional", "All sliders are optional. Untouched values keep profile defaults.")}</p>
 
                 <div className="mt-4 space-y-4">
                   {priorityRows.map((row) => {
                     const value = priorities[row.code];
-                    const pct = ((value - 1) / 9) * 100;
+                    const sliderMax = row.code === "P10" ? 5 : 10;
                     return (
                       <div key={row.code} className="space-y-1">
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
                           <label className="text-sm text-gray-700">{row.label}</label>
-                          <span className="text-sm font-medium text-gray-900">{value}</span>
                         </div>
-                        {row.bipolar ? (
-                          <div className="flex items-center justify-between text-xs text-gray-500">
-                            <span>{tt("solver_wizard.day_spread_separate", "Separate")}</span>
-                            <span>{tt("solver_wizard.day_spread_cluster", "Cluster")}</span>
-                          </div>
-                        ) : null}
-                        <input
-                          type="range"
-                          min={1}
-                          max={10}
-                          step={1}
+                        <ElasticSlider
+                          className="w-3/4 mx-auto"
+                          startingValue={1}
+                          maxValue={sliderMax}
+                          isStepped
+                          stepSize={1}
                           value={value}
-                          onChange={(event) => setPriority(row.code, Number(event.target.value))}
-                          className="wizard-range w-full h-2 appearance-none rounded-full"
-                          style={{
-                            background: `linear-gradient(to right, #111827 ${pct}%, #E5E7EB ${pct}%)`,
-                          }}
+                          defaultValue={value}
+                          leftIcon={
+                            row.bipolar ? (
+                              <span className="text-[11px] font-medium text-gray-500">
+                                {tt("solver_wizard.day_spread_strong_separate", "Strong Separate")}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-medium text-gray-500">1</span>
+                            )
+                          }
+                          rightIcon={
+                            row.bipolar ? (
+                              <span className="text-[11px] font-medium text-gray-500">
+                                {tt("solver_wizard.day_spread_strong_cluster", "Strong Cluster")}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-medium text-gray-500">10</span>
+                            )
+                          }
+                          onValueChange={(next) => setPriority(row.code, next)}
                         />
                       </div>
                     );
                   })}
                 </div>
               </section>
-            ) : null}
+                </div>
+              </Step>
 
-            {step === 4 ? (
-              <section className={questionCardClass}>
+              <Step>
+                <div className="space-y-4">
+                  {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
+                  <section className={questionCardClass}>
                 <h2 className="text-base font-medium text-gray-900">{tt("solver_wizard.section_confirm", "Confirmation")}</h2>
                 <div className="mt-4 space-y-4">
                   <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
@@ -748,7 +819,8 @@ export default function NewGridPage() {
                   <div className="rounded-lg border border-gray-200 p-4 space-y-2">
                     {priorityRows.map((row) => {
                       const value = priorities[row.code];
-                      const pct = ((value - 1) / 9) * 100;
+                      const max = row.code === "P10" ? 5 : 10;
+                      const pct = ((value - 1) / (max - 1)) * 100;
                       return (
                         <div key={row.code} className="space-y-1">
                           <div className="flex items-center justify-between gap-3 text-sm">
@@ -763,85 +835,15 @@ export default function NewGridPage() {
                     })}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => void createGridAndWizard(false)}
-                    disabled={loading || !step1Valid || !step2Valid}
-                    className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-                  >
-                    {loading ? tt("solver_wizard.creating", "Creating...") : tt("solver_wizard.create_grid", "Create Grid")}
-                  </button>
                 </div>
               </section>
-            ) : null}
-
-            <div className="flex items-center justify-between border-t border-gray-100 pt-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setErr(null);
-                  setStep((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3 | 4) : prev));
-                }}
-                disabled={loading || step === 1}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 disabled:opacity-40"
-                aria-label={tt("solver_wizard.previous_step", "Previous step")}
-              >
-                <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-                  <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-
-              {step < 4 ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setErr(null);
-                    if (step === 1 && !step1Valid) {
-                      void validateBeforeSubmit();
-                      return;
-                    }
-                    if (step === 2 && !step2Valid) {
-                      setErr(tt("solver_wizard.q1_required", "Please select an organization type."));
-                      return;
-                    }
-                    setStep((prev) => (prev < 4 ? ((prev + 1) as 1 | 2 | 3 | 4) : prev));
-                  }}
-                  disabled={loading || (step === 1 && !step1Valid) || (step === 2 && !step2Valid)}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 disabled:opacity-40"
-                  aria-label={tt("solver_wizard.next_step", "Next step")}
-                >
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-                    <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-              ) : <span className="w-10" />}
-            </div>
+                </div>
+              </Step>
+            </Stepper>
           </div>
         </div>
       </div>
 
-      <style jsx global>{`
-        .wizard-range::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          appearance: none;
-          width: 16px;
-          height: 16px;
-          border-radius: 9999px;
-          border: 2px solid #111827;
-          background: #ffffff;
-          cursor: pointer;
-          margin-top: -4px;
-        }
-
-        .wizard-range::-moz-range-thumb {
-          width: 16px;
-          height: 16px;
-          border-radius: 9999px;
-          border: 2px solid #111827;
-          background: #ffffff;
-          cursor: pointer;
-        }
-      `}</style>
     </div>
   );
 }

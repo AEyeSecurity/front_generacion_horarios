@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ChevronDown } from "lucide-react";
 import { TierBadge, type Tier } from "@/components/badges/TierBadge";
+import { readGridTierEnabled } from "@/lib/grid-tier";
 import {
   Dialog,
   DialogPortal,
@@ -21,8 +22,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useI18n } from "@/lib/use-i18n";
 
-type HoursWeekMode = "default" | "custom" | "not_available";
-
 export default function AddParticipantDialog({
   gridId,
   open,
@@ -38,11 +37,28 @@ export default function AddParticipantDialog({
   const [first, setFirst] = React.useState("");
   const [last, setLast] = React.useState("");
   const [tier, setTier] = React.useState<Tier>("PRIMARY");
-  const [hoursWeekMode, setHoursWeekMode] = React.useState<HoursWeekMode>("default");
-  const [minHoursOverride, setMinHoursOverride] = React.useState("");
-  const [maxHoursOverride, setMaxHoursOverride] = React.useState("");
+  const [tierEnabled, setTierEnabled] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch(`/api/grids/${gridId}/`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null);
+        if (!active) return;
+        setTierEnabled(readGridTierEnabled(data, true));
+      } catch {
+        if (active) setTierEnabled(true);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [gridId, open]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,41 +66,6 @@ export default function AddParticipantDialog({
     setSaving(true);
     setErr(null);
     try {
-      const parseOptionalOverride = (value: string) => {
-        const trimmed = value.trim();
-        if (!trimmed) return null;
-        const parsed = Number(trimmed);
-        if (!Number.isFinite(parsed) || parsed < 0) return Number.NaN;
-        return parsed;
-      };
-
-      const parsedMin = parseOptionalOverride(minHoursOverride);
-      const parsedMax = parseOptionalOverride(maxHoursOverride);
-      if (Number.isNaN(parsedMin) || Number.isNaN(parsedMax)) {
-        throw new Error(t("add_participant.invalid_hours_override"));
-      }
-      if (hoursWeekMode === "custom" && parsedMin == null && parsedMax == null) {
-        throw new Error(t("add_participant.custom_requires_override"));
-      }
-      if (
-        hoursWeekMode === "custom" &&
-        parsedMin != null &&
-        parsedMax != null &&
-        parsedMin > parsedMax
-      ) {
-        throw new Error(t("add_participant.min_cannot_exceed_max"));
-      }
-
-      let minHoursWeekOverride: number | null = null;
-      let maxHoursWeekOverride: number | null = null;
-      if (hoursWeekMode === "custom") {
-        minHoursWeekOverride = parsedMin;
-        maxHoursWeekOverride = parsedMax;
-      } else if (hoursWeekMode === "not_available") {
-        minHoursWeekOverride = 0;
-        maxHoursWeekOverride = 0;
-      }
-
       const res = await fetch(`/api/participants/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -92,10 +73,7 @@ export default function AddParticipantDialog({
           grid: gridId,
           name: first.trim(),
           surname: last.trim(),
-          tier,
-          hours_week_mode: hoursWeekMode,
-          min_hours_week_override: minHoursWeekOverride,
-          max_hours_week_override: maxHoursWeekOverride,
+          ...(tierEnabled ? { tier } : {}),
         }),
       });
       if (!res.ok) {
@@ -105,9 +83,6 @@ export default function AddParticipantDialog({
       setFirst("");
       setLast("");
       setTier("PRIMARY");
-      setHoursWeekMode("default");
-      setMinHoursOverride("");
-      setMaxHoursOverride("");
       onCreated?.();
       onOpenChange(false);
     } catch (e: any) {
@@ -128,7 +103,7 @@ export default function AddParticipantDialog({
           </DialogHeader>
 
           <form onSubmit={submit} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_112px] gap-3">
+            <div className={`grid grid-cols-1 gap-3 ${tierEnabled ? "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_112px]" : "sm:grid-cols-2"}`}>
               <div>
                 <label className="block text-sm mb-1">{t("add_participant.first_name_required")}</label>
                 <input
@@ -146,72 +121,36 @@ export default function AddParticipantDialog({
                   onChange={(e) => setLast(e.target.value)}
                 />
               </div>
-              <div>
-                <label className="block text-sm mb-1">{t("add_participant.tier_required")}</label>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      className="flex h-[42px] w-full min-w-0 items-center justify-center gap-1 overflow-hidden rounded border bg-white px-2 py-2"
-                      aria-label={t("add_participant.select_tier")}
-                    >
-                      <span className="flex min-w-0 flex-1 items-center justify-center overflow-hidden">
-                        <TierBadge tier={tier} compact />
-                      </span>
-                      <ChevronDown className="h-4 w-4 shrink-0 text-gray-500" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" sideOffset={6} className="z-[190] min-w-[8rem]">
-                    <DropdownMenuItem onClick={() => setTier("PRIMARY")} className="justify-center">
-                      <TierBadge tier="PRIMARY" compact />
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTier("SECONDARY")} className="justify-center">
-                      <TierBadge tier="SECONDARY" compact />
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTier("TERTIARY")} className="justify-center">
-                      <TierBadge tier="TERTIARY" compact />
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-sm mb-1">{t("add_participant.weekly_mode")}</label>
-                <select
-                  className="w-full border rounded px-3 py-2 text-sm"
-                  value={hoursWeekMode}
-                  onChange={(event) => setHoursWeekMode(event.target.value as HoursWeekMode)}
-                >
-                  <option value="default">{t("add_participant.weekly_mode_default")}</option>
-                  <option value="custom">{t("add_participant.weekly_mode_custom")}</option>
-                  <option value="not_available">{t("add_participant.weekly_mode_not_available")}</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm mb-1">{t("add_participant.min_hours_override")}</label>
-                <input
-                  className="w-full border rounded px-3 py-2 text-sm"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={minHoursOverride}
-                  disabled={hoursWeekMode !== "custom"}
-                  onChange={(event) => setMinHoursOverride(event.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-sm mb-1">{t("add_participant.max_hours_override")}</label>
-                <input
-                  className="w-full border rounded px-3 py-2 text-sm"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={maxHoursOverride}
-                  disabled={hoursWeekMode !== "custom"}
-                  onChange={(event) => setMaxHoursOverride(event.target.value)}
-                />
-              </div>
+              {tierEnabled ? (
+                <div>
+                  <label className="block text-sm mb-1">{t("add_participant.tier_required")}</label>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex h-[42px] w-full min-w-0 items-center justify-center gap-1 overflow-hidden rounded border bg-white px-2 py-2"
+                        aria-label={t("add_participant.select_tier")}
+                      >
+                        <span className="flex min-w-0 flex-1 items-center justify-center overflow-hidden">
+                          <TierBadge tier={tier} compact />
+                        </span>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-gray-500" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" sideOffset={6} className="z-[190] min-w-[8rem]">
+                      <DropdownMenuItem onClick={() => setTier("PRIMARY")} className="justify-center">
+                        <TierBadge tier="PRIMARY" compact />
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setTier("SECONDARY")} className="justify-center">
+                        <TierBadge tier="SECONDARY" compact />
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setTier("TERTIARY")} className="justify-center">
+                        <TierBadge tier="TERTIARY" compact />
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              ) : null}
             </div>
 
             {err && <div className="text-sm text-red-600 whitespace-pre-wrap">{err}</div>}

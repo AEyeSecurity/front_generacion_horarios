@@ -21,6 +21,7 @@ import {
   type TierPools,
 } from "@/components/dialogs/cell-staffing";
 import { CELL_COLOR_OPTIONS_NO_RED as COLOR_OPTIONS } from "@/lib/cell-colors";
+import { readGridTierEnabled } from "@/lib/grid-tier";
 import { useI18n } from "@/lib/use-i18n";
 
 type TimeRange = { id: number; name: string; start_time: string; end_time: string };
@@ -32,6 +33,9 @@ type GridConfig = {
   allow_overstaffing?: boolean | null;
   day_start?: string | null;
   day_end?: string | null;
+  tier_enable?: boolean | null;
+  tier_enabled?: boolean | null;
+  tiers_enabled?: boolean | null;
 };
 
 type Cell = {
@@ -54,6 +58,8 @@ type Cell = {
   headcount?: number | null;
   tier_counts?: Partial<TierCounts> | null;
   tier_pools?: Partial<Record<"PRIMARY" | "SECONDARY" | "TERTIARY", Array<string | number>>> | null;
+  eligible_participants?: Array<string | number> | null;
+  staff_options?: Array<{ staff?: string | number; members?: Array<string | number> }> | null;
   staff_options_resolved?: Array<{ staff?: string | number; members?: Array<string | number> }> | null;
   series_id?: string | null;
   seriesCells?: Cell[];
@@ -231,12 +237,36 @@ function parseSplitPartsCells(cell: Cell, cellMin: number): number[] {
 }
 
 function buildStaffingError(
+  tierEnabled: boolean,
   tierCounts: TierCounts,
   tierPools: TierPools,
   staffGroups: StaffOption[],
   participantMap: Record<string, Participant>,
   participants: Participant[]
 ) {
+  if (!tierEnabled) {
+    const headcount = Math.max(0, Number(tierCounts.PRIMARY || 0));
+    if (headcount < 1) return "Headcount must be at least 1.";
+    const poolIds = new Set((tierPools.PRIMARY || []).map(String));
+    const groupIds = new Set<string>();
+    for (const group of staffGroups) {
+      if (group.members.length !== headcount) return "Each staff group must contain exactly headcount participants.";
+      for (const id of group.members) {
+        if (poolIds.has(id)) return "A participant cannot be in both eligible participants and a staff group.";
+        if (groupIds.has(id)) return "A participant cannot appear in more than one staff group.";
+        groupIds.add(id);
+        if (!participantMap[id]) return "Staff group members must be valid participants.";
+      }
+    }
+    const hasPools = poolIds.size > 0;
+    const hasGroups = staffGroups.length > 0;
+    if (!hasPools && !hasGroups) return "At least one staffing source is required: eligible participants or explicit staff groups.";
+    if (participants.length > 0 && headcount > participants.length) {
+      return `Headcount cannot exceed available participants (${participants.length}).`;
+    }
+    return null;
+  }
+
   const availableByTier: TierCounts = { ...EMPTY_TIER_COUNTS };
   for (const participant of participants) {
     if (participant.tier) {
@@ -405,14 +435,18 @@ export default function EditCellDialog({
   const [staffGroups, setStaffGroups] = React.useState<StaffOption[]>([]);
   const [allowOverstaffing, setAllowOverstaffing] = React.useState(false);
   const [gridAllowsOverstaffing, setGridAllowsOverstaffing] = React.useState(true);
+  const [gridTierEnabled, setGridTierEnabled] = React.useState(true);
   const [initialStaffGroupsSerialized, setInitialStaffGroupsSerialized] = React.useState("[]");
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
   const splitSliderRef = React.useRef<HTMLDivElement | null>(null);
   const inferredHeadcount = React.useMemo(
-    () => TIERS.reduce((sum, tier) => sum + Math.max(0, Number(tierCounts[tier] || 0)), 0),
-    [tierCounts]
+    () =>
+      gridTierEnabled
+        ? TIERS.reduce((sum, tier) => sum + Math.max(0, Number(tierCounts[tier] || 0)), 0)
+        : Math.max(0, Number(tierCounts.PRIMARY || 0)),
+    [gridTierEnabled, tierCounts]
   );
   const participantMap = React.useMemo(
     () => Object.fromEntries(participants.map((p) => [String(p.id), p])) as Record<string, Participant>,
@@ -426,12 +460,21 @@ export default function EditCellDialog({
     return caps;
   }, [participants]);
   const setTierCountsClamped = React.useCallback((next: TierCounts) => {
+    if (!gridTierEnabled) {
+      const cap = Math.max(1, participants.length);
+      setTierCounts({
+        PRIMARY: clampInt(next.PRIMARY || 0, 0, cap),
+        SECONDARY: 0,
+        TERTIARY: 0,
+      });
+      return;
+    }
     setTierCounts({
       PRIMARY: clampInt(next.PRIMARY || 0, 0, participantTierCaps.PRIMARY),
       SECONDARY: clampInt(next.SECONDARY || 0, 0, participantTierCaps.SECONDARY),
       TERTIARY: clampInt(next.TERTIARY || 0, 0, participantTierCaps.TERTIARY),
     });
-  }, [participantTierCaps]);
+  }, [gridTierEnabled, participantTierCaps, participants.length]);
   const unitNameById = React.useMemo(
     () => Object.fromEntries(units.map((u) => [String(u.id), u.name || `Unit ${u.id}`])) as Record<string, string>,
     [units]
@@ -525,12 +568,21 @@ export default function EditCellDialog({
   }, [canShowMultiDayToggle, multiDayEnabled]);
 
   React.useEffect(() => {
+    if (!gridTierEnabled) {
+      const cap = Math.max(1, participants.length);
+      setTierCounts((prev) => ({
+        PRIMARY: clampInt(prev.PRIMARY || 0, 0, cap),
+        SECONDARY: 0,
+        TERTIARY: 0,
+      }));
+      return;
+    }
     setTierCounts((prev) => ({
       PRIMARY: clampInt(prev.PRIMARY || 0, 0, participantTierCaps.PRIMARY),
       SECONDARY: clampInt(prev.SECONDARY || 0, 0, participantTierCaps.SECONDARY),
       TERTIARY: clampInt(prev.TERTIARY || 0, 0, participantTierCaps.TERTIARY),
     }));
-  }, [participantTierCaps]);
+  }, [gridTierEnabled, participantTierCaps, participants.length]);
 
   React.useEffect(() => {
     if (maxDurationCellsAllowed == null) return;
@@ -630,6 +682,7 @@ export default function EditCellDialog({
     setColorHex((cell.colorHex || cell.color_hex || null) as string | null);
     setColorMenuOpen(false);
     setGridAllowsOverstaffing(true);
+    setGridTierEnabled(true);
     setAllowOverstaffing(Boolean(cell.allow_overstaffing));
     setUnitIds([]);
     setEditingBundleIndex(null);
@@ -670,6 +723,7 @@ export default function EditCellDialog({
 
         let gridCellMin = 1;
         let gridMaxDays = 7;
+        let tierEnabledFromGrid = true;
         let bundlesList: Bundle[] = [];
         let staffMembersById: Record<string, string[]> = {};
 
@@ -698,6 +752,8 @@ export default function EditCellDialog({
           }
           const overstaffingEnabled = g?.allow_overstaffing !== false;
           setGridAllowsOverstaffing(overstaffingEnabled);
+          tierEnabledFromGrid = readGridTierEnabled(g, true);
+          setGridTierEnabled(tierEnabledFromGrid);
           if (!overstaffingEnabled) {
             setAllowOverstaffing(false);
           }
@@ -802,12 +858,38 @@ export default function EditCellDialog({
           TERTIARY: Number(baseCell.tier_counts?.TERTIARY || 0),
         };
         const nextTierTotal = TIERS.reduce((sum, tier) => sum + nextTierCounts[tier], 0);
-        if (nextTierTotal < 1) {
-          nextTierCounts.PRIMARY = Math.max(1, Number(baseCell.headcount) || 1);
+        if (tierEnabledFromGrid) {
+          if (nextTierTotal < 1) {
+            nextTierCounts.PRIMARY = Math.max(1, Number(baseCell.headcount) || 1);
+          }
+          setTierCounts(nextTierCounts);
+          const normalizedPools = normalizeTierPools(baseCell.tier_pools);
+          const eligibleFallback = normalizeTierPools({
+            PRIMARY: Array.isArray(baseCell.eligible_participants) ? baseCell.eligible_participants : [],
+          });
+          setTierPools({
+            PRIMARY:
+              normalizedPools.PRIMARY.length > 0
+                ? normalizedPools.PRIMARY
+                : eligibleFallback.PRIMARY,
+            SECONDARY: normalizedPools.SECONDARY,
+            TERTIARY: normalizedPools.TERTIARY,
+          });
+        } else {
+          const headcount = Math.max(1, Number(baseCell.headcount) || nextTierTotal || 1);
+          const mergedEligible = Array.from(
+            new Set(
+              [
+                ...Object.values(baseCell.tier_pools || {}).flatMap((value) => (Array.isArray(value) ? value : [])),
+                ...(Array.isArray(baseCell.eligible_participants) ? baseCell.eligible_participants : []),
+              ]
+                .map(String)
+            )
+          ).sort();
+          setTierCounts({ PRIMARY: headcount, SECONDARY: 0, TERTIARY: 0 });
+          setTierPools({ PRIMARY: mergedEligible, SECONDARY: [], TERTIARY: [] });
         }
-        setTierCounts(nextTierCounts);
-        setTierPools(normalizeTierPools(baseCell.tier_pools));
-        let resolvedGroups = normalizeStaffGroups(baseCell.staff_options_resolved);
+        let resolvedGroups = normalizeStaffGroups(baseCell.staff_options_resolved || baseCell.staff_options);
         if (resolvedGroups.length === 0) {
           for (const seriesCell of [baseCell, ...seriesCells]) {
             const staffIds = Array.isArray(seriesCell.staffs) ? seriesCell.staffs.map(String) : [];
@@ -839,7 +921,7 @@ export default function EditCellDialog({
       (maxDurationCellsAllowed == null || durationCellsSafe <= maxDurationCellsAllowed)
   );
   const unitsStepReady = !bundleSetsError;
-  const staffingError = buildStaffingError(tierCounts, tierPools, staffGroups, participantMap, participants);
+  const staffingError = buildStaffingError(gridTierEnabled, tierCounts, tierPools, staffGroups, participantMap, participants);
   const canSubmit = stepOneReady && splitStepReady && unitsStepReady && !staffingError && !bundleSetsError;
   const canAdvanceFromCurrentStep =
     currentStepKey === "info"
@@ -1075,6 +1157,23 @@ export default function EditCellDialog({
       const fallbackSeriesCells = cell.seriesCells?.length ? cell.seriesCells : [cell];
       const seriesCells = seriesCellsSnapshot.length > 0 ? seriesCellsSnapshot : fallbackSeriesCells;
       const splitOrderFlexibleValue = multiDayEnabled ? splitOrderFlexible : false;
+      const normalizedTierCounts: TierCounts = gridTierEnabled
+        ? tierCounts
+        : { PRIMARY: inferredHeadcount, SECONDARY: 0, TERTIARY: 0 };
+      const normalizedTierPools: TierPools = gridTierEnabled
+        ? tierPools
+        : {
+            PRIMARY: Array.from(new Set((tierPools.PRIMARY || []).map(String))).sort(),
+            SECONDARY: [],
+            TERTIARY: [],
+          };
+      const normalizedEligibleParticipants = Array.from(
+        new Set(
+          Object.values(normalizedTierPools)
+            .flatMap((ids) => (Array.isArray(ids) ? ids : []))
+            .map(String),
+        ),
+      ).sort();
       const basePayload: any = {
         name: name.trim(),
         description: description.trim() || undefined,
@@ -1085,14 +1184,19 @@ export default function EditCellDialog({
         time_range: timeRangeId ? Number(timeRangeId) : null,
         colorHex: colorHex ?? null,
         headcount: inferredHeadcount,
-        tier_counts: tierCounts,
-        tier_pools: tierPools,
+        tier_counts: normalizedTierCounts,
+        tier_pools: normalizedTierPools,
         allow_overstaffing: gridAllowsOverstaffing ? allowOverstaffing : null,
       };
+      if (!gridTierEnabled) {
+        basePayload.eligible_participants = normalizedEligibleParticipants;
+      }
 
       const serializedCurrentStaff = serializeStaffGroups(staffGroups);
       const sharedPayload: any = { ...basePayload };
-      if (serializedCurrentStaff !== initialStaffGroupsSerialized) {
+      if (!gridTierEnabled && staffGroups.length > 0) {
+        sharedPayload.staff_options = staffGroups;
+      } else if (serializedCurrentStaff !== initialStaffGroupsSerialized) {
         sharedPayload.staff_options = staffGroups;
       }
 
@@ -1594,6 +1698,7 @@ export default function EditCellDialog({
               )}
                 <CellStaffingEditor
                   participants={participants}
+                  tierEnabled={gridTierEnabled}
                   tierCounts={tierCounts}
                   onTierCountsChange={setTierCountsClamped}
                   tierPools={tierPools}
