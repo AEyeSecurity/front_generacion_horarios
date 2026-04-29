@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getApiBaseUrlNormalized } from "@/lib/api-base";
 
-const B = (process.env.BACKEND_URL || "").replace(/\/$/, "");
+const B = getApiBaseUrlNormalized();
 
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token") || "";
@@ -23,3 +24,7 @@ export async function GET(req: NextRequest) {
     headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
   });
 }
+
+
+
+

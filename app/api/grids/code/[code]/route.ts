@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
 
-const B = (process.env.BACKEND_URL || "").replace(/\/$/, "");
+const B = getApiBaseUrlNormalized();
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
@@ -51,3 +52,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
     headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
   });
 }
+
+
+
+

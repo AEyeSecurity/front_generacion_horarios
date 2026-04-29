@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
+import { getApiBaseUrl } from "@/lib/api-base";
 import { normalizePreferredLanguage } from "@/lib/language";
 
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
   };
 
   const tryGoogleLogin = async (payload: Record<string, unknown>) =>
-    fetch(`${process.env.BACKEND_URL}/api/auth/google/`, {
+    fetch(`${getApiBaseUrl()}/api/auth/google/`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -53,9 +54,13 @@ export async function POST(req: Request) {
     );
   }
 
-  // Success → set cookies with tokens
+  // Success â†’ set cookies with tokens
   const out = NextResponse.json({ ok: true }, { status: 200 });
   if (data?.access) out.cookies.set(ACCESS, data.access, { ...cookieOptions, maxAge: 60 * 15 });
   if (data?.refresh) out.cookies.set(REFRESH, data.refresh, { ...cookieOptions, maxAge: 60 * 60 * 24 * 7 });
   return out;
 }
+
+
+
+

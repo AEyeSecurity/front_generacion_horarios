@@ -19,7 +19,6 @@ type Grid = {
 
 type OrganizationType = "school" | "work" | "gym" | "private_tutor" | "other";
 type UnitNature = "audience" | "internal" | "none";
-type TierKey = "PRIMARY" | "SECONDARY" | "TERTIARY";
 type PriorityCode = "P1" | "P2" | "P3" | "P4" | "P5" | "P6" | "P9" | "P10";
 
 const PRIORITY_DEFAULT: Record<PriorityCode, number> = {
@@ -48,14 +47,6 @@ function toMin(t: string) {
   return h * 60 + m;
 }
 
-function parseNullableNonNegativeInt(raw: string): number | null | "invalid" {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const parsed = Number(trimmed);
-  if (!Number.isInteger(parsed) || parsed < 0) return "invalid";
-  return parsed;
-}
-
 export default function NewGridPage() {
   const router = useRouter();
   const { t } = useI18n();
@@ -78,12 +69,6 @@ export default function NewGridPage() {
   const [q2UnitNature, setQ2UnitNature] = useState<UnitNature | null>(null);
   const [q4UnitNoOverlap, setQ4UnitNoOverlap] = useState<boolean | null>(null);
   const [q5MinRestHours, setQ5MinRestHours] = useState("");
-  const [qTiers, setQTiers] = useState<boolean | null>(null);
-  const [qMinCells, setQMinCells] = useState<Record<TierKey, string>>({
-    PRIMARY: "",
-    SECONDARY: "",
-    TERTIARY: "",
-  });
 
   const [priorities, setPriorities] = useState<Record<PriorityCode, number>>(PRIORITY_DEFAULT);
   const [priorityTouched, setPriorityTouched] = useState<Record<PriorityCode, boolean>>({
@@ -123,49 +108,106 @@ export default function NewGridPage() {
     {
       key: "audience",
       label: tt("solver_wizard.unit_nature_audience", "Audience"),
-      help: tt(
-        "solver_wizard.unit_nature_audience_help",
-        "Units represent groups that attend together (classes/sections).",
-      ),
+      help: tt("solver_wizard.unit_nature_audience_help_short", "Groups that attend together."),
     },
     {
       key: "internal",
       label: tt("solver_wizard.unit_nature_internal", "Internal"),
-      help: tt(
-        "solver_wizard.unit_nature_internal_help",
-        "Units represent internal operational groups.",
-      ),
+      help: tt("solver_wizard.unit_nature_internal_help_short", "Internal organizational groups."),
     },
     {
       key: "none",
       label: tt("solver_wizard.unit_nature_none", "None"),
-      help: tt(
-        "solver_wizard.unit_nature_none_help",
-        "No unit-level coupling is needed.",
-      ),
+      help: tt("solver_wizard.unit_nature_none_help_short", "No unit grouping preferences."),
     },
   ];
 
-  const priorityRows = useMemo(() => {
-    const rows: Array<{ code: PriorityCode; label: string; bipolar?: boolean }> = [
-      { code: "P1", label: tt("solver_wizard.priority_availability", "Respect participant availability") },
+  const priorityRows = useMemo(
+    () => [
       {
-        code: "P2",
-        label: tt("solver_wizard.priority_participant_gap", "Minimize gaps between participant activities"),
+        code: "P1" as const,
+        label: tt("solver_wizard.priority_availability", "Respect participant availability"),
+        description: tt(
+          "solver_wizard.priority_availability_desc",
+          "How strictly should the solver respect when participants say they can't work?",
+        ),
       },
-      { code: "P3", label: tt("solver_wizard.priority_participant_days", "Concentrate activities in fewer days") },
-      { code: "P6", label: tt("solver_wizard.priority_soft_window", "Respect preferred time windows") },
-      { code: "P9", label: tt("solver_wizard.priority_daily_load_balance", "Daily load balance") },
-      { code: "P10", label: tt("solver_wizard.priority_day_spread", "Separate vs. cluster days"), bipolar: true },
-    ];
-    if (q2UnitNature === "audience") {
-      rows.push(
-        { code: "P4", label: tt("solver_wizard.priority_unit_gap", "Minimize gaps in units") },
-        { code: "P5", label: tt("solver_wizard.priority_unit_days", "Concentrate unit activities") },
-      );
-    }
-    return rows;
-  }, [q2UnitNature, t]);
+      {
+        code: "P2" as const,
+        label: tt("solver_wizard.priority_participant_gap", "Minimize gaps between participant activities"),
+        description: tt(
+          "solver_wizard.priority_participant_gap_desc",
+          "Should the solver try to avoid gaps/free periods between a participant's activities in the same day?",
+        ),
+      },
+      {
+        code: "P3" as const,
+        label: tt("solver_wizard.priority_participant_days", "Concentrate activities in fewer days"),
+        description: tt(
+          "solver_wizard.priority_participant_days_desc",
+          "Should the solver try to pack all of a participant's activities into fewer days?",
+        ),
+      },
+      {
+        code: "P9" as const,
+        label: tt("solver_wizard.priority_daily_load_balance", "Daily load balance"),
+        description: tt(
+          "solver_wizard.priority_daily_load_balance_desc",
+          "Within each day, should the workload be spread evenly?",
+        ),
+        indent: true,
+        dependsOnP3: true,
+      },
+      {
+        code: "P10" as const,
+        label: tt("solver_wizard.priority_day_spread", "Separate vs. cluster days"),
+        description: tt(
+          "solver_wizard.priority_day_spread_desc",
+          "Should working days be spread apart or clustered together?",
+        ),
+        indent: true,
+        dependsOnP3: true,
+        bipolar: true,
+      },
+      {
+        code: "P4" as const,
+        label: tt("solver_wizard.priority_unit_gap", "Minimize gaps in units"),
+        description: tt(
+          "solver_wizard.priority_unit_gap_desc",
+          "Should the solver avoid gaps in a unit/group's daily schedule?",
+        ),
+        audienceOnly: true,
+      },
+      {
+        code: "P5" as const,
+        label: tt("solver_wizard.priority_unit_days", "Concentrate unit activities"),
+        description: tt(
+          "solver_wizard.priority_unit_days_desc",
+          "Should the solver concentrate a unit/group's activities into fewer days?",
+        ),
+        audienceOnly: true,
+      },
+      {
+        code: "P6" as const,
+        label: tt("solver_wizard.priority_soft_window", "Respect preferred time windows"),
+        description: tt(
+          "solver_wizard.priority_soft_window_desc",
+          "How much should the solver respect preferred time windows?",
+        ),
+      },
+    ],
+    [t],
+  );
+
+  const visiblePriorityRows = useMemo(
+    () =>
+      priorityRows.filter((row) => {
+        if (row.audienceOnly && q2UnitNature !== "audience") return false;
+        if (row.dependsOnP3 && priorities.P3 <= 1) return false;
+        return true;
+      }),
+    [priorities.P3, priorityRows, q2UnitNature],
+  );
 
   const normalizedStart = normalizeTime(start);
   const normalizedEnd = normalizeTime(end);
@@ -176,20 +218,6 @@ export default function NewGridPage() {
 
   const step1Valid = hasName && hasDays && validTime && validCell;
   const step2Valid = Boolean(q1OrganizationType);
-
-  const tiersMayBeActive = qTiers !== false;
-
-  const parsedQMinCells = useMemo(() => {
-    const primary = parseNullableNonNegativeInt(qMinCells.PRIMARY);
-    const secondary = parseNullableNonNegativeInt(qMinCells.SECONDARY);
-    const tertiary = parseNullableNonNegativeInt(qMinCells.TERTIARY);
-    return { PRIMARY: primary, SECONDARY: secondary, TERTIARY: tertiary };
-  }, [qMinCells]);
-
-  const hasQMinCellsInvalid =
-    parsedQMinCells.PRIMARY === "invalid" ||
-    parsedQMinCells.SECONDARY === "invalid" ||
-    parsedQMinCells.TERTIARY === "invalid";
 
   function toggleDay(idx: number) {
     setDays((prev) =>
@@ -229,10 +257,6 @@ export default function NewGridPage() {
       setErr(tt("solver_wizard.q1_required", "Please select an organization type."));
       return false;
     }
-    if (hasQMinCellsInvalid) {
-      setErr(tt("solver_wizard.q_min_cells_invalid", "Min cells values must be non-negative integers."));
-      return false;
-    }
     return true;
   }
 
@@ -253,22 +277,6 @@ export default function NewGridPage() {
     if (q5Trimmed.length > 0) {
       const q5 = Number(q5Trimmed);
       if (Number.isFinite(q5) && q5 > 0) payload.Q5 = q5;
-    }
-
-    if (qTiers !== null) {
-      payload.Q_tiers = qTiers;
-    }
-
-    if (tiersMayBeActive) {
-      const minCells: Record<TierKey, number | null> = {
-        PRIMARY: parsedQMinCells.PRIMARY === "invalid" ? null : parsedQMinCells.PRIMARY,
-        SECONDARY: parsedQMinCells.SECONDARY === "invalid" ? null : parsedQMinCells.SECONDARY,
-        TERTIARY: parsedQMinCells.TERTIARY === "invalid" ? null : parsedQMinCells.TERTIARY,
-      };
-      const hasAtLeastOneValue = Object.values(minCells).some((value) => value !== null);
-      if (hasAtLeastOneValue) {
-        payload.Q_min_cells = minCells;
-      }
     }
 
     const activePriorityCodes =
@@ -458,75 +466,75 @@ export default function NewGridPage() {
                 <div className="space-y-4">
                   {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
                   <section className={questionCardClass}>
-                <h2 className="text-base font-medium text-gray-900">{tt("solver_wizard.section_basics", "Grid basics")}</h2>
-                <div className="mt-4 space-y-4">
-                  <div>
-                    <label className="block text-sm mb-1 text-gray-700">{tt("grid_new.name", "Name")}</label>
-                    <input
-                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                      value={name}
-                      onChange={(event) => setName(event.target.value)}
-                      maxLength={120}
-                    />
-                  </div>
+                    <h2 className="text-base font-medium text-gray-900">{tt("solver_wizard.section_basics", "Grid basics")}</h2>
+                    <div className="mt-4 space-y-4">
+                      <div>
+                        <label className="block text-sm mb-1 text-gray-700">{tt("grid_new.name", "Name")}</label>
+                        <input
+                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                          value={name}
+                          onChange={(event) => setName(event.target.value)}
+                          maxLength={120}
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block text-sm mb-2 text-gray-700">{tt("grid_new.days_of_week", "Days of the week")}</label>
-                    <div className="flex flex-wrap gap-2">
-                      {dayOptions.map((day) => {
-                        const selected = days.includes(day.idx);
-                        return (
-                          <button
-                            key={day.idx}
-                            type="button"
-                            onClick={() => toggleDay(day.idx)}
-                            className={`rounded-full border px-3 py-1 text-sm transition-colors ${
-                              selected
-                                ? "border-black bg-black text-white"
-                                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                            }`}
-                          >
-                            {day.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                      <div>
+                        <label className="block text-sm mb-2 text-gray-700">{tt("grid_new.days_of_week", "Days of the week")}</label>
+                        <div className="flex flex-wrap gap-2">
+                          {dayOptions.map((day) => {
+                            const selected = days.includes(day.idx);
+                            return (
+                              <button
+                                key={day.idx}
+                                type="button"
+                                onClick={() => toggleDay(day.idx)}
+                                className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+                                  selected
+                                    ? "border-black bg-black text-white"
+                                    : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                                }`}
+                              >
+                                {day.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="block text-sm mb-1 text-gray-700">{tt("grid_new.from", "From")}</label>
-                      <input
-                        type="time"
-                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        value={start}
-                        onChange={(event) => setStart(normalizeTime(event.target.value))}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm mb-1 text-gray-700">{tt("grid_new.to", "To")}</label>
-                      <input
-                        type="time"
-                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        value={end}
-                        onChange={(event) => setEnd(normalizeTime(event.target.value))}
-                      />
-                    </div>
-                  </div>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-sm mb-1 text-gray-700">{tt("grid_new.from", "From")}</label>
+                          <input
+                            type="time"
+                            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                            value={start}
+                            onChange={(event) => setStart(normalizeTime(event.target.value))}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm mb-1 text-gray-700">{tt("grid_new.to", "To")}</label>
+                          <input
+                            type="time"
+                            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                            value={end}
+                            onChange={(event) => setEnd(normalizeTime(event.target.value))}
+                          />
+                        </div>
+                      </div>
 
-                  <div>
-                    <label className="block text-sm mb-1 text-gray-700">{tt("grid_new.cell_size_min", "Cell size (min)")}</label>
-                    <input
-                      type="number"
-                      min={30}
-                      step={5}
-                      className="w-40 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                      value={cellMinutes}
-                      onChange={(event) => setCellMinutes(Number(event.target.value) || 0)}
-                    />
-                  </div>
-                </div>
-              </section>
+                      <div>
+                        <label className="block text-sm mb-1 text-gray-700">{tt("grid_new.cell_size_min", "Cell size (min)")}</label>
+                        <input
+                          type="number"
+                          min={30}
+                          step={5}
+                          className="w-40 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                          value={cellMinutes}
+                          onChange={(event) => setCellMinutes(Number(event.target.value) || 0)}
+                        />
+                      </div>
+                    </div>
+                  </section>
                 </div>
               </Step>
 
@@ -534,316 +542,250 @@ export default function NewGridPage() {
                 <div className="space-y-4">
                   {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
                   <section className={questionCardClass}>
-                <h2 className="text-base font-medium text-gray-900">{tt("solver_wizard.section_questions", "Questions")}</h2>
+                    <h2 className="text-base font-medium text-gray-900">{tt("solver_wizard.section_questions", "Questions")}</h2>
 
-                <div className="mt-4 space-y-5">
-                  <div>
-                    <label className="block text-sm mb-2 text-gray-700">{tt("solver_wizard.org_type", "Organization type")}</label>
-                    <div className="flex flex-wrap gap-2">
-                      {orgOptions.map((option) => {
-                        const selected = q1OrganizationType === option.key;
-                        return (
-                          <button
-                            key={option.key}
-                            type="button"
-                            onClick={() => {
-                              setQ1OrganizationType(option.key);
-                              setErr(null);
-                            }}
-                            className={`rounded-full border px-4 py-2 text-sm transition-colors ${
-                              selected
-                                ? "border-black bg-black text-white"
-                                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                            }`}
-                          >
-                            {option.label}
-                          </button>
-                        );
-                      })}
+                    <div className="mt-4 space-y-5">
+                      <div>
+                        <label className="block text-sm mb-2 text-gray-700">{tt("solver_wizard.org_type", "Organization type")}</label>
+                        <div className="flex flex-wrap gap-2">
+                          {orgOptions.map((option) => {
+                            const selected = q1OrganizationType === option.key;
+                            return (
+                              <button
+                                key={option.key}
+                                type="button"
+                                onClick={() => {
+                                  setQ1OrganizationType(option.key);
+                                  setErr(null);
+                                }}
+                                className={`rounded-full border px-4 py-2 text-sm transition-colors ${
+                                  selected
+                                    ? "border-black bg-black text-white"
+                                    : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                                }`}
+                              >
+                                {option.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {q1OrganizationType === "other" ? (
+                        <div>
+                          <label className="block text-sm mb-1 text-gray-700">
+                            {tt("solver_wizard.custom_description", "Custom description")}
+                          </label>
+                          <input
+                            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                            value={q1OtherDescription}
+                            onChange={(event) => setQ1OtherDescription(event.target.value)}
+                            placeholder={tt("solver_wizard.custom_description_placeholder", "Describe your organization")}
+                            maxLength={240}
+                          />
+                        </div>
+                      ) : null}
+
+                      {q1OrganizationType ? (
+                        <button
+                          type="button"
+                          onClick={jumpToConfirmWithDefaults}
+                          disabled={loading}
+                          className="text-sm text-gray-500 underline underline-offset-2 disabled:opacity-50"
+                        >
+                          {tt("solver_wizard.use_default_configuration", "Use default configuration")}
+                        </button>
+                      ) : null}
+
+                      <div>
+                        <label className="block text-sm mb-2 text-gray-700">
+                          {tt("solver_wizard.unit_nature", "Unit nature")} ({tt("solver_wizard.optional", "optional")})
+                        </label>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                          {unitNatureOptions.map((option) => {
+                            const selected = q2UnitNature === option.key;
+                            return (
+                              <button
+                                key={option.key}
+                                type="button"
+                                onClick={() => {
+                                  setQ2UnitNature(option.key);
+                                  if (option.key !== "audience") setQ4UnitNoOverlap(null);
+                                }}
+                                className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                                  selected
+                                    ? "border-black bg-black text-white"
+                                    : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                                }`}
+                              >
+                                <div className="text-sm font-medium">{option.label}</div>
+                                <div className={`mt-1 text-xs ${selected ? "text-gray-200" : "text-gray-500"}`}>
+                                  {option.help}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {q2UnitNature === "audience" ? (
+                        <div>
+                          <label className="block text-sm mb-2 text-gray-700">
+                            {tt("solver_wizard.q4_unit_nooverlap", "Prevent overlap inside the same unit")}
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              { label: tt("solver_wizard.no_preference", "No preference"), value: null as boolean | null },
+                              { label: tt("solver_wizard.q4_yes", "Yes"), value: true as boolean | null },
+                              { label: tt("solver_wizard.q4_no", "No"), value: false as boolean | null },
+                            ].map((option) => {
+                              const selected = q4UnitNoOverlap === option.value;
+                              return (
+                                <button
+                                  key={option.label}
+                                  type="button"
+                                  onClick={() => setQ4UnitNoOverlap(option.value)}
+                                  className={`rounded-full border px-4 py-2 text-sm transition-colors ${
+                                    selected
+                                      ? "border-black bg-black text-white"
+                                      : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                                  }`}
+                                >
+                                  {option.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div>
+                        <label className="block text-sm mb-1 text-gray-700">
+                          {tt("solver_wizard.q5_min_rest_label", "Minimum rest between shifts (hours)")}
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.5}
+                          className="w-56 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                          value={q5MinRestHours}
+                          onChange={(event) => setQ5MinRestHours(event.target.value)}
+                          placeholder={tt("solver_wizard.q5_placeholder", "e.g. 8")}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  </section>
+                </div>
+              </Step>
 
-                  {q1OrganizationType === "other" ? (
-                    <div>
-                      <label className="block text-sm mb-1 text-gray-700">
-                        {tt("solver_wizard.custom_description", "Custom description")}
-                      </label>
-                      <input
-                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        value={q1OtherDescription}
-                        onChange={(event) => setQ1OtherDescription(event.target.value)}
-                        placeholder={tt("solver_wizard.custom_description_placeholder", "Describe your organization")}
-                        maxLength={240}
-                      />
-                    </div>
-                  ) : null}
+              <Step>
+                <div className="space-y-4">
+                  {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
+                  <section className={questionCardClass}>
+                    <h2 className="text-base font-medium text-gray-900">{tt("solver_wizard.section_priorities", "Priorities")}</h2>
+                    <p className="mt-1 text-xs text-gray-500">{tt("solver_wizard.priorities_optional", "All sliders are optional. Untouched values keep profile defaults.")}</p>
 
-                  {q1OrganizationType ? (
-                    <button
-                      type="button"
-                      onClick={jumpToConfirmWithDefaults}
-                      disabled={loading}
-                      className="text-sm text-gray-500 underline underline-offset-2 disabled:opacity-50"
-                    >
-                      {tt("solver_wizard.use_default_configuration", "Use default configuration")}
-                    </button>
-                  ) : null}
-
-                  <div>
-                    <label className="block text-sm mb-2 text-gray-700">
-                      {tt("solver_wizard.unit_nature", "Unit nature")} ({tt("solver_wizard.optional", "optional")})
-                    </label>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                      {unitNatureOptions.map((option) => {
-                        const selected = q2UnitNature === option.key;
+                    <div className="mt-4 space-y-4">
+                      {visiblePriorityRows.map((row) => {
+                        const value = priorities[row.code];
+                        const sliderMax = row.code === "P10" ? 5 : 10;
                         return (
-                          <button
-                            key={option.key}
-                            type="button"
-                            onClick={() => {
-                              setQ2UnitNature(option.key);
-                              if (option.key !== "audience") setQ4UnitNoOverlap(null);
-                            }}
-                            className={`rounded-xl border px-3 py-3 text-left transition-colors ${
-                              selected
-                                ? "border-black bg-black text-white"
-                                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                            }`}
-                          >
-                            <div className="text-sm font-medium">{option.label}</div>
-                            <div className={`mt-1 text-xs ${selected ? "text-gray-200" : "text-gray-500"}`}>
-                              {option.help}
+                          <div key={row.code} className={`space-y-1 ${row.indent ? "ml-6" : ""}`}>
+                            <div className="flex items-center gap-3">
+                              <label className="text-sm font-medium text-gray-800">{row.label}</label>
                             </div>
-                          </button>
+                            <p className="text-xs text-gray-500">{row.description}</p>
+                            <ElasticSlider
+                              className="w-3/4 mx-auto"
+                              startingValue={1}
+                              maxValue={sliderMax}
+                              isStepped
+                              stepSize={1}
+                              value={value}
+                              defaultValue={value}
+                              leftIcon={
+                                row.bipolar ? (
+                                  <span className="text-[11px] font-medium text-gray-500">
+                                    {tt("solver_wizard.day_spread_strong_separate", "Strong Separate")}
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] font-medium text-gray-500">1</span>
+                                )
+                              }
+                              rightIcon={
+                                row.bipolar ? (
+                                  <span className="text-[11px] font-medium text-gray-500">
+                                    {tt("solver_wizard.day_spread_strong_cluster", "Strong Cluster")}
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] font-medium text-gray-500">10</span>
+                                )
+                              }
+                              onValueChange={(next) => setPriority(row.code, next)}
+                            />
+                          </div>
                         );
                       })}
                     </div>
-                  </div>
+                  </section>
+                </div>
+              </Step>
 
-                  {q2UnitNature === "audience" ? (
-                    <div>
-                      <label className="block text-sm mb-2 text-gray-700">
-                        {tt("solver_wizard.q4_unit_nooverlap", "Keep unit placements from overlapping")}
-                      </label>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { label: tt("solver_wizard.no_preference", "No preference"), value: null as boolean | null },
-                          { label: tt("solver_wizard.q4_yes", "Yes"), value: true as boolean | null },
-                          { label: tt("solver_wizard.q4_no", "No"), value: false as boolean | null },
-                        ].map((option) => {
-                          const selected = q4UnitNoOverlap === option.value;
+              <Step>
+                <div className="space-y-4">
+                  {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
+                  <section className={questionCardClass}>
+                    <h2 className="text-base font-medium text-gray-900">{tt("solver_wizard.section_confirm", "Confirmation")}</h2>
+                    <div className="mt-4 space-y-4">
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <div className="text-xs uppercase tracking-wide text-gray-500">{tt("solver_wizard.org_type", "Organization type")}</div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {orgOptions.find((option) => option.key === q1OrganizationType)?.label || "-"}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-xs uppercase tracking-wide text-gray-500">{tt("solver_wizard.unit_nature", "Unit nature")}</div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {unitNatureOptions.find((option) => option.key === q2UnitNature)?.label || "-"}
+                            </div>
+                          </div>
+                        </div>
+                        {q1OrganizationType === "other" && q1OtherDescription.trim() ? (
+                          <div className="mt-3">
+                            <div className="text-xs uppercase tracking-wide text-gray-500">{tt("solver_wizard.custom_description", "Custom description")}</div>
+                            <div className="text-sm text-gray-900">{q1OtherDescription.trim()}</div>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="rounded-lg border border-gray-200 p-4 space-y-2">
+                        {visiblePriorityRows.map((row) => {
+                          const value = priorities[row.code];
+                          const max = row.code === "P10" ? 5 : 10;
+                          const pct = ((value - 1) / (max - 1)) * 100;
                           return (
-                            <button
-                              key={option.label}
-                              type="button"
-                              onClick={() => setQ4UnitNoOverlap(option.value)}
-                              className={`rounded-full border px-4 py-2 text-sm transition-colors ${
-                                selected
-                                  ? "border-black bg-black text-white"
-                                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                              }`}
-                            >
-                              {option.label}
-                            </button>
+                            <div key={row.code} className="space-y-1">
+                              <div className="flex items-center justify-between gap-3 text-sm">
+                                <span className="text-gray-700">{row.label}</span>
+                                <span className="font-medium text-gray-900">{value}</span>
+                              </div>
+                              <div className="h-2 w-full rounded-full bg-gray-200">
+                                <div className="h-full rounded-full bg-gray-900" style={{ width: `${pct}%` }} />
+                              </div>
+                            </div>
                           );
                         })}
                       </div>
                     </div>
-                  ) : null}
-
-                  <div>
-                    <label className="block text-sm mb-1 text-gray-700">
-                      {tt("solver_wizard.q5_min_rest", "Minimum rest hours")} ({tt("solver_wizard.optional", "optional")})
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.5}
-                      className="w-44 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                      value={q5MinRestHours}
-                      onChange={(event) => setQ5MinRestHours(event.target.value)}
-                      placeholder={tt("solver_wizard.q5_help", "Leave empty or 0 to skip")}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm mb-2 text-gray-700">
-                      {tt("solver_wizard.q_tiers", "Tier usage")} ({tt("solver_wizard.optional", "optional")})
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { label: tt("solver_wizard.q_tiers_keep", "No change"), value: null as boolean | null },
-                        { label: tt("solver_wizard.q_tiers_enable", "Enable tiers"), value: true as boolean | null },
-                        { label: tt("solver_wizard.q_tiers_disable", "Disable tiers"), value: false as boolean | null },
-                      ].map((option) => {
-                        const selected = qTiers === option.value;
-                        return (
-                          <button
-                            key={option.label}
-                            type="button"
-                            onClick={() => setQTiers(option.value)}
-                            className={`rounded-full border px-4 py-2 text-sm transition-colors ${
-                              selected
-                                ? "border-black bg-black text-white"
-                                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                            }`}
-                          >
-                            {option.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div
-                    className={`overflow-hidden transition-all duration-200 ${
-                      tiersMayBeActive ? "max-h-72 opacity-100" : "max-h-0 opacity-0"
-                    }`}
-                  >
-                    <div className="space-y-2 pt-1">
-                      <label className="block text-sm mb-1 text-gray-700">
-                        {tt("solver_wizard.q_min_cells", "Minimum cells per week by tier")} ({tt("solver_wizard.optional", "optional")})
-                      </label>
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                        {([
-                          ["PRIMARY", tt("tier.primary", "Primary")],
-                          ["SECONDARY", tt("tier.secondary", "Secondary")],
-                          ["TERTIARY", tt("tier.tertiary", "Tertiary")],
-                        ] as Array<[TierKey, string]>).map(([tier, label]) => (
-                          <div key={tier}>
-                            <label className="mb-1 block text-xs text-gray-500">{label}</label>
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                              value={qMinCells[tier]}
-                              onChange={(event) =>
-                                setQMinCells((prev) => ({
-                                  ...prev,
-                                  [tier]: event.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-                </div>
-              </Step>
-
-              <Step>
-                <div className="space-y-4">
-                  {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
-                  <section className={questionCardClass}>
-                <h2 className="text-base font-medium text-gray-900">{tt("solver_wizard.section_priorities", "Priorities")}</h2>
-                <p className="mt-1 text-xs text-gray-500">{tt("solver_wizard.priorities_optional", "All sliders are optional. Untouched values keep profile defaults.")}</p>
-
-                <div className="mt-4 space-y-4">
-                  {priorityRows.map((row) => {
-                    const value = priorities[row.code];
-                    const sliderMax = row.code === "P10" ? 5 : 10;
-                    return (
-                      <div key={row.code} className="space-y-1">
-                        <div className="flex items-center gap-3">
-                          <label className="text-sm text-gray-700">{row.label}</label>
-                        </div>
-                        <ElasticSlider
-                          className="w-3/4 mx-auto"
-                          startingValue={1}
-                          maxValue={sliderMax}
-                          isStepped
-                          stepSize={1}
-                          value={value}
-                          defaultValue={value}
-                          leftIcon={
-                            row.bipolar ? (
-                              <span className="text-[11px] font-medium text-gray-500">
-                                {tt("solver_wizard.day_spread_strong_separate", "Strong Separate")}
-                              </span>
-                            ) : (
-                              <span className="text-[11px] font-medium text-gray-500">1</span>
-                            )
-                          }
-                          rightIcon={
-                            row.bipolar ? (
-                              <span className="text-[11px] font-medium text-gray-500">
-                                {tt("solver_wizard.day_spread_strong_cluster", "Strong Cluster")}
-                              </span>
-                            ) : (
-                              <span className="text-[11px] font-medium text-gray-500">10</span>
-                            )
-                          }
-                          onValueChange={(next) => setPriority(row.code, next)}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-                </div>
-              </Step>
-
-              <Step>
-                <div className="space-y-4">
-                  {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
-                  <section className={questionCardClass}>
-                <h2 className="text-base font-medium text-gray-900">{tt("solver_wizard.section_confirm", "Confirmation")}</h2>
-                <div className="mt-4 space-y-4">
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div>
-                        <div className="text-xs uppercase tracking-wide text-gray-500">{tt("solver_wizard.org_type", "Organization type")}</div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {orgOptions.find((option) => option.key === q1OrganizationType)?.label || "-"}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs uppercase tracking-wide text-gray-500">{tt("solver_wizard.unit_nature", "Unit nature")}</div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {unitNatureOptions.find((option) => option.key === q2UnitNature)?.label || "-"}
-                        </div>
-                      </div>
-                    </div>
-                    {q1OrganizationType === "other" && q1OtherDescription.trim() ? (
-                      <div className="mt-3">
-                        <div className="text-xs uppercase tracking-wide text-gray-500">{tt("solver_wizard.custom_description", "Custom description")}</div>
-                        <div className="text-sm text-gray-900">{q1OtherDescription.trim()}</div>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="rounded-lg border border-gray-200 p-4 space-y-2">
-                    {priorityRows.map((row) => {
-                      const value = priorities[row.code];
-                      const max = row.code === "P10" ? 5 : 10;
-                      const pct = ((value - 1) / (max - 1)) * 100;
-                      return (
-                        <div key={row.code} className="space-y-1">
-                          <div className="flex items-center justify-between gap-3 text-sm">
-                            <span className="text-gray-700">{row.label}</span>
-                            <span className="font-medium text-gray-900">{value}</span>
-                          </div>
-                          <div className="h-2 w-full rounded-full bg-gray-200">
-                            <div className="h-full rounded-full bg-gray-900" style={{ width: `${pct}%` }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                </div>
-              </section>
+                  </section>
                 </div>
               </Step>
             </Stepper>
           </div>
         </div>
       </div>
-
     </div>
   );
 }

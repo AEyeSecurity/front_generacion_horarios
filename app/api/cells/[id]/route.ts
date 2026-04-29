@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
 
-const B = (process.env.BACKEND_URL || "").replace(/\/$/, "");
+const B = getApiBaseUrlNormalized();
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
 const REFRESH = process.env.AUTH_REFRESH_COOKIE!;
 const DOMAIN = process.env.AUTH_COOKIE_DOMAIN;
@@ -113,3 +114,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
   });
 }
+
+
+
+

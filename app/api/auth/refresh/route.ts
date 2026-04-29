@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getApiBaseUrl } from '@/lib/api-base';
 import { getRefreshToken } from '@/lib/cookies';
 
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
@@ -23,7 +24,7 @@ export async function POST() {
     return out;
   }
 
-  const res = await fetch(`${process.env.BACKEND_URL}/api/auth/refresh/`, {
+  const res = await fetch(`${getApiBaseUrl()}/api/auth/refresh/`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ refresh }),
@@ -43,3 +44,7 @@ export async function POST() {
   out.cookies.set(REFRESH, tokens.refresh ?? refresh, { ...cookieOptions, maxAge: 60 * 60 * 24 * 7 });
   return out;
 }
+
+
+
+

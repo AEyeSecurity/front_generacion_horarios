@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken } from "@/lib/cookies";
 
-const B = (process.env.BACKEND_URL || "").replace(/\/$/, "");
+const B = getApiBaseUrlNormalized();
 
 export async function POST(
   req: NextRequest,
@@ -29,4 +30,8 @@ export async function POST(
     headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
   });
 }
+
+
+
+
 

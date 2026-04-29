@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
+import { getApiBaseUrl } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
 import { normalizePreferredLanguage } from "@/lib/language";
 
@@ -21,7 +22,7 @@ type RefreshPayload = { access: string; refresh?: string };
 async function refreshTokens(): Promise<{ tokens: RefreshPayload; refresh: string } | null> {
   const refresh = await getRefreshToken();
   if (!refresh) return null;
-  const res = await fetch(`${process.env.BACKEND_URL}/api/auth/refresh/`, {
+  const res = await fetch(`${getApiBaseUrl()}/api/auth/refresh/`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ refresh }),
@@ -34,7 +35,7 @@ async function refreshTokens(): Promise<{ tokens: RefreshPayload; refresh: strin
 }
 
 async function callWhoAmI(access: string, method: "GET" | "PATCH" | "PUT", payload?: unknown) {
-  return fetch(`${process.env.BACKEND_URL}/api/auth/whoami/`, {
+  return fetch(`${getApiBaseUrl()}/api/auth/whoami/`, {
     method,
     headers: {
       Authorization: `Bearer ${access}`,
@@ -126,3 +127,7 @@ export async function PUT(req: Request) {
   const preferred_language = normalizePreferredLanguage(candidate);
   return proxyWhoAmI("PUT", { preferred_language });
 }
+
+
+
+

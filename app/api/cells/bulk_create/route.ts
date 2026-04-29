@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
+import { getApiBaseUrl } from "@/lib/api-base";
 import { getRefreshToken } from "@/lib/cookies";
 
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
@@ -12,7 +13,7 @@ const withDomain = <T extends Record<string, any>>(o: T) => (DOMAIN ? { ...o, do
 async function refreshTokens() {
   const refresh = await getRefreshToken();
   if (!refresh) return { error: "unauthenticated" as const };
-  const rf = await fetch(`${process.env.BACKEND_URL}/api/auth/refresh/`, {
+  const rf = await fetch(`${getApiBaseUrl()}/api/auth/refresh/`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ refresh }),
@@ -25,7 +26,7 @@ async function refreshTokens() {
 
 export async function POST(req: Request) {
   const body = await req.text();
-  let r = await fetch(`${process.env.BACKEND_URL}/api/cells/bulk_create/`, {
+  let r = await fetch(`${getApiBaseUrl()}/api/cells/bulk_create/`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body,
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
     return out;
   }
   const { tokens, refresh } = refreshed;
-  r = await fetch(`${process.env.BACKEND_URL}/api/cells/bulk_create/`, {
+  r = await fetch(`${getApiBaseUrl()}/api/cells/bulk_create/`, {
     method: "POST",
     headers: { "content-type": "application/json", Authorization: `Bearer ${tokens.access}` },
     body,
@@ -57,3 +58,7 @@ export async function POST(req: Request) {
   out.cookies.set(REFRESH, tokens.refresh ?? refresh!, withDomain({ ...baseCookie, maxAge: 60 * 60 * 24 * 7 }));
   return out;
 }
+
+
+
+

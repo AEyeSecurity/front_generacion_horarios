@@ -148,6 +148,8 @@ export default function ParticipantDetailContent({
 }: Props) {
   const { t } = useI18n();
   const [showScheduleTab, setShowScheduleTab] = useState(DEFAULT_UNIT_NOOVERLAP_ENABLED);
+  const [hasParticipantPlacement, setHasParticipantPlacement] = useState(false);
+  const [participantLinkedState, setParticipantLinkedState] = useState(participantLinked);
   const [view, setView] = useState<"rules" | "schedule">(initialView);
   const [rulesState, setRulesState] = useState<Rule[]>(rules);
   const [inlineAddOpen, setInlineAddOpen] = useState(false);
@@ -219,11 +221,64 @@ export default function ParticipantDetailContent({
     };
   }, [gridId]);
 
+  const canOpenScheduleTab = showScheduleTab && hasParticipantPlacement;
+
   useEffect(() => {
-    if (!showScheduleTab && view === "schedule") {
+    if (!canOpenScheduleTab && view === "schedule") {
       setView("rules");
     }
-  }, [showScheduleTab, view]);
+  }, [canOpenScheduleTab, view]);
+
+  useEffect(() => {
+    setParticipantLinkedState(participantLinked);
+  }, [participantLinked]);
+
+  useEffect(() => {
+    let active = true;
+    const hasPlacementForParticipant = (raw: unknown) => {
+      const source = (raw ?? {}) as Record<string, unknown>;
+      const scheduleCandidate =
+        source?.schedule ?? source?.published_schedule ?? source?.latest ?? source;
+      const placements = Array.isArray((scheduleCandidate as any)?.placements)
+        ? (scheduleCandidate as any).placements
+        : Array.isArray((scheduleCandidate as any)?.schedule)
+        ? (scheduleCandidate as any).schedule
+        : [];
+      return placements.some((placement: any) =>
+        (Array.isArray(placement?.assigned_participants) ? placement.assigned_participants : [])
+          .map(String)
+          .includes(String(participantId)),
+      );
+    };
+
+    (async () => {
+      try {
+        const endpoints = [
+          `/api/grids/${gridId}/schedule/`,
+          `/api/grids/${gridId}/schedule`,
+          `/api/grids/${gridId}/published-schedule/`,
+          `/api/grids/${gridId}/published-schedule`,
+        ];
+        let found = false;
+        for (const endpoint of endpoints) {
+          const res = await fetch(endpoint, { cache: "no-store" }).catch(() => null);
+          if (!res || !res.ok) continue;
+          const payload = await res.json().catch(() => null);
+          if (hasPlacementForParticipant(payload)) {
+            found = true;
+            break;
+          }
+        }
+        if (active) setHasParticipantPlacement(found);
+      } catch {
+        if (active) setHasParticipantPlacement(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [gridId, participantId]);
 
   useEffect(() => {
     if (typeof daysIdx[0] === "number") {
@@ -893,12 +948,17 @@ export default function ParticipantDetailContent({
         <div className="mx-auto text-center">
           <div className="flex items-center justify-center gap-2">
             <h1 className="text-xl md:text-2xl font-semibold">{participantName}</h1>
-            {participantLinked ? (
+            {participantLinkedState ? (
               <span title="Linked participant">
                 <BadgeCheck className="w-5 h-5 text-emerald-600" />
               </span>
             ) : (
-              <EditorInviteInline gridId={String(gridId)} participantId={String(participantId)} />
+              <EditorInviteInline
+                gridId={String(gridId)}
+                participantId={String(participantId)}
+                allowLinkSelf={role === "supervisor"}
+                onLinked={() => setParticipantLinkedState(true)}
+              />
             )}
           </div>
 
@@ -910,7 +970,7 @@ export default function ParticipantDetailContent({
             >
               Availability Rules
             </button>
-            {showScheduleTab && (
+            {canOpenScheduleTab && (
               <>
                 <span className="text-gray-400">|</span>
                 <button

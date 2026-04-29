@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
+import { getApiBaseUrl } from "@/lib/api-base";
 
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
 const REFRESH = process.env.AUTH_REFRESH_COOKIE!;
@@ -15,7 +16,7 @@ const cookieOptions = {
 
 export async function POST(req: Request) {
   const payload = await req.text();
-  const res = await fetch(`${process.env.BACKEND_URL}/api/auth/verify-email/confirm/`, {
+  const res = await fetch(`${getApiBaseUrl()}/api/auth/verify-email/confirm/`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: payload,
@@ -46,3 +47,7 @@ export async function POST(req: Request) {
   if (refresh) out.cookies.set(REFRESH, refresh, { ...cookieOptions, maxAge: 60 * 60 * 24 * 7 });
   return out;
 }
+
+
+
+

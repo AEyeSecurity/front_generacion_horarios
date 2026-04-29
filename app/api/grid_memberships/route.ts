@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
+import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getRefreshToken, getAccessToken } from "@/lib/cookies";
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
 const REFRESH = process.env.AUTH_REFRESH_COOKIE!;
@@ -9,7 +10,7 @@ const withDomain = <T extends Record<string, any>>(o: T) => (DOMAIN ? { ...o, do
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const qs = url.searchParams.toString();
-  const base = (process.env.BACKEND_URL || "").replace(/\/$/, "");
+  const base = getApiBaseUrlNormalized();
   const access = await getAccessToken();
   const headers: HeadersInit | undefined = access ? { Authorization: `Bearer ${access}` } : undefined;
   // First try canonical path
@@ -34,3 +35,6 @@ export async function GET(req: Request) {
   out.cookies.set(REFRESH, tokens.refresh ?? refresh, withDomain({ ...baseCookie, maxAge: 60 * 60 * 24 * 7 }));
   return out;
 }
+
+
+

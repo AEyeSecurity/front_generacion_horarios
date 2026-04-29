@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken } from "@/lib/cookies";
 
-const B = (process.env.BACKEND_URL || "").replace(/\/$/, "");
+const B = getApiBaseUrlNormalized();
 
 export async function GET(req: NextRequest) {
   const access = await getAccessToken();
@@ -13,4 +14,8 @@ export async function GET(req: NextRequest) {
   const txt = await res.text().catch(() => "");
   return new NextResponse(txt, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/json" } });
 }
+
+
+
+
 

@@ -1,8 +1,9 @@
-// app/api/grids/[id]/route.ts
+﻿// app/api/grids/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
 
-const B = (process.env.BACKEND_URL || "").replace(/\/$/, "");
+const B = getApiBaseUrlNormalized();
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -77,9 +78,41 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     cookie: req.headers.get("cookie") || "",
   };
 
-  let res = await fetch(`${B}/api/grids/${id}/`, { headers, cache: "no-store" });
-  if (res.status === 404) {
-    res = await fetch(`${B}/api/grids/${id}`, { headers, cache: "no-store" });
+  let res: Response;
+  try {
+    res = await fetch(`${B}/api/grids/${id}/`, { headers, cache: "no-store" });
+    if (res.status === 404) {
+      res = await fetch(`${B}/api/grids/${id}`, { headers, cache: "no-store" });
+    }
+  } catch {
+    return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+  }
+
+  if (res.status === 401) {
+    const refresh = await getRefreshToken();
+    if (!refresh) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+
+    const rf = await fetch(`${B}/api/auth/refresh/`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ refresh }),
+      cache: "no-store",
+    });
+    if (!rf.ok) return NextResponse.json({ error: "refresh_failed" }, { status: 401 });
+
+    const { access: newAccess } = await rf.json();
+    const retryHeaders: HeadersInit = {
+      Authorization: `Bearer ${newAccess}`,
+      cookie: req.headers.get("cookie") || "",
+    };
+    try {
+      res = await fetch(`${B}/api/grids/${id}/`, { headers: retryHeaders, cache: "no-store" });
+      if (res.status === 404) {
+        res = await fetch(`${B}/api/grids/${id}`, { headers: retryHeaders, cache: "no-store" });
+      }
+    } catch {
+      return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+    }
   }
 
   const txt = await res.text().catch(() => "");
@@ -108,19 +141,62 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     cookie: req.headers.get("cookie") || "",
   };
 
-  let res = await fetch(`${B}/api/grids/${id}/`, {
-    method: "PATCH",
-    headers,
-    body,
-    cache: "no-store",
-  });
-  if (res.status === 404) {
-    res = await fetch(`${B}/api/grids/${id}`, {
+  let res: Response;
+  try {
+    res = await fetch(`${B}/api/grids/${id}/`, {
       method: "PATCH",
       headers,
       body,
       cache: "no-store",
     });
+    if (res.status === 404) {
+      res = await fetch(`${B}/api/grids/${id}`, {
+        method: "PATCH",
+        headers,
+        body,
+        cache: "no-store",
+      });
+    }
+  } catch {
+    return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+  }
+
+  if (res.status === 401) {
+    const refresh = await getRefreshToken();
+    if (!refresh) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+
+    const rf = await fetch(`${B}/api/auth/refresh/`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ refresh }),
+      cache: "no-store",
+    });
+    if (!rf.ok) return NextResponse.json({ error: "refresh_failed" }, { status: 401 });
+
+    const { access: newAccess } = await rf.json();
+    const retryHeaders: HeadersInit = {
+      Authorization: `Bearer ${newAccess}`,
+      "content-type": "application/json",
+      cookie: req.headers.get("cookie") || "",
+    };
+    try {
+      res = await fetch(`${B}/api/grids/${id}/`, {
+        method: "PATCH",
+        headers: retryHeaders,
+        body,
+        cache: "no-store",
+      });
+      if (res.status === 404) {
+        res = await fetch(`${B}/api/grids/${id}`, {
+          method: "PATCH",
+          headers: retryHeaders,
+          body,
+          cache: "no-store",
+        });
+      }
+    } catch {
+      return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+    }
   }
 
   const txt = await res.text().catch(() => "");
@@ -129,3 +205,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
   });
 }
+
+
+
+

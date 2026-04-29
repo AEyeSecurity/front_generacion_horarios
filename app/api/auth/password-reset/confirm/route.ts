@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
+import { getApiBaseUrl } from "@/lib/api-base";
 
 export async function POST(req: Request) {
   const payload = await req.text();
-  const res = await fetch(`${process.env.BACKEND_URL}/api/auth/password-reset/confirm/`, {
+  const res = await fetch(`${getApiBaseUrl()}/api/auth/password-reset/confirm/`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: payload,
@@ -33,3 +34,7 @@ export async function POST(req: Request) {
     { status: res.status }
   );
 }
+
+
+
+

@@ -1,5 +1,6 @@
-// app/api/grids/route.ts
+﻿// app/api/grids/route.ts
 import { NextResponse } from "next/server";
+import { getApiBaseUrl } from "@/lib/api-base";
 import { ApiError } from "@/lib/errors";
 import { backendFetchJSON } from "@/lib/backend";
 import { getRefreshToken } from "@/lib/cookies";
@@ -20,7 +21,7 @@ const baseCookie = {
 const withDomain = <T extends Record<string, any>>(o: T) =>
   DOMAIN ? { ...o, domain: DOMAIN } : o;
 
-// ✅ GET: listar grids
+// âœ… GET: listar grids
 export async function GET() {
   try {
     const data = await backendFetchJSON<ApiList<Grid>>("/api/grids/");
@@ -33,12 +34,12 @@ export async function GET() {
   }
 }
 
-// ✅ POST: crear nuevo grid
+// âœ… POST: crear nuevo grid
 export async function POST(req: Request) {
   const bodyText = await req.text(); // mantener body para reintento
 
   // --- 1) intento directo ---
-  let res = await fetch(`${process.env.BACKEND_URL}/api/grids/`, {
+  let res = await fetch(`${getApiBaseUrl()}/api/grids/`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: bodyText,
@@ -57,7 +58,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "validation", detail }, { status: res.status });
   }
 
-  // --- 2) 401 → refresh y reintento ---
+  // --- 2) 401 â†’ refresh y reintento ---
   const refresh = await getRefreshToken();
   if (!refresh) {
     const out = NextResponse.json({ error: "unauthenticated" }, { status: 401 });
@@ -66,7 +67,7 @@ export async function POST(req: Request) {
     return out;
   }
 
-  const rf = await fetch(`${process.env.BACKEND_URL}/api/auth/refresh/`, {
+  const rf = await fetch(`${getApiBaseUrl()}/api/auth/refresh/`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ refresh }),
@@ -82,7 +83,7 @@ export async function POST(req: Request) {
 
   const { access, refresh: newRefresh } = await rf.json();
 
-  res = await fetch(`${process.env.BACKEND_URL}/api/grids/`, {
+  res = await fetch(`${getApiBaseUrl()}/api/grids/`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -106,7 +107,7 @@ export async function POST(req: Request) {
   return out;
 }
 
-// helper para GET con refresh automático
+// helper para GET con refresh automÃ¡tico
 async function refreshAndRetryJSON(path: string) {
   const refresh = await getRefreshToken();
   if (!refresh) {
@@ -116,7 +117,7 @@ async function refreshAndRetryJSON(path: string) {
     return out;
   }
 
-  const rf = await fetch(`${process.env.BACKEND_URL}/api/auth/refresh/`, {
+  const rf = await fetch(`${getApiBaseUrl()}/api/auth/refresh/`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ refresh }),
@@ -132,7 +133,7 @@ async function refreshAndRetryJSON(path: string) {
 
   const { access, refresh: newRefresh } = await rf.json();
 
-  const retry = await fetch(`${process.env.BACKEND_URL}${path}`, {
+  const retry = await fetch(`${getApiBaseUrl()}${path}`, {
     headers: { Authorization: `Bearer ${access}` },
     cache: "no-store",
   });
@@ -147,3 +148,7 @@ async function refreshAndRetryJSON(path: string) {
   );
   return out;
 }
+
+
+
+

@@ -1,5 +1,6 @@
-// Proxy: /api/users -> BACKEND_URL/api/users
+﻿// Proxy: /api/users -> NEXT_PUBLIC_API_URL/api/users
 import { NextResponse } from "next/server";
+import { getApiBaseUrl } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
 
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
@@ -13,7 +14,7 @@ const withDomain = <T extends Record<string, any>>(o: T) => (DOMAIN ? { ...o, do
 async function refreshTokens() {
   const refresh = await getRefreshToken();
   if (!refresh) return { error: "unauthenticated" as const };
-  const rf = await fetch(`${process.env.BACKEND_URL}/api/auth/refresh/`, {
+  const rf = await fetch(`${getApiBaseUrl()}/api/auth/refresh/`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ refresh }),
@@ -30,7 +31,7 @@ export async function GET(req: Request) {
   const access = await getAccessToken();
 
   async function tryPath(path: string, token?: string) {
-    return fetch(`${process.env.BACKEND_URL}${path}${qs ? `?${qs}` : ""}`, {
+    return fetch(`${getApiBaseUrl()}${path}${qs ? `?${qs}` : ""}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       cache: "no-store",
     });
@@ -68,3 +69,8 @@ export async function GET(req: Request) {
   out.cookies.set(REFRESH, tokens.refresh ?? refresh!, withDomain({ ...baseCookie, maxAge: 60 * 60 * 24 * 7 }));
   return out;
 }
+
+
+
+
+

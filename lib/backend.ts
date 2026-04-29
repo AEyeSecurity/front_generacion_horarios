@@ -1,8 +1,9 @@
-// lib/backend.ts
+﻿// lib/backend.ts
 import { ApiError } from "./errors";
 import { getAccessToken, getRefreshToken } from "./cookies";
+import { getApiBaseUrl } from "./api-base";
 
-const BASE = process.env.BACKEND_URL!;
+const BASE = getApiBaseUrl();
 
 async function readDataOrThrow(res: Response) {
   if (!res.ok) {
@@ -47,3 +48,6 @@ export async function backendFetchJSON<T>(path: string, init?: RequestInit): Pro
 
   return (await readDataOrThrow(response)) as T;
 }
+
+
+

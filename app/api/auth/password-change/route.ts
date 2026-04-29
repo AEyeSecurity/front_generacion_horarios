@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
+import { getApiBaseUrl } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
 import { canChangePassword } from "@/lib/account";
 
@@ -18,7 +19,7 @@ const withDomain = <T extends Record<string, unknown>>(o: T) => (DOMAIN ? { ...o
 async function refreshAccess() {
   const refresh = await getRefreshToken();
   if (!refresh) return null;
-  const rf = await fetch(`${process.env.BACKEND_URL}/api/auth/refresh/`, {
+  const rf = await fetch(`${getApiBaseUrl()}/api/auth/refresh/`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ refresh }),
@@ -30,7 +31,7 @@ async function refreshAccess() {
 }
 
 async function callPasswordChange(payload: string, access?: string | null) {
-  return fetch(`${process.env.BACKEND_URL}/api/auth/password-change/`, {
+  return fetch(`${getApiBaseUrl()}/api/auth/password-change/`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -42,7 +43,7 @@ async function callPasswordChange(payload: string, access?: string | null) {
 }
 
 async function callWhoAmI(access?: string | null) {
-  return fetch(`${process.env.BACKEND_URL}/api/auth/whoami/`, {
+  return fetch(`${getApiBaseUrl()}/api/auth/whoami/`, {
     headers: {
       ...(access ? { Authorization: `Bearer ${access}` } : {}),
     },
@@ -138,3 +139,7 @@ export async function POST(req: Request) {
   }
   return out;
 }
+
+
+
+

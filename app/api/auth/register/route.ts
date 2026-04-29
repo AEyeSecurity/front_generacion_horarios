@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
+import { getApiBaseUrl } from "@/lib/api-base";
 import { normalizePreferredLanguage } from "@/lib/language";
 
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
   };
 
   const tryRegister = async (payload: Record<string, unknown>) =>
-    fetch(`${process.env.BACKEND_URL}/api/auth/register/`, {
+    fetch(`${getApiBaseUrl()}/api/auth/register/`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -69,3 +70,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ error: message }, { status: res.status });
 }
+
+
+
+

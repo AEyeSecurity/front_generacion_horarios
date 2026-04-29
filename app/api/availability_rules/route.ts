@@ -1,8 +1,9 @@
-// Proxy: /api/availability_rules  →  BACKEND_URL/api/availability-rules
+﻿// Proxy: /api/availability_rules  â†’  NEXT_PUBLIC_API_URL/api/availability-rules
 import { NextRequest, NextResponse } from "next/server";
+import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken } from "@/lib/cookies";
 
-const B = (process.env.BACKEND_URL || "").replace(/\/$/, "");
+const B = getApiBaseUrlNormalized();
 
 const hhmm = (t: unknown) => {
   if (typeof t !== "string") return t as any;
@@ -56,3 +57,8 @@ export async function POST(req: NextRequest) {
 export function OPTIONS() {
   return NextResponse.json({}, { status: 204 });
 }
+
+
+
+
+

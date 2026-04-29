@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
+import { getApiBaseUrl } from "@/lib/api-base";
 import { getRefreshToken } from "@/lib/cookies";
 
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
@@ -12,7 +13,7 @@ const withDomain = <T extends Record<string, unknown>>(o: T) => (DOMAIN ? { ...o
 async function refreshTokens() {
   const refresh = await getRefreshToken();
   if (!refresh) return { error: "unauthenticated" as const };
-  const rf = await fetch(`${process.env.BACKEND_URL}/api/auth/refresh/`, {
+  const rf = await fetch(`${getApiBaseUrl()}/api/auth/refresh/`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ refresh }),
@@ -27,7 +28,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const qs = url.searchParams.toString();
   let r = await fetch(
-    `${process.env.BACKEND_URL}/api/placement-comments/${qs ? `?${qs}` : ""}`,
+    `${getApiBaseUrl()}/api/placement-comments/${qs ? `?${qs}` : ""}`,
     { cache: "no-store" },
   );
   if (r.ok) return NextResponse.json(await r.json(), { status: r.status });
@@ -46,7 +47,7 @@ export async function GET(req: Request) {
 
   const { tokens, refresh } = refreshed;
   r = await fetch(
-    `${process.env.BACKEND_URL}/api/placement-comments/${qs ? `?${qs}` : ""}`,
+    `${getApiBaseUrl()}/api/placement-comments/${qs ? `?${qs}` : ""}`,
     {
       headers: { Authorization: `Bearer ${tokens.access}` },
       cache: "no-store",
@@ -61,7 +62,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const body = await req.text();
-  let r = await fetch(`${process.env.BACKEND_URL}/api/placement-comments/`, {
+  let r = await fetch(`${getApiBaseUrl()}/api/placement-comments/`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body,
@@ -84,7 +85,7 @@ export async function POST(req: Request) {
   }
 
   const { tokens, refresh } = refreshed;
-  r = await fetch(`${process.env.BACKEND_URL}/api/placement-comments/`, {
+  r = await fetch(`${getApiBaseUrl()}/api/placement-comments/`, {
     method: "POST",
     headers: { "content-type": "application/json", Authorization: `Bearer ${tokens.access}` },
     body,
@@ -98,3 +99,7 @@ export async function POST(req: Request) {
   out.cookies.set(REFRESH, tokens.refresh ?? refresh!, withDomain({ ...baseCookie, maxAge: 60 * 60 * 24 * 7 }));
   return out;
 }
+
+
+
+

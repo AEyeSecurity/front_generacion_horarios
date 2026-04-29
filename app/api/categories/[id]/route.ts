@@ -1,8 +1,9 @@
-// Proxy: /api/categories/:id → BACKEND_URL/api/categories/:id
+﻿// Proxy: /api/categories/:id â†’ NEXT_PUBLIC_API_URL/api/categories/:id
 import { NextRequest, NextResponse } from "next/server";
+import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken } from "@/lib/cookies";
 
-const B = (process.env.BACKEND_URL || "").replace(/\/$/, "");
+const B = getApiBaseUrlNormalized();
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -24,3 +25,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     headers: { "content-type": res.headers.get("content-type") ?? "text/plain" },
   });
 }
+
+
+
+
+

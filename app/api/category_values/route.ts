@@ -1,8 +1,9 @@
-// Proxy: /api/category_values → BACKEND_URL/api/category-values
+﻿// Proxy: /api/category_values â†’ NEXT_PUBLIC_API_URL/api/category-values
 import { NextRequest, NextResponse } from "next/server";
+import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken } from "@/lib/cookies";
 
-const B = (process.env.BACKEND_URL || "").replace(/\/$/, "");
+const B = getApiBaseUrlNormalized();
 
 // GET /api/category_values?category=<id>
 export async function GET(req: NextRequest) {
@@ -37,3 +38,8 @@ export async function POST(req: NextRequest) {
     headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
   });
 }
+
+
+
+
+

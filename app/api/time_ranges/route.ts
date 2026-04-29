@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getRefreshToken } from "@/lib/cookies";
+import { getApiBaseUrl } from "@/lib/api-base";
+import { getAccessToken, getRefreshToken } from "@/lib/cookies";
 
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
 const REFRESH = process.env.AUTH_REFRESH_COOKIE!;
@@ -12,7 +13,7 @@ const withDomain = <T extends Record<string, any>>(o: T) => (DOMAIN ? { ...o, do
 async function refreshTokens() {
   const refresh = await getRefreshToken();
   if (!refresh) return { error: "unauthenticated" as const };
-  const rf = await fetch(`${process.env.BACKEND_URL}/api/auth/refresh/`, {
+  const rf = await fetch(`${getApiBaseUrl()}/api/auth/refresh/`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ refresh }),
@@ -27,23 +28,42 @@ async function refreshTokens() {
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const qs = url.searchParams.toString();
-  let r = await fetch(`${process.env.BACKEND_URL}/api/time-ranges/${qs ? `?${qs}` : ""}`, { cache: "no-store" });
+  const access = await getAccessToken();
+
+  let r: Response;
+  try {
+    r = await fetch(`${getApiBaseUrl()}/api/time-ranges/${qs ? `?${qs}` : ""}`, {
+      headers: access ? { Authorization: `Bearer ${access}` } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+  }
+
   if (r.ok) return NextResponse.json(await r.json(), { status: r.status });
   if (r.status !== 401) {
     const text = await r.text().catch(() => "error");
     return NextResponse.json({ error: text }, { status: r.status });
   }
+
   const refreshed = await refreshTokens();
   if ("error" in refreshed) {
     const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
-    out.cookies.delete(ACCESS); out.cookies.delete(REFRESH);
+    out.cookies.delete(ACCESS);
+    out.cookies.delete(REFRESH);
     return out;
   }
+
   const { tokens, refresh } = refreshed;
-  r = await fetch(`${process.env.BACKEND_URL}/api/time-ranges/${qs ? `?${qs}` : ""}`, {
-    headers: { Authorization: `Bearer ${tokens.access}` },
-    cache: "no-store",
-  });
+  try {
+    r = await fetch(`${getApiBaseUrl()}/api/time-ranges/${qs ? `?${qs}` : ""}`, {
+      headers: { Authorization: `Bearer ${tokens.access}` },
+      cache: "no-store",
+    });
+  } catch {
+    return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+  }
+
   const data = await r.json().catch(() => ({}));
   const out = NextResponse.json(data, { status: r.status });
   out.cookies.set(ACCESS, tokens.access, withDomain({ ...baseCookie, maxAge: 60 * 15 }));
@@ -54,36 +74,61 @@ export async function GET(req: Request) {
 // POST /api/time_ranges -> BACKEND /api/time-ranges/
 export async function POST(req: Request) {
   const body = await req.text();
-  let r = await fetch(`${process.env.BACKEND_URL}/api/time-ranges/`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body,
-    cache: "no-store",
-  });
+  const access = await getAccessToken();
+
+  let r: Response;
+  try {
+    r = await fetch(`${getApiBaseUrl()}/api/time-ranges/`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(access ? { Authorization: `Bearer ${access}` } : {}),
+      },
+      body,
+      cache: "no-store",
+    });
+  } catch {
+    return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+  }
+
   if (r.ok) return NextResponse.json(await r.json(), { status: 201 });
   if (r.status !== 401) {
     const txt = await r.text().catch(() => "");
-    let detail: any = txt; try { detail = JSON.parse(txt); } catch {}
+    let detail: unknown = txt;
+    try {
+      detail = JSON.parse(txt);
+    } catch {}
     return NextResponse.json(detail, { status: r.status });
   }
+
   const refreshed = await refreshTokens();
   if ("error" in refreshed) {
     const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
-    out.cookies.delete(ACCESS); out.cookies.delete(REFRESH);
+    out.cookies.delete(ACCESS);
+    out.cookies.delete(REFRESH);
     return out;
   }
+
   const { tokens, refresh } = refreshed;
-  r = await fetch(`${process.env.BACKEND_URL}/api/time-ranges/`, {
-    method: "POST",
-    headers: { "content-type": "application/json", Authorization: `Bearer ${tokens.access}` },
-    body,
-    cache: "no-store",
-  });
+  try {
+    r = await fetch(`${getApiBaseUrl()}/api/time-ranges/`, {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: `Bearer ${tokens.access}` },
+      body,
+      cache: "no-store",
+    });
+  } catch {
+    return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+  }
+
   const text = await r.text().catch(() => "");
-  let data: any = text; try { data = JSON.parse(text); } catch {}
+  let data: unknown = text;
+  try {
+    data = JSON.parse(text);
+  } catch {}
+
   const out = NextResponse.json(data, { status: r.status });
   out.cookies.set(ACCESS, tokens.access, withDomain({ ...baseCookie, maxAge: 60 * 15 }));
   out.cookies.set(REFRESH, tokens.refresh ?? refresh!, withDomain({ ...baseCookie, maxAge: 60 * 60 * 24 * 7 }));
   return out;
 }
-

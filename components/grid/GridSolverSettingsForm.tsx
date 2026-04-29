@@ -1,34 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  buildSolverParamsPayload,
-  DEFAULT_UNIT_NOOVERLAP_ENABLED,
-  getGridSolverSettingsKey,
-  parseGridSolverSettings,
-  TIER_KEYS,
-  type GridSolverSettings,
-  type TierKey,
-} from "@/lib/grid-solver-settings";
+import { toast } from "sonner";
+import ElasticSlider from "@/components/ElasticSlider";
 import { useI18n } from "@/lib/use-i18n";
 
-type TierValues = Record<TierKey, string>;
-
-type ToggleNumber = { enabled: boolean; value: string };
-type ToggleBoolean = { enabled: boolean; value: boolean };
-type ToggleTierValues = { enabled: boolean; values: TierValues };
-
-type FormState = {
-  unit_nooverlap_enabled: boolean;
-  max_hours_day_by_tier: ToggleTierValues;
-  max_hours_week_by_tier: ToggleTierValues;
-  min_hours_week_by_tier: ToggleTierValues;
-  min_hours_week_hard: ToggleBoolean;
-  min_hours_week_weight: ToggleNumber;
-  unit_max_hours_day: ToggleNumber;
-  min_rest_hours: ToggleNumber;
-  stability_weight: ToggleNumber;
-};
+type OrganizationType = "school" | "work" | "gym" | "private_tutor" | "other";
+type UnitNature = "audience" | "internal" | "none";
+type TierKey = "PRIMARY" | "SECONDARY" | "TERTIARY";
+type PriorityCode = "P1" | "P2" | "P3" | "P4" | "P5" | "P6" | "P9" | "P10";
 
 type DayHeatmapKey = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 type DayHeatmapValues = Record<DayHeatmapKey, 1 | 2 | 3>;
@@ -54,6 +34,39 @@ type TimeRangeListResponse = {
   results?: TimeRangeResource[];
 };
 
+type WizardAnswers = {
+  Q1?: OrganizationType;
+  Q2?: UnitNature;
+  Q4?: boolean;
+  Q5?: number;
+  Q_tiers?: boolean;
+  Q_min_cells?: Partial<Record<TierKey, number | null>>;
+  priorities?: Partial<Record<PriorityCode, number>>;
+};
+
+type GridDetailResponse = {
+  id?: number;
+  description?: string;
+  solver_params?: Record<string, unknown> | null;
+  solve_preference?: {
+    solver_params?: Record<string, unknown> | null;
+    wizard_config?: {
+      answers?: WizardAnswers;
+    } | null;
+  } | null;
+};
+
+const PRIORITY_DEFAULT: Record<PriorityCode, number> = {
+  P1: 5,
+  P2: 5,
+  P3: 5,
+  P4: 5,
+  P5: 5,
+  P6: 5,
+  P9: 5,
+  P10: 3,
+};
+
 const DAY_INDEX_TO_KEY: Record<number, DayHeatmapKey> = {
   0: "Mon",
   1: "Tue",
@@ -64,7 +77,10 @@ const DAY_INDEX_TO_KEY: Record<number, DayHeatmapKey> = {
   6: "Sun",
 };
 
-const DAY_KEY_TO_I18N: Record<DayHeatmapKey, "day.mon_short" | "day.tue_short" | "day.wed_short" | "day.thu_short" | "day.fri_short" | "day.sat_short" | "day.sun_short"> = {
+const DAY_KEY_TO_I18N: Record<
+  DayHeatmapKey,
+  "day.mon_short" | "day.tue_short" | "day.wed_short" | "day.thu_short" | "day.fri_short" | "day.sat_short" | "day.sun_short"
+> = {
   Mon: "day.mon_short",
   Tue: "day.tue_short",
   Wed: "day.wed_short",
@@ -83,10 +99,6 @@ const DAY_KEY_TO_INDEX: Record<DayHeatmapKey, number> = {
   Sat: 5,
   Sun: 6,
 };
-
-function emptyTierValues(): TierValues {
-  return { PRIMARY: "", SECONDARY: "", TERTIARY: "" };
-}
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
@@ -146,241 +158,6 @@ function parseApiErrorMessage(raw: string, fallback: string): string {
   return fallback;
 }
 
-function toTierValues(map: Record<TierKey, number> | undefined): ToggleTierValues {
-  if (!map) return { enabled: false, values: emptyTierValues() };
-  return {
-    enabled: true,
-    values: {
-      PRIMARY: String(map.PRIMARY),
-      SECONDARY: String(map.SECONDARY),
-      TERTIARY: String(map.TERTIARY),
-    },
-  };
-}
-
-function toToggleNumber(value: number | undefined): ToggleNumber {
-  if (typeof value !== "number" || !Number.isFinite(value)) return { enabled: false, value: "" };
-  return { enabled: true, value: String(value) };
-}
-
-function toToggleBoolean(value: boolean | undefined): ToggleBoolean {
-  if (typeof value !== "boolean") return { enabled: false, value: false };
-  return { enabled: true, value };
-}
-
-function fromParsedSettings(settings: GridSolverSettings): FormState {
-  return {
-    unit_nooverlap_enabled: settings.unit_nooverlap_enabled ?? DEFAULT_UNIT_NOOVERLAP_ENABLED,
-    max_hours_day_by_tier: toTierValues(settings.max_hours_day_by_tier),
-    max_hours_week_by_tier: toTierValues(settings.max_hours_week_by_tier),
-    min_hours_week_by_tier: toTierValues(settings.min_hours_week_by_tier),
-    min_hours_week_hard: toToggleBoolean(settings.min_hours_week_hard),
-    min_hours_week_weight: toToggleNumber(settings.min_hours_week_weight),
-    unit_max_hours_day: toToggleNumber(settings.unit_max_hours_day),
-    min_rest_hours: toToggleNumber(settings.min_rest_hours),
-    stability_weight: toToggleNumber(settings.stability_weight),
-  };
-}
-
-function parseNumeric(value: string): number | undefined {
-  if (value.trim() === "") return undefined;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-function tierValuesToPayload(input: ToggleTierValues): Record<TierKey, number> | undefined {
-  if (!input.enabled) return undefined;
-  const out = {} as Record<TierKey, number>;
-  for (const tier of TIER_KEYS) {
-    const parsed = parseNumeric(input.values[tier]);
-    if (parsed === undefined) return undefined;
-    out[tier] = parsed;
-  }
-  return out;
-}
-
-function toSettingsPayload(state: FormState): GridSolverSettings {
-  const payload: GridSolverSettings = {
-    unit_nooverlap_enabled: state.unit_nooverlap_enabled,
-  };
-
-  const maxDayByTier = tierValuesToPayload(state.max_hours_day_by_tier);
-  if (maxDayByTier) payload.max_hours_day_by_tier = maxDayByTier;
-
-  const maxWeekByTier = tierValuesToPayload(state.max_hours_week_by_tier);
-  if (maxWeekByTier) payload.max_hours_week_by_tier = maxWeekByTier;
-
-  const minWeekByTier = tierValuesToPayload(state.min_hours_week_by_tier);
-  if (minWeekByTier) payload.min_hours_week_by_tier = minWeekByTier;
-
-  if (state.min_hours_week_hard.enabled) payload.min_hours_week_hard = state.min_hours_week_hard.value;
-
-  if (state.min_hours_week_weight.enabled) {
-    const parsed = parseNumeric(state.min_hours_week_weight.value);
-    if (parsed !== undefined) payload.min_hours_week_weight = parsed;
-  }
-
-  if (state.unit_max_hours_day.enabled) {
-    const parsed = parseNumeric(state.unit_max_hours_day.value);
-    if (parsed !== undefined) payload.unit_max_hours_day = parsed;
-  }
-
-  if (state.min_rest_hours.enabled) {
-    const parsed = parseNumeric(state.min_rest_hours.value);
-    if (parsed !== undefined) payload.min_rest_hours = parsed;
-  }
-
-  if (state.stability_weight.enabled) {
-    const parsed = parseNumeric(state.stability_weight.value);
-    if (parsed !== undefined) payload.stability_weight = Math.max(0, Math.min(100, parsed));
-  }
-
-  return buildSolverParamsPayload(payload);
-}
-
-function TierInputs({
-  title,
-  helper,
-  value,
-  tierLabels,
-  placeholder,
-  onEnabledChange,
-  onValueChange,
-}: {
-  title: string;
-  helper: string;
-  value: ToggleTierValues;
-  tierLabels: Record<TierKey, string>;
-  placeholder: string;
-  onEnabledChange: (next: boolean) => void;
-  onValueChange: (tier: TierKey, next: string) => void;
-}) {
-  return (
-    <div className="rounded-md border p-4">
-      <label className="flex items-start gap-3">
-        <input
-          type="checkbox"
-          className="mt-1 h-4 w-4"
-          checked={value.enabled}
-          onChange={(e) => onEnabledChange(e.target.checked)}
-        />
-        <div className="w-full">
-          <div className="text-sm font-medium">{title}</div>
-          <div className="text-xs text-gray-600">{helper}</div>
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-            {TIER_KEYS.map((tier) => (
-              <div key={tier}>
-                <div className="mb-1 text-xs text-gray-600">{tierLabels[tier]}</div>
-                <input
-                  type="number"
-                  step="1"
-                  className="w-full rounded border px-2 py-1 text-sm"
-                  value={value.values[tier]}
-                  disabled={!value.enabled}
-                  onChange={(e) => onValueChange(tier, e.target.value)}
-                  placeholder={placeholder}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      </label>
-    </div>
-  );
-}
-
-function NumberOption({
-  title,
-  helper,
-  value,
-  min,
-  max,
-  step = 1,
-  onEnabledChange,
-  onValueChange,
-}: {
-  title: string;
-  helper: string;
-  value: ToggleNumber;
-  min?: number;
-  max?: number;
-  step?: number;
-  onEnabledChange: (next: boolean) => void;
-  onValueChange: (next: string) => void;
-}) {
-  return (
-    <div className="rounded-md border p-4">
-      <label className="flex items-start gap-3">
-        <input
-          type="checkbox"
-          className="mt-1 h-4 w-4"
-          checked={value.enabled}
-          onChange={(e) => onEnabledChange(e.target.checked)}
-        />
-        <div className="w-full">
-          <div className="text-sm font-medium">{title}</div>
-          <div className="text-xs text-gray-600">{helper}</div>
-          <input
-            type="number"
-            min={min}
-            max={max}
-            step={step}
-            className="mt-3 w-full rounded border px-2 py-1 text-sm sm:w-56"
-            value={value.value}
-            disabled={!value.enabled}
-            onChange={(e) => onValueChange(e.target.value)}
-          />
-        </div>
-      </label>
-    </div>
-  );
-}
-
-function BooleanOption({
-  title,
-  helper,
-  value,
-  enabledLabel,
-  onEnabledChange,
-  onValueChange,
-}: {
-  title: string;
-  helper: string;
-  value: ToggleBoolean;
-  enabledLabel: string;
-  onEnabledChange: (next: boolean) => void;
-  onValueChange: (next: boolean) => void;
-}) {
-  return (
-    <div className="rounded-md border p-4">
-      <label className="flex items-start gap-3">
-        <input
-          type="checkbox"
-          className="mt-1 h-4 w-4"
-          checked={value.enabled}
-          onChange={(e) => onEnabledChange(e.target.checked)}
-        />
-        <div className="w-full">
-          <div className="text-sm font-medium">{title}</div>
-          <div className="text-xs text-gray-600">{helper}</div>
-          <div className="mt-3">
-            <label className={`inline-flex items-center gap-2 text-sm ${value.enabled ? "" : "text-gray-500"}`}>
-              <input
-                type="checkbox"
-                className="h-4 w-4"
-                checked={value.value}
-                disabled={!value.enabled}
-                onChange={(e) => onValueChange(e.target.checked)}
-              />
-              {enabledLabel}
-            </label>
-          </div>
-        </div>
-      </label>
-    </div>
-  );
-}
-
 function buildSmoothPath(points: Array<{ x: number; y: number }>): string {
   if (points.length === 0) return "";
   if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
@@ -400,6 +177,27 @@ function buildSmoothPath(points: Array<{ x: number; y: number }>): string {
     path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
   }
   return path;
+}
+
+function extractWizardAnswers(raw: unknown): WizardAnswers | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  if (obj.answers && typeof obj.answers === "object") return obj.answers as WizardAnswers;
+  if (obj.wizard_config && typeof obj.wizard_config === "object") {
+    const cfg = obj.wizard_config as Record<string, unknown>;
+    if (cfg.answers && typeof cfg.answers === "object") return cfg.answers as WizardAnswers;
+  }
+  if (obj.Q1 || obj.priorities || obj.Q2 || obj.Q4 || obj.Q5) {
+    return obj as unknown as WizardAnswers;
+  }
+  return null;
+}
+
+function parsePriority(raw: unknown, code: PriorityCode) {
+  const max = code === "P10" ? 5 : 10;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return PRIORITY_DEFAULT[code];
+  return clamp(Math.round(n), 1, max);
 }
 
 function DayHeatmapChart({
@@ -565,10 +363,37 @@ export default function GridSolverSettingsForm({
   cellSizeMin: number;
 }) {
   const { t } = useI18n();
-  const [state, setState] = useState<FormState | null>(null);
+  const tt = useCallback((key: string, fallback: string, params?: Record<string, string | number>) => {
+    const translated = t(key as never, params);
+    return translated === key ? fallback : translated;
+  }, [t]);
+
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileSaved, setProfileSaved] = useState<string | null>(null);
+
+  const [q1OrganizationType, setQ1OrganizationType] = useState<OrganizationType | null>(null);
+  const [q1OtherDescription, setQ1OtherDescription] = useState("");
+  const [q2UnitNature, setQ2UnitNature] = useState<UnitNature | null>(null);
+  const [q4UnitNoOverlap, setQ4UnitNoOverlap] = useState<boolean | null>(null);
+  const [q5MinRestHours, setQ5MinRestHours] = useState("");
+  const [qTiers, setQTiers] = useState<boolean | null>(null);
+  const [qMinCells, setQMinCells] = useState<Record<TierKey, string>>({
+    PRIMARY: "",
+    SECONDARY: "",
+    TERTIARY: "",
+  });
+  const [priorities, setPriorities] = useState<Record<PriorityCode, number>>(PRIORITY_DEFAULT);
+  const [stabilityWeight, setStabilityWeight] = useState(50);
+  const [stabilitySaving, setStabilitySaving] = useState(false);
+
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
   const [heatmapSaving, setHeatmapSaving] = useState(false);
   const [heatmapError, setHeatmapError] = useState<string | null>(null);
   const [heatmapSaved, setHeatmapSaved] = useState<string | null>(null);
+
   const [timeRanges, setTimeRanges] = useState<TimeRangeDraft[]>([]);
   const [timeRangesLoading, setTimeRangesLoading] = useState(false);
   const [timeRangesError, setTimeRangesError] = useState<string | null>(null);
@@ -576,11 +401,31 @@ export default function GridSolverSettingsForm({
   const [creatingTimeRange, setCreatingTimeRange] = useState(false);
   const [busyByTimeRangeId, setBusyByTimeRangeId] = useState<Record<number, boolean>>({});
 
-  const tierLabels: Record<TierKey, string> = {
-    PRIMARY: t("tier.primary"),
-    SECONDARY: t("tier.secondary"),
-    TERTIARY: t("tier.tertiary"),
-  };
+  const dayOptions = [
+    { key: "school" as const, label: tt("solver_wizard.org_type_school", "School") },
+    { key: "work" as const, label: tt("solver_wizard.org_type_work", "Work") },
+    { key: "gym" as const, label: tt("solver_wizard.org_type_gym", "Gym") },
+    { key: "private_tutor" as const, label: tt("solver_wizard.org_type_private_tutor", "Private tutor") },
+    { key: "other" as const, label: tt("solver_wizard.org_type_other", "Other") },
+  ];
+
+  const unitNatureOptions: Array<{ key: UnitNature; label: string; help: string }> = [
+    {
+      key: "audience",
+      label: tt("solver_wizard.unit_nature_audience", "Audience"),
+      help: tt("solver_wizard.unit_nature_audience_help_short", "Groups that attend together."),
+    },
+    {
+      key: "internal",
+      label: tt("solver_wizard.unit_nature_internal", "Internal"),
+      help: tt("solver_wizard.unit_nature_internal_help_short", "Internal organizational groups."),
+    },
+    {
+      key: "none",
+      label: tt("solver_wizard.unit_nature_none", "None"),
+      help: tt("solver_wizard.unit_nature_none_help_short", "No unit grouping preferences."),
+    },
+  ];
 
   const enabledDayKeys = useMemo<DayHeatmapKey[]>(
     () =>
@@ -621,6 +466,15 @@ export default function GridSolverSettingsForm({
     setDayHeatmapValues(normalizedInitialHeatmap);
   }, [normalizedInitialHeatmap]);
 
+  const horizonStartMin = useMemo(() => parseClockToMin(horizonStart), [horizonStart]);
+  const horizonEndMin = useMemo(() => {
+    const raw = parseClockToMin(horizonEnd);
+    if (raw > horizonStartMin) return raw;
+    return horizonStartMin + Math.max(30, cellSizeMin || 30);
+  }, [cellSizeMin, horizonEnd, horizonStartMin]);
+  const horizonSpanMin = useMemo(() => Math.max(1, horizonEndMin - horizonStartMin), [horizonEndMin, horizonStartMin]);
+  const timeRangeStep = useMemo(() => Math.max(1, Number(cellSizeMin) || 5), [cellSizeMin]);
+
   const enabledDaysCount = enabledDayKeys.length;
   const heatmapUpgradeSum = useMemo(
     () => enabledDayKeys.reduce((sum, dayKey) => sum + (dayHeatmapValues[dayKey] - 1), 0),
@@ -635,14 +489,92 @@ export default function GridSolverSettingsForm({
     [enabledDaysCount, heatmapBudget, heatmapUpgradeSum],
   );
 
-  const horizonStartMin = useMemo(() => parseClockToMin(horizonStart), [horizonStart]);
-  const horizonEndMin = useMemo(() => {
-    const raw = parseClockToMin(horizonEnd);
-    if (raw > horizonStartMin) return raw;
-    return horizonStartMin + Math.max(30, cellSizeMin || 30);
-  }, [cellSizeMin, horizonEnd, horizonStartMin]);
-  const horizonSpanMin = useMemo(() => Math.max(1, horizonEndMin - horizonStartMin), [horizonEndMin, horizonStartMin]);
-  const timeRangeStep = useMemo(() => Math.max(1, Number(cellSizeMin) || 5), [cellSizeMin]);
+  const priorityRows = useMemo(
+    () => [
+      {
+        code: "P1" as const,
+        label: tt("solver_wizard.priority_availability", "Respect participant availability"),
+        description: tt(
+          "solver_wizard.priority_availability_desc",
+          "How strictly should the solver respect when participants say they can't work?",
+        ),
+      },
+      {
+        code: "P2" as const,
+        label: tt("solver_wizard.priority_participant_gap", "Minimize gaps between participant activities"),
+        description: tt(
+          "solver_wizard.priority_participant_gap_desc",
+          "Should the solver try to avoid gaps/free periods between a participant's activities in the same day?",
+        ),
+      },
+      {
+        code: "P3" as const,
+        label: tt("solver_wizard.priority_participant_days", "Concentrate activities in fewer days"),
+        description: tt(
+          "solver_wizard.priority_participant_days_desc",
+          "Should the solver try to pack all of a participant's activities into fewer days?",
+        ),
+      },
+      {
+        code: "P9" as const,
+        label: tt("solver_wizard.priority_daily_load_balance", "Daily load balance"),
+        description: tt(
+          "solver_wizard.priority_daily_load_balance_desc",
+          "Within each day, should the workload be spread evenly?",
+        ),
+        indent: true,
+        dependsOnP3: true,
+      },
+      {
+        code: "P10" as const,
+        label: tt("solver_wizard.priority_day_spread", "Separate vs. cluster days"),
+        description: tt(
+          "solver_wizard.priority_day_spread_desc",
+          "Should working days be spread apart or clustered together?",
+        ),
+        indent: true,
+        dependsOnP3: true,
+        bipolar: true,
+      },
+      {
+        code: "P4" as const,
+        label: tt("solver_wizard.priority_unit_gap", "Minimize gaps in units"),
+        description: tt(
+          "solver_wizard.priority_unit_gap_desc",
+          "Should the solver avoid gaps in a unit/group's daily schedule?",
+        ),
+        audienceOnly: true,
+      },
+      {
+        code: "P5" as const,
+        label: tt("solver_wizard.priority_unit_days", "Concentrate unit activities"),
+        description: tt(
+          "solver_wizard.priority_unit_days_desc",
+          "Should the solver concentrate a unit/group's activities into fewer days?",
+        ),
+        audienceOnly: true,
+      },
+      {
+        code: "P6" as const,
+        label: tt("solver_wizard.priority_soft_window", "Respect preferred time windows"),
+        description: tt(
+          "solver_wizard.priority_soft_window_desc",
+          "How much should the solver respect preferred time windows?",
+        ),
+      },
+    ],
+    [t],
+  );
+
+  const visiblePriorityRows = useMemo(
+    () =>
+      priorityRows.filter((row) => {
+        if (row.audienceOnly && q2UnitNature !== "audience") return false;
+        if (row.dependsOnP3 && priorities.P3 <= 1) return false;
+        return true;
+      }),
+    [priorities.P3, priorityRows, q2UnitNature],
+  );
 
   const toTimeRangeDraft = useCallback(
     (item: TimeRangeResource): TimeRangeDraft => {
@@ -660,13 +592,13 @@ export default function GridSolverSettingsForm({
 
       return {
         id: Number(item.id),
-        name: String(item.name ?? `${t("entity.time_range")} ${item.id}`),
+        name: String(item.name ?? `${tt("entity.time_range", "Time range")} ${item.id}`),
         startOffsetMin,
         endOffsetMin,
         rowError: null,
       };
     },
-    [horizonSpanMin, horizonStartMin, t, timeRangeStep],
+    [horizonSpanMin, horizonStartMin, timeRangeStep, tt],
   );
 
   const loadTimeRanges = useCallback(async () => {
@@ -678,7 +610,7 @@ export default function GridSolverSettingsForm({
       });
       if (!response.ok) {
         const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, t("time_ranges.error_loading")));
+        throw new Error(parseApiErrorMessage(raw, tt("time_ranges.error_loading", "Could not load time ranges.")));
       }
 
       const payload = (await response.json().catch(() => ({}))) as TimeRangeResource[] | TimeRangeListResponse;
@@ -689,30 +621,190 @@ export default function GridSolverSettingsForm({
         .sort((a, b) => a.startOffsetMin - b.startOffsetMin || a.endOffsetMin - b.endOffsetMin || a.id - b.id);
       setTimeRanges(nextRanges);
     } catch (error: unknown) {
-      setTimeRangesError(error instanceof Error ? error.message : t("time_ranges.error_loading"));
+      setTimeRangesError(error instanceof Error ? error.message : tt("time_ranges.error_loading", "Could not load time ranges."));
     } finally {
       setTimeRangesLoading(false);
     }
-  }, [gridId, t, toTimeRangeDraft]);
+  }, [gridId, toTimeRangeDraft, tt]);
 
   useEffect(() => {
     void loadTimeRanges();
   }, [loadTimeRanges]);
 
   useEffect(() => {
-    const key = getGridSolverSettingsKey(gridId);
-    const parsed = parseGridSolverSettings(window.localStorage.getItem(key));
-    setState(fromParsedSettings(parsed));
-  }, [gridId]);
+    let mounted = true;
+    const loadProfile = async () => {
+      setProfileLoading(true);
+      setProfileError(null);
+      try {
+        const gridRes = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}`, { cache: "no-store" });
+        let gridData: GridDetailResponse = {};
+        if (gridRes.ok) {
+          gridData = (await gridRes.json().catch(() => ({}))) as GridDetailResponse;
+        }
 
-  useEffect(() => {
-    if (!state) return;
-    const key = getGridSolverSettingsKey(gridId);
-    const payload = toSettingsPayload(state);
-    window.localStorage.setItem(key, JSON.stringify(payload));
-  }, [gridId, state]);
+        let answers: WizardAnswers | null = null;
+        try {
+          const wizardRes = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}/solver-wizard/`, {
+            cache: "no-store",
+          });
+          if (wizardRes.ok) {
+            answers = extractWizardAnswers(await wizardRes.json().catch(() => null));
+          } else if (wizardRes.status !== 405) {
+            const raw = await wizardRes.text().catch(() => "");
+            throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.load_failed", "Could not load settings.")));
+          }
+        } catch {
+          // ignore and fallback to grid detail
+        }
 
-  const previewPayload = useMemo(() => (state ? toSettingsPayload(state) : null), [state]);
+        if (!answers) {
+          answers = gridData?.solve_preference?.wizard_config?.answers ?? null;
+          // TODO: backend should expose wizard_config in grid detail or a dedicated GET endpoint.
+        }
+
+        const nextPriorities: Record<PriorityCode, number> = { ...PRIORITY_DEFAULT };
+        const rawPriorities = answers?.priorities ?? {};
+        for (const code of Object.keys(PRIORITY_DEFAULT) as PriorityCode[]) {
+          nextPriorities[code] = parsePriority(rawPriorities?.[code], code);
+        }
+
+        const q1 = answers?.Q1 ?? null;
+        const q2 = answers?.Q2 ?? null;
+        const q4 = typeof answers?.Q4 === "boolean" ? answers.Q4 : null;
+        const q5 = typeof answers?.Q5 === "number" && Number.isFinite(answers.Q5) ? String(answers.Q5) : "";
+        const qTiersValue = typeof answers?.Q_tiers === "boolean" ? answers.Q_tiers : null;
+        const minCells = answers?.Q_min_cells ?? {};
+
+        const rawStability =
+          gridData?.solve_preference?.solver_params?.stability_weight ??
+          gridData?.solver_params?.stability_weight;
+        const parsedStability = Number(rawStability);
+
+        if (!mounted) return;
+        setPriorities(nextPriorities);
+        setQ1OrganizationType(q1);
+        setQ2UnitNature(q2);
+        setQ4UnitNoOverlap(q2 === "audience" ? q4 : null);
+        setQ5MinRestHours(q5);
+        setQTiers(qTiersValue);
+        setQMinCells({
+          PRIMARY: minCells.PRIMARY == null ? "" : String(minCells.PRIMARY),
+          SECONDARY: minCells.SECONDARY == null ? "" : String(minCells.SECONDARY),
+          TERTIARY: minCells.TERTIARY == null ? "" : String(minCells.TERTIARY),
+        });
+        if (q1 === "other") {
+          setQ1OtherDescription(String(gridData?.description ?? ""));
+        }
+        if (Number.isFinite(parsedStability)) {
+          setStabilityWeight(clamp(Math.round(parsedStability), 0, 100));
+        }
+      } catch (error: unknown) {
+        if (!mounted) return;
+        setProfileError(error instanceof Error ? error.message : tt("grid_solver_settings.load_failed", "Could not load settings."));
+      } finally {
+        if (mounted) setProfileLoading(false);
+      }
+    };
+    void loadProfile();
+    return () => {
+      mounted = false;
+    };
+  }, [gridId, tt]);
+
+  const setPriority = (code: PriorityCode, raw: number) => {
+    const max = code === "P10" ? 5 : 10;
+    const next = Math.max(1, Math.min(max, Math.round(raw)));
+    setPriorities((prev) => ({ ...prev, [code]: next }));
+    setProfileSaved(null);
+  };
+
+  const saveSolverProfile = async () => {
+    setProfileSaved(null);
+    setProfileError(null);
+    if (!q1OrganizationType) {
+      const msg = tt("solver_wizard.q1_required", "Please select an organization type.");
+      setProfileError(msg);
+      toast.error(msg);
+      return;
+    }
+
+    const parseMinCell = (raw: string): number | null | "invalid" => {
+      const trimmed = raw.trim();
+      if (!trimmed) return null;
+      const n = Number(trimmed);
+      if (!Number.isInteger(n) || n < 0) return "invalid";
+      return n;
+    };
+
+    const parsedMinCells = {
+      PRIMARY: parseMinCell(qMinCells.PRIMARY),
+      SECONDARY: parseMinCell(qMinCells.SECONDARY),
+      TERTIARY: parseMinCell(qMinCells.TERTIARY),
+    };
+
+    if (parsedMinCells.PRIMARY === "invalid" || parsedMinCells.SECONDARY === "invalid" || parsedMinCells.TERTIARY === "invalid") {
+      const msg = tt("solver_wizard.q_min_cells_invalid", "Min cells values must be non-negative integers.");
+      setProfileError(msg);
+      toast.error(msg);
+      return;
+    }
+
+    const payload: Record<string, unknown> = {
+      Q1: q1OrganizationType,
+    };
+    if (q2UnitNature) payload.Q2 = q2UnitNature;
+    if (q2UnitNature === "audience" && q4UnitNoOverlap !== null) payload.Q4 = q4UnitNoOverlap;
+    const q5Trimmed = q5MinRestHours.trim();
+    if (q5Trimmed) {
+      const q5Num = Number(q5Trimmed);
+      if (Number.isFinite(q5Num) && q5Num > 0) payload.Q5 = q5Num;
+    }
+
+    payload.priorities = {
+      P1: priorities.P1,
+      P2: priorities.P2,
+      P3: priorities.P3,
+      P6: priorities.P6,
+      P9: priorities.P9,
+      P10: priorities.P10,
+      ...(q2UnitNature === "audience" ? { P4: priorities.P4, P5: priorities.P5 } : {}),
+    };
+
+    if (qTiers !== null) payload.Q_tiers = qTiers;
+    if (qTiers !== false) {
+      const minCells: Record<TierKey, number | null> = {
+        PRIMARY: parsedMinCells.PRIMARY,
+        SECONDARY: parsedMinCells.SECONDARY,
+        TERTIARY: parsedMinCells.TERTIARY,
+      };
+      if (Object.values(minCells).some((value) => value !== null)) {
+        payload.Q_min_cells = minCells;
+      }
+    }
+
+    setProfileSaving(true);
+    try {
+      const response = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}/solver-wizard/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const raw = await response.text().catch(() => "");
+        throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.save_failed", "Could not save settings.")));
+      }
+      const msg = tt("grid_solver_settings.saved", "Saved.");
+      setProfileSaved(msg);
+      toast.success(msg);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : tt("grid_solver_settings.save_failed", "Could not save settings.");
+      setProfileError(msg);
+      toast.error(msg);
+    } finally {
+      setProfileSaving(false);
+    }
+  };
 
   const setRowBusy = (id: number, next: boolean) => {
     setBusyByTimeRangeId((prev) => ({ ...prev, [id]: next }));
@@ -740,11 +832,14 @@ export default function GridSolverSettingsForm({
       });
       if (!response.ok) {
         const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, t("grid_solver_settings.heatmap_save_failed")));
+        throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.heatmap_save_failed", "Could not save day heatmap.")));
       }
-      setHeatmapSaved(t("grid_solver_settings.heatmap_saved"));
+      setHeatmapSaved(tt("grid_solver_settings.heatmap_saved", "Saved."));
+      toast.success(tt("grid_solver_settings.heatmap_saved", "Saved."));
     } catch (error: unknown) {
-      setHeatmapError(error instanceof Error ? error.message : t("grid_solver_settings.heatmap_save_failed"));
+      const msg = error instanceof Error ? error.message : tt("grid_solver_settings.heatmap_save_failed", "Could not save day heatmap.");
+      setHeatmapError(msg);
+      toast.error(msg);
     } finally {
       setHeatmapSaving(false);
     }
@@ -752,7 +847,7 @@ export default function GridSolverSettingsForm({
 
   const addTimeRange = async () => {
     if (!newTimeRangeName.trim()) {
-      setTimeRangesError(t("grid_solver_settings.time_ranges_name_required"));
+      setTimeRangesError(tt("grid_solver_settings.time_ranges_name_required", "Name is required."));
       return;
     }
 
@@ -771,13 +866,13 @@ export default function GridSolverSettingsForm({
       });
       if (!response.ok) {
         const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, t("grid_solver_settings.time_ranges_create_failed")));
+        throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.time_ranges_create_failed", "Could not create time range.")));
       }
       setNewTimeRangeName("");
       await loadTimeRanges();
     } catch (error: unknown) {
       setTimeRangesError(
-        error instanceof Error ? error.message : t("grid_solver_settings.time_ranges_create_failed"),
+        error instanceof Error ? error.message : tt("grid_solver_settings.time_ranges_create_failed", "Could not create time range."),
       );
     } finally {
       setCreatingTimeRange(false);
@@ -791,7 +886,7 @@ export default function GridSolverSettingsForm({
     if (!current.name.trim()) {
       setTimeRanges((prev) =>
         prev.map((entry) =>
-          entry.id === id ? { ...entry, rowError: t("grid_solver_settings.time_ranges_name_required") } : entry,
+          entry.id === id ? { ...entry, rowError: tt("grid_solver_settings.time_ranges_name_required", "Name is required.") } : entry,
         ),
       );
       return;
@@ -800,7 +895,7 @@ export default function GridSolverSettingsForm({
     if (current.endOffsetMin <= current.startOffsetMin) {
       setTimeRanges((prev) =>
         prev.map((entry) =>
-          entry.id === id ? { ...entry, rowError: t("grid_solver_settings.time_ranges_invalid") } : entry,
+          entry.id === id ? { ...entry, rowError: tt("grid_solver_settings.time_ranges_invalid", "Invalid time range.") } : entry,
         ),
       );
       return;
@@ -820,12 +915,13 @@ export default function GridSolverSettingsForm({
       });
       if (!response.ok) {
         const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, t("grid_solver_settings.time_ranges_save_failed")));
+        throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.time_ranges_save_failed", "Could not save time range.")));
       }
       await loadTimeRanges();
+      toast.success(tt("common.saved", "Saved."));
     } catch (error: unknown) {
       const rowMessage =
-        error instanceof Error ? error.message : t("grid_solver_settings.time_ranges_save_failed");
+        error instanceof Error ? error.message : tt("grid_solver_settings.time_ranges_save_failed", "Could not save time range.");
       setTimeRanges((prev) =>
         prev.map((entry) => (entry.id === id ? { ...entry, rowError: rowMessage } : entry)),
       );
@@ -835,7 +931,7 @@ export default function GridSolverSettingsForm({
   };
 
   const deleteTimeRange = async (id: number) => {
-    if (!window.confirm(t("time_ranges.delete_confirm"))) return;
+    if (!window.confirm(tt("time_ranges.delete_confirm", "Delete this time range?"))) return;
 
     setRowBusy(id, true);
     setTimeRangesError(null);
@@ -845,437 +941,540 @@ export default function GridSolverSettingsForm({
       });
       if (response.status !== 204) {
         const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, t("grid_solver_settings.time_ranges_delete_failed")));
+        throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.time_ranges_delete_failed", "Could not delete time range.")));
       }
       setTimeRanges((prev) => prev.filter((entry) => entry.id !== id));
+      toast.success(tt("common.deleted", "Deleted."));
     } catch (error: unknown) {
       setTimeRangesError(
-        error instanceof Error ? error.message : t("grid_solver_settings.time_ranges_delete_failed"),
+        error instanceof Error ? error.message : tt("grid_solver_settings.time_ranges_delete_failed", "Could not delete time range."),
       );
     } finally {
       setRowBusy(id, false);
     }
   };
 
-  if (!state) {
+  const saveStabilityWeight = async () => {
+    setStabilitySaving(true);
+    try {
+      const response = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          solver_params: {
+            stability_weight: clamp(Math.round(stabilityWeight), 0, 100),
+          },
+        }),
+      });
+      if (!response.ok) {
+        const raw = await response.text().catch(() => "");
+        throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.save_failed", "Could not save settings.")));
+      }
+      toast.success(tt("grid_solver_settings.saved", "Saved."));
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : tt("grid_solver_settings.save_failed", "Could not save settings."));
+    } finally {
+      setStabilitySaving(false);
+    }
+  };
+
+  if (profileLoading) {
     return (
       <div className="max-w-3xl rounded-lg border bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-semibold">{t("grid_solver_settings.title")}</h1>
-        <p className="mt-4 text-sm text-gray-600">{t("grid_solver_settings.loading")}</p>
+        <h1 className="text-2xl font-semibold">{tt("grid_solver_settings.title", "Solver Settings")}</h1>
+        <p className="mt-4 text-sm text-gray-600">{tt("grid_solver_settings.loading", "Loading...")}</p>
       </div>
     );
   }
 
   return (
     <div className="max-w-3xl rounded-lg border bg-white p-6 shadow-sm">
-      <h1 className="text-2xl font-semibold">{t("grid_solver_settings.title")}</h1>
-      <p className="mt-2 text-sm text-gray-600">{t("grid_solver_settings.runtime_options")}</p>
+      <h1 className="text-2xl font-semibold">{tt("grid_solver_settings.title", "Solver Settings")}</h1>
 
-      <div className="mt-6 space-y-4">
-        <div className="rounded-md border p-4">
-          <div className="text-sm font-medium">{t("grid_solver_settings.day_heatmap_title")}</div>
-          <div className="text-xs text-gray-600">{t("grid_solver_settings.day_heatmap_help")}</div>
+      <div className="mt-6 space-y-6">
+        <section className="rounded-xl border border-gray-200 p-5">
+          <h2 className="text-base font-semibold text-gray-900">{tt("grid_solver_settings.solver_profile", "Solver Profile")}</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            {tt("grid_solver_settings.solver_profile_help", "Configure profile questions and priorities in plain language.")}
+          </p>
 
-          <div className="mt-4">
-            {enabledDayKeys.length > 0 ? (
-              <DayHeatmapChart
-                dayKeys={enabledDayKeys}
-                values={dayHeatmapValues}
-                getDayLabel={(dayKey) => t(DAY_KEY_TO_I18N[dayKey])}
-                onChange={(dayKey, nextValue) => {
-                  setHeatmapSaved(null);
-                  setDayHeatmapValues((prev) => ({ ...prev, [dayKey]: nextValue }));
-                }}
-              />
-            ) : (
-              <div className="rounded border border-dashed px-3 py-2 text-sm text-gray-500">
-                {t("grid_solver_settings.no_enabled_days")}
+          {profileError ? <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{profileError}</div> : null}
+          {profileSaved ? <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{profileSaved}</div> : null}
+
+          <div className="mt-4 space-y-5">
+            <div>
+              <label className="block text-sm mb-2 text-gray-700">{tt("solver_wizard.org_type", "Organization type")}</label>
+              <div className="flex flex-wrap gap-2">
+                {dayOptions.map((option) => {
+                  const selected = q1OrganizationType === option.key;
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => setQ1OrganizationType(option.key)}
+                      className={`rounded-full border px-4 py-2 text-sm transition-colors ${
+                        selected
+                          ? "border-black bg-black text-white"
+                          : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
               </div>
-            )}
-          </div>
-
-          <div className="mt-4 rounded border bg-gray-50 p-3">
-            <div className="mb-2 flex items-center justify-between text-xs text-gray-600">
-              <span>{t("grid_solver_settings.budget_meter")}</span>
-              <span>
-                {heatmapUpgradeSum}/{heatmapBudget}
-              </span>
             </div>
-            <div className="h-2 overflow-hidden rounded bg-gray-200">
-              <div
-                className={`${heatmapBudgetExceeded ? "bg-red-500" : "bg-black"} h-2 transition-all`}
-                style={{ width: `${Math.round(heatmapBudgetRatio * 100)}%` }}
+
+            {q1OrganizationType === "other" ? (
+              <div>
+                <label className="block text-sm mb-1 text-gray-700">{tt("solver_wizard.custom_description", "Custom description")}</label>
+                <input
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  value={q1OtherDescription}
+                  onChange={(event) => setQ1OtherDescription(event.target.value)}
+                  placeholder={tt("solver_wizard.custom_description_placeholder", "Describe your organization")}
+                  maxLength={240}
+                />
+              </div>
+            ) : null}
+
+            <div>
+              <label className="block text-sm mb-2 text-gray-700">
+                {tt("solver_wizard.unit_nature", "Unit nature")} ({tt("solver_wizard.optional", "optional")})
+              </label>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {unitNatureOptions.map((option) => {
+                  const selected = q2UnitNature === option.key;
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => {
+                        setQ2UnitNature(option.key);
+                        if (option.key !== "audience") setQ4UnitNoOverlap(null);
+                      }}
+                      className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                        selected
+                          ? "border-black bg-black text-white"
+                          : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="text-sm font-medium">{option.label}</div>
+                      <div className={`mt-1 text-xs ${selected ? "text-gray-200" : "text-gray-500"}`}>{option.help}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {q2UnitNature === "audience" ? (
+              <div>
+                <label className="block text-sm mb-2 text-gray-700">
+                  {tt("solver_wizard.q4_unit_nooverlap", "Prevent overlap inside the same unit")}
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: tt("solver_wizard.no_preference", "No preference"), value: null as boolean | null },
+                    { label: tt("solver_wizard.q4_yes", "Yes"), value: true as boolean | null },
+                    { label: tt("solver_wizard.q4_no", "No"), value: false as boolean | null },
+                  ].map((option) => {
+                    const selected = q4UnitNoOverlap === option.value;
+                    return (
+                      <button
+                        key={option.label}
+                        type="button"
+                        onClick={() => setQ4UnitNoOverlap(option.value)}
+                        className={`rounded-full border px-4 py-2 text-sm transition-colors ${
+                          selected
+                            ? "border-black bg-black text-white"
+                            : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            <div>
+              <label className="block text-sm mb-1 text-gray-700">
+                {tt("solver_wizard.q5_min_rest_label", "Minimum rest between shifts (hours)")}
+              </label>
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                className="w-56 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                value={q5MinRestHours}
+                onChange={(event) => setQ5MinRestHours(event.target.value)}
+                placeholder={tt("solver_wizard.q5_placeholder", "e.g. 8")}
               />
             </div>
-            {heatmapError && <div className="mt-2 text-sm text-red-600">{heatmapError}</div>}
-            {heatmapSaved && !heatmapError && <div className="mt-2 text-sm text-emerald-700">{heatmapSaved}</div>}
-            <div className="mt-3 text-right">
+
+            <div className="space-y-4 rounded-xl border border-gray-200 p-4">
+              <h3 className="text-sm font-semibold text-gray-900">{tt("solver_wizard.section_priorities", "Priorities")}</h3>
+              {visiblePriorityRows.map((row) => {
+                const value = priorities[row.code];
+                const sliderMax = row.code === "P10" ? 5 : 10;
+                return (
+                  <div key={row.code} className={`space-y-1 ${row.indent ? "ml-6" : ""}`}>
+                    <label className="text-sm font-medium text-gray-800">{row.label}</label>
+                    <p className="text-xs text-gray-500">{row.description}</p>
+                    <ElasticSlider
+                      className="w-3/4 mx-auto"
+                      startingValue={1}
+                      maxValue={sliderMax}
+                      isStepped
+                      stepSize={1}
+                      value={value}
+                      defaultValue={value}
+                      leftIcon={
+                        row.bipolar ? (
+                          <span className="text-[11px] font-medium text-gray-500">
+                            {tt("solver_wizard.day_spread_strong_separate", "Strong Separate")}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-medium text-gray-500">1</span>
+                        )
+                      }
+                      rightIcon={
+                        row.bipolar ? (
+                          <span className="text-[11px] font-medium text-gray-500">
+                            {tt("solver_wizard.day_spread_strong_cluster", "Strong Cluster")}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-medium text-gray-500">10</span>
+                        )
+                      }
+                      onValueChange={(next) => setPriority(row.code, next)}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="text-right">
               <button
                 type="button"
-                className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-60"
-                onClick={() => void saveDayHeatmap()}
-                disabled={heatmapSaving || enabledDayKeys.length === 0}
+                className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
+                disabled={profileSaving}
+                onClick={() => void saveSolverProfile()}
               >
-                {heatmapSaving ? t("common.saving") : t("common.save")}
+                {profileSaving ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
               </button>
             </div>
           </div>
-        </div>
+        </section>
 
-        <div className="rounded-md border p-4">
-          <div className="text-sm font-medium">{t("grid_solver_settings.time_ranges_title")}</div>
-          <div className="text-xs text-gray-600">{t("grid_solver_settings.time_ranges_help")}</div>
-          <div className="mt-2 text-xs text-gray-500">
-            {t("grid_solver_settings.time_ranges_horizon", {
-              start: minutesToClock(horizonStartMin),
-              end: minutesToClock(horizonEndMin),
-            })}
-          </div>
+        <section className="rounded-xl border border-gray-200">
+          <button
+            type="button"
+            onClick={() => setAdvancedOpen((prev) => !prev)}
+            className="flex w-full items-center justify-between px-5 py-4 text-left"
+          >
+            <span className="text-base font-semibold text-gray-900">{tt("grid_solver_settings.advanced", "Advanced Settings")}</span>
+            <span className="text-sm text-gray-500">{advancedOpen ? tt("common.hide", "Hide") : tt("common.show", "Show")}</span>
+          </button>
 
-          {timeRangesError && <div className="mt-3 text-sm text-red-600">{timeRangesError}</div>}
-
-          <div className="mt-3 flex gap-2">
-            <input
-              className="w-full rounded border px-2 py-1 text-sm"
-              value={newTimeRangeName}
-              onChange={(e) => setNewTimeRangeName(e.target.value)}
-              placeholder={t("time_ranges.add_new")}
-            />
-            <button
-              type="button"
-              className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-60"
-              disabled={creatingTimeRange}
-              onClick={() => void addTimeRange()}
-            >
-              {creatingTimeRange ? t("common.saving") : t("common.add")}
-            </button>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {timeRangesLoading ? (
-              <div className="text-sm text-gray-500">{t("common.loading")}</div>
-            ) : timeRanges.length === 0 ? (
-              <div className="text-sm text-gray-500">{t("time_ranges.no_items")}</div>
-            ) : (
-              timeRanges.map((entry) => {
-                const busy = Boolean(busyByTimeRangeId[entry.id]);
-                const startPercent = (entry.startOffsetMin / horizonSpanMin) * 100;
-                const endPercent = (entry.endOffsetMin / horizonSpanMin) * 100;
-                const startMax = Math.max(0, entry.endOffsetMin - timeRangeStep);
-                const endMin = Math.min(horizonSpanMin, entry.startOffsetMin + timeRangeStep);
-                return (
-                  <div key={`time-range-setting-${entry.id}`} className="rounded border p-3">
-                    <input
-                      className="w-full rounded border px-2 py-1 text-sm"
-                      value={entry.name}
-                      onChange={(e) =>
-                        setTimeRanges((prev) =>
-                          prev.map((range) =>
-                            range.id === entry.id ? { ...range, name: e.target.value, rowError: null } : range,
-                          ),
-                        )
-                      }
-                      disabled={busy}
-                    />
-
-                    <div className="mt-3">
-                      <div className="relative h-2 rounded bg-gray-200">
-                        <div
-                          className="absolute top-0 h-2 rounded bg-black"
-                          style={{
-                            left: `${startPercent}%`,
-                            width: `${Math.max(0, endPercent - startPercent)}%`,
-                          }}
-                        />
-                        <div
-                          className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-black bg-white"
-                          style={{ left: `calc(${startPercent}% - 8px)` }}
-                        />
-                        <div
-                          className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-black bg-white"
-                          style={{ left: `calc(${endPercent}% - 8px)` }}
-                        />
-
+          {advancedOpen ? (
+            <div className="space-y-4 border-t border-gray-200 px-5 py-4">
+              <div className="rounded-md border p-4">
+                <div className="text-sm font-medium">{tt("solver_wizard.q_tiers", "Tier usage")} ({tt("solver_wizard.optional", "optional")})</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {[
+                    { label: tt("solver_wizard.q_tiers_keep", "No change"), value: null as boolean | null },
+                    { label: tt("solver_wizard.q_tiers_enable", "Enable tiers"), value: true as boolean | null },
+                    { label: tt("solver_wizard.q_tiers_disable", "Disable tiers"), value: false as boolean | null },
+                  ].map((option) => {
+                    const selected = qTiers === option.value;
+                    return (
+                      <button
+                        key={option.label}
+                        type="button"
+                        onClick={() => setQTiers(option.value)}
+                        className={`rounded-full border px-4 py-2 text-sm transition-colors ${
+                          selected
+                            ? "border-black bg-black text-white"
+                            : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {qTiers !== false ? (
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {(["PRIMARY", "SECONDARY", "TERTIARY"] as TierKey[]).map((tier) => (
+                      <div key={tier}>
+                        <label className="mb-1 block text-xs text-gray-500">{tier}</label>
                         <input
-                          type="range"
+                          type="number"
                           min={0}
-                          max={startMax}
-                          step={timeRangeStep}
-                          value={entry.startOffsetMin}
-                          onChange={(e) => {
-                            const next = Number(e.target.value);
-                            setTimeRanges((prev) =>
-                              prev.map((range) =>
-                                range.id === entry.id
-                                  ? {
-                                      ...range,
-                                      startOffsetMin: clamp(next, 0, Math.max(0, range.endOffsetMin - timeRangeStep)),
-                                      rowError: null,
-                                    }
-                                  : range,
-                              ),
-                            );
-                          }}
-                          className="absolute left-0 top-1/2 h-2 -translate-y-1/2 cursor-ew-resize opacity-0"
-                          style={{ width: `${Math.max(endPercent, 8)}%` }}
-                          disabled={busy}
-                        />
-                        <input
-                          type="range"
-                          min={endMin}
-                          max={horizonSpanMin}
-                          step={timeRangeStep}
-                          value={entry.endOffsetMin}
-                          onChange={(e) => {
-                            const next = Number(e.target.value);
-                            setTimeRanges((prev) =>
-                              prev.map((range) =>
-                                range.id === entry.id
-                                  ? {
-                                      ...range,
-                                      endOffsetMin: clamp(
-                                        next,
-                                        Math.min(horizonSpanMin, range.startOffsetMin + timeRangeStep),
-                                        horizonSpanMin,
-                                      ),
-                                      rowError: null,
-                                    }
-                                  : range,
-                              ),
-                            );
-                          }}
-                          className="absolute top-1/2 h-2 -translate-y-1/2 cursor-ew-resize opacity-0"
-                          style={{
-                            left: `${Math.min(startPercent, 92)}%`,
-                            width: `${Math.max(100 - startPercent, 8)}%`,
-                          }}
-                          disabled={busy}
+                          step={1}
+                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                          value={qMinCells[tier]}
+                          onChange={(event) =>
+                            setQMinCells((prev) => ({
+                              ...prev,
+                              [tier]: event.target.value,
+                            }))
+                          }
                         />
                       </div>
-                    </div>
-
-                    <div className="mt-2 flex items-center justify-between text-xs text-gray-600">
-                      <span>{minutesToClock(horizonStartMin + entry.startOffsetMin)}</span>
-                      <span>{minutesToClock(horizonStartMin + entry.endOffsetMin)}</span>
-                    </div>
-
-                    {entry.rowError && <div className="mt-2 text-sm text-red-600">{entry.rowError}</div>}
-
-                    <div className="mt-3 flex justify-end gap-2">
-                      <button
-                        type="button"
-                        className="rounded border px-3 py-1.5 text-sm text-red-600 disabled:opacity-60"
-                        onClick={() => void deleteTimeRange(entry.id)}
-                        disabled={busy}
-                      >
-                        {t("common.delete")}
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-60"
-                        onClick={() => void saveTimeRange(entry.id)}
-                        disabled={busy}
-                      >
-                        {busy ? t("common.saving") : t("common.save")}
-                      </button>
-                    </div>
+                    ))}
                   </div>
-                );
-              })
-            )}
-          </div>
-        </div>
+                ) : null}
+              </div>
 
-        <div className="rounded-md border p-4">
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              className="mt-1 h-4 w-4"
-              checked={state.unit_nooverlap_enabled}
-              onChange={(e) =>
-                setState((prev) => (prev ? { ...prev, unit_nooverlap_enabled: e.target.checked } : prev))
-              }
-            />
-            <div>
-              <div className="text-sm font-medium">{t("grid_solver_settings.prevent_overlap_title")}</div>
-              <div className="text-sm text-gray-600">{t("grid_solver_settings.prevent_overlap_help")}</div>
+              <div className="rounded-md border p-4">
+                <div className="text-sm font-medium">{tt("grid_solver_settings.day_heatmap_title", "Day Heatmap")}</div>
+                <div className="text-xs text-gray-600">{tt("grid_solver_settings.day_heatmap_help", "Set your day intensity preferences.")}</div>
+
+                <div className="mt-4">
+                  {enabledDayKeys.length > 0 ? (
+                    <DayHeatmapChart
+                      dayKeys={enabledDayKeys}
+                      values={dayHeatmapValues}
+                      getDayLabel={(dayKey) => t(DAY_KEY_TO_I18N[dayKey])}
+                      onChange={(dayKey, nextValue) => {
+                        setHeatmapSaved(null);
+                        setDayHeatmapValues((prev) => ({ ...prev, [dayKey]: nextValue }));
+                      }}
+                    />
+                  ) : (
+                    <div className="rounded border border-dashed px-3 py-2 text-sm text-gray-500">
+                      {tt("grid_solver_settings.no_enabled_days", "No enabled days.")}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 rounded border bg-gray-50 p-3">
+                  <div className="mb-2 flex items-center justify-between text-xs text-gray-600">
+                    <span>{tt("grid_solver_settings.budget_meter", "Budget meter")}</span>
+                    <span>
+                      {heatmapUpgradeSum}/{heatmapBudget}
+                    </span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded bg-gray-200">
+                    <div
+                      className={`${heatmapBudgetExceeded ? "bg-red-500" : "bg-black"} h-2 transition-all`}
+                      style={{ width: `${Math.round(heatmapBudgetRatio * 100)}%` }}
+                    />
+                  </div>
+                  {heatmapError && <div className="mt-2 text-sm text-red-600">{heatmapError}</div>}
+                  {heatmapSaved && !heatmapError && <div className="mt-2 text-sm text-emerald-700">{heatmapSaved}</div>}
+                  <div className="mt-3 text-right">
+                    <button
+                      type="button"
+                      className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-60"
+                      onClick={() => void saveDayHeatmap()}
+                      disabled={heatmapSaving || enabledDayKeys.length === 0}
+                    >
+                      {heatmapSaving ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-md border p-4">
+                <div className="text-sm font-medium">{tt("grid_solver_settings.time_ranges_title", "Time ranges")}</div>
+                <div className="text-xs text-gray-600">{tt("grid_solver_settings.time_ranges_help", "Manage preferred time ranges.")}</div>
+                <div className="mt-2 text-xs text-gray-500">
+                  {tt("grid_solver_settings.time_ranges_horizon", "Horizon: {start} - {end}", {
+                    start: minutesToClock(horizonStartMin),
+                    end: minutesToClock(horizonEndMin),
+                  })}
+                </div>
+
+                {timeRangesError && <div className="mt-3 text-sm text-red-600">{timeRangesError}</div>}
+
+                <div className="mt-3 flex gap-2">
+                  <input
+                    className="w-full rounded border px-2 py-1 text-sm"
+                    value={newTimeRangeName}
+                    onChange={(e) => setNewTimeRangeName(e.target.value)}
+                    placeholder={tt("time_ranges.add_new", "Add new")}
+                  />
+                  <button
+                    type="button"
+                    className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-60"
+                    disabled={creatingTimeRange}
+                    onClick={() => void addTimeRange()}
+                  >
+                    {creatingTimeRange ? tt("common.saving", "Saving...") : tt("common.add", "Add")}
+                  </button>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {timeRangesLoading ? (
+                    <div className="text-sm text-gray-500">{tt("common.loading", "Loading...")}</div>
+                  ) : timeRanges.length === 0 ? (
+                    <div className="text-sm text-gray-500">{tt("time_ranges.no_items", "No time ranges yet.")}</div>
+                  ) : (
+                    timeRanges.map((entry) => {
+                      const busy = Boolean(busyByTimeRangeId[entry.id]);
+                      const startPercent = (entry.startOffsetMin / horizonSpanMin) * 100;
+                      const endPercent = (entry.endOffsetMin / horizonSpanMin) * 100;
+                      const startMax = Math.max(0, entry.endOffsetMin - timeRangeStep);
+                      const endMin = Math.min(horizonSpanMin, entry.startOffsetMin + timeRangeStep);
+                      return (
+                        <div key={`time-range-setting-${entry.id}`} className="rounded border p-3">
+                          <input
+                            className="w-full rounded border px-2 py-1 text-sm"
+                            value={entry.name}
+                            onChange={(e) =>
+                              setTimeRanges((prev) =>
+                                prev.map((range) =>
+                                  range.id === entry.id ? { ...range, name: e.target.value, rowError: null } : range,
+                                ),
+                              )
+                            }
+                            disabled={busy}
+                          />
+
+                          <div className="mt-3">
+                            <div className="relative h-2 rounded bg-gray-200">
+                              <div
+                                className="absolute top-0 h-2 rounded bg-black"
+                                style={{
+                                  left: `${startPercent}%`,
+                                  width: `${Math.max(0, endPercent - startPercent)}%`,
+                                }}
+                              />
+                              <div
+                                className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-black bg-white"
+                                style={{ left: `calc(${startPercent}% - 8px)` }}
+                              />
+                              <div
+                                className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-black bg-white"
+                                style={{ left: `calc(${endPercent}% - 8px)` }}
+                              />
+
+                              <input
+                                type="range"
+                                min={0}
+                                max={startMax}
+                                step={timeRangeStep}
+                                value={entry.startOffsetMin}
+                                onChange={(e) => {
+                                  const next = Number(e.target.value);
+                                  setTimeRanges((prev) =>
+                                    prev.map((range) =>
+                                      range.id === entry.id
+                                        ? {
+                                            ...range,
+                                            startOffsetMin: clamp(next, 0, Math.max(0, range.endOffsetMin - timeRangeStep)),
+                                            rowError: null,
+                                          }
+                                        : range,
+                                    ),
+                                  );
+                                }}
+                                className="absolute left-0 top-1/2 h-2 -translate-y-1/2 cursor-ew-resize opacity-0"
+                                style={{ width: `${Math.max(endPercent, 8)}%` }}
+                                disabled={busy}
+                              />
+                              <input
+                                type="range"
+                                min={endMin}
+                                max={horizonSpanMin}
+                                step={timeRangeStep}
+                                value={entry.endOffsetMin}
+                                onChange={(e) => {
+                                  const next = Number(e.target.value);
+                                  setTimeRanges((prev) =>
+                                    prev.map((range) =>
+                                      range.id === entry.id
+                                        ? {
+                                            ...range,
+                                            endOffsetMin: clamp(
+                                              next,
+                                              Math.min(horizonSpanMin, range.startOffsetMin + timeRangeStep),
+                                              horizonSpanMin,
+                                            ),
+                                            rowError: null,
+                                          }
+                                        : range,
+                                    ),
+                                  );
+                                }}
+                                className="absolute top-1/2 h-2 -translate-y-1/2 cursor-ew-resize opacity-0"
+                                style={{
+                                  left: `${Math.min(startPercent, 92)}%`,
+                                  width: `${Math.max(100 - startPercent, 8)}%`,
+                                }}
+                                disabled={busy}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mt-2 flex items-center justify-between text-xs text-gray-600">
+                            <span>{minutesToClock(horizonStartMin + entry.startOffsetMin)}</span>
+                            <span>{minutesToClock(horizonStartMin + entry.endOffsetMin)}</span>
+                          </div>
+
+                          {entry.rowError && <div className="mt-2 text-sm text-red-600">{entry.rowError}</div>}
+
+                          <div className="mt-3 flex justify-end gap-2">
+                            <button
+                              type="button"
+                              className="rounded border px-3 py-1.5 text-sm text-red-600 disabled:opacity-60"
+                              onClick={() => void deleteTimeRange(entry.id)}
+                              disabled={busy}
+                            >
+                              {tt("common.delete", "Delete")}
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-60"
+                              onClick={() => void saveTimeRange(entry.id)}
+                              disabled={busy}
+                            >
+                              {busy ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-md border p-4">
+                <div className="text-sm font-medium">{tt("grid_solver_settings.stability_weight_title", "Stability weight")}</div>
+                <p className="mt-1 text-xs text-gray-500">{tt("grid_solver_settings.stability_weight_help", "Prioritize continuity between solver runs.")}</p>
+                <div className="mt-3">
+                  <ElasticSlider
+                    className="w-3/4 mx-auto"
+                    startingValue={0}
+                    maxValue={100}
+                    isStepped
+                    stepSize={1}
+                    value={stabilityWeight}
+                    defaultValue={stabilityWeight}
+                    leftIcon={<span className="text-[11px] font-medium text-gray-500">0</span>}
+                    rightIcon={<span className="text-[11px] font-medium text-gray-500">100</span>}
+                    onValueChange={(next) => setStabilityWeight(clamp(Math.round(next), 0, 100))}
+                  />
+                </div>
+                <div className="mt-3 text-right">
+                  <button
+                    type="button"
+                    className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-60"
+                    onClick={() => void saveStabilityWeight()}
+                    disabled={stabilitySaving}
+                  >
+                    {stabilitySaving ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
+                  </button>
+                </div>
+              </div>
             </div>
-          </label>
-        </div>
-
-        <TierInputs
-          title={t("grid_solver_settings.max_hours_day_title")}
-          helper={t("grid_solver_settings.max_hours_day_help")}
-          value={state.max_hours_day_by_tier}
-          tierLabels={tierLabels}
-          placeholder={t("grid_solver_settings.placeholder_example_8")}
-          onEnabledChange={(enabled) =>
-            setState((prev) =>
-              prev ? { ...prev, max_hours_day_by_tier: { ...prev.max_hours_day_by_tier, enabled } } : prev,
-            )
-          }
-          onValueChange={(tier, next) =>
-            setState((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    max_hours_day_by_tier: {
-                      ...prev.max_hours_day_by_tier,
-                      values: { ...prev.max_hours_day_by_tier.values, [tier]: next },
-                    },
-                  }
-                : prev,
-            )
-          }
-        />
-
-        <TierInputs
-          title={t("grid_solver_settings.max_hours_week_title")}
-          helper={t("grid_solver_settings.max_hours_week_help")}
-          value={state.max_hours_week_by_tier}
-          tierLabels={tierLabels}
-          placeholder={t("grid_solver_settings.placeholder_example_8")}
-          onEnabledChange={(enabled) =>
-            setState((prev) =>
-              prev ? { ...prev, max_hours_week_by_tier: { ...prev.max_hours_week_by_tier, enabled } } : prev,
-            )
-          }
-          onValueChange={(tier, next) =>
-            setState((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    max_hours_week_by_tier: {
-                      ...prev.max_hours_week_by_tier,
-                      values: { ...prev.max_hours_week_by_tier.values, [tier]: next },
-                    },
-                  }
-                : prev,
-            )
-          }
-        />
-
-        <TierInputs
-          title={t("grid_solver_settings.min_hours_week_title")}
-          helper={t("grid_solver_settings.min_hours_week_help")}
-          value={state.min_hours_week_by_tier}
-          tierLabels={tierLabels}
-          placeholder={t("grid_solver_settings.placeholder_example_8")}
-          onEnabledChange={(enabled) =>
-            setState((prev) =>
-              prev ? { ...prev, min_hours_week_by_tier: { ...prev.min_hours_week_by_tier, enabled } } : prev,
-            )
-          }
-          onValueChange={(tier, next) =>
-            setState((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    min_hours_week_by_tier: {
-                      ...prev.min_hours_week_by_tier,
-                      values: { ...prev.min_hours_week_by_tier.values, [tier]: next },
-                    },
-                  }
-                : prev,
-            )
-          }
-        />
-
-        <BooleanOption
-          title={t("grid_solver_settings.min_hours_week_hard_title")}
-          helper={t("grid_solver_settings.min_hours_week_hard_help")}
-          value={state.min_hours_week_hard}
-          enabledLabel={t("grid_solver_settings.enabled")}
-          onEnabledChange={(enabled) =>
-            setState((prev) =>
-              prev ? { ...prev, min_hours_week_hard: { ...prev.min_hours_week_hard, enabled } } : prev,
-            )
-          }
-          onValueChange={(next) =>
-            setState((prev) =>
-              prev ? { ...prev, min_hours_week_hard: { ...prev.min_hours_week_hard, value: next } } : prev,
-            )
-          }
-        />
-
-        <NumberOption
-          title={t("grid_solver_settings.min_hours_shortfall_weight_title")}
-          helper={t("grid_solver_settings.min_hours_shortfall_weight_help")}
-          value={state.min_hours_week_weight}
-          min={0}
-          onEnabledChange={(enabled) =>
-            setState((prev) =>
-              prev ? { ...prev, min_hours_week_weight: { ...prev.min_hours_week_weight, enabled } } : prev,
-            )
-          }
-          onValueChange={(next) =>
-            setState((prev) =>
-              prev ? { ...prev, min_hours_week_weight: { ...prev.min_hours_week_weight, value: next } } : prev,
-            )
-          }
-        />
-
-        <NumberOption
-          title={t("grid_solver_settings.unit_max_hours_day_title")}
-          helper={t("grid_solver_settings.unit_max_hours_day_help")}
-          value={state.unit_max_hours_day}
-          min={0}
-          onEnabledChange={(enabled) =>
-            setState((prev) =>
-              prev ? { ...prev, unit_max_hours_day: { ...prev.unit_max_hours_day, enabled } } : prev,
-            )
-          }
-          onValueChange={(next) =>
-            setState((prev) =>
-              prev ? { ...prev, unit_max_hours_day: { ...prev.unit_max_hours_day, value: next } } : prev,
-            )
-          }
-        />
-
-        <NumberOption
-          title={t("grid_solver_settings.min_rest_hours_title")}
-          helper={t("grid_solver_settings.min_rest_hours_help")}
-          value={state.min_rest_hours}
-          min={0}
-          onEnabledChange={(enabled) =>
-            setState((prev) =>
-              prev ? { ...prev, min_rest_hours: { ...prev.min_rest_hours, enabled } } : prev,
-            )
-          }
-          onValueChange={(next) =>
-            setState((prev) =>
-              prev ? { ...prev, min_rest_hours: { ...prev.min_rest_hours, value: next } } : prev,
-            )
-          }
-        />
-
-        <NumberOption
-          title={t("grid_solver_settings.stability_weight_title")}
-          helper={t("grid_solver_settings.stability_weight_help")}
-          value={state.stability_weight}
-          min={0}
-          max={100}
-          onEnabledChange={(enabled) =>
-            setState((prev) =>
-              prev ? { ...prev, stability_weight: { ...prev.stability_weight, enabled } } : prev,
-            )
-          }
-          onValueChange={(next) =>
-            setState((prev) =>
-              prev ? { ...prev, stability_weight: { ...prev.stability_weight, value: next } } : prev,
-            )
-          }
-        />
+          ) : null}
+        </section>
       </div>
-
-      {previewPayload && (
-        <div className="mt-6 rounded-md border bg-gray-50 p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-600">
-            {t("grid_solver_settings.payload_preview")}
-          </div>
-          <pre className="overflow-auto text-xs text-gray-700">{JSON.stringify(previewPayload, null, 2)}</pre>
-        </div>
-      )}
     </div>
   );
 }

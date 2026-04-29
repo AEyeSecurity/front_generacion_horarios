@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
+import { getApiBaseUrl } from "@/lib/api-base";
 
 export async function POST(req: Request) {
   const payload = await req.text();
-  const res = await fetch(`${process.env.BACKEND_URL}/api/auth/password-reset/`, {
+  const res = await fetch(`${getApiBaseUrl()}/api/auth/password-reset/`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: payload,
@@ -23,3 +24,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: res.ok, detail: text || "Request processed" }, { status: res.status });
 }
+
+
+
+

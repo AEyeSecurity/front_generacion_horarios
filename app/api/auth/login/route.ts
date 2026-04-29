@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getApiBaseUrl } from "@/lib/api-base";
 import { normalizePreferredLanguage } from "@/lib/language";
 
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
   const preferredLanguage = normalizePreferredLanguage(raw.preferred_language);
 
   const tryLogin = async (payload: Record<string, unknown>) =>
-    fetch(`${process.env.BACKEND_URL}/api/auth/login/`, {
+    fetch(`${getApiBaseUrl()}/api/auth/login/`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
@@ -50,3 +51,8 @@ export async function POST(req: Request) {
   out.cookies.set(REFRESH, refresh, { ...cookieOptions, maxAge: 60 * 60 * 24 * 7 }); // 7 días
   return out;
 }
+
+
+
+
+

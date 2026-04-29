@@ -4,6 +4,7 @@ import * as React from "react";
 import { ArrowLeft, Link2, X } from "lucide-react";
 import { toast } from "sonner";
 import { TIER_STYLES, type Tier } from "@/components/badges/TierBadge";
+import { readGridTierEnabled } from "@/lib/grid-tier";
 import {
   Dialog,
   DialogPortal,
@@ -67,6 +68,7 @@ type ParticipantRecord = {
   tier: Tier | null;
   user_id: Id | null;
   user: UserRef | null;
+  user_email: string | null;
 };
 
 type GridRecord = {
@@ -202,6 +204,7 @@ function normalizeParticipantList(data: unknown): ParticipantRecord[] {
       tier,
       user_id: readId(raw.user_id),
       user: normalizeUserRef(raw.user),
+      user_email: readString(raw.user_email),
     } satisfies ParticipantRecord;
   });
 }
@@ -249,7 +252,21 @@ function parseApiError(data: unknown, fallback: string): string {
   const raw = asObject(data);
   const error = raw ? readString(raw.error) : null;
   const detail = raw ? readString(raw.detail) : null;
-  return error || detail || fallback;
+  if (error || detail) return error || detail || fallback;
+  if (raw) {
+    const lines = Object.entries(raw)
+      .flatMap(([key, value]) => {
+        if (typeof value === "string") return [`${key}: ${value}`];
+        if (Array.isArray(value)) {
+          return value
+            .filter((entry): entry is string => typeof entry === "string")
+            .map((entry) => `${key}: ${entry}`);
+        }
+        return [];
+      });
+    if (lines.length > 0) return lines.join("\n");
+  }
+  return fallback;
 }
 
 function getTokenFromInvite(inv: InvitationRecord): string | null {
@@ -309,8 +326,10 @@ export default function InviteDialog({
   const [loadingData, setLoadingData] = React.useState(false);
   const [savingGeneral, setSavingGeneral] = React.useState(false);
   const [sendingEmails, setSendingEmails] = React.useState(false);
+  const [gridTiersEnabled, setGridTiersEnabled] = React.useState(true);
 
   const [accessList, setAccessList] = React.useState<AccessUser[]>([]);
+  const [participantRecords, setParticipantRecords] = React.useState<ParticipantRecord[]>([]);
   const [viewerLinks, setViewerLinks] = React.useState<InvitationRecord[]>([]);
   const [generalAccessEnabled, setGeneralAccessEnabled] = React.useState(false);
   const [generalAccessUrl, setGeneralAccessUrl] = React.useState("");
@@ -343,7 +362,9 @@ export default function InviteDialog({
 
       const memberships = normalizeMembershipList(membersData);
       const participants = normalizeParticipantList(participantsData);
+      setParticipantRecords(participants);
       const invites = normalizeInvitationList(invitesData);
+      setGridTiersEnabled(readGridTierEnabled(gridData, true));
 
       const tierByUser = new Map<string, Tier>();
       for (const p of participants) {
@@ -554,6 +575,23 @@ export default function InviteDialog({
       setError("Add at least one email.");
       return;
     }
+    if (role === "editor" && gridTiersEnabled && !participantTier) {
+      setError("Participant tier is required for editor invites on tiered grids.");
+      return;
+    }
+    if (role === "editor") {
+      const linkedEmails = new Set(
+        participantRecords
+          .map((participant) => String(participant.user?.email ?? participant.user_email ?? "").trim().toLowerCase())
+          .filter((value) => value.length > 0),
+      );
+      const duplicate = emails.find((value) => linkedEmails.has(value.trim().toLowerCase()));
+      if (duplicate) {
+        setError(`"${duplicate}" already has a participant linked in this grid.`);
+        return;
+      }
+    }
+
     setSendingEmails(true);
     setError(null);
 
@@ -574,7 +612,7 @@ export default function InviteDialog({
         role,
       };
       if (message.trim()) p.message = message.trim();
-      if (role === "editor") p.participant_tier = participantTier;
+      if (role === "editor" && gridTiersEnabled) p.participant_tier = participantTier;
       return p;
     });
 
@@ -609,7 +647,7 @@ export default function InviteDialog({
     onOpenChange(false);
   }
 
-  const showEditorTier = role === "editor";
+  const showEditorTier = role === "editor" && gridTiersEnabled;
 
   function cancelCompose() {
     setEmails([]);

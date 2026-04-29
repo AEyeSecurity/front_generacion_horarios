@@ -5,7 +5,17 @@ import dynamic from "next/dynamic";
 import { Link as LinkIcon } from "lucide-react";
 const EditorInviteDialog = dynamic(() => import("@/components/dialogs/EditorInviteDialog"), { ssr: false });
 
-export default function EditorInviteInline({ gridId, participantId }: { gridId: number | string; participantId: number | string }) {
+export default function EditorInviteInline({
+  gridId,
+  participantId,
+  allowLinkSelf = false,
+  onLinked,
+}: {
+  gridId: number | string;
+  participantId: number | string;
+  allowLinkSelf?: boolean;
+  onLinked?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -17,7 +27,14 @@ export default function EditorInviteInline({ gridId, participantId }: { gridId: 
       >
         <LinkIcon className="w-5 h-5 text-gray-700" />
       </button>
-      <EditorInviteDialog gridId={gridId} participantId={participantId} open={open} onOpenChange={setOpen} />
+      <EditorInviteDialog
+        gridId={gridId}
+        participantId={participantId}
+        open={open}
+        onOpenChange={setOpen}
+        allowLinkSelf={allowLinkSelf}
+        onLinked={onLinked}
+      />
     </>
   );
 }
