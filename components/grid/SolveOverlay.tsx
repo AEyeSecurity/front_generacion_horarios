@@ -7884,5 +7884,3 @@ export default function SolveOverlay({
     </>
   );
 }
-
-

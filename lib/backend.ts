@@ -1,4 +1,4 @@
-﻿// lib/backend.ts
+// lib/backend.ts
 import { ApiError } from "./errors";
 import { getAccessToken, getRefreshToken } from "./cookies";
 import { getApiBaseUrl } from "./api-base";
@@ -48,6 +48,3 @@ export async function backendFetchJSON<T>(path: string, init?: RequestInit): Pro
 
   return (await readDataOrThrow(response)) as T;
 }
-
-
-

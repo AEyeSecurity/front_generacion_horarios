@@ -44,7 +44,3 @@ export async function POST() {
   out.cookies.set(REFRESH, tokens.refresh ?? refresh, { ...cookieOptions, maxAge: 60 * 60 * 24 * 7 });
   return out;
 }
-
-
-
-

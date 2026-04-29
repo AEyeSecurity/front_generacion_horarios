@@ -1,4 +1,4 @@
-﻿// app/api/grids/route.ts
+// app/api/grids/route.ts
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
 import { ApiError } from "@/lib/errors";
@@ -21,7 +21,7 @@ const baseCookie = {
 const withDomain = <T extends Record<string, any>>(o: T) =>
   DOMAIN ? { ...o, domain: DOMAIN } : o;
 
-// âœ… GET: listar grids
+// ? GET: listar grids
 export async function GET() {
   try {
     const data = await backendFetchJSON<ApiList<Grid>>("/api/grids/");
@@ -34,7 +34,7 @@ export async function GET() {
   }
 }
 
-// âœ… POST: crear nuevo grid
+// ? POST: crear nuevo grid
 export async function POST(req: Request) {
   const bodyText = await req.text(); // mantener body para reintento
 
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "validation", detail }, { status: res.status });
   }
 
-  // --- 2) 401 â†’ refresh y reintento ---
+  // --- 2) 401 -> refresh y reintento ---
   const refresh = await getRefreshToken();
   if (!refresh) {
     const out = NextResponse.json({ error: "unauthenticated" }, { status: 401 });
@@ -107,7 +107,7 @@ export async function POST(req: Request) {
   return out;
 }
 
-// helper para GET con refresh automÃ¡tico
+// helper para GET con refresh autom?tico
 async function refreshAndRetryJSON(path: string) {
   const refresh = await getRefreshToken();
   if (!refresh) {
@@ -148,7 +148,3 @@ async function refreshAndRetryJSON(path: string) {
   );
   return out;
 }
-
-
-
-

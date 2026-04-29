@@ -22,4 +22,3 @@ export default function PanelShell({ title, error, controls, children, className
     </div>
   );
 }
-

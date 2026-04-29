@@ -1,4 +1,4 @@
-﻿// Proxy: /api/availability_rules/:id -> NEXT_PUBLIC_API_URL/api/availability-rules/:id
+// Proxy: /api/availability_rules/:id -> NEXT_PUBLIC_API_URL/api/availability-rules/:id
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken } from "@/lib/cookies";
@@ -58,9 +58,3 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     headers: { "content-type": res.headers.get("content-type") ?? "text/plain" },
   });
 }
-
-
-
-
-
-

@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
 
 export async function POST(req: Request) {
@@ -34,7 +34,3 @@ export async function POST(req: Request) {
     { status: res.status }
   );
 }
-
-
-
-

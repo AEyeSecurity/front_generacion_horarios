@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
 import { normalizePreferredLanguage } from "@/lib/language";
 
@@ -70,7 +70,3 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ error: message }, { status: res.status });
 }
-
-
-
-

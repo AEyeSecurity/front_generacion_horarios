@@ -44,4 +44,3 @@ export default function TwoStepIndicator({ step, canGoStep2 = true, onStepChange
     </div>
   );
 }
-

@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
 import { normalizePreferredLanguage } from "@/lib/language";
 
@@ -54,13 +54,9 @@ export async function POST(req: Request) {
     );
   }
 
-  // Success â†’ set cookies with tokens
+  // Success -> set cookies with tokens
   const out = NextResponse.json({ ok: true }, { status: 200 });
   if (data?.access) out.cookies.set(ACCESS, data.access, { ...cookieOptions, maxAge: 60 * 15 });
   if (data?.refresh) out.cookies.set(REFRESH, data.refresh, { ...cookieOptions, maxAge: 60 * 60 * 24 * 7 });
   return out;
 }
-
-
-
-

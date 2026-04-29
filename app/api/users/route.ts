@@ -1,4 +1,4 @@
-﻿// Proxy: /api/users -> NEXT_PUBLIC_API_URL/api/users
+// Proxy: /api/users -> NEXT_PUBLIC_API_URL/api/users
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
@@ -69,8 +69,3 @@ export async function GET(req: Request) {
   out.cookies.set(REFRESH, tokens.refresh ?? refresh!, withDomain({ ...baseCookie, maxAge: 60 * 60 * 24 * 7 }));
   return out;
 }
-
-
-
-
-

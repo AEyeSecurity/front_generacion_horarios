@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
 import { normalizePreferredLanguage } from "@/lib/language";
@@ -127,7 +127,3 @@ export async function PUT(req: Request) {
   const preferred_language = normalizePreferredLanguage(candidate);
   return proxyWhoAmI("PUT", { preferred_language });
 }
-
-
-
-

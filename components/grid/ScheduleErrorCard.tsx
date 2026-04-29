@@ -29,4 +29,3 @@ export default function ScheduleErrorCard({ message, left, top, onClose }: Props
     </div>
   );
 }
-

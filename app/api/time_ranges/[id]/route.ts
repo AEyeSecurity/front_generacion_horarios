@@ -1,4 +1,4 @@
-﻿// Proxy: /api/time_ranges/:id -> BACKEND /api/time-ranges/:id
+// Proxy: /api/time_ranges/:id -> BACKEND /api/time-ranges/:id
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
@@ -89,8 +89,3 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const txt = await res.text().catch(() => "");
   return new NextResponse(txt, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "text/plain" } });
 }
-
-
-
-
-

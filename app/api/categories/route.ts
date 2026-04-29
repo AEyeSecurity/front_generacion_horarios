@@ -1,4 +1,4 @@
-﻿// app/api/categories/route.ts
+// app/api/categories/route.ts
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
 import { getRefreshToken } from "@/lib/cookies";
@@ -90,7 +90,3 @@ export async function POST(req: Request) {
   out.cookies.set(REFRESH, tokens.refresh ?? refresh!, withDomain({ ...baseCookie, maxAge: 60*60*24*7 }));
   return out;
 }
-
-
-
-

@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getRefreshToken, getAccessToken } from "@/lib/cookies";
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
@@ -35,6 +35,3 @@ export async function GET(req: Request) {
   out.cookies.set(REFRESH, tokens.refresh ?? refresh, withDomain({ ...baseCookie, maxAge: 60 * 60 * 24 * 7 }));
   return out;
 }
-
-
-

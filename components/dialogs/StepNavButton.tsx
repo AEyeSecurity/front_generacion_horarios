@@ -40,4 +40,3 @@ export default function StepNavButton({ step, disabled = false, onToggle, classN
     </button>
   );
 }
-

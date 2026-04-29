@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
 
 const B = getApiBaseUrlNormalized();
@@ -24,7 +24,3 @@ export async function GET(req: NextRequest) {
     headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
   });
 }
-
-
-
-

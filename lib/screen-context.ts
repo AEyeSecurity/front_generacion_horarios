@@ -123,4 +123,3 @@ export function invalidateGridScreenContext(gridId?: number | string, view?: Sch
   inflightContextFetches.delete(cacheKeyFor(gridId, "draft"));
   inflightContextFetches.delete(cacheKeyFor(gridId, "published"));
 }
-

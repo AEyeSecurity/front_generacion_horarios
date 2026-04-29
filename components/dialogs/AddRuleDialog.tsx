@@ -452,5 +452,3 @@ export default function AddAvailabilityRuleDialog({
     </Dialog>
   );
 }
-
-

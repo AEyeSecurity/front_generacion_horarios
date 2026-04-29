@@ -1,4 +1,4 @@
-﻿// app/api/grids/[id]/route.ts
+// app/api/grids/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
@@ -205,7 +205,3 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
   });
 }
-
-
-
-

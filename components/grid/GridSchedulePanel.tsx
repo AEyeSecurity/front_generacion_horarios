@@ -1696,6 +1696,3 @@ export default function GridSchedulePanel({
     </>
   );
 }
-
-
-

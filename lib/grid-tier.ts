@@ -23,4 +23,3 @@ export function readGridTierEnabled(raw: unknown, fallback = true): boolean {
   }
   return fallback;
 }
-

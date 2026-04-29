@@ -1,4 +1,4 @@
-﻿// Proxy: /api/participants/:id â†’ NEXT_PUBLIC_API_URL/api/participants/:id
+// Proxy: /api/participants/:id -> NEXT_PUBLIC_API_URL/api/participants/:id
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken } from "@/lib/cookies";
@@ -79,8 +79,3 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return writeParticipant(req, params, "PUT");
 }
-
-
-
-
-

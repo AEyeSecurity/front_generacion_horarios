@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
 
@@ -52,7 +52,3 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
     headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
   });
 }
-
-
-
-

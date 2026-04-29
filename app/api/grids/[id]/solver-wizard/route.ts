@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken } from "@/lib/cookies";
 
@@ -30,7 +30,3 @@ export async function POST(
     headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
   });
 }
-
-
-
-

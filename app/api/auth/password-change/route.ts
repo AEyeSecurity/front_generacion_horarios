@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
 import { canChangePassword } from "@/lib/account";
@@ -139,7 +139,3 @@ export async function POST(req: Request) {
   }
   return out;
 }
-
-
-
-
