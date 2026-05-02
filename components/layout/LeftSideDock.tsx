@@ -190,6 +190,7 @@ export default function LeftSideDock({
       <SidePanel
         gridId={gridId}
         gridCode={gridCode}
+        role={role}
         tab={tab}
         open={open}
         onOpenChange={(v) => setOpen(v)}

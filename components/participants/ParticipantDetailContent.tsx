@@ -9,6 +9,7 @@ import type { Role } from "@/lib/types";
 import { AddRuleButton, DeleteParticipantButton, RuleBubble } from "@/components/actions";
 import { AddRuleDialog } from "@/components/dialogs";
 import EditRuleDialog from "@/components/dialogs/EditRuleDialog";
+import EditParticipantDialog from "@/components/dialogs/EditParticipantDialog";
 import { EditorInviteInline } from "@/components/invitations";
 import ParticipantScheduleOverlay from "@/components/participants/ParticipantScheduleOverlay";
 import { GradualBlur } from "@/components/animations";
@@ -46,6 +47,20 @@ type Props = {
   dayEndHHMM: string;
   rules: Rule[];
   initialView?: "rules" | "schedule";
+};
+
+type EditableParticipant = {
+  id: number;
+  name: string;
+  surname?: string | null;
+  tier?: "PRIMARY" | "SECONDARY" | "TERTIARY" | null;
+  min_hours_week_override?: number | null;
+  max_hours_week_override?: number | null;
+};
+
+const formatParticipantName = (participant: { name?: string | null; surname?: string | null }, fallback: string) => {
+  const fullName = `${participant.name ?? ""}${participant.surname ? ` ${participant.surname}` : ""}`.trim();
+  return fullName || fallback;
 };
 
 const formatMinutes = (mins: number) => {
@@ -148,8 +163,11 @@ export default function ParticipantDetailContent({
 }: Props) {
   const { t } = useI18n();
   const [showScheduleTab, setShowScheduleTab] = useState(DEFAULT_UNIT_NOOVERLAP_ENABLED);
+  const [displayParticipantName, setDisplayParticipantName] = useState(participantName);
   const [hasParticipantPlacement, setHasParticipantPlacement] = useState(false);
   const [participantLinkedState, setParticipantLinkedState] = useState(participantLinked);
+  const [editParticipantOpen, setEditParticipantOpen] = useState(false);
+  const [editParticipant, setEditParticipant] = useState<EditableParticipant | null>(null);
   const [view, setView] = useState<"rules" | "schedule">(initialView);
   const [rulesState, setRulesState] = useState<Rule[]>(rules);
   const [inlineAddOpen, setInlineAddOpen] = useState(false);
@@ -230,8 +248,34 @@ export default function ParticipantDetailContent({
   }, [canOpenScheduleTab, view]);
 
   useEffect(() => {
+    setDisplayParticipantName(participantName);
+  }, [participantName]);
+
+  useEffect(() => {
     setParticipantLinkedState(participantLinked);
   }, [participantLinked]);
+
+  const loadParticipantForEdit = useCallback(async () => {
+    const res = await fetch(`/api/participants/${encodeURIComponent(String(participantId))}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`Failed (${res.status})`);
+    const payload = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!payload) throw new Error("Invalid participant payload");
+    const next: EditableParticipant = {
+      id: Number(payload.id ?? participantId),
+      name: String(payload.name ?? "").trim(),
+      surname: typeof payload.surname === "string" ? payload.surname : null,
+      tier:
+        payload.tier === "PRIMARY" || payload.tier === "SECONDARY" || payload.tier === "TERTIARY"
+          ? payload.tier
+          : null,
+      min_hours_week_override:
+        typeof payload.min_hours_week_override === "number" ? payload.min_hours_week_override : null,
+      max_hours_week_override:
+        typeof payload.max_hours_week_override === "number" ? payload.max_hours_week_override : null,
+    };
+    setEditParticipant(next);
+    setDisplayParticipantName(formatParticipantName(next, participantName));
+  }, [participantId, participantName]);
 
   useEffect(() => {
     let active = true;
@@ -947,7 +991,29 @@ export default function ParticipantDetailContent({
 
         <div className="mx-auto text-center">
           <div className="flex items-center justify-center gap-2">
-            <h1 className="text-xl md:text-2xl font-semibold">{participantName}</h1>
+            <h1
+              className={`text-xl md:text-2xl font-semibold ${canManageRules ? "cursor-pointer" : ""}`}
+              title={canManageRules ? "Double click to edit participant" : undefined}
+              onDoubleClick={async () => {
+                if (!canManageRules) return;
+                try {
+                  await loadParticipantForEdit();
+                } catch {
+                  setEditParticipant({
+                    id: participantId,
+                    name: displayParticipantName,
+                    surname: null,
+                    tier: null,
+                    min_hours_week_override: null,
+                    max_hours_week_override: null,
+                  });
+                } finally {
+                  setEditParticipantOpen(true);
+                }
+              }}
+            >
+              {displayParticipantName}
+            </h1>
             {participantLinkedState ? (
               <span title="Linked participant">
                 <BadgeCheck className="w-5 h-5 text-emerald-600" />
@@ -1436,6 +1502,21 @@ export default function ParticipantDetailContent({
           />
         </div>
       )}
+      <EditParticipantDialog
+        gridId={gridId}
+        role={role}
+        participant={editParticipant}
+        open={editParticipantOpen}
+        onOpenChange={(nextOpen) => {
+          setEditParticipantOpen(nextOpen);
+          if (!nextOpen) setEditParticipant(null);
+        }}
+        onUpdated={async () => {
+          try {
+            await loadParticipantForEdit();
+          } catch {}
+        }}
+      />
     </div>
   );
 }

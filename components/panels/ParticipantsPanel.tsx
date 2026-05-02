@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import { AllTierLabel, TierBadge, TierFilterChip, type Tier } from "@/components/badges/TierBadge";
 import { readGridTierEnabled } from "@/lib/grid-tier";
+import type { Role } from "@/lib/types";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import PanelShell from "@/components/panels/PanelShell";
 import PanelScrollArea from "@/components/panels/PanelScrollArea";
+import EditParticipantDialog from "@/components/dialogs/EditParticipantDialog";
 
 type Participant = {
   id: number;
@@ -27,10 +29,12 @@ type Participant = {
 export default function ParticipantsPanel({
   gridId,
   gridCode,
+  role,
   refreshKey = 0,
 }: {
   gridId: number;
   gridCode?: string | null;
+  role: Role;
   refreshKey?: number;
 }) {
   const [list, setList] = useState<Participant[]>([]);
@@ -39,7 +43,17 @@ export default function ParticipantsPanel({
   const [q, setQ] = useState("");
   const [tierFilter, setTierFilter] = useState<"ALL" | Tier>("ALL");
   const [tierEnabled, setTierEnabled] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Participant | null>(null);
+  const rowClickTimerRef = useRef<number | null>(null);
   const router = useRouter();
+
+  const clearRowClickTimer = () => {
+    if (rowClickTimerRef.current != null) {
+      window.clearTimeout(rowClickTimerRef.current);
+      rowClickTimerRef.current = null;
+    }
+  };
 
   async function load() {
     setLoading(true);
@@ -67,6 +81,8 @@ export default function ParticipantsPanel({
   useEffect(() => {
     load();
   }, [gridId, refreshKey]);
+
+  useEffect(() => () => clearRowClickTimer(), []);
 
   const filtered = useMemo(
     () =>
@@ -125,12 +141,28 @@ export default function ParticipantsPanel({
           {filtered.map((p) => (
             <li key={p.id}>
               <button
-                onClick={() => router.push(`${gridBase}/participants/${p.id}`)}
+                onClick={() => {
+                  clearRowClickTimer();
+                  rowClickTimerRef.current = window.setTimeout(() => {
+                    router.push(`${gridBase}/participants/${p.id}`);
+                    rowClickTimerRef.current = null;
+                  }, 180);
+                }}
                 className="w-full overflow-hidden rounded border p-3 text-left text-sm hover:bg-gray-50"
               >
                 <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                   <div className="min-w-0">
-                    <div className="font-medium truncate">
+                    <div
+                      className="font-medium truncate"
+                      title="Double click to edit participant"
+                      onDoubleClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        clearRowClickTimer();
+                        setEditTarget(p);
+                        setEditOpen(true);
+                      }}
+                    >
                       {p.name} {p.surname ?? ""}
                     </div>
                   </div>
@@ -145,6 +177,17 @@ export default function ParticipantsPanel({
           ))}
         </ul>
       </PanelScrollArea>
+      <EditParticipantDialog
+        gridId={gridId}
+        role={role}
+        participant={editTarget}
+        open={editOpen}
+        onOpenChange={(nextOpen) => {
+          setEditOpen(nextOpen);
+          if (!nextOpen) setEditTarget(null);
+        }}
+        onUpdated={load}
+      />
     </PanelShell>
   );
 }

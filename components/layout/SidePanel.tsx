@@ -9,6 +9,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useI18n } from "@/lib/use-i18n";
+import type { Role } from "@/lib/types";
 
 const ParticipantsPanel = dynamic(() => import("@/components/panels/ParticipantsPanel"), { ssr: false });
 const CategoriesPanel = dynamic(() => import("@/components/panels/CategoriesPanel"), { ssr: false });
@@ -16,12 +17,14 @@ const CategoriesPanel = dynamic(() => import("@/components/panels/CategoriesPane
 export default function SidePanel({
   gridId,
   gridCode,
+  role,
   tab,
   open,
   onOpenChange,
 }: {
   gridId: number;
   gridCode?: string | null;
+  role: Role;
   tab: "participants" | "categories";
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -62,7 +65,7 @@ export default function SidePanel({
         <div className="h-full flex flex-col pl-18 pr-4 pt-4 pb-0">
           <div className="flex-1 overflow-y-auto pb-[72px]">
             {tab === "participants" ? (
-              <ParticipantsPanel gridId={gridId} gridCode={gridCode} refreshKey={participantsKey} />
+              <ParticipantsPanel gridId={gridId} gridCode={gridCode} role={role} refreshKey={participantsKey} />
             ) : (
               <CategoriesPanel
                 gridId={gridId}
