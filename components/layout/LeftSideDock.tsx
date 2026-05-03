@@ -3,12 +3,12 @@
 import { MouseEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import SidePanel from "./SidePanel";
-import { Users, Tags, User as UserIcon, LayoutGrid } from "lucide-react";
+import { Users, Tags, User as UserIcon, LayoutGrid, Clock } from "lucide-react";
 import type { Role } from "@/lib/types";
 import { useI18n } from "@/lib/use-i18n";
 import DeleteDropBubble from "@/components/layout/DeleteDropBubble";
 
-type Tab = "participants" | "categories";
+type Tab = "participants" | "categories" | "time-ranges";
 const SHEET_ANIM_MS = 240;
 const GRID_COMMENTS_PANEL_STATE_EVENT = "shift:grid-comments-panel-state";
 const GRID_LEFT_PANEL_STATE_EVENT = "shift:grid-left-panel-state";
@@ -49,11 +49,21 @@ export default function LeftSideDock({
   gridCode,
   role,
   selfParticipantId,
+  horizonStart,
+  horizonEnd,
+  cellSizeMin,
+  dayStartMin,
+  dayEndMin,
 }: {
   gridId: number;
   gridCode?: string | null;
   role: Role;
   selfParticipantId?: number | null;
+  horizonStart?: string;
+  horizonEnd?: string;
+  cellSizeMin?: number;
+  dayStartMin?: number;
+  dayEndMin?: number;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -185,11 +195,24 @@ export default function LeftSideDock({
         >
           <Tags className="w-5 h-5" />
         </DockButton>
+
+        <DockButton
+          title={t("side_dock.time_ranges")}
+          active={open && tab === "time-ranges"}
+          onClick={() => switchTo("time-ranges")}
+        >
+          <Clock className="w-5 h-5" />
+        </DockButton>
       </div>
 
       <SidePanel
         gridId={gridId}
         gridCode={gridCode}
+        horizonStart={horizonStart}
+        horizonEnd={horizonEnd}
+        cellSizeMin={cellSizeMin}
+        dayStartMin={dayStartMin}
+        dayEndMin={dayEndMin}
         role={role}
         tab={tab}
         open={open}

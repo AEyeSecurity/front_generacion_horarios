@@ -109,6 +109,11 @@ export default async function GridHistoryPage({
         gridCode={gridCode}
         role={role}
         selfParticipantId={selfPid ?? undefined}
+        horizonStart={grid.day_start}
+        horizonEnd={grid.day_end}
+        cellSizeMin={grid.cell_size_min}
+        dayStartMin={start}
+        dayEndMin={end}
       />
       <div className="p-4">
         <div className="w-[80%] mx-auto">

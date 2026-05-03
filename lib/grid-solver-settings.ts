@@ -1,6 +1,24 @@
 export const DEFAULT_UNIT_NOOVERLAP_ENABLED = true;
 export const TIER_KEYS = ["PRIMARY", "SECONDARY", "TERTIARY"] as const;
 export type TierKey = (typeof TIER_KEYS)[number];
+export const OBJECTIVE_WEIGHT_DEFAULTS = {
+  weight_availability: 100.0,
+  weight_participant_gap: 10.0,
+  weight_participant_days: 4.0,
+  weight_unit_gap: 6.0,
+  weight_unit_days: 2.0,
+  weight_soft_window: 1.0,
+  weight_min_week_shortfall: 1000.0,
+  stability_weight: 0.0,
+  weight_day_load_balance: 12.0,
+  weight_overstaff_day_balance: 20.0,
+  weight_overstaff_cell_balance: 10.0,
+  weight_random_tiebreak: 0.0,
+  weight_participant_daily_load_balance: 3.0,
+  weight_participant_day_spread: 0.0,
+} as const;
+export type ObjectiveWeightKey = keyof typeof OBJECTIVE_WEIGHT_DEFAULTS;
+export const OBJECTIVE_WEIGHT_KEYS = Object.keys(OBJECTIVE_WEIGHT_DEFAULTS) as ObjectiveWeightKey[];
 
 export type TierHours = Record<TierKey, number>;
 
@@ -13,8 +31,7 @@ export type GridSolverSettings = {
   min_hours_week_weight?: number;
   unit_max_hours_day?: number;
   min_rest_hours?: number;
-  stability_weight?: number;
-};
+} & Partial<Record<ObjectiveWeightKey, number>>;
 
 export function getGridSolverSettingsKey(gridId: number | string) {
   return `grid:${String(gridId)}:solver-settings`;
@@ -76,9 +93,13 @@ export function parseGridSolverSettings(raw: string | null | undefined): GridSol
     const minRestHours = parseFiniteNumber(parsed.min_rest_hours);
     if (minRestHours !== undefined) out.min_rest_hours = minRestHours;
 
-    const stabilityWeight = parseFiniteNumber(parsed.stability_weight);
-    if (stabilityWeight !== undefined) {
-      out.stability_weight = Math.max(0, Math.min(100, stabilityWeight));
+    for (const weightKey of OBJECTIVE_WEIGHT_KEYS) {
+      const weight = parseFiniteNumber(parsed[weightKey]);
+      if (weight === undefined) continue;
+      out[weightKey] =
+        weightKey === "stability_weight"
+          ? Math.max(0, Math.min(100, weight))
+          : Math.max(0, weight);
     }
 
     return out;
@@ -102,8 +123,13 @@ export function buildSolverParamsPayload(settings: GridSolverSettings) {
   if (typeof settings.min_hours_week_weight === "number") payload.min_hours_week_weight = settings.min_hours_week_weight;
   if (typeof settings.unit_max_hours_day === "number") payload.unit_max_hours_day = settings.unit_max_hours_day;
   if (typeof settings.min_rest_hours === "number") payload.min_rest_hours = settings.min_rest_hours;
-  if (typeof settings.stability_weight === "number") {
-    payload.stability_weight = Math.max(0, Math.min(100, settings.stability_weight));
+  for (const weightKey of OBJECTIVE_WEIGHT_KEYS) {
+    const value = settings[weightKey];
+    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    payload[weightKey] =
+      weightKey === "stability_weight"
+        ? Math.max(0, Math.min(100, value))
+        : Math.max(0, value);
   }
 
   return payload;

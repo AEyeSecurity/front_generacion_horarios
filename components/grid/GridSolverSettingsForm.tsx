@@ -2,14 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import ElasticSlider from "@/components/ElasticSlider";
+import {
+  DEFAULT_UNIT_NOOVERLAP_ENABLED,
+  OBJECTIVE_WEIGHT_DEFAULTS,
+  OBJECTIVE_WEIGHT_KEYS,
+  TIER_KEYS,
+  buildSolverParamsPayload,
+  getGridSolverSettingsKey,
+  type GridSolverSettings,
+  type ObjectiveWeightKey,
+  type TierHours,
+} from "@/lib/grid-solver-settings";
 import { useI18n } from "@/lib/use-i18n";
 
-type OrganizationType = "school" | "work" | "gym" | "private_tutor" | "other";
-type UnitNature = "audience" | "internal" | "none";
-type TierKey = "PRIMARY" | "SECONDARY" | "TERTIARY";
-type PriorityCode = "P1" | "P2" | "P3" | "P4" | "P5" | "P6" | "P9" | "P10";
-
+type TierKey = (typeof TIER_KEYS)[number];
 type DayHeatmapKey = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 type DayHeatmapValues = Record<DayHeatmapKey, 1 | 2 | 3>;
 type DayHeatmapApiInput = Partial<Record<string, number>> | null;
@@ -34,37 +40,14 @@ type TimeRangeListResponse = {
   results?: TimeRangeResource[];
 };
 
-type WizardAnswers = {
-  Q1?: OrganizationType;
-  Q2?: UnitNature;
-  Q4?: boolean;
-  Q5?: number;
-  Q_tiers?: boolean;
-  Q_min_cells?: Partial<Record<TierKey, number | null>>;
-  priorities?: Partial<Record<PriorityCode, number>>;
-};
-
 type GridDetailResponse = {
   id?: number;
-  description?: string;
   solver_params?: Record<string, unknown> | null;
   solve_preference?: {
     solver_params?: Record<string, unknown> | null;
-    wizard_config?: {
-      answers?: WizardAnswers;
-    } | null;
+    base_weights?: Record<string, unknown> | null;
   } | null;
-};
-
-const PRIORITY_DEFAULT: Record<PriorityCode, number> = {
-  P1: 5,
-  P2: 5,
-  P3: 5,
-  P4: 5,
-  P5: 5,
-  P6: 5,
-  P9: 5,
-  P10: 3,
+  base_weights?: Record<string, unknown> | null;
 };
 
 const DAY_INDEX_TO_KEY: Record<number, DayHeatmapKey> = {
@@ -100,8 +83,26 @@ const DAY_KEY_TO_INDEX: Record<DayHeatmapKey, number> = {
   Sun: 6,
 };
 
+type ObjectiveWeightRow = {
+  key: ObjectiveWeightKey;
+  label: string;
+  help: string;
+  min: number;
+  max?: number;
+  step: number;
+};
+
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
+}
+
+function parseFiniteNumber(input: unknown): number | undefined {
+  if (typeof input === "number" && Number.isFinite(input)) return input;
+  if (typeof input === "string" && input.trim() !== "") {
+    const n = Number(input);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
 }
 
 function parseClockToMin(value: string): number {
@@ -179,25 +180,55 @@ function buildSmoothPath(points: Array<{ x: number; y: number }>): string {
   return path;
 }
 
-function extractWizardAnswers(raw: unknown): WizardAnswers | null {
-  if (!raw || typeof raw !== "object") return null;
-  const obj = raw as Record<string, unknown>;
-  if (obj.answers && typeof obj.answers === "object") return obj.answers as WizardAnswers;
-  if (obj.wizard_config && typeof obj.wizard_config === "object") {
-    const cfg = obj.wizard_config as Record<string, unknown>;
-    if (cfg.answers && typeof cfg.answers === "object") return cfg.answers as WizardAnswers;
-  }
-  if (obj.Q1 || obj.priorities || obj.Q2 || obj.Q4 || obj.Q5) {
-    return obj as unknown as WizardAnswers;
-  }
-  return null;
+function createEmptyTierInput(): Record<TierKey, string> {
+  return {
+    PRIMARY: "",
+    SECONDARY: "",
+    TERTIARY: "",
+  };
 }
 
-function parsePriority(raw: unknown, code: PriorityCode) {
-  const max = code === "P10" ? 5 : 10;
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return PRIORITY_DEFAULT[code];
-  return clamp(Math.round(n), 1, max);
+function parseTierHoursFromUnknown(input: unknown): TierHours | null {
+  if (!input || typeof input !== "object") return null;
+  const rec = input as Record<string, unknown>;
+  const out = {} as TierHours;
+  for (const tier of TIER_KEYS) {
+    const parsed = parseFiniteNumber(rec[tier]);
+    if (parsed === undefined || parsed < 0) return null;
+    out[tier] = parsed;
+  }
+  return out;
+}
+
+function formatTierHoursInput(hours: TierHours | null): Record<TierKey, string> {
+  if (!hours) return createEmptyTierInput();
+  return {
+    PRIMARY: String(hours.PRIMARY),
+    SECONDARY: String(hours.SECONDARY),
+    TERTIARY: String(hours.TERTIARY),
+  };
+}
+
+function parseTierHoursForSave(
+  source: Record<TierKey, string>,
+  label: string,
+): { value?: TierHours; error?: string } {
+  const trimmed = TIER_KEYS.map((tier) => source[tier].trim());
+  const hasAny = trimmed.some((value) => value !== "");
+  if (!hasAny) return {};
+  const hasMissing = trimmed.some((value) => value === "");
+  if (hasMissing) {
+    return { error: `${label}: all tier values are required once you start filling this field.` };
+  }
+  const out = {} as TierHours;
+  for (const tier of TIER_KEYS) {
+    const parsed = parseFiniteNumber(source[tier]);
+    if (parsed === undefined || parsed < 0) {
+      return { error: `${label}: values must be valid non-negative numbers.` };
+    }
+    out[tier] = parsed;
+  }
+  return { value: out };
 }
 
 function DayHeatmapChart({
@@ -363,32 +394,35 @@ export default function GridSolverSettingsForm({
   cellSizeMin: number;
 }) {
   const { t } = useI18n();
-  const tt = useCallback((key: string, fallback: string, params?: Record<string, string | number>) => {
-    const translated = t(key as never, params);
-    return translated === key ? fallback : translated;
-  }, [t]);
+  const tt = useCallback(
+    (key: string, fallback: string, params?: Record<string, string | number>) => {
+      const translated = t(key as never, params);
+      return translated === key ? fallback : translated;
+    },
+    [t],
+  );
 
-  const [profileLoading, setProfileLoading] = useState(true);
-  const [profileSaving, setProfileSaving] = useState(false);
-  const [profileError, setProfileError] = useState<string | null>(null);
-  const [profileSaved, setProfileSaved] = useState<string | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [settingsSaved, setSettingsSaved] = useState<string | null>(null);
 
-  const [q1OrganizationType, setQ1OrganizationType] = useState<OrganizationType | null>(null);
-  const [q1OtherDescription, setQ1OtherDescription] = useState("");
-  const [q2UnitNature, setQ2UnitNature] = useState<UnitNature | null>(null);
-  const [q4UnitNoOverlap, setQ4UnitNoOverlap] = useState<boolean | null>(null);
-  const [q5MinRestHours, setQ5MinRestHours] = useState("");
-  const [qTiers, setQTiers] = useState<boolean | null>(null);
-  const [qMinCells, setQMinCells] = useState<Record<TierKey, string>>({
-    PRIMARY: "",
-    SECONDARY: "",
-    TERTIARY: "",
+  const [objectiveOpen, setObjectiveOpen] = useState(false);
+  const [weightsSaving, setWeightsSaving] = useState(false);
+  const [weightsError, setWeightsError] = useState<string | null>(null);
+  const [weightsSaved, setWeightsSaved] = useState<string | null>(null);
+
+  const [unitNoOverlapEnabled, setUnitNoOverlapEnabled] = useState(DEFAULT_UNIT_NOOVERLAP_ENABLED);
+  const [minRestHours, setMinRestHours] = useState("");
+  const [maxHoursDayByTier, setMaxHoursDayByTier] = useState<Record<TierKey, string>>(createEmptyTierInput());
+  const [maxHoursWeekByTier, setMaxHoursWeekByTier] = useState<Record<TierKey, string>>(createEmptyTierInput());
+  const [minHoursWeekByTier, setMinHoursWeekByTier] = useState<Record<TierKey, string>>(createEmptyTierInput());
+  const [objectiveWeights, setObjectiveWeights] = useState<Record<ObjectiveWeightKey, string>>(() => {
+    const initial = {} as Record<ObjectiveWeightKey, string>;
+    for (const key of OBJECTIVE_WEIGHT_KEYS) initial[key] = String(OBJECTIVE_WEIGHT_DEFAULTS[key]);
+    return initial;
   });
-  const [priorities, setPriorities] = useState<Record<PriorityCode, number>>(PRIORITY_DEFAULT);
-  const [stabilityWeight, setStabilityWeight] = useState(50);
-  const [stabilitySaving, setStabilitySaving] = useState(false);
-
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const solverParamsRef = useRef<Record<string, unknown>>({});
 
   const [heatmapSaving, setHeatmapSaving] = useState(false);
   const [heatmapError, setHeatmapError] = useState<string | null>(null);
@@ -401,31 +435,110 @@ export default function GridSolverSettingsForm({
   const [creatingTimeRange, setCreatingTimeRange] = useState(false);
   const [busyByTimeRangeId, setBusyByTimeRangeId] = useState<Record<number, boolean>>({});
 
-  const dayOptions = [
-    { key: "school" as const, label: tt("solver_wizard.org_type_school", "School") },
-    { key: "work" as const, label: tt("solver_wizard.org_type_work", "Work") },
-    { key: "gym" as const, label: tt("solver_wizard.org_type_gym", "Gym") },
-    { key: "private_tutor" as const, label: tt("solver_wizard.org_type_private_tutor", "Private tutor") },
-    { key: "other" as const, label: tt("solver_wizard.org_type_other", "Other") },
-  ];
-
-  const unitNatureOptions: Array<{ key: UnitNature; label: string; help: string }> = [
-    {
-      key: "audience",
-      label: tt("solver_wizard.unit_nature_audience", "Audience"),
-      help: tt("solver_wizard.unit_nature_audience_help_short", "Groups that attend together."),
-    },
-    {
-      key: "internal",
-      label: tt("solver_wizard.unit_nature_internal", "Internal"),
-      help: tt("solver_wizard.unit_nature_internal_help_short", "Internal organizational groups."),
-    },
-    {
-      key: "none",
-      label: tt("solver_wizard.unit_nature_none", "None"),
-      help: tt("solver_wizard.unit_nature_none_help_short", "No unit grouping preferences."),
-    },
-  ];
+  const objectiveWeightRows = useMemo<ObjectiveWeightRow[]>(
+    () => [
+      {
+        key: "weight_availability",
+        label: "Availability respect",
+        help: "Higher values make the solver prioritize respecting participant availability.",
+        min: 0,
+        step: 0.1,
+      },
+      {
+        key: "weight_participant_gap",
+        label: "Participant gap minimization",
+        help: "Higher values push the solver to avoid idle gaps within participant days.",
+        min: 0,
+        step: 0.1,
+      },
+      {
+        key: "weight_participant_days",
+        label: "Participant day concentration",
+        help: "Higher values encourage concentrating each participant's activities into fewer days.",
+        min: 0,
+        step: 0.1,
+      },
+      {
+        key: "weight_unit_gap",
+        label: "Unit gap minimization",
+        help: "Higher values reduce gaps inside each unit's daily schedule.",
+        min: 0,
+        step: 0.1,
+      },
+      {
+        key: "weight_unit_days",
+        label: "Unit day concentration",
+        help: "Higher values encourage concentrating each unit's activities into fewer days.",
+        min: 0,
+        step: 0.1,
+      },
+      {
+        key: "weight_soft_window",
+        label: "Soft time-window preference",
+        help: "Higher values make preferred time windows more influential in placement choices.",
+        min: 0,
+        step: 0.1,
+      },
+      {
+        key: "weight_min_week_shortfall",
+        label: "Min weekly hours shortfall penalty",
+        help: "Higher values strongly penalize missing minimum weekly-hour targets.",
+        min: 0,
+        step: 0.1,
+      },
+      {
+        key: "stability_weight",
+        label: "Schedule stability (0-100)",
+        help: "Higher values favor continuity with previous solver results.",
+        min: 0,
+        max: 100,
+        step: 0.1,
+      },
+      {
+        key: "weight_day_load_balance",
+        label: "Daily load balance",
+        help: "Higher values balance total activity load across enabled days.",
+        min: 0,
+        step: 0.1,
+      },
+      {
+        key: "weight_overstaff_day_balance",
+        label: "Overstaffing day balance",
+        help: "Higher values distribute overstaffing more evenly across days.",
+        min: 0,
+        step: 0.1,
+      },
+      {
+        key: "weight_overstaff_cell_balance",
+        label: "Overstaffing cell balance",
+        help: "Higher values distribute overstaffing across cells instead of concentrating it.",
+        min: 0,
+        step: 0.1,
+      },
+      {
+        key: "weight_random_tiebreak",
+        label: "Random tiebreak",
+        help: "Adds controlled randomness when candidate solutions are otherwise equivalent.",
+        min: 0,
+        step: 0.1,
+      },
+      {
+        key: "weight_participant_daily_load_balance",
+        label: "Participant daily load balance",
+        help: "Higher values balance each participant's workload inside a day.",
+        min: 0,
+        step: 0.1,
+      },
+      {
+        key: "weight_participant_day_spread",
+        label: "Participant day spread",
+        help: "Higher values spread participant workdays farther apart.",
+        min: 0,
+        step: 0.1,
+      },
+    ],
+    [],
+  );
 
   const enabledDayKeys = useMemo<DayHeatmapKey[]>(
     () =>
@@ -489,93 +602,6 @@ export default function GridSolverSettingsForm({
     [enabledDaysCount, heatmapBudget, heatmapUpgradeSum],
   );
 
-  const priorityRows = useMemo(
-    () => [
-      {
-        code: "P1" as const,
-        label: tt("solver_wizard.priority_availability", "Respect participant availability"),
-        description: tt(
-          "solver_wizard.priority_availability_desc",
-          "How strictly should the solver respect when participants say they can't work?",
-        ),
-      },
-      {
-        code: "P2" as const,
-        label: tt("solver_wizard.priority_participant_gap", "Minimize gaps between participant activities"),
-        description: tt(
-          "solver_wizard.priority_participant_gap_desc",
-          "Should the solver try to avoid gaps/free periods between a participant's activities in the same day?",
-        ),
-      },
-      {
-        code: "P3" as const,
-        label: tt("solver_wizard.priority_participant_days", "Concentrate activities in fewer days"),
-        description: tt(
-          "solver_wizard.priority_participant_days_desc",
-          "Should the solver try to pack all of a participant's activities into fewer days?",
-        ),
-      },
-      {
-        code: "P9" as const,
-        label: tt("solver_wizard.priority_daily_load_balance", "Daily load balance"),
-        description: tt(
-          "solver_wizard.priority_daily_load_balance_desc",
-          "Within each day, should the workload be spread evenly?",
-        ),
-        indent: true,
-        dependsOnP3: true,
-      },
-      {
-        code: "P10" as const,
-        label: tt("solver_wizard.priority_day_spread", "Separate vs. cluster days"),
-        description: tt(
-          "solver_wizard.priority_day_spread_desc",
-          "Should working days be spread apart or clustered together?",
-        ),
-        indent: true,
-        dependsOnP3: true,
-        bipolar: true,
-      },
-      {
-        code: "P4" as const,
-        label: tt("solver_wizard.priority_unit_gap", "Minimize gaps in units"),
-        description: tt(
-          "solver_wizard.priority_unit_gap_desc",
-          "Should the solver avoid gaps in a unit/group's daily schedule?",
-        ),
-        audienceOnly: true,
-      },
-      {
-        code: "P5" as const,
-        label: tt("solver_wizard.priority_unit_days", "Concentrate unit activities"),
-        description: tt(
-          "solver_wizard.priority_unit_days_desc",
-          "Should the solver concentrate a unit/group's activities into fewer days?",
-        ),
-        audienceOnly: true,
-      },
-      {
-        code: "P6" as const,
-        label: tt("solver_wizard.priority_soft_window", "Respect preferred time windows"),
-        description: tt(
-          "solver_wizard.priority_soft_window_desc",
-          "How much should the solver respect preferred time windows?",
-        ),
-      },
-    ],
-    [t],
-  );
-
-  const visiblePriorityRows = useMemo(
-    () =>
-      priorityRows.filter((row) => {
-        if (row.audienceOnly && q2UnitNature !== "audience") return false;
-        if (row.dependsOnP3 && priorities.P3 <= 1) return false;
-        return true;
-      }),
-    [priorities.P3, priorityRows, q2UnitNature],
-  );
-
   const toTimeRangeDraft = useCallback(
     (item: TimeRangeResource): TimeRangeDraft => {
       const startRaw = parseClockToMin(String(item.start_time ?? ""));
@@ -633,176 +659,197 @@ export default function GridSolverSettingsForm({
 
   useEffect(() => {
     let mounted = true;
-    const loadProfile = async () => {
-      setProfileLoading(true);
-      setProfileError(null);
+    const loadSettings = async () => {
+      setSettingsLoading(true);
+      setSettingsError(null);
       try {
         const gridRes = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}`, { cache: "no-store" });
-        let gridData: GridDetailResponse = {};
-        if (gridRes.ok) {
-          gridData = (await gridRes.json().catch(() => ({}))) as GridDetailResponse;
+        if (!gridRes.ok) {
+          const raw = await gridRes.text().catch(() => "");
+          throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.load_failed", "Could not load settings.")));
         }
-
-        let answers: WizardAnswers | null = null;
-        try {
-          const wizardRes = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}/solver-wizard/`, {
-            cache: "no-store",
-          });
-          if (wizardRes.ok) {
-            answers = extractWizardAnswers(await wizardRes.json().catch(() => null));
-          } else if (wizardRes.status !== 405) {
-            const raw = await wizardRes.text().catch(() => "");
-            throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.load_failed", "Could not load settings.")));
-          }
-        } catch {
-          // ignore and fallback to grid detail
-        }
-
-        if (!answers) {
-          answers = gridData?.solve_preference?.wizard_config?.answers ?? null;
-          // TODO: backend should expose wizard_config in grid detail or a dedicated GET endpoint.
-        }
-
-        const nextPriorities: Record<PriorityCode, number> = { ...PRIORITY_DEFAULT };
-        const rawPriorities = answers?.priorities ?? {};
-        for (const code of Object.keys(PRIORITY_DEFAULT) as PriorityCode[]) {
-          nextPriorities[code] = parsePriority(rawPriorities?.[code], code);
-        }
-
-        const q1 = answers?.Q1 ?? null;
-        const q2 = answers?.Q2 ?? null;
-        const q4 = typeof answers?.Q4 === "boolean" ? answers.Q4 : null;
-        const q5 = typeof answers?.Q5 === "number" && Number.isFinite(answers.Q5) ? String(answers.Q5) : "";
-        const qTiersValue = typeof answers?.Q_tiers === "boolean" ? answers.Q_tiers : null;
-        const minCells = answers?.Q_min_cells ?? {};
-
-        const rawStability =
-          gridData?.solve_preference?.solver_params?.stability_weight ??
-          gridData?.solver_params?.stability_weight;
-        const parsedStability = Number(rawStability);
+        const gridData = (await gridRes.json().catch(() => ({}))) as GridDetailResponse;
+        const solverParamsSource =
+          (gridData?.solve_preference?.solver_params && typeof gridData.solve_preference.solver_params === "object"
+            ? gridData.solve_preference.solver_params
+            : null) ??
+          (gridData?.solver_params && typeof gridData.solver_params === "object" ? gridData.solver_params : null) ??
+          {};
+        const baseWeightsSource =
+          (gridData?.solve_preference?.base_weights && typeof gridData.solve_preference.base_weights === "object"
+            ? gridData.solve_preference.base_weights
+            : null) ??
+          (gridData?.base_weights && typeof gridData.base_weights === "object" ? gridData.base_weights : null) ??
+          {};
 
         if (!mounted) return;
-        setPriorities(nextPriorities);
-        setQ1OrganizationType(q1);
-        setQ2UnitNature(q2);
-        setQ4UnitNoOverlap(q2 === "audience" ? q4 : null);
-        setQ5MinRestHours(q5);
-        setQTiers(qTiersValue);
-        setQMinCells({
-          PRIMARY: minCells.PRIMARY == null ? "" : String(minCells.PRIMARY),
-          SECONDARY: minCells.SECONDARY == null ? "" : String(minCells.SECONDARY),
-          TERTIARY: minCells.TERTIARY == null ? "" : String(minCells.TERTIARY),
-        });
-        if (q1 === "other") {
-          setQ1OtherDescription(String(gridData?.description ?? ""));
+
+        solverParamsRef.current = { ...(solverParamsSource as Record<string, unknown>) };
+
+        const unitNoOverlapRaw = (solverParamsSource as Record<string, unknown>).unit_nooverlap_enabled;
+        setUnitNoOverlapEnabled(
+          typeof unitNoOverlapRaw === "boolean" ? unitNoOverlapRaw : DEFAULT_UNIT_NOOVERLAP_ENABLED,
+        );
+
+        const minRestRaw = parseFiniteNumber((solverParamsSource as Record<string, unknown>).min_rest_hours);
+        setMinRestHours(minRestRaw !== undefined && minRestRaw >= 0 ? String(minRestRaw) : "");
+
+        const maxDayParsed = parseTierHoursFromUnknown((solverParamsSource as Record<string, unknown>).max_hours_day_by_tier);
+        const maxWeekParsed = parseTierHoursFromUnknown((solverParamsSource as Record<string, unknown>).max_hours_week_by_tier);
+        const minWeekParsed = parseTierHoursFromUnknown((solverParamsSource as Record<string, unknown>).min_hours_week_by_tier);
+
+        setMaxHoursDayByTier(formatTierHoursInput(maxDayParsed));
+        setMaxHoursWeekByTier(formatTierHoursInput(maxWeekParsed));
+        setMinHoursWeekByTier(formatTierHoursInput(minWeekParsed));
+
+        const nextWeights = {} as Record<ObjectiveWeightKey, string>;
+        for (const key of OBJECTIVE_WEIGHT_KEYS) {
+          const sourceValue =
+            parseFiniteNumber((baseWeightsSource as Record<string, unknown>)[key]) ??
+            parseFiniteNumber((solverParamsSource as Record<string, unknown>)[key]) ??
+            OBJECTIVE_WEIGHT_DEFAULTS[key];
+          if (key === "stability_weight") {
+            nextWeights[key] = String(clamp(sourceValue, 0, 100));
+          } else {
+            nextWeights[key] = String(Math.max(0, sourceValue));
+          }
         }
-        if (Number.isFinite(parsedStability)) {
-          setStabilityWeight(clamp(Math.round(parsedStability), 0, 100));
-        }
+        setObjectiveWeights(nextWeights);
       } catch (error: unknown) {
         if (!mounted) return;
-        setProfileError(error instanceof Error ? error.message : tt("grid_solver_settings.load_failed", "Could not load settings."));
+        setSettingsError(error instanceof Error ? error.message : tt("grid_solver_settings.load_failed", "Could not load settings."));
       } finally {
-        if (mounted) setProfileLoading(false);
+        if (mounted) setSettingsLoading(false);
       }
     };
-    void loadProfile();
+    void loadSettings();
     return () => {
       mounted = false;
     };
   }, [gridId, tt]);
 
-  const setPriority = (code: PriorityCode, raw: number) => {
-    const max = code === "P10" ? 5 : 10;
-    const next = Math.max(1, Math.min(max, Math.round(raw)));
-    setPriorities((prev) => ({ ...prev, [code]: next }));
-    setProfileSaved(null);
+  const patchSolverParams = async (solverParams: Record<string, unknown>) => {
+    const response = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ solver_params: solverParams }),
+    });
+    if (!response.ok) {
+      const raw = await response.text().catch(() => "");
+      throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.save_failed", "Could not save settings.")));
+    }
   };
 
-  const saveSolverProfile = async () => {
-    setProfileSaved(null);
-    setProfileError(null);
-    if (!q1OrganizationType) {
-      const msg = tt("solver_wizard.q1_required", "Please select an organization type.");
-      setProfileError(msg);
-      toast.error(msg);
+  const saveConstraintSettings = async () => {
+    setSettingsSaved(null);
+    setSettingsError(null);
+
+    const maxDayParsed = parseTierHoursForSave(maxHoursDayByTier, "Max hours/day by tier");
+    if (maxDayParsed.error) {
+      setSettingsError(maxDayParsed.error);
+      toast.error(maxDayParsed.error);
+      return;
+    }
+    const maxWeekParsed = parseTierHoursForSave(maxHoursWeekByTier, "Max hours/week by tier");
+    if (maxWeekParsed.error) {
+      setSettingsError(maxWeekParsed.error);
+      toast.error(maxWeekParsed.error);
+      return;
+    }
+    const minWeekParsed = parseTierHoursForSave(minHoursWeekByTier, "Min hours/week by tier");
+    if (minWeekParsed.error) {
+      setSettingsError(minWeekParsed.error);
+      toast.error(minWeekParsed.error);
       return;
     }
 
-    const parseMinCell = (raw: string): number | null | "invalid" => {
-      const trimmed = raw.trim();
-      if (!trimmed) return null;
-      const n = Number(trimmed);
-      if (!Number.isInteger(n) || n < 0) return "invalid";
-      return n;
-    };
-
-    const parsedMinCells = {
-      PRIMARY: parseMinCell(qMinCells.PRIMARY),
-      SECONDARY: parseMinCell(qMinCells.SECONDARY),
-      TERTIARY: parseMinCell(qMinCells.TERTIARY),
-    };
-
-    if (parsedMinCells.PRIMARY === "invalid" || parsedMinCells.SECONDARY === "invalid" || parsedMinCells.TERTIARY === "invalid") {
-      const msg = tt("solver_wizard.q_min_cells_invalid", "Min cells values must be non-negative integers.");
-      setProfileError(msg);
-      toast.error(msg);
-      return;
-    }
-
-    const payload: Record<string, unknown> = {
-      Q1: q1OrganizationType,
-    };
-    if (q2UnitNature) payload.Q2 = q2UnitNature;
-    if (q2UnitNature === "audience" && q4UnitNoOverlap !== null) payload.Q4 = q4UnitNoOverlap;
-    const q5Trimmed = q5MinRestHours.trim();
-    if (q5Trimmed) {
-      const q5Num = Number(q5Trimmed);
-      if (Number.isFinite(q5Num) && q5Num > 0) payload.Q5 = q5Num;
-    }
-
-    payload.priorities = {
-      P1: priorities.P1,
-      P2: priorities.P2,
-      P3: priorities.P3,
-      P6: priorities.P6,
-      P9: priorities.P9,
-      P10: priorities.P10,
-      ...(q2UnitNature === "audience" ? { P4: priorities.P4, P5: priorities.P5 } : {}),
-    };
-
-    if (qTiers !== null) payload.Q_tiers = qTiers;
-    if (qTiers !== false) {
-      const minCells: Record<TierKey, number | null> = {
-        PRIMARY: parsedMinCells.PRIMARY,
-        SECONDARY: parsedMinCells.SECONDARY,
-        TERTIARY: parsedMinCells.TERTIARY,
-      };
-      if (Object.values(minCells).some((value) => value !== null)) {
-        payload.Q_min_cells = minCells;
+    const minRestTrimmed = minRestHours.trim();
+    let minRestParsed: number | undefined;
+    if (minRestTrimmed !== "") {
+      const parsed = parseFiniteNumber(minRestTrimmed);
+      if (parsed === undefined || parsed < 0) {
+        const msg = "Minimum rest hours must be a non-negative number.";
+        setSettingsError(msg);
+        toast.error(msg);
+        return;
       }
+      minRestParsed = parsed;
     }
 
-    setProfileSaving(true);
+    const settings: GridSolverSettings = {
+      unit_nooverlap_enabled: unitNoOverlapEnabled,
+    };
+    if (maxDayParsed.value) settings.max_hours_day_by_tier = maxDayParsed.value;
+    if (maxWeekParsed.value) settings.max_hours_week_by_tier = maxWeekParsed.value;
+    if (minWeekParsed.value) settings.min_hours_week_by_tier = minWeekParsed.value;
+    if (minRestParsed !== undefined) settings.min_rest_hours = minRestParsed;
+
+    const payload = buildSolverParamsPayload(settings);
+    const mergedSolverParams = { ...solverParamsRef.current, ...payload };
+
+    setSettingsSaving(true);
     try {
-      const response = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}/solver-wizard/`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.save_failed", "Could not save settings.")));
-      }
+      await patchSolverParams(mergedSolverParams);
+      solverParamsRef.current = mergedSolverParams;
+      window.localStorage.setItem(getGridSolverSettingsKey(gridId), JSON.stringify(mergedSolverParams));
       const msg = tt("grid_solver_settings.saved", "Saved.");
-      setProfileSaved(msg);
+      setSettingsSaved(msg);
       toast.success(msg);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : tt("grid_solver_settings.save_failed", "Could not save settings.");
-      setProfileError(msg);
+      setSettingsError(msg);
       toast.error(msg);
     } finally {
-      setProfileSaving(false);
+      setSettingsSaving(false);
+    }
+  };
+
+  const saveObjectiveWeights = async () => {
+    setWeightsSaved(null);
+    setWeightsError(null);
+
+    const parsedWeights = {} as Partial<Record<ObjectiveWeightKey, number>>;
+    for (const row of objectiveWeightRows) {
+      const raw = objectiveWeights[row.key]?.trim() ?? "";
+      const parsed = parseFiniteNumber(raw);
+      if (parsed === undefined) {
+        const msg = `${row.label}: invalid number.`;
+        setWeightsError(msg);
+        toast.error(msg);
+        return;
+      }
+      if (parsed < row.min || (typeof row.max === "number" && parsed > row.max)) {
+        const msg = `${row.label}: value must be between ${row.min}${typeof row.max === "number" ? ` and ${row.max}` : ""}.`;
+        setWeightsError(msg);
+        toast.error(msg);
+        return;
+      }
+      parsedWeights[row.key] = parsed;
+    }
+
+    const settings: GridSolverSettings = { unit_nooverlap_enabled: unitNoOverlapEnabled };
+    for (const key of OBJECTIVE_WEIGHT_KEYS) {
+      const next = parsedWeights[key];
+      if (typeof next === "number") settings[key] = next;
+    }
+
+    const payload = buildSolverParamsPayload(settings);
+    const mergedSolverParams = { ...solverParamsRef.current, ...payload };
+
+    setWeightsSaving(true);
+    try {
+      await patchSolverParams(mergedSolverParams);
+      solverParamsRef.current = mergedSolverParams;
+      window.localStorage.setItem(getGridSolverSettingsKey(gridId), JSON.stringify(mergedSolverParams));
+      const msg = tt("grid_solver_settings.saved", "Saved.");
+      setWeightsSaved(msg);
+      toast.success(msg);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : tt("grid_solver_settings.save_failed", "Could not save settings.");
+      setWeightsError(msg);
+      toast.error(msg);
+    } finally {
+      setWeightsSaving(false);
     }
   };
 
@@ -954,31 +1001,7 @@ export default function GridSolverSettingsForm({
     }
   };
 
-  const saveStabilityWeight = async () => {
-    setStabilitySaving(true);
-    try {
-      const response = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          solver_params: {
-            stability_weight: clamp(Math.round(stabilityWeight), 0, 100),
-          },
-        }),
-      });
-      if (!response.ok) {
-        const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.save_failed", "Could not save settings.")));
-      }
-      toast.success(tt("grid_solver_settings.saved", "Saved."));
-    } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : tt("grid_solver_settings.save_failed", "Could not save settings."));
-    } finally {
-      setStabilitySaving(false);
-    }
-  };
-
-  if (profileLoading) {
+  if (settingsLoading) {
     return (
       <div className="max-w-3xl rounded-lg border bg-white p-6 shadow-sm">
         <h1 className="text-2xl font-semibold">{tt("grid_solver_settings.title", "Solver Settings")}</h1>
@@ -993,176 +1016,167 @@ export default function GridSolverSettingsForm({
 
       <div className="mt-6 space-y-6">
         <section className="rounded-xl border border-gray-200 p-5">
-          <h2 className="text-base font-semibold text-gray-900">{tt("grid_solver_settings.solver_profile", "Solver Profile")}</h2>
+          <h2 className="text-base font-semibold text-gray-900">{tt("grid_solver_settings.constraints", "Constraints")}</h2>
           <p className="mt-1 text-sm text-gray-500">
-            {tt("grid_solver_settings.solver_profile_help", "Configure profile questions and priorities in plain language.")}
+            {tt("grid_solver_settings.constraints_help", "Configure hard and soft constraints sent in solver_params.")}
           </p>
 
-          {profileError ? <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{profileError}</div> : null}
-          {profileSaved ? <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{profileSaved}</div> : null}
+          {settingsError ? <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{settingsError}</div> : null}
+          {settingsSaved ? <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{settingsSaved}</div> : null}
 
-          <div className="mt-4 space-y-5">
-            <div>
-              <label className="block text-sm mb-2 text-gray-700">{tt("solver_wizard.org_type", "Organization type")}</label>
-              <div className="flex flex-wrap gap-2">
-                {dayOptions.map((option) => {
-                  const selected = q1OrganizationType === option.key;
-                  return (
-                    <button
-                      key={option.key}
-                      type="button"
-                      onClick={() => setQ1OrganizationType(option.key)}
-                      className={`rounded-full border px-4 py-2 text-sm transition-colors ${
-                        selected
-                          ? "border-black bg-black text-white"
-                          : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
+          <div className="mt-4 space-y-4">
+            <div className="rounded-md border p-4">
+              <div className="text-sm font-medium">{tt("grid_solver_settings.unit_nooverlap_title", "Prevent overlap for same unit")}</div>
+              <p className="mt-1 text-xs text-gray-500">
+                {tt("grid_solver_settings.unit_nooverlap_help", "When enabled, cells from the same unit cannot overlap in time.")}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {[true, false].map((value) => (
+                  <button
+                    key={`unit-nooverlap-${value ? "on" : "off"}`}
+                    type="button"
+                    onClick={() => setUnitNoOverlapEnabled(value)}
+                    className={`rounded-full border px-4 py-2 text-sm transition-colors ${
+                      unitNoOverlapEnabled === value
+                        ? "border-black bg-black text-white"
+                        : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    {value ? tt("common.enabled", "Enabled") : tt("common.disabled", "Disabled")}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {q1OrganizationType === "other" ? (
-              <div>
-                <label className="block text-sm mb-1 text-gray-700">{tt("solver_wizard.custom_description", "Custom description")}</label>
-                <input
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                  value={q1OtherDescription}
-                  onChange={(event) => setQ1OtherDescription(event.target.value)}
-                  placeholder={tt("solver_wizard.custom_description_placeholder", "Describe your organization")}
-                  maxLength={240}
-                />
-              </div>
-            ) : null}
-
-            <div>
-              <label className="block text-sm mb-2 text-gray-700">
-                {tt("solver_wizard.unit_nature", "Unit nature")} ({tt("solver_wizard.optional", "optional")})
-              </label>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                {unitNatureOptions.map((option) => {
-                  const selected = q2UnitNature === option.key;
-                  return (
-                    <button
-                      key={option.key}
-                      type="button"
-                      onClick={() => {
-                        setQ2UnitNature(option.key);
-                        if (option.key !== "audience") setQ4UnitNoOverlap(null);
-                      }}
-                      className={`rounded-xl border px-3 py-3 text-left transition-colors ${
-                        selected
-                          ? "border-black bg-black text-white"
-                          : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                      }`}
-                    >
-                      <div className="text-sm font-medium">{option.label}</div>
-                      <div className={`mt-1 text-xs ${selected ? "text-gray-200" : "text-gray-500"}`}>{option.help}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {q2UnitNature === "audience" ? (
-              <div>
-                <label className="block text-sm mb-2 text-gray-700">
-                  {tt("solver_wizard.q4_unit_nooverlap", "Prevent overlap inside the same unit")}
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { label: tt("solver_wizard.no_preference", "No preference"), value: null as boolean | null },
-                    { label: tt("solver_wizard.q4_yes", "Yes"), value: true as boolean | null },
-                    { label: tt("solver_wizard.q4_no", "No"), value: false as boolean | null },
-                  ].map((option) => {
-                    const selected = q4UnitNoOverlap === option.value;
-                    return (
-                      <button
-                        key={option.label}
-                        type="button"
-                        onClick={() => setQ4UnitNoOverlap(option.value)}
-                        className={`rounded-full border px-4 py-2 text-sm transition-colors ${
-                          selected
-                            ? "border-black bg-black text-white"
-                            : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            <div>
-              <label className="block text-sm mb-1 text-gray-700">
-                {tt("solver_wizard.q5_min_rest_label", "Minimum rest between shifts (hours)")}
-              </label>
+            <div className="rounded-md border p-4">
+              <div className="text-sm font-medium">{tt("grid_solver_settings.min_rest_hours", "Minimum rest between shifts (hours)")}</div>
+              <p className="mt-1 text-xs text-gray-500">
+                {tt("grid_solver_settings.min_rest_hours_help", "Leave blank to keep backend/default behavior.")}
+              </p>
               <input
                 type="number"
                 min={0}
                 step={0.5}
-                className="w-56 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                value={q5MinRestHours}
-                onChange={(event) => setQ5MinRestHours(event.target.value)}
-                placeholder={tt("solver_wizard.q5_placeholder", "e.g. 8")}
+                className="mt-3 w-56 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                value={minRestHours}
+                onChange={(event) => {
+                  setMinRestHours(event.target.value);
+                  setSettingsSaved(null);
+                }}
+                placeholder={tt("grid_solver_settings.min_rest_placeholder", "e.g. 8")}
               />
             </div>
 
-            <div className="space-y-4 rounded-xl border border-gray-200 p-4">
-              <h3 className="text-sm font-semibold text-gray-900">{tt("solver_wizard.section_priorities", "Priorities")}</h3>
-              {visiblePriorityRows.map((row) => {
-                const value = priorities[row.code];
-                const sliderMax = row.code === "P10" ? 5 : 10;
-                return (
-                  <div key={row.code} className={`space-y-1 ${row.indent ? "ml-6" : ""}`}>
-                    <label className="text-sm font-medium text-gray-800">{row.label}</label>
-                    <p className="text-xs text-gray-500">{row.description}</p>
-                    <ElasticSlider
-                      className="w-3/4 mx-auto"
-                      startingValue={1}
-                      maxValue={sliderMax}
-                      isStepped
-                      stepSize={1}
-                      value={value}
-                      defaultValue={value}
-                      leftIcon={
-                        row.bipolar ? (
-                          <span className="text-[11px] font-medium text-gray-500">
-                            {tt("solver_wizard.day_spread_strong_separate", "Strong Separate")}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] font-medium text-gray-500">1</span>
-                        )
-                      }
-                      rightIcon={
-                        row.bipolar ? (
-                          <span className="text-[11px] font-medium text-gray-500">
-                            {tt("solver_wizard.day_spread_strong_cluster", "Strong Cluster")}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] font-medium text-gray-500">10</span>
-                        )
-                      }
-                      onValueChange={(next) => setPriority(row.code, next)}
-                    />
+            <div className="rounded-md border p-4 space-y-4">
+              <div>
+                <div className="text-sm font-medium">{tt("grid_solver_settings.tier_hours_title", "Max/Min hours by tier")}</div>
+                <p className="mt-1 text-xs text-gray-500">
+                  {tt("grid_solver_settings.tier_hours_help", "Provide all 3 tier values in each row, or leave the whole row empty.")}
+                </p>
+              </div>
+
+              {[
+                {
+                  key: "max_day" as const,
+                  label: tt("grid_solver_settings.max_hours_day_by_tier", "Max hours/day by tier"),
+                  value: maxHoursDayByTier,
+                  setter: setMaxHoursDayByTier,
+                },
+                {
+                  key: "max_week" as const,
+                  label: tt("grid_solver_settings.max_hours_week_by_tier", "Max hours/week by tier"),
+                  value: maxHoursWeekByTier,
+                  setter: setMaxHoursWeekByTier,
+                },
+                {
+                  key: "min_week" as const,
+                  label: tt("grid_solver_settings.min_hours_week_by_tier", "Min hours/week by tier"),
+                  value: minHoursWeekByTier,
+                  setter: setMinHoursWeekByTier,
+                },
+              ].map((row) => (
+                <div key={`tier-row-${row.key}`}>
+                  <div className="mb-2 text-sm text-gray-700">{row.label}</div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {TIER_KEYS.map((tier) => (
+                      <div key={`${row.key}-${tier}`}>
+                        <label className="mb-1 block text-xs text-gray-500">{tier}</label>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.1}
+                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                          value={row.value[tier]}
+                          onChange={(event) => {
+                            row.setter((prev) => ({ ...prev, [tier]: event.target.value }));
+                            setSettingsSaved(null);
+                          }}
+                        />
+                      </div>
+                    ))}
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
 
             <div className="text-right">
               <button
                 type="button"
                 className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
-                disabled={profileSaving}
-                onClick={() => void saveSolverProfile()}
+                disabled={settingsSaving}
+                onClick={() => void saveConstraintSettings()}
               >
-                {profileSaving ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
+                {settingsSaving ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-gray-200 p-5">
+          <div className="text-sm font-medium">{tt("grid_solver_settings.day_heatmap_title", "Day Heatmap")}</div>
+          <div className="text-xs text-gray-600">{tt("grid_solver_settings.day_heatmap_help", "Set your day intensity preferences.")}</div>
+
+          <div className="mt-4">
+            {enabledDayKeys.length > 0 ? (
+              <DayHeatmapChart
+                dayKeys={enabledDayKeys}
+                values={dayHeatmapValues}
+                getDayLabel={(dayKey) => t(DAY_KEY_TO_I18N[dayKey])}
+                onChange={(dayKey, nextValue) => {
+                  setHeatmapSaved(null);
+                  setDayHeatmapValues((prev) => ({ ...prev, [dayKey]: nextValue }));
+                }}
+              />
+            ) : (
+              <div className="rounded border border-dashed px-3 py-2 text-sm text-gray-500">
+                {tt("grid_solver_settings.no_enabled_days", "No enabled days.")}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 rounded border bg-gray-50 p-3">
+            <div className="mb-2 flex items-center justify-between text-xs text-gray-600">
+              <span>{tt("grid_solver_settings.budget_meter", "Budget meter")}</span>
+              <span>
+                {heatmapUpgradeSum}/{heatmapBudget}
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded bg-gray-200">
+              <div
+                className={`${heatmapBudgetExceeded ? "bg-red-500" : "bg-black"} h-2 transition-all`}
+                style={{ width: `${Math.round(heatmapBudgetRatio * 100)}%` }}
+              />
+            </div>
+            {heatmapError && <div className="mt-2 text-sm text-red-600">{heatmapError}</div>}
+            {heatmapSaved && !heatmapError && <div className="mt-2 text-sm text-emerald-700">{heatmapSaved}</div>}
+            <div className="mt-3 text-right">
+              <button
+                type="button"
+                className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-60"
+                onClick={() => void saveDayHeatmap()}
+                disabled={heatmapSaving || enabledDayKeys.length === 0}
+              >
+                {heatmapSaving ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
               </button>
             </div>
           </div>
@@ -1171,309 +1185,65 @@ export default function GridSolverSettingsForm({
         <section className="rounded-xl border border-gray-200">
           <button
             type="button"
-            onClick={() => setAdvancedOpen((prev) => !prev)}
+            onClick={() => setObjectiveOpen((prev) => !prev)}
             className="flex w-full items-center justify-between px-5 py-4 text-left"
           >
-            <span className="text-base font-semibold text-gray-900">{tt("grid_solver_settings.advanced", "Advanced Settings")}</span>
-            <span className="text-sm text-gray-500">{advancedOpen ? tt("common.hide", "Hide") : tt("common.show", "Show")}</span>
+            <span className="text-base font-semibold text-gray-900">
+              {tt("grid_solver_settings.objective_weights", "Advanced: Objective Weights")}
+            </span>
+            <span className="text-sm text-gray-500">{objectiveOpen ? tt("common.hide", "Hide") : tt("common.show", "Show")}</span>
           </button>
 
-          {advancedOpen ? (
+          {objectiveOpen ? (
             <div className="space-y-4 border-t border-gray-200 px-5 py-4">
-              <div className="rounded-md border p-4">
-                <div className="text-sm font-medium">{tt("solver_wizard.q_tiers", "Tier usage")} ({tt("solver_wizard.optional", "optional")})</div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {[
-                    { label: tt("solver_wizard.q_tiers_keep", "No change"), value: null as boolean | null },
-                    { label: tt("solver_wizard.q_tiers_enable", "Enable tiers"), value: true as boolean | null },
-                    { label: tt("solver_wizard.q_tiers_disable", "Disable tiers"), value: false as boolean | null },
-                  ].map((option) => {
-                    const selected = qTiers === option.value;
-                    return (
-                      <button
-                        key={option.label}
-                        type="button"
-                        onClick={() => setQTiers(option.value)}
-                        className={`rounded-full border px-4 py-2 text-sm transition-colors ${
-                          selected
-                            ? "border-black bg-black text-white"
-                            : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {qTiers !== false ? (
-                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    {(["PRIMARY", "SECONDARY", "TERTIARY"] as TierKey[]).map((tier) => (
-                      <div key={tier}>
-                        <label className="mb-1 block text-xs text-gray-500">{tier}</label>
-                        <input
-                          type="number"
-                          min={0}
-                          step={1}
-                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                          value={qMinCells[tier]}
-                          onChange={(event) =>
-                            setQMinCells((prev) => ({
-                              ...prev,
-                              [tier]: event.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
+              <p className="text-xs text-gray-500">
+                {tt(
+                  "grid_solver_settings.objective_weights_note",
+                  "These values are automatically calibrated by the solver. Edit only if you understand the impact.",
+                )}
+              </p>
 
-              <div className="rounded-md border p-4">
-                <div className="text-sm font-medium">{tt("grid_solver_settings.day_heatmap_title", "Day Heatmap")}</div>
-                <div className="text-xs text-gray-600">{tt("grid_solver_settings.day_heatmap_help", "Set your day intensity preferences.")}</div>
+              {weightsError ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{weightsError}</div> : null}
+              {weightsSaved ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{weightsSaved}</div> : null}
 
-                <div className="mt-4">
-                  {enabledDayKeys.length > 0 ? (
-                    <DayHeatmapChart
-                      dayKeys={enabledDayKeys}
-                      values={dayHeatmapValues}
-                      getDayLabel={(dayKey) => t(DAY_KEY_TO_I18N[dayKey])}
-                      onChange={(dayKey, nextValue) => {
-                        setHeatmapSaved(null);
-                        setDayHeatmapValues((prev) => ({ ...prev, [dayKey]: nextValue }));
-                      }}
-                    />
-                  ) : (
-                    <div className="rounded border border-dashed px-3 py-2 text-sm text-gray-500">
-                      {tt("grid_solver_settings.no_enabled_days", "No enabled days.")}
+              <div className="space-y-3">
+                {objectiveWeightRows.map((row) => (
+                  <div key={`objective-weight-${row.key}`} className="rounded-md border p-4">
+                    <div className="text-sm font-medium text-gray-900">{row.label}</div>
+                    <p className="mt-1 text-xs text-gray-500">{row.help}</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <input
+                        type="number"
+                        min={row.min}
+                        max={row.max}
+                        step={row.step}
+                        className="w-52 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        value={objectiveWeights[row.key] ?? ""}
+                        onChange={(event) => {
+                          setObjectiveWeights((prev) => ({ ...prev, [row.key]: event.target.value }));
+                          setWeightsSaved(null);
+                        }}
+                      />
+                      <span className="text-xs text-gray-500">default: {OBJECTIVE_WEIGHT_DEFAULTS[row.key].toFixed(1)}</span>
                     </div>
-                  )}
-                </div>
-
-                <div className="mt-4 rounded border bg-gray-50 p-3">
-                  <div className="mb-2 flex items-center justify-between text-xs text-gray-600">
-                    <span>{tt("grid_solver_settings.budget_meter", "Budget meter")}</span>
-                    <span>
-                      {heatmapUpgradeSum}/{heatmapBudget}
-                    </span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded bg-gray-200">
-                    <div
-                      className={`${heatmapBudgetExceeded ? "bg-red-500" : "bg-black"} h-2 transition-all`}
-                      style={{ width: `${Math.round(heatmapBudgetRatio * 100)}%` }}
-                    />
-                  </div>
-                  {heatmapError && <div className="mt-2 text-sm text-red-600">{heatmapError}</div>}
-                  {heatmapSaved && !heatmapError && <div className="mt-2 text-sm text-emerald-700">{heatmapSaved}</div>}
-                  <div className="mt-3 text-right">
-                    <button
-                      type="button"
-                      className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-60"
-                      onClick={() => void saveDayHeatmap()}
-                      disabled={heatmapSaving || enabledDayKeys.length === 0}
-                    >
-                      {heatmapSaving ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
-                    </button>
-                  </div>
-                </div>
+                ))}
               </div>
 
-              <div className="rounded-md border p-4">
-                <div className="text-sm font-medium">{tt("grid_solver_settings.time_ranges_title", "Time ranges")}</div>
-                <div className="text-xs text-gray-600">{tt("grid_solver_settings.time_ranges_help", "Manage preferred time ranges.")}</div>
-                <div className="mt-2 text-xs text-gray-500">
-                  {tt("grid_solver_settings.time_ranges_horizon", "Horizon: {start} - {end}", {
-                    start: minutesToClock(horizonStartMin),
-                    end: minutesToClock(horizonEndMin),
-                  })}
-                </div>
-
-                {timeRangesError && <div className="mt-3 text-sm text-red-600">{timeRangesError}</div>}
-
-                <div className="mt-3 flex gap-2">
-                  <input
-                    className="w-full rounded border px-2 py-1 text-sm"
-                    value={newTimeRangeName}
-                    onChange={(e) => setNewTimeRangeName(e.target.value)}
-                    placeholder={tt("time_ranges.add_new", "Add new")}
-                  />
-                  <button
-                    type="button"
-                    className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-60"
-                    disabled={creatingTimeRange}
-                    onClick={() => void addTimeRange()}
-                  >
-                    {creatingTimeRange ? tt("common.saving", "Saving...") : tt("common.add", "Add")}
-                  </button>
-                </div>
-
-                <div className="mt-4 space-y-3">
-                  {timeRangesLoading ? (
-                    <div className="text-sm text-gray-500">{tt("common.loading", "Loading...")}</div>
-                  ) : timeRanges.length === 0 ? (
-                    <div className="text-sm text-gray-500">{tt("time_ranges.no_items", "No time ranges yet.")}</div>
-                  ) : (
-                    timeRanges.map((entry) => {
-                      const busy = Boolean(busyByTimeRangeId[entry.id]);
-                      const startPercent = (entry.startOffsetMin / horizonSpanMin) * 100;
-                      const endPercent = (entry.endOffsetMin / horizonSpanMin) * 100;
-                      const startMax = Math.max(0, entry.endOffsetMin - timeRangeStep);
-                      const endMin = Math.min(horizonSpanMin, entry.startOffsetMin + timeRangeStep);
-                      return (
-                        <div key={`time-range-setting-${entry.id}`} className="rounded border p-3">
-                          <input
-                            className="w-full rounded border px-2 py-1 text-sm"
-                            value={entry.name}
-                            onChange={(e) =>
-                              setTimeRanges((prev) =>
-                                prev.map((range) =>
-                                  range.id === entry.id ? { ...range, name: e.target.value, rowError: null } : range,
-                                ),
-                              )
-                            }
-                            disabled={busy}
-                          />
-
-                          <div className="mt-3">
-                            <div className="relative h-2 rounded bg-gray-200">
-                              <div
-                                className="absolute top-0 h-2 rounded bg-black"
-                                style={{
-                                  left: `${startPercent}%`,
-                                  width: `${Math.max(0, endPercent - startPercent)}%`,
-                                }}
-                              />
-                              <div
-                                className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-black bg-white"
-                                style={{ left: `calc(${startPercent}% - 8px)` }}
-                              />
-                              <div
-                                className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-black bg-white"
-                                style={{ left: `calc(${endPercent}% - 8px)` }}
-                              />
-
-                              <input
-                                type="range"
-                                min={0}
-                                max={startMax}
-                                step={timeRangeStep}
-                                value={entry.startOffsetMin}
-                                onChange={(e) => {
-                                  const next = Number(e.target.value);
-                                  setTimeRanges((prev) =>
-                                    prev.map((range) =>
-                                      range.id === entry.id
-                                        ? {
-                                            ...range,
-                                            startOffsetMin: clamp(next, 0, Math.max(0, range.endOffsetMin - timeRangeStep)),
-                                            rowError: null,
-                                          }
-                                        : range,
-                                    ),
-                                  );
-                                }}
-                                className="absolute left-0 top-1/2 h-2 -translate-y-1/2 cursor-ew-resize opacity-0"
-                                style={{ width: `${Math.max(endPercent, 8)}%` }}
-                                disabled={busy}
-                              />
-                              <input
-                                type="range"
-                                min={endMin}
-                                max={horizonSpanMin}
-                                step={timeRangeStep}
-                                value={entry.endOffsetMin}
-                                onChange={(e) => {
-                                  const next = Number(e.target.value);
-                                  setTimeRanges((prev) =>
-                                    prev.map((range) =>
-                                      range.id === entry.id
-                                        ? {
-                                            ...range,
-                                            endOffsetMin: clamp(
-                                              next,
-                                              Math.min(horizonSpanMin, range.startOffsetMin + timeRangeStep),
-                                              horizonSpanMin,
-                                            ),
-                                            rowError: null,
-                                          }
-                                        : range,
-                                    ),
-                                  );
-                                }}
-                                className="absolute top-1/2 h-2 -translate-y-1/2 cursor-ew-resize opacity-0"
-                                style={{
-                                  left: `${Math.min(startPercent, 92)}%`,
-                                  width: `${Math.max(100 - startPercent, 8)}%`,
-                                }}
-                                disabled={busy}
-                              />
-                            </div>
-                          </div>
-
-                          <div className="mt-2 flex items-center justify-between text-xs text-gray-600">
-                            <span>{minutesToClock(horizonStartMin + entry.startOffsetMin)}</span>
-                            <span>{minutesToClock(horizonStartMin + entry.endOffsetMin)}</span>
-                          </div>
-
-                          {entry.rowError && <div className="mt-2 text-sm text-red-600">{entry.rowError}</div>}
-
-                          <div className="mt-3 flex justify-end gap-2">
-                            <button
-                              type="button"
-                              className="rounded border px-3 py-1.5 text-sm text-red-600 disabled:opacity-60"
-                              onClick={() => void deleteTimeRange(entry.id)}
-                              disabled={busy}
-                            >
-                              {tt("common.delete", "Delete")}
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-60"
-                              onClick={() => void saveTimeRange(entry.id)}
-                              disabled={busy}
-                            >
-                              {busy ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-md border p-4">
-                <div className="text-sm font-medium">{tt("grid_solver_settings.stability_weight_title", "Stability weight")}</div>
-                <p className="mt-1 text-xs text-gray-500">{tt("grid_solver_settings.stability_weight_help", "Prioritize continuity between solver runs.")}</p>
-                <div className="mt-3">
-                  <ElasticSlider
-                    className="w-3/4 mx-auto"
-                    startingValue={0}
-                    maxValue={100}
-                    isStepped
-                    stepSize={1}
-                    value={stabilityWeight}
-                    defaultValue={stabilityWeight}
-                    leftIcon={<span className="text-[11px] font-medium text-gray-500">0</span>}
-                    rightIcon={<span className="text-[11px] font-medium text-gray-500">100</span>}
-                    onValueChange={(next) => setStabilityWeight(clamp(Math.round(next), 0, 100))}
-                  />
-                </div>
-                <div className="mt-3 text-right">
-                  <button
-                    type="button"
-                    className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-60"
-                    onClick={() => void saveStabilityWeight()}
-                    disabled={stabilitySaving}
-                  >
-                    {stabilitySaving ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
-                  </button>
-                </div>
+              <div className="text-right">
+                <button
+                  type="button"
+                  className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
+                  disabled={weightsSaving}
+                  onClick={() => void saveObjectiveWeights()}
+                >
+                  {weightsSaving ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
+                </button>
               </div>
             </div>
           ) : null}
         </section>
+
       </div>
     </div>
   );

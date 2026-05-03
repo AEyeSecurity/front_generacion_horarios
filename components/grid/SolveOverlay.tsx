@@ -2361,6 +2361,24 @@ export default function SolveOverlay({
     });
   }, [currentSchedule, bundleUnitsById]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stats: Record<string, { placementCount: number }> = {};
+    for (const row of schedule) {
+      const sourceCellId = String(row.source_cell_id ?? row.cell_id ?? "");
+      if (!sourceCellId) continue;
+      const trId = cellTimeRangeById[sourceCellId];
+      if (!trId) continue;
+      if (!stats[trId]) stats[trId] = { placementCount: 0 };
+      stats[trId].placementCount += 1;
+    }
+    window.dispatchEvent(
+      new CustomEvent("shift:time-range-stats", {
+        detail: { gridId: String(gridId), statsByTimeRangeId: stats },
+      }),
+    );
+  }, [cellTimeRangeById, gridId, schedule]);
+
   const isNoUnitScopeSelected = selectedUnitId === NO_UNIT_TAB_ID || selectedUnitId === "*";
   const isGlobalBlockageScopeSelected = selectedUnitId === GLOBAL_BLOCKAGE_TAB_ID;
   const scopedUnitId =

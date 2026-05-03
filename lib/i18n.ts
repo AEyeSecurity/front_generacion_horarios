@@ -115,6 +115,7 @@ const EN_US = {
   "side_dock.participants": "Participants",
   "side_dock.cells": "Cells",
   "side_dock.categories": "Categories",
+  "side_dock.time_ranges": "Time Ranges",
 
   "grid_actions.more_actions": "More actions",
   "grid_actions.settings": "Settings",
@@ -332,6 +333,33 @@ const EN_US = {
   "grid_new.cell_size_validation_error": "Cell size must be at least 30 and a multiple of 5.",
   "grid_new.creating": "Creating...",
   "grid_new.create_grid": "Create Grid",
+  "onboarding.title": "Quick setup guide",
+  "onboarding.step_1_title": "Add your first participant",
+  "onboarding.step_1_description":
+    "Participants are the people who will be assigned to cells in your schedule. You need at least one before creating cells.",
+  "onboarding.step_2_title": "Define time ranges",
+  "onboarding.step_2_description":
+    "Time ranges let you restrict when certain cells can be scheduled (for example, Morning or Afternoon). You can set them later from the Time Ranges panel in the left dock.",
+  "onboarding.step_3_title": "Block unavailable times",
+  "onboarding.step_3_description":
+    "Blockages prevent the solver from placing cells in specific time slots. You can add them later using the blockage tool on the right dock.",
+  "onboarding.step_4_title": "Create your first cell",
+  "onboarding.step_4_description":
+    "Cells are the activities or shifts to be scheduled. Each cell needs at least one eligible participant.",
+  "onboarding.step_5_title": "You're all set!",
+  "onboarding.step_5_description":
+    "You can now run the solver from the lightbulb button on the right. To fine-tune solver objectives and constraints, go to Settings.",
+  "onboarding.add_participant": "Add Participant",
+  "onboarding.add_time_range": "Add Time Range",
+  "onboarding.time_range_name_required": "Time range name is required.",
+  "onboarding.time_range_create_failed": "Could not create time range.",
+  "onboarding.time_range_created": "Time range created.",
+  "onboarding.skip": "Skip",
+  "onboarding.skip_for_now": "Skip for now",
+  "onboarding.create_cell": "Create Cell",
+  "onboarding.later": "Later",
+  "onboarding.go_to_settings": "Go to Settings",
+  "onboarding.got_it": "Got it",
   "solver_wizard.title": "Create New Grid",
   "solver_wizard.go_to_step": "Go to step {step}",
   "solver_wizard.step_x_of_y": "Step {step} of {total}",
@@ -765,6 +793,7 @@ const ES_AR: Dictionary = {
   "side_dock.participants": "Participantes",
   "side_dock.cells": "Celdas",
   "side_dock.categories": "Categorias",
+  "side_dock.time_ranges": "Rangos horarios",
 
   "add_participant.weekly_mode": "Modo de horas semanales",
   "add_participant.weekly_mode_default": "Predeterminado",
@@ -823,6 +852,33 @@ const ES_AR: Dictionary = {
 
   "dashboard.create_project": "Crear un proyecto",
   "dashboard.blank_project": "Proyecto en blanco",
+  "onboarding.title": "Guia rapida de inicio",
+  "onboarding.step_1_title": "Agrega tu primer participante",
+  "onboarding.step_1_description":
+    "Los participantes son las personas que se asignaran a celdas en tu horario. Necesitas al menos uno antes de crear celdas.",
+  "onboarding.step_2_title": "Define rangos horarios",
+  "onboarding.step_2_description":
+    "Los rangos horarios te permiten restringir cuando se pueden ubicar ciertas celdas (por ejemplo, Manana o Tarde). Tambien podes configurarlos luego desde el panel de Rangos horarios en el dock izquierdo.",
+  "onboarding.step_3_title": "Bloquea horarios no disponibles",
+  "onboarding.step_3_description":
+    "Los bloqueos impiden que el solver ubique celdas en franjas especificas. Podes agregarlos despues con la herramienta de bloqueo en el dock derecho.",
+  "onboarding.step_4_title": "Crea tu primera celda",
+  "onboarding.step_4_description":
+    "Las celdas son las actividades o turnos a planificar. Cada celda necesita al menos un participante elegible.",
+  "onboarding.step_5_title": "Todo listo!",
+  "onboarding.step_5_description":
+    "Ahora podes ejecutar el solver desde el boton de lamparita de la derecha. Para ajustar objetivos y restricciones, anda a Configuracion.",
+  "onboarding.add_participant": "Agregar participante",
+  "onboarding.add_time_range": "Agregar rango horario",
+  "onboarding.time_range_name_required": "El nombre del rango horario es obligatorio.",
+  "onboarding.time_range_create_failed": "No se pudo crear el rango horario.",
+  "onboarding.time_range_created": "Rango horario creado.",
+  "onboarding.skip": "Omitir",
+  "onboarding.skip_for_now": "Omitir por ahora",
+  "onboarding.create_cell": "Crear celda",
+  "onboarding.later": "Mas tarde",
+  "onboarding.go_to_settings": "Ir a Configuracion",
+  "onboarding.got_it": "Entendido",
   "solver_wizard.title": "Crear nueva grilla",
   "solver_wizard.go_to_step": "Ir al paso {step}",
   "solver_wizard.step_x_of_y": "Paso {step} de {total}",

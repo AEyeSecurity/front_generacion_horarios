@@ -13,10 +13,16 @@ import type { Role } from "@/lib/types";
 
 const ParticipantsPanel = dynamic(() => import("@/components/panels/ParticipantsPanel"), { ssr: false });
 const CategoriesPanel = dynamic(() => import("@/components/panels/CategoriesPanel"), { ssr: false });
+const TimeRangesEditor = dynamic(() => import("@/components/grid/TimeRangesEditor"), { ssr: false });
 
 export default function SidePanel({
   gridId,
   gridCode,
+  horizonStart,
+  horizonEnd,
+  cellSizeMin,
+  dayStartMin,
+  dayEndMin,
   role,
   tab,
   open,
@@ -24,12 +30,27 @@ export default function SidePanel({
 }: {
   gridId: number;
   gridCode?: string | null;
+  horizonStart?: string;
+  horizonEnd?: string;
+  cellSizeMin?: number;
+  dayStartMin?: number;
+  dayEndMin?: number;
   role: Role;
-  tab: "participants" | "categories";
+  tab: "participants" | "categories" | "time-ranges";
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
   const { t } = useI18n();
+  const toClock = (value?: number) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return "";
+    const hours = Math.floor(value / 60);
+    const minutes = Math.max(0, value % 60);
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  };
+  const resolvedHorizonStart = horizonStart || toClock(dayStartMin) || "08:00";
+  const resolvedHorizonEnd = horizonEnd || toClock(dayEndMin) || "20:00";
+  const resolvedCellSizeMin =
+    typeof cellSizeMin === "number" && Number.isFinite(cellSizeMin) && cellSizeMin > 0 ? cellSizeMin : 30;
   const [showPerson, setShowPerson] = useState(false);
   const [showCategory, setShowCategory] = useState(false);
   const [categoryParents, setCategoryParents] = useState<{ id: number; name: string }[]>([]);
@@ -62,10 +83,24 @@ export default function SidePanel({
           <SheetTitle>{t("side_panel.manage_panel")}</SheetTitle>
         </SheetHeader>
 
-        <div className="h-full flex flex-col pl-18 pr-4 pt-4 pb-0">
-          <div className="flex-1 overflow-y-auto pb-[72px]">
+        <div className="h-full min-h-0 flex flex-col pl-18 pr-4 pt-4 pb-0">
+          <div
+            className={
+              tab === "time-ranges"
+                ? "flex-1 min-h-0 overflow-hidden pb-2 pr-1"
+                : "flex-1 overflow-y-auto pb-[72px]"
+            }
+          >
             {tab === "participants" ? (
               <ParticipantsPanel gridId={gridId} gridCode={gridCode} role={role} refreshKey={participantsKey} />
+            ) : tab === "time-ranges" ? (
+              <TimeRangesEditor
+                gridId={gridId}
+                canEdit={role === "supervisor"}
+                horizonStart={resolvedHorizonStart}
+                horizonEnd={resolvedHorizonEnd}
+                cellSizeMin={resolvedCellSizeMin}
+              />
             ) : (
               <CategoriesPanel
                 gridId={gridId}
@@ -75,40 +110,42 @@ export default function SidePanel({
             )}
           </div>
 
-          <div className="pointer-events-auto sticky bottom-0 left-0 right-0 -mx-4 px-4 py-3 border-t bg-white">
-            {tab === "participants" ? (
-              <>
-                <button
-                  onClick={() => setShowPerson(true)}
-                  className="w-full py-2 rounded bg-black text-white text-sm"
-                >
-                  {t("side_panel.add_participant")}
-                </button>
-                <AddParticipantDialog
-                  gridId={gridId}
-                  open={showPerson}
-                  onOpenChange={setShowPerson}
-                  onCreated={() => setParticipantsKey((k) => k + 1)}
-                />
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => setShowCategory(true)}
-                  className="w-full py-2 rounded bg-black text-white text-sm"
-                >
-                  {t("side_panel.add_category")}
-                </button>
-                <AddCategoryDialog
-                  gridId={gridId}
-                  open={showCategory}
-                  onOpenChange={setShowCategory}
-                  parents={categoryParents}
-                  onCreated={() => setCategoriesKey((k) => k + 1)}
-                />
-              </>
-            )}
-          </div>
+          {tab !== "time-ranges" ? (
+            <div className="pointer-events-auto sticky bottom-0 left-0 right-0 -mx-4 px-4 py-3 border-t bg-white">
+              {tab === "participants" ? (
+                <>
+                  <button
+                    onClick={() => setShowPerson(true)}
+                    className="w-full py-2 rounded bg-black text-white text-sm"
+                  >
+                    {t("side_panel.add_participant")}
+                  </button>
+                  <AddParticipantDialog
+                    gridId={gridId}
+                    open={showPerson}
+                    onOpenChange={setShowPerson}
+                    onCreated={() => setParticipantsKey((k) => k + 1)}
+                  />
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setShowCategory(true)}
+                    className="w-full py-2 rounded bg-black text-white text-sm"
+                  >
+                    {t("side_panel.add_category")}
+                  </button>
+                  <AddCategoryDialog
+                    gridId={gridId}
+                    open={showCategory}
+                    onOpenChange={setShowCategory}
+                    parents={categoryParents}
+                    onCreated={() => setCategoriesKey((k) => k + 1)}
+                  />
+                </>
+              )}
+            </div>
+          ) : null}
         </div>
       </SheetContent>
     </Sheet>

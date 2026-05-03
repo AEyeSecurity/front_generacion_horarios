@@ -4,6 +4,7 @@ import { requireUserOrRedirect, isAuthApiError } from "@/lib/auth";
 import type { Grid, Role } from "@/lib/types";
 import LeftSideDock from "@/components/layout/LeftSideDock";
 import GridSchedulePanel from "@/components/grid/GridSchedulePanel";
+import OnboardingGuide from "@/components/grid/OnboardingGuide";
 import { resolveGridByCode } from "./_helpers";
 import { t as translate } from "@/lib/i18n";
 import { redirect } from "next/navigation";
@@ -21,11 +22,15 @@ const DAY_KEYS = [
 // Next 15: params es Promise
 export default async function GridOverview({
   params,
+  searchParams,
 }: {
   params: Promise<{ code: string }>;
+  searchParams?: Promise<{ onboarding?: string }>;
 }) {
   const { code } = await params;
+  const sp = await searchParams;
   const nextPath = `/grid/${encodeURIComponent(code)}`;
+  const showOnboarding = sp?.onboarding === "1";
 
   let grid: Grid;
   try {
@@ -104,6 +109,16 @@ export default async function GridOverview({
         gridCode={grid.grid_code || code}
         role={role}
         selfParticipantId={selfPid ?? undefined}
+        horizonStart={grid.day_start}
+        horizonEnd={grid.day_end}
+        cellSizeMin={grid.cell_size_min}
+        dayStartMin={start}
+        dayEndMin={end}
+      />
+      <OnboardingGuide
+        gridId={Number(grid.id)}
+        gridCode={String(grid.grid_code || code)}
+        show={showOnboarding}
       />
 
       <div className="p-4">

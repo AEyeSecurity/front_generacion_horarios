@@ -353,7 +353,7 @@ export default function NewGridPage() {
         }
       }
 
-      router.push(`/grid/${encodeURIComponent(target || String(gridId))}`);
+      router.push(`/grid/${encodeURIComponent(target || String(gridId))}?onboarding=1`);
     } catch (error: unknown) {
       setErr(error instanceof Error ? error.message : tt("solver_wizard.create_failed", "Could not create grid."));
     } finally {
