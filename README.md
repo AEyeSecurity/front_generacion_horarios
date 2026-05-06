@@ -34,3 +34,32 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Deploy on Cloudflare
+
+This app uses Next.js server routes and middleware, so it is configured for Cloudflare with OpenNext and Wrangler.
+
+Required environment variables:
+
+```bash
+BACKEND_URL=https://api.example.com
+AUTH_ACCESS_COOKIE=access
+AUTH_REFRESH_COOKIE=refresh
+AUTH_COOKIE_SECURE=true
+AUTH_COOKIE_DOMAIN=
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=
+```
+
+Build locally:
+
+```bash
+npm ci
+npm run build
+npm run preview
+```
+
+Deploy:
+
+```bash
+npm run deploy
+```

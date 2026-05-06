@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
 
-export function proxy(req: NextRequest) {
+export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Allow static assets from /public (any file with an extension)
