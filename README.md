@@ -58,6 +58,13 @@ npm run build
 npm run preview
 ```
 
+Cloudflare Workers build settings:
+
+```bash
+Build command: npm run cf:build
+Deploy command: npm run cf:deploy
+```
+
 Deploy:
 
 ```bash
