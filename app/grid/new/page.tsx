@@ -2,9 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useI18n } from "@/lib/use-i18n";
-import ElasticSlider from "@/components/ElasticSlider";
 import Stepper, { Step } from "@/components/Stepper";
+import { useI18n } from "@/lib/use-i18n";
 
 type Grid = {
   id: number;
@@ -15,25 +14,196 @@ type Grid = {
   day_end: string;
   days_enabled: number[];
   cell_size_min: number;
+  solver_profile?: string;
+  solver_options?: Record<string, unknown>;
+  objective_weights?: Record<string, number>;
+  organization_type?: OrganizationType;
+  unit_nature?: UnitNature;
+  other_context_description?: string | null;
 };
 
-type OrganizationType = "school" | "work" | "gym" | "private_tutor" | "other";
-type UnitNature = "audience" | "internal" | "none";
-type PriorityCode = "P1" | "P2" | "P3" | "P4" | "P5" | "P6" | "P9" | "P10";
+type OrganizationType = "school" | "work" | "gym" | "private_tutor" | "event" | "other";
+type UnitNature = "audience" | "space" | "internal" | "none";
 
-const PRIORITY_DEFAULT: Record<PriorityCode, number> = {
-  P1: 5,
-  P2: 5,
-  P3: 5,
-  P4: 5,
-  P5: 5,
-  P6: 5,
-  P9: 5,
-  P10: 3,
+type UnitOption = {
+  value: UnitNature;
+  labelKey: string;
+  labelFallback: string;
+  descriptionKey: string;
+  descriptionFallback: string;
 };
 
-const ALWAYS_PRIORITY_CODES: PriorityCode[] = ["P1", "P2", "P3", "P6", "P9", "P10"];
-const AUDIENCE_PRIORITY_CODES: PriorityCode[] = ["P4", "P5"];
+const UNIT_OPTIONS_BY_ORG: Record<OrganizationType, UnitOption[]> = {
+  school: [
+    {
+      value: "audience",
+      labelKey: "solver_wizard.unit_nature_school_audience_label",
+      labelFallback: "Courses, divisions or student groups",
+      descriptionKey: "solver_wizard.unit_nature_school_audience_description",
+      descriptionFallback:
+        "Use this when the schedule is built for groups that receive activities, such as classes, years, divisions or academic groups.",
+    },
+    {
+      value: "space",
+      labelKey: "solver_wizard.unit_nature_school_space_label",
+      labelFallback: "Physical spaces such as classrooms or labs",
+      descriptionKey: "solver_wizard.unit_nature_school_space_description",
+      descriptionFallback:
+        "Use this when rooms, classrooms, laboratories or similar spaces must not be assigned to two activities at the same time.",
+    },
+    {
+      value: "none",
+      labelKey: "solver_wizard.unit_nature_school_none_label",
+      labelFallback: "Only participants or teachers",
+      descriptionKey: "solver_wizard.unit_nature_school_none_description",
+      descriptionFallback:
+        "Use this when the schedule is mainly organized around people, without needing unit-based views.",
+    },
+  ],
+  work: [
+    {
+      value: "none",
+      labelKey: "solver_wizard.unit_nature_work_none_label",
+      labelFallback: "People covering shifts or tasks",
+      descriptionKey: "solver_wizard.unit_nature_work_none_description",
+      descriptionFallback:
+        "Use this when employees or staff members must be assigned to shifts, tasks or work periods.",
+    },
+    {
+      value: "internal",
+      labelKey: "solver_wizard.unit_nature_work_internal_label",
+      labelFallback: "Areas, teams or departments",
+      descriptionKey: "solver_wizard.unit_nature_work_internal_description",
+      descriptionFallback:
+        "Use this when the schedule is organized by internal company groupings such as teams, departments or areas.",
+    },
+    {
+      value: "audience",
+      labelKey: "solver_wizard.unit_nature_work_audience_label",
+      labelFallback: "Trainings or activities for groups",
+      descriptionKey: "solver_wizard.unit_nature_work_audience_description",
+      descriptionFallback:
+        "Use this when groups of people receive activities, such as onboarding sessions, internal training or workshops.",
+    },
+    {
+      value: "space",
+      labelKey: "solver_wizard.unit_nature_work_space_label",
+      labelFallback: "Physical spaces such as offices, desks or rooms",
+      descriptionKey: "solver_wizard.unit_nature_work_space_description",
+      descriptionFallback:
+        "Use this when physical spaces or resources must not be assigned to two activities at the same time.",
+    },
+  ],
+  gym: [
+    {
+      value: "audience",
+      labelKey: "solver_wizard.unit_nature_gym_audience_label",
+      labelFallback: "Group classes for clients or students",
+      descriptionKey: "solver_wizard.unit_nature_gym_audience_description",
+      descriptionFallback:
+        "Use this when groups of clients or students receive scheduled classes or activities.",
+    },
+    {
+      value: "none",
+      labelKey: "solver_wizard.unit_nature_gym_none_label",
+      labelFallback: "Instructor or staff shifts",
+      descriptionKey: "solver_wizard.unit_nature_gym_none_description",
+      descriptionFallback:
+        "Use this when the goal is to assign instructors, reception staff or other workers to shifts or tasks.",
+    },
+    {
+      value: "space",
+      labelKey: "solver_wizard.unit_nature_gym_space_label",
+      labelFallback: "Spaces such as rooms, courts or training areas",
+      descriptionKey: "solver_wizard.unit_nature_gym_space_description",
+      descriptionFallback:
+        "Use this when rooms, courts, boxes or training areas must not overlap.",
+    },
+  ],
+  private_tutor: [
+    {
+      value: "none",
+      labelKey: "solver_wizard.unit_nature_private_tutor_none_label",
+      labelFallback: "Individual lesson agenda",
+      descriptionKey: "solver_wizard.unit_nature_private_tutor_none_description",
+      descriptionFallback:
+        "Use this when the schedule is mainly an agenda for individual sessions or appointments.",
+    },
+    {
+      value: "audience",
+      labelKey: "solver_wizard.unit_nature_private_tutor_audience_label",
+      labelFallback: "Student groups",
+      descriptionKey: "solver_wizard.unit_nature_private_tutor_audience_description",
+      descriptionFallback:
+        "Use this when several students or groups receive activities and need their own schedule view.",
+    },
+    {
+      value: "space",
+      labelKey: "solver_wizard.unit_nature_private_tutor_space_label",
+      labelFallback: "Physical spaces",
+      descriptionKey: "solver_wizard.unit_nature_private_tutor_space_description",
+      descriptionFallback:
+        "Use this when rooms, offices or other spaces must be assigned without overlaps.",
+    },
+  ],
+  event: [
+    {
+      value: "none",
+      labelKey: "solver_wizard.unit_nature_event_none_label",
+      labelFallback: "People covering tasks or stations",
+      descriptionKey: "solver_wizard.unit_nature_event_none_description",
+      descriptionFallback:
+        "Use this when volunteers or staff members must be assigned to tasks, stations or time slots.",
+    },
+    {
+      value: "audience",
+      labelKey: "solver_wizard.unit_nature_event_audience_label",
+      labelFallback: "Activities for groups or attendees",
+      descriptionKey: "solver_wizard.unit_nature_event_audience_description",
+      descriptionFallback:
+        "Use this when groups or attendees receive scheduled activities, workshops or sessions.",
+    },
+    {
+      value: "space",
+      labelKey: "solver_wizard.unit_nature_event_space_label",
+      labelFallback: "Spaces, stands or rooms",
+      descriptionKey: "solver_wizard.unit_nature_event_space_description",
+      descriptionFallback:
+        "Use this when stands, rooms, halls or event spaces must not overlap.",
+    },
+  ],
+  other: [
+    {
+      value: "audience",
+      labelKey: "solver_wizard.unit_nature_other_audience_label",
+      labelFallback: "Groups that receive activities",
+      descriptionKey: "solver_wizard.unit_nature_other_audience_description",
+      descriptionFallback: "Use this when units are groups of people that receive scheduled activities.",
+    },
+    {
+      value: "space",
+      labelKey: "solver_wizard.unit_nature_other_space_label",
+      labelFallback: "Spaces or physical resources",
+      descriptionKey: "solver_wizard.unit_nature_other_space_description",
+      descriptionFallback: "Use this when units are physical spaces or resources that cannot overlap.",
+    },
+    {
+      value: "internal",
+      labelKey: "solver_wizard.unit_nature_other_internal_label",
+      labelFallback: "Internal groupings",
+      descriptionKey: "solver_wizard.unit_nature_other_internal_description",
+      descriptionFallback:
+        "Use this when units are categories such as teams, areas, departments or activity types.",
+    },
+    {
+      value: "none",
+      labelKey: "solver_wizard.unit_nature_other_none_label",
+      labelFallback: "I do not need units",
+      descriptionKey: "solver_wizard.unit_nature_other_none_description",
+      descriptionFallback: "Use this when the schedule is mainly organized around participants and shift cells.",
+    },
+  ],
+};
 
 function normalizeTime(t: string) {
   const [hRaw, mRaw] = t.split(":");
@@ -56,7 +226,7 @@ export default function NewGridPage() {
     return translated === key ? fallback : translated;
   };
 
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
 
   const [name, setName] = useState("");
   const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4]);
@@ -64,24 +234,9 @@ export default function NewGridPage() {
   const [end, setEnd] = useState("20:00");
   const [cellMinutes, setCellMinutes] = useState(60);
 
-  const [q1OrganizationType, setQ1OrganizationType] = useState<OrganizationType | null>(null);
-  const [q1OtherDescription, setQ1OtherDescription] = useState("");
-  const [q2UnitNature, setQ2UnitNature] = useState<UnitNature | null>(null);
-  const [q4UnitNoOverlap, setQ4UnitNoOverlap] = useState<boolean | null>(null);
-  const [q5MinRestHours, setQ5MinRestHours] = useState("");
-
-  const [priorities, setPriorities] = useState<Record<PriorityCode, number>>(PRIORITY_DEFAULT);
-  const [priorityTouched, setPriorityTouched] = useState<Record<PriorityCode, boolean>>({
-    P1: false,
-    P2: false,
-    P3: false,
-    P4: false,
-    P5: false,
-    P6: false,
-    P9: false,
-    P10: false,
-  });
-  const [useDefaultWizardOnSubmit, setUseDefaultWizardOnSubmit] = useState(false);
+  const [organizationType, setOrganizationType] = useState<OrganizationType | null>(null);
+  const [unitNature, setUnitNature] = useState<UnitNature | null>(null);
+  const [otherContextDescription, setOtherContextDescription] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -96,118 +251,72 @@ export default function NewGridPage() {
     { idx: 6, label: t("day.sun_short") },
   ];
 
-  const orgOptions: Array<{ key: OrganizationType; label: string }> = [
-    { key: "school", label: tt("solver_wizard.org_type_school", "School") },
-    { key: "work", label: tt("solver_wizard.org_type_work", "Work") },
-    { key: "gym", label: tt("solver_wizard.org_type_gym", "Gym") },
-    { key: "private_tutor", label: tt("solver_wizard.org_type_private_tutor", "Private tutor") },
-    { key: "other", label: tt("solver_wizard.org_type_other", "Other") },
+  const orgOptions: Array<{ key: OrganizationType; label: string; description: string }> = [
+    {
+      key: "school",
+      label: tt("solver_wizard.org_type_school", "School / University"),
+      description: tt("solver_wizard.org_type_school_description", "Schedules for classes, courses and student groups."),
+    },
+    {
+      key: "work",
+      label: tt("solver_wizard.org_type_work", "Company / Work"),
+      description: tt("solver_wizard.org_type_work_description", "Schedules for teams, shifts and workplace operations."),
+    },
+    {
+      key: "gym",
+      label: tt("solver_wizard.org_type_gym", "Gym / Group Classes"),
+      description: tt("solver_wizard.org_type_gym_description", "Schedules for classes, trainers and gym resources."),
+    },
+    {
+      key: "private_tutor",
+      label: tt("solver_wizard.org_type_private_tutor", "Private Tutor / Independent Professional"),
+      description: tt(
+        "solver_wizard.org_type_private_tutor_description",
+        "Schedules for individual sessions, lessons and appointments.",
+      ),
+    },
+    {
+      key: "event",
+      label: tt("solver_wizard.org_type_event", "Event / Volunteering"),
+      description: tt(
+        "solver_wizard.org_type_event_description",
+        "Schedules for event staff, volunteers, activities and spaces.",
+      ),
+    },
+    {
+      key: "other",
+      label: tt("solver_wizard.org_type_other", "Other"),
+      description: tt("solver_wizard.org_type_other_description", "A different scheduling scenario not listed above."),
+    },
   ];
 
-  const unitNatureOptions: Array<{ key: UnitNature; label: string; help: string }> = [
-    {
-      key: "audience",
-      label: tt("solver_wizard.unit_nature_audience", "Audience"),
-      help: tt("solver_wizard.unit_nature_audience_help_short", "Groups that attend together."),
-    },
-    {
-      key: "internal",
-      label: tt("solver_wizard.unit_nature_internal", "Internal"),
-      help: tt("solver_wizard.unit_nature_internal_help_short", "Internal organizational groups."),
-    },
-    {
-      key: "none",
-      label: tt("solver_wizard.unit_nature_none", "None"),
-      help: tt("solver_wizard.unit_nature_none_help_short", "No unit grouping preferences."),
-    },
-  ];
-
-  const priorityRows = useMemo(
-    () => [
-      {
-        code: "P1" as const,
-        label: tt("solver_wizard.priority_availability", "Respect participant availability"),
-        description: tt(
-          "solver_wizard.priority_availability_desc",
-          "How strictly should the solver respect when participants say they can't work?",
-        ),
-      },
-      {
-        code: "P2" as const,
-        label: tt("solver_wizard.priority_participant_gap", "Minimize gaps between participant activities"),
-        description: tt(
-          "solver_wizard.priority_participant_gap_desc",
-          "Should the solver try to avoid gaps/free periods between a participant's activities in the same day?",
-        ),
-      },
-      {
-        code: "P3" as const,
-        label: tt("solver_wizard.priority_participant_days", "Concentrate activities in fewer days"),
-        description: tt(
-          "solver_wizard.priority_participant_days_desc",
-          "Should the solver try to pack all of a participant's activities into fewer days?",
-        ),
-      },
-      {
-        code: "P9" as const,
-        label: tt("solver_wizard.priority_daily_load_balance", "Daily load balance"),
-        description: tt(
-          "solver_wizard.priority_daily_load_balance_desc",
-          "Within each day, should the workload be spread evenly?",
-        ),
-        indent: true,
-        dependsOnP3: true,
-      },
-      {
-        code: "P10" as const,
-        label: tt("solver_wizard.priority_day_spread", "Separate vs. cluster days"),
-        description: tt(
-          "solver_wizard.priority_day_spread_desc",
-          "Should working days be spread apart or clustered together?",
-        ),
-        indent: true,
-        dependsOnP3: true,
-        bipolar: true,
-      },
-      {
-        code: "P4" as const,
-        label: tt("solver_wizard.priority_unit_gap", "Minimize gaps in units"),
-        description: tt(
-          "solver_wizard.priority_unit_gap_desc",
-          "Should the solver avoid gaps in a unit/group's daily schedule?",
-        ),
-        audienceOnly: true,
-      },
-      {
-        code: "P5" as const,
-        label: tt("solver_wizard.priority_unit_days", "Concentrate unit activities"),
-        description: tt(
-          "solver_wizard.priority_unit_days_desc",
-          "Should the solver concentrate a unit/group's activities into fewer days?",
-        ),
-        audienceOnly: true,
-      },
-      {
-        code: "P6" as const,
-        label: tt("solver_wizard.priority_soft_window", "Respect preferred time windows"),
-        description: tt(
-          "solver_wizard.priority_soft_window_desc",
-          "How much should the solver respect preferred time windows?",
-        ),
-      },
-    ],
-    [t],
+  const availableUnitOptions = useMemo<UnitOption[]>(
+    () => (organizationType ? UNIT_OPTIONS_BY_ORG[organizationType] : []),
+    [organizationType],
+  );
+  const allowedUnitNatures = useMemo(
+    () => new Set(availableUnitOptions.map((option) => option.value)),
+    [availableUnitOptions],
   );
 
-  const visiblePriorityRows = useMemo(
-    () =>
-      priorityRows.filter((row) => {
-        if (row.audienceOnly && q2UnitNature !== "audience") return false;
-        if (row.dependsOnP3 && priorities.P3 <= 1) return false;
-        return true;
-      }),
-    [priorities.P3, priorityRows, q2UnitNature],
-  );
+  const unitNatureQuestion = useMemo(() => {
+    switch (organizationType) {
+      case "school":
+        return tt("solver_wizard.unit_nature_school_question", "What do you want to organize in this schedule?");
+      case "work":
+        return tt("solver_wizard.unit_nature_work_question", "What do you want to organize mainly?");
+      case "gym":
+        return tt("solver_wizard.unit_nature_gym_question", "What do you want to organize?");
+      case "private_tutor":
+        return tt("solver_wizard.unit_nature_private_tutor_question", "What do you want to organize?");
+      case "event":
+        return tt("solver_wizard.unit_nature_event_question", "What do you want to organize?");
+      case "other":
+        return tt("solver_wizard.unit_nature_other_question", "What do the main units represent?");
+      default:
+        return tt("solver_wizard.unit_nature", "Unit nature");
+    }
+  }, [organizationType, tt]);
 
   const normalizedStart = normalizeTime(start);
   const normalizedEnd = normalizeTime(end);
@@ -217,7 +326,30 @@ export default function NewGridPage() {
   const hasDays = days.length > 0;
 
   const step1Valid = hasName && hasDays && validTime && validCell;
-  const step2Valid = Boolean(q1OrganizationType);
+  const trimmedOtherDescription = otherContextDescription.trim();
+  const needsOtherDescription = organizationType === "other";
+  const otherDescriptionValid = !needsOtherDescription || (trimmedOtherDescription.length > 0 && trimmedOtherDescription.length <= 500);
+  const q2Allowed = unitNature != null && allowedUnitNatures.has(unitNature);
+  const step2Valid = Boolean(organizationType && q2Allowed && otherDescriptionValid);
+
+  const contextError = useMemo(() => {
+    if (!organizationType) {
+      return tt("solver_wizard.validation_organization_required", "Please select where you will use this schedule.");
+    }
+    if (!unitNature) {
+      return tt("solver_wizard.validation_unit_nature_required", "Please choose what you want to organize.");
+    }
+    if (!allowedUnitNatures.has(unitNature)) {
+      return tt("solver_wizard.validation_unit_nature_invalid", "The selected option is not valid for this organization type.");
+    }
+    if (needsOtherDescription && trimmedOtherDescription.length === 0) {
+      return tt("solver_wizard.other_context_required_error", "Please describe your scheduling case.");
+    }
+    if (needsOtherDescription && trimmedOtherDescription.length > 500) {
+      return tt("solver_wizard.other_context_max_length_error", "Description must be 500 characters or less.");
+    }
+    return null;
+  }, [organizationType, unitNature, allowedUnitNatures, needsOtherDescription, trimmedOtherDescription, tt]);
 
   function toggleDay(idx: number) {
     setDays((prev) =>
@@ -225,18 +357,20 @@ export default function NewGridPage() {
     );
   }
 
-  function setPriority(code: PriorityCode, raw: number) {
-    const max = code === "P10" ? 5 : 10;
-    const next = Math.max(1, Math.min(max, Math.round(raw)));
-    setUseDefaultWizardOnSubmit(false);
-    setPriorities((prev) => ({ ...prev, [code]: next }));
-    setPriorityTouched((prev) => ({ ...prev, [code]: true }));
+  function selectOrganization(next: OrganizationType) {
+    setOrganizationType(next);
+    if (next !== "other") {
+      setOtherContextDescription("");
+    }
+    if (unitNature && !UNIT_OPTIONS_BY_ORG[next].some((option) => option.value === unitNature)) {
+      setUnitNature(null);
+    }
+    setErr(null);
   }
 
-  function canGoToStep(target: 1 | 2 | 3 | 4) {
+  function canGoToStep(target: 1 | 2 | 3) {
     if (target === 1) return true;
     if (target === 2) return step1Valid;
-    if (target === 3) return step1Valid && step2Valid;
     return step1Valid && step2Valid;
   }
 
@@ -253,79 +387,34 @@ export default function NewGridPage() {
       setErr(tt("solver_wizard.fix_basic_fields", "Complete all required grid basics."));
       return false;
     }
-    if (!q1OrganizationType) {
-      setErr(tt("solver_wizard.q1_required", "Please select an organization type."));
+    if (!step2Valid) {
+      setErr(contextError);
       return false;
     }
     return true;
   }
 
-  function buildWizardPayload(useDefaults: boolean) {
-    if (!q1OrganizationType) return null;
-
-    const payload: Record<string, unknown> = {
-      Q1: q1OrganizationType,
-    };
-
-    if (q2UnitNature) payload.Q2 = q2UnitNature;
-
-    if (q2UnitNature === "audience" && q4UnitNoOverlap !== null) {
-      payload.Q4 = q4UnitNoOverlap;
-    }
-
-    const q5Trimmed = q5MinRestHours.trim();
-    if (q5Trimmed.length > 0) {
-      const q5 = Number(q5Trimmed);
-      if (Number.isFinite(q5) && q5 > 0) payload.Q5 = q5;
-    }
-
-    const activePriorityCodes =
-      q2UnitNature === "audience" ? [...ALWAYS_PRIORITY_CODES, ...AUDIENCE_PRIORITY_CODES] : ALWAYS_PRIORITY_CODES;
-
-    const priorityPayload: Partial<Record<PriorityCode, number>> = {};
-    for (const code of activePriorityCodes) {
-      if (useDefaults || priorityTouched[code]) {
-        priorityPayload[code] = useDefaults ? PRIORITY_DEFAULT[code] : priorities[code];
-      }
-    }
-    if (Object.keys(priorityPayload).length > 0) {
-      payload.priorities = priorityPayload;
-    }
-
-    return payload;
-  }
-
-  async function createGridAndWizard(useDefaults: boolean) {
+  async function createGrid() {
     setErr(null);
     if (!validateBeforeSubmit()) return;
 
-    const gridPayload: Record<string, unknown> = {
+    const payload: Record<string, unknown> = {
       name: name.trim(),
       day_start: normalizedStart,
       day_end: normalizedEnd,
       days_enabled: days,
       cell_size_min: cellMinutes,
+      organization_type: organizationType,
+      unit_nature: unitNature,
+      other_context_description: organizationType === "other" ? trimmedOtherDescription : null,
     };
-
-    if (q1OrganizationType === "other") {
-      const trimmedDescription = q1OtherDescription.trim();
-      if (trimmedDescription.length > 0) {
-        gridPayload.description = trimmedDescription;
-      }
-    }
-
-    const wizardPayload = buildWizardPayload(useDefaults);
-    if (!wizardPayload) {
-      setErr(tt("solver_wizard.create_failed", "Could not create grid."));
-      return;
-    }
 
     setLoading(true);
     try {
       const createRes = await fetch("/api/grids/", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(gridPayload),
+        body: JSON.stringify(payload),
       });
 
       if (!createRes.ok) {
@@ -336,24 +425,7 @@ export default function NewGridPage() {
       const grid = (await createRes.json()) as Grid;
       const gridId = Number(grid?.id ?? 0);
       const target = String(grid?.grid_code || grid?.id || "");
-
-      if (gridId > 0) {
-        try {
-          const wizardRes = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}/solver-wizard/`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(wizardPayload),
-          });
-          if (!wizardRes.ok) {
-            const wizardText = await wizardRes.text().catch(() => "");
-            console.error("solver-wizard save failed", wizardRes.status, wizardText);
-          }
-        } catch (wizardError) {
-          console.error("solver-wizard save failed", wizardError);
-        }
-      }
-
-      router.push(`/grid/${encodeURIComponent(target || String(gridId))}?onboarding=1`);
+      router.replace(`/grid/${encodeURIComponent(target || String(gridId))}?onboarding=1`);
     } catch (error: unknown) {
       setErr(error instanceof Error ? error.message : tt("solver_wizard.create_failed", "Could not create grid."));
     } finally {
@@ -361,36 +433,21 @@ export default function NewGridPage() {
     }
   }
 
-  const questionCardClass =
-    "rounded-xl border border-gray-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
-
   function handleStepChange(nextStep: number) {
-    const target = nextStep as 1 | 2 | 3 | 4;
+    const target = nextStep as 1 | 2 | 3;
     if (target === 2 && !step1Valid) {
       void validateBeforeSubmit();
       return;
     }
-    if ((target === 3 || target === 4) && !step2Valid) {
-      setErr(tt("solver_wizard.q1_required", "Please select an organization type."));
+    if (target === 3 && !step2Valid) {
+      setErr(contextError);
       return;
     }
     setErr(null);
     setStep(target);
   }
 
-  function jumpToConfirmWithDefaults() {
-    if (!step1Valid) {
-      void validateBeforeSubmit();
-      return;
-    }
-    if (!q1OrganizationType) {
-      setErr(tt("solver_wizard.q1_required", "Please select an organization type."));
-      return;
-    }
-    setUseDefaultWizardOnSubmit(true);
-    setErr(null);
-    setStep(4);
-  }
+  const questionCardClass = "rounded-xl border border-gray-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
 
   return (
     <div className="min-h-screen bg-[#f0ebf8] py-10 px-4">
@@ -399,11 +456,9 @@ export default function NewGridPage() {
           <div className="h-2 bg-[#673AB7]" />
 
           <div className="px-6 py-5 border-b border-gray-100">
-            <h1 className="text-2xl font-semibold text-gray-900">
-              {tt("solver_wizard.title", "Create New Grid")}
-            </h1>
+            <h1 className="text-2xl font-semibold text-gray-900">{tt("solver_wizard.title", "Create New Grid")}</h1>
             <p className="mt-1 text-sm text-gray-500">
-              {tt("solver_wizard.step_x_of_y", "Step {step} of {total}", { step, total: 4 })}
+              {tt("solver_wizard.step_x_of_y", "Step {step} of {total}", { step, total: 3 })}
             </p>
           </div>
 
@@ -411,15 +466,12 @@ export default function NewGridPage() {
             <Stepper
               currentStep={step}
               onStepChange={handleStepChange}
-              onFinalStepCompleted={() => void createGridAndWizard(useDefaultWizardOnSubmit)}
-              backButtonText={tt("solver_wizard.previous_step", "Previous")}
-              nextButtonText={tt("solver_wizard.next_step", "Next")}
+              onFinalStepCompleted={() => void createGrid()}
+              backButtonText={tt("solver_wizard.previous_step", "Previous step")}
+              nextButtonText={tt("solver_wizard.next_step", "Next step")}
               completeButtonText={loading ? tt("solver_wizard.creating", "Creating...") : tt("solver_wizard.create_grid", "Create Grid")}
               nextButtonProps={{
-                disabled:
-                  loading ||
-                  (step === 1 && !step1Valid) ||
-                  (step === 2 && !step2Valid),
+                disabled: loading || (step === 1 && !step1Valid) || (step === 2 && !step2Valid),
               }}
               backButtonProps={{ disabled: loading }}
               stepCircleContainerClassName="mt-4 max-w-full rounded-xl border-0 shadow-none"
@@ -428,7 +480,7 @@ export default function NewGridPage() {
               footerClassName="px-0 pb-0"
               className="min-h-0 p-0"
               renderStepIndicator={({ step: stepNumber, currentStep, onStepClick }) => {
-                const stepIdx = stepNumber as 1 | 2 | 3 | 4;
+                const stepIdx = stepNumber as 1 | 2 | 3;
                 const enabled = canGoToStep(stepIdx) && !loading;
                 const isActive = currentStep === stepNumber;
                 const isComplete = currentStep > stepNumber;
@@ -542,75 +594,71 @@ export default function NewGridPage() {
                 <div className="space-y-4">
                   {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
                   <section className={questionCardClass}>
-                    <h2 className="text-base font-medium text-gray-900">{tt("solver_wizard.section_questions", "Questions")}</h2>
+                    <h2 className="text-base font-medium text-gray-900">
+                      {tt("solver_wizard.q1_prompt", "Where will you use this schedule?")}
+                    </h2>
+                    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {orgOptions.map((option) => {
+                        const selected = organizationType === option.key;
+                        return (
+                          <button
+                            key={option.key}
+                            type="button"
+                            onClick={() => selectOrganization(option.key)}
+                            className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                              selected
+                                ? "border-black bg-black text-white"
+                                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                            }`}
+                          >
+                            <div className="text-sm font-medium">{option.label}</div>
+                            <div className={`mt-1 text-xs ${selected ? "text-gray-200" : "text-gray-500"}`}>{option.description}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                    <div className="mt-4 space-y-5">
-                      <div>
-                        <label className="block text-sm mb-2 text-gray-700">{tt("solver_wizard.org_type", "Organization type")}</label>
-                        <div className="flex flex-wrap gap-2">
-                          {orgOptions.map((option) => {
-                            const selected = q1OrganizationType === option.key;
-                            return (
-                              <button
-                                key={option.key}
-                                type="button"
-                                onClick={() => {
-                                  setQ1OrganizationType(option.key);
-                                  setErr(null);
-                                }}
-                                className={`rounded-full border px-4 py-2 text-sm transition-colors ${
-                                  selected
-                                    ? "border-black bg-black text-white"
-                                    : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                                }`}
-                              >
-                                {option.label}
-                              </button>
-                            );
-                          })}
+                    {organizationType === "other" ? (
+                      <div className="mt-5 space-y-1.5">
+                        <label className="block text-sm text-gray-700">
+                          {tt("solver_wizard.other_context_label", "Briefly describe your scheduling case")}
+                        </label>
+                        <textarea
+                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm resize-none"
+                          value={otherContextDescription}
+                          onChange={(event) => setOtherContextDescription(event.target.value)}
+                          placeholder={tt(
+                            "solver_wizard.other_context_placeholder",
+                            "Example: rotating shifts for a small clinic, music academy schedules, church volunteers...",
+                          )}
+                          maxLength={500}
+                          rows={3}
+                        />
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                          <span>
+                            {tt(
+                              "solver_wizard.other_context_helper",
+                              "This helps us understand new scheduling use cases and improve the system.",
+                            )}
+                          </span>
+                          <span>{`${trimmedOtherDescription.length}/500`}</span>
                         </div>
                       </div>
+                    ) : null}
 
-                      {q1OrganizationType === "other" ? (
-                        <div>
-                          <label className="block text-sm mb-1 text-gray-700">
-                            {tt("solver_wizard.custom_description", "Custom description")}
-                          </label>
-                          <input
-                            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                            value={q1OtherDescription}
-                            onChange={(event) => setQ1OtherDescription(event.target.value)}
-                            placeholder={tt("solver_wizard.custom_description_placeholder", "Describe your organization")}
-                            maxLength={240}
-                          />
-                        </div>
-                      ) : null}
-
-                      {q1OrganizationType ? (
-                        <button
-                          type="button"
-                          onClick={jumpToConfirmWithDefaults}
-                          disabled={loading}
-                          className="text-sm text-gray-500 underline underline-offset-2 disabled:opacity-50"
-                        >
-                          {tt("solver_wizard.use_default_configuration", "Use default configuration")}
-                        </button>
-                      ) : null}
-
-                      <div>
-                        <label className="block text-sm mb-2 text-gray-700">
-                          {tt("solver_wizard.unit_nature", "Unit nature")} ({tt("solver_wizard.optional", "optional")})
-                        </label>
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                          {unitNatureOptions.map((option) => {
-                            const selected = q2UnitNature === option.key;
+                    {organizationType ? (
+                      <div className="mt-5">
+                        <label className="block text-sm mb-2 text-gray-700">{unitNatureQuestion}</label>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {availableUnitOptions.map((option) => {
+                            const selected = unitNature === option.value;
                             return (
                               <button
-                                key={option.key}
+                                key={option.value}
                                 type="button"
                                 onClick={() => {
-                                  setQ2UnitNature(option.key);
-                                  if (option.key !== "audience") setQ4UnitNoOverlap(null);
+                                  setUnitNature(option.value);
+                                  setErr(null);
                                 }}
                                 className={`rounded-xl border px-3 py-3 text-left transition-colors ${
                                   selected
@@ -618,115 +666,16 @@ export default function NewGridPage() {
                                     : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
                                 }`}
                               >
-                                <div className="text-sm font-medium">{option.label}</div>
+                                <div className="text-sm font-medium">{tt(option.labelKey, option.labelFallback)}</div>
                                 <div className={`mt-1 text-xs ${selected ? "text-gray-200" : "text-gray-500"}`}>
-                                  {option.help}
+                                  {tt(option.descriptionKey, option.descriptionFallback)}
                                 </div>
                               </button>
                             );
                           })}
                         </div>
                       </div>
-
-                      {q2UnitNature === "audience" ? (
-                        <div>
-                          <label className="block text-sm mb-2 text-gray-700">
-                            {tt("solver_wizard.q4_unit_nooverlap", "Prevent overlap inside the same unit")}
-                          </label>
-                          <div className="flex flex-wrap gap-2">
-                            {[
-                              { label: tt("solver_wizard.no_preference", "No preference"), value: null as boolean | null },
-                              { label: tt("solver_wizard.q4_yes", "Yes"), value: true as boolean | null },
-                              { label: tt("solver_wizard.q4_no", "No"), value: false as boolean | null },
-                            ].map((option) => {
-                              const selected = q4UnitNoOverlap === option.value;
-                              return (
-                                <button
-                                  key={option.label}
-                                  type="button"
-                                  onClick={() => setQ4UnitNoOverlap(option.value)}
-                                  className={`rounded-full border px-4 py-2 text-sm transition-colors ${
-                                    selected
-                                      ? "border-black bg-black text-white"
-                                      : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                                  }`}
-                                >
-                                  {option.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      <div>
-                        <label className="block text-sm mb-1 text-gray-700">
-                          {tt("solver_wizard.q5_min_rest_label", "Minimum rest between shifts (hours)")}
-                        </label>
-                        <input
-                          type="number"
-                          min={0}
-                          step={0.5}
-                          className="w-56 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                          value={q5MinRestHours}
-                          onChange={(event) => setQ5MinRestHours(event.target.value)}
-                          placeholder={tt("solver_wizard.q5_placeholder", "e.g. 8")}
-                        />
-                      </div>
-                    </div>
-                  </section>
-                </div>
-              </Step>
-
-              <Step>
-                <div className="space-y-4">
-                  {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
-                  <section className={questionCardClass}>
-                    <h2 className="text-base font-medium text-gray-900">{tt("solver_wizard.section_priorities", "Priorities")}</h2>
-                    <p className="mt-1 text-xs text-gray-500">{tt("solver_wizard.priorities_optional", "All sliders are optional. Untouched values keep profile defaults.")}</p>
-
-                    <div className="mt-4 space-y-4">
-                      {visiblePriorityRows.map((row) => {
-                        const value = priorities[row.code];
-                        const sliderMax = row.code === "P10" ? 5 : 10;
-                        return (
-                          <div key={row.code} className={`space-y-1 ${row.indent ? "ml-6" : ""}`}>
-                            <div className="flex items-center gap-3">
-                              <label className="text-sm font-medium text-gray-800">{row.label}</label>
-                            </div>
-                            <p className="text-xs text-gray-500">{row.description}</p>
-                            <ElasticSlider
-                              className="w-3/4 mx-auto"
-                              startingValue={1}
-                              maxValue={sliderMax}
-                              isStepped
-                              stepSize={1}
-                              value={value}
-                              defaultValue={value}
-                              leftIcon={
-                                row.bipolar ? (
-                                  <span className="text-[11px] font-medium text-gray-500">
-                                    {tt("solver_wizard.day_spread_strong_separate", "Strong Separate")}
-                                  </span>
-                                ) : (
-                                  <span className="text-[11px] font-medium text-gray-500">1</span>
-                                )
-                              }
-                              rightIcon={
-                                row.bipolar ? (
-                                  <span className="text-[11px] font-medium text-gray-500">
-                                    {tt("solver_wizard.day_spread_strong_cluster", "Strong Cluster")}
-                                  </span>
-                                ) : (
-                                  <span className="text-[11px] font-medium text-gray-500">10</span>
-                                )
-                              }
-                              onValueChange={(next) => setPriority(row.code, next)}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
+                    ) : null}
                   </section>
                 </div>
               </Step>
@@ -740,43 +689,35 @@ export default function NewGridPage() {
                       <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <div>
-                            <div className="text-xs uppercase tracking-wide text-gray-500">{tt("solver_wizard.org_type", "Organization type")}</div>
+                            <div className="text-xs uppercase tracking-wide text-gray-500">
+                              {tt("solver_wizard.org_type", "Organization type")}
+                            </div>
                             <div className="text-sm font-medium text-gray-900">
-                              {orgOptions.find((option) => option.key === q1OrganizationType)?.label || "-"}
+                              {orgOptions.find((option) => option.key === organizationType)?.label || "-"}
                             </div>
                           </div>
                           <div>
-                            <div className="text-xs uppercase tracking-wide text-gray-500">{tt("solver_wizard.unit_nature", "Unit nature")}</div>
+                            <div className="text-xs uppercase tracking-wide text-gray-500">
+                              {tt("solver_wizard.unit_nature", "What you want to organize")}
+                            </div>
                             <div className="text-sm font-medium text-gray-900">
-                              {unitNatureOptions.find((option) => option.key === q2UnitNature)?.label || "-"}
+                              {availableUnitOptions.find((option) => option.value === unitNature)
+                                ? tt(
+                                    availableUnitOptions.find((option) => option.value === unitNature)?.labelKey || "",
+                                    availableUnitOptions.find((option) => option.value === unitNature)?.labelFallback || "-",
+                                  )
+                                : "-"}
                             </div>
                           </div>
                         </div>
-                        {q1OrganizationType === "other" && q1OtherDescription.trim() ? (
+                        {organizationType === "other" ? (
                           <div className="mt-3">
-                            <div className="text-xs uppercase tracking-wide text-gray-500">{tt("solver_wizard.custom_description", "Custom description")}</div>
-                            <div className="text-sm text-gray-900">{q1OtherDescription.trim()}</div>
+                            <div className="text-xs uppercase tracking-wide text-gray-500">
+                              {tt("solver_wizard.other_context_label", "Briefly describe your scheduling case")}
+                            </div>
+                            <div className="text-sm text-gray-900">{trimmedOtherDescription || "-"}</div>
                           </div>
                         ) : null}
-                      </div>
-
-                      <div className="rounded-lg border border-gray-200 p-4 space-y-2">
-                        {visiblePriorityRows.map((row) => {
-                          const value = priorities[row.code];
-                          const max = row.code === "P10" ? 5 : 10;
-                          const pct = ((value - 1) / (max - 1)) * 100;
-                          return (
-                            <div key={row.code} className="space-y-1">
-                              <div className="flex items-center justify-between gap-3 text-sm">
-                                <span className="text-gray-700">{row.label}</span>
-                                <span className="font-medium text-gray-900">{value}</span>
-                              </div>
-                              <div className="h-2 w-full rounded-full bg-gray-200">
-                                <div className="h-full rounded-full bg-gray-900" style={{ width: `${pct}%` }} />
-                              </div>
-                            </div>
-                          );
-                        })}
                       </div>
                     </div>
                   </section>

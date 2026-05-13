@@ -1,11 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { Check, X } from "lucide-react";
-import AddParticipantDialog from "@/components/dialogs/AddParticipantDialog";
-import CreateCellDialog from "@/components/dialogs/CreateCellDialog";
 import { useI18n } from "@/lib/use-i18n";
 
 type OnboardingGuideProps = {
@@ -14,12 +12,55 @@ type OnboardingGuideProps = {
   show: boolean;
 };
 
-type GridHorizon = {
-  dayStart: string;
-  dayEnd: string;
+type GuideStep = 0 | 1 | 2 | 3 | 4 | 5;
+
+type Viewport = {
+  width: number;
+  height: number;
 };
 
-function parseCountFromCollection(payload: unknown): number {
+type SpotlightRect = {
+  id: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+type LeftPanelTab = "participants" | "categories" | "time-ranges" | null;
+
+type LeftPanelState = {
+  open: boolean;
+  tab: LeftPanelTab;
+};
+
+const SPOTLIGHT_PADDING = 8;
+const SPOTLIGHT_RADIUS = 12;
+const OVERLAY_ALPHA = 0.45;
+const TOTAL_STEPS = 6;
+const GRID_LEFT_PANEL_STATE_EVENT = "shift:grid-left-panel-state";
+
+const SELECTORS = {
+  leftParticipants: '[data-onboarding-target="left-dock-participants"]',
+  leftTimeRanges: '[data-onboarding-target="left-dock-time-ranges"]',
+  leftCells: '[data-onboarding-target="left-dock-cells"]',
+  participantsAddButton: '[data-onboarding-target="participants-add-button"]',
+  timeRangesAddButton: '[data-onboarding-target="time-ranges-add-button"]',
+  rightSolve: '[data-onboarding-target="right-dock-solve"]',
+  rightFanToggle: '[data-onboarding-target="right-dock-fan-toggle"]',
+  rightBlockage: '[data-onboarding-target="right-dock-blockage"]',
+} as const;
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function readViewport(): Viewport {
+  if (typeof window === "undefined") return { width: 0, height: 0 };
+  return { width: window.innerWidth, height: window.innerHeight };
+}
+
+function parseCollectionCount(payload: unknown): number {
   if (Array.isArray(payload)) return payload.length;
   if (payload && typeof payload === "object") {
     const source = payload as Record<string, unknown>;
@@ -30,369 +71,648 @@ function parseCountFromCollection(payload: unknown): number {
 
 async function fetchCollectionCount(path: string): Promise<number> {
   try {
-    const res = await fetch(path, { cache: "no-store" });
-    if (!res.ok) return 0;
-    const data = await res.json().catch(() => ({}));
-    return parseCountFromCollection(data);
+    const response = await fetch(path, { cache: "no-store" });
+    if (!response.ok) return 0;
+    const data = await response.json().catch(() => ({}));
+    return parseCollectionCount(data);
   } catch {
     return 0;
   }
 }
 
-async function fetchGridHorizon(gridId: number): Promise<GridHorizon> {
-  const fallback = { dayStart: "08:00", dayEnd: "20:00" };
-  try {
-    const res = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}/`, { cache: "no-store" });
-    if (!res.ok) return fallback;
-    const data = await res.json().catch(() => null);
-    if (!data || typeof data !== "object") return fallback;
-    const source = data as Record<string, unknown>;
-    const dayStart = typeof source.day_start === "string" ? source.day_start : fallback.dayStart;
-    const dayEnd = typeof source.day_end === "string" ? source.day_end : fallback.dayEnd;
-    return { dayStart, dayEnd };
-  } catch {
-    return fallback;
+function querySpotlight(selector: string, id: string, viewport: Viewport): SpotlightRect | null {
+  if (typeof document === "undefined") return null;
+  const element = document.querySelector(selector) as HTMLElement | null;
+  if (!element) return null;
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+
+  const left = clamp(rect.left - SPOTLIGHT_PADDING, 0, Math.max(0, viewport.width - 1));
+  const top = clamp(rect.top - SPOTLIGHT_PADDING, 0, Math.max(0, viewport.height - 1));
+  const right = clamp(rect.right + SPOTLIGHT_PADDING, left + 1, viewport.width);
+  const bottom = clamp(rect.bottom + SPOTLIGHT_PADDING, top + 1, viewport.height);
+  return { id, left, top, width: right - left, height: bottom - top };
+}
+
+function pointInside(rect: SpotlightRect, x: number, y: number) {
+  return x >= rect.left && x <= rect.left + rect.width && y >= rect.top && y <= rect.top + rect.height;
+}
+
+function tooltipStyle(
+  rect: SpotlightRect,
+  viewport: Viewport,
+  side: "left" | "right" | "bottom",
+): React.CSSProperties {
+  const cardWidth = Math.min(320, Math.max(240, viewport.width - 48));
+  const cardHeight = 164;
+  let left = 16;
+  let top = 16;
+
+  if (side === "right") {
+    left = rect.left + rect.width + 16;
+    top = rect.top + rect.height * 0.5 - cardHeight * 0.5;
+  } else if (side === "left") {
+    left = rect.left - cardWidth - 16;
+    top = rect.top + rect.height * 0.5 - cardHeight * 0.5;
+  } else {
+    left = rect.left + rect.width * 0.5 - cardWidth * 0.5;
+    top = rect.top + rect.height + 16;
   }
+
+  left = clamp(left, 16, Math.max(16, viewport.width - cardWidth - 16));
+  top = clamp(top, 16, Math.max(16, viewport.height - cardHeight - 16));
+
+  return { width: cardWidth, left, top };
 }
 
 export default function OnboardingGuide({ gridId, gridCode, show }: OnboardingGuideProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { t } = useI18n();
-  const [visible, setVisible] = useState(false);
-  const [step, setStep] = useState(1);
-  const [participantDialogOpen, setParticipantDialogOpen] = useState(false);
-  const [createCellDialogOpen, setCreateCellDialogOpen] = useState(false);
-  const [cellBaselineCount, setCellBaselineCount] = useState<number | null>(null);
-  const [timeRangeFormOpen, setTimeRangeFormOpen] = useState(false);
-  const [timeRangeName, setTimeRangeName] = useState("");
-  const [timeRangeSaving, setTimeRangeSaving] = useState(false);
-  const [timeRangeCount, setTimeRangeCount] = useState(0);
-  const [timeRangeCreatedFlash, setTimeRangeCreatedFlash] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [horizon, setHorizon] = useState<GridHorizon>({ dayStart: "08:00", dayEnd: "20:00" });
+  const maskId = useId().replace(/:/g, "");
 
-  const storageKey = useMemo(() => `onboarding-done-${gridId}`, [gridId]);
-  const totalSteps = 5;
+  const [active, setActive] = useState(false);
+  const [step, setStep] = useState<GuideStep>(0);
+  const [viewport, setViewport] = useState<Viewport>(readViewport);
+  const [spotlights, setSpotlights] = useState<SpotlightRect[]>([]);
+  const [participantsCount, setParticipantsCount] = useState(0);
+  const [timeRangesCount, setTimeRangesCount] = useState(0);
+  const [cellsCount, setCellsCount] = useState(0);
+  const [leftPanelState, setLeftPanelState] = useState<LeftPanelState>({ open: false, tab: null });
+  const [timeRangeBaseline, setTimeRangeBaseline] = useState<number | null>(null);
+  const [cellBaseline, setCellBaseline] = useState<number | null>(null);
+  const [mounted, setMounted] = useState(false);
 
-  const completeAndHide = useCallback(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(storageKey, "1");
-    }
-    setVisible(false);
-    setParticipantDialogOpen(false);
-    setCreateCellDialogOpen(false);
-    setTimeRangeFormOpen(false);
-  }, [storageKey]);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const doneKey = useMemo(() => `onboarding-done-grid-${gridId}`, [gridId]);
 
   useEffect(() => {
-    let active = true;
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const onLeftPanelState = (
+      event: Event,
+    ) => {
+      const custom = event as CustomEvent<{ gridId?: string; open?: boolean; tab?: string }>;
+      if (custom.detail?.gridId !== String(gridId)) return;
+      const rawTab = custom.detail?.tab;
+      const normalizedTab: LeftPanelTab =
+        rawTab === "participants" || rawTab === "categories" || rawTab === "time-ranges"
+          ? rawTab
+          : null;
+      setLeftPanelState({
+        open: Boolean(custom.detail?.open),
+        tab: normalizedTab,
+      });
+    };
+    window.addEventListener(GRID_LEFT_PANEL_STATE_EVENT, onLeftPanelState as EventListener);
+    return () => window.removeEventListener(GRID_LEFT_PANEL_STATE_EVENT, onLeftPanelState as EventListener);
+  }, [gridId]);
+
+  const stripOnboardingParam = useCallback(() => {
+    const currentParams = new URLSearchParams(searchParams?.toString() ?? "");
+    if (!currentParams.has("onboarding")) return;
+    currentParams.delete("onboarding");
+    const query = currentParams.toString();
+    const next = query ? `${pathname}?${query}` : pathname;
+    router.replace(next, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  const finishGuide = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(doneKey, "1");
+    }
+    setActive(false);
+    stripOnboardingParam();
+  }, [doneKey, stripOnboardingParam]);
+
+  const resolveStepSpotlights = useCallback(
+    (currentStep: GuideStep, currentViewport: Viewport, panelState: LeftPanelState) => {
+      const leftParticipants = querySpotlight(SELECTORS.leftParticipants, "left-participants", currentViewport);
+      const leftTimeRanges = querySpotlight(SELECTORS.leftTimeRanges, "left-time-ranges", currentViewport);
+      const leftCells = querySpotlight(SELECTORS.leftCells, "left-cells", currentViewport);
+      const participantsAddButton = querySpotlight(
+        SELECTORS.participantsAddButton,
+        "participants-add-button",
+        currentViewport,
+      );
+      const timeRangesAddButton = querySpotlight(
+        SELECTORS.timeRangesAddButton,
+        "time-ranges-add-button",
+        currentViewport,
+      );
+      const rightSolve = querySpotlight(SELECTORS.rightSolve, "right-solve", currentViewport);
+      const rightFanToggle = querySpotlight(SELECTORS.rightFanToggle, "right-fan-toggle", currentViewport);
+      const rightBlockage = querySpotlight(SELECTORS.rightBlockage, "right-blockage", currentViewport);
+
+      if (currentStep === 0) {
+        return [leftParticipants, rightSolve ?? rightFanToggle].filter(Boolean) as SpotlightRect[];
+      }
+      if (currentStep === 1) {
+        if (panelState.open && panelState.tab === "participants" && participantsAddButton) {
+          return [participantsAddButton];
+        }
+        return leftParticipants ? [leftParticipants] : [];
+      }
+      if (currentStep === 2) {
+        if (panelState.open && panelState.tab === "time-ranges" && timeRangesAddButton) {
+          return [timeRangesAddButton];
+        }
+        return leftTimeRanges ? [leftTimeRanges] : [];
+      }
+      if (currentStep === 3) {
+        if (rightBlockage) return [rightBlockage];
+        const fallback = rightFanToggle ?? rightSolve;
+        return fallback ? [fallback] : [];
+      }
+      if (currentStep === 4) {
+        return leftCells ? [leftCells] : [];
+      }
+      return [];
+    },
+    [],
+  );
+
+  const goToStep = useCallback(
+    async (nextStep: GuideStep) => {
+      setStep(nextStep);
+      if (nextStep === 2) {
+        const nextCount = await fetchCollectionCount(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`);
+        setTimeRangesCount(nextCount);
+        setTimeRangeBaseline(nextCount);
+      }
+      if (nextStep === 4) {
+        const nextCount = await fetchCollectionCount(`/api/cells?grid=${encodeURIComponent(String(gridId))}`);
+        setCellsCount(nextCount);
+        setCellBaseline(nextCount);
+      }
+    },
+    [gridId],
+  );
+
+  useEffect(() => {
     if (!show) {
-      setVisible(false);
-      return () => {
-        active = false;
-      };
+      setActive(false);
+      return;
     }
     if (typeof window === "undefined") return;
-    if (window.localStorage.getItem(storageKey) === "1") {
-      setVisible(false);
+    if (window.localStorage.getItem(doneKey) === "1") {
+      setActive(false);
+      stripOnboardingParam();
       return;
     }
 
-    setVisible(true);
-    setError(null);
+    let cancelled = false;
+    setActive(true);
+    setStep(0);
 
     (async () => {
-      const [participantsCount, rangesCount, nextHorizon] = await Promise.all([
+      const [pCount, trCount, cCount] = await Promise.all([
         fetchCollectionCount(`/api/participants?grid=${encodeURIComponent(String(gridId))}`),
         fetchCollectionCount(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`),
-        fetchGridHorizon(gridId),
+        fetchCollectionCount(`/api/cells?grid=${encodeURIComponent(String(gridId))}`),
       ]);
-      if (!active) return;
-      setTimeRangeCount(rangesCount);
-      setHorizon(nextHorizon);
-      if (participantsCount > 0) {
-        setStep((prev) => Math.max(prev, 2));
-      }
+      if (cancelled) return;
+      setParticipantsCount(pCount);
+      setTimeRangesCount(trCount);
+      setCellsCount(cCount);
+      setTimeRangeBaseline(trCount);
+      setCellBaseline(cCount);
     })();
 
     return () => {
-      active = false;
+      cancelled = true;
     };
-  }, [gridId, show, storageKey]);
+  }, [doneKey, gridId, show, stripOnboardingParam]);
 
-  if (!visible) return null;
+  useEffect(() => {
+    if (!active) return;
+    const syncViewport = () => setViewport(readViewport());
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    return () => window.removeEventListener("resize", syncViewport);
+  }, [active]);
 
-  const handleParticipantCreated = () => {
-    setError(null);
-    setStep(2);
-  };
+  useEffect(() => {
+    if (!active) return;
+    const refresh = () => setSpotlights(resolveStepSpotlights(step, viewport, leftPanelState));
+    refresh();
 
-  const handleOpenCreateCell = async () => {
-    setError(null);
-    const baseline = await fetchCollectionCount(`/api/cells?grid=${encodeURIComponent(String(gridId))}`);
-    setCellBaselineCount(baseline);
-    setCreateCellDialogOpen(true);
-  };
+    const onScroll = () => refresh();
+    const onResize = () => refresh();
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
+    const intervalId = window.setInterval(refresh, 250);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onResize);
+      window.clearInterval(intervalId);
+    };
+  }, [active, leftPanelState, resolveStepSpotlights, step, viewport]);
 
-  const handleCreateCellOpenChange = async (nextOpen: boolean) => {
-    if (nextOpen) {
-      setCreateCellDialogOpen(true);
-      return;
-    }
-    setCreateCellDialogOpen(false);
-    if (cellBaselineCount == null) return;
-    const nextCount = await fetchCollectionCount(`/api/cells?grid=${encodeURIComponent(String(gridId))}`);
-    if (nextCount > cellBaselineCount) {
-      setStep(5);
-      setError(null);
-    }
-    setCellBaselineCount(null);
-  };
+  useEffect(() => {
+    if (!active) return;
+    if (![1, 2, 4].includes(step)) return;
+    let cancelled = false;
 
-  const handleAddTimeRange = async () => {
-    const name = timeRangeName.trim();
-    if (!name) {
-      setError(t("onboarding.time_range_name_required"));
-      return;
-    }
-
-    setTimeRangeSaving(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/time_ranges", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          grid: gridId,
-          name,
-          start_time: horizon.dayStart,
-          end_time: horizon.dayEnd,
-        }),
-      });
-      if (!res.ok) {
-        const raw = await res.text().catch(() => "");
-        throw new Error(raw || t("onboarding.time_range_create_failed"));
+    const poll = async () => {
+      if (step === 1) {
+        const count = await fetchCollectionCount(`/api/participants?grid=${encodeURIComponent(String(gridId))}`);
+        if (cancelled) return;
+        setParticipantsCount(count);
+        if (count > 0) {
+          await goToStep(2);
+        }
+        return;
       }
-      setTimeRangeName("");
-      setTimeRangeCount((prev) => prev + 1);
-      setTimeRangeCreatedFlash(true);
-      window.setTimeout(() => setTimeRangeCreatedFlash(false), 1500);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t("onboarding.time_range_create_failed"));
-    } finally {
-      setTimeRangeSaving(false);
+
+      if (step === 2) {
+        const count = await fetchCollectionCount(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`);
+        if (cancelled) return;
+        setTimeRangesCount(count);
+        if (timeRangeBaseline != null && count > timeRangeBaseline) {
+          await goToStep(3);
+        }
+        return;
+      }
+
+      if (step === 4) {
+        const count = await fetchCollectionCount(`/api/cells?grid=${encodeURIComponent(String(gridId))}`);
+        if (cancelled) return;
+        setCellsCount(count);
+        if (cellBaseline != null && count > cellBaseline) {
+          await goToStep(5);
+        }
+      }
+    };
+
+    void poll();
+    const id = window.setInterval(() => {
+      void poll();
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [active, cellBaseline, goToStep, gridId, step, timeRangeBaseline]);
+
+  const forwardInteraction = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    const x = event.clientX;
+    const y = event.clientY;
+
+    overlay.style.pointerEvents = "none";
+    const target = document.elementFromPoint(x, y) as HTMLElement | null;
+    overlay.style.pointerEvents = "auto";
+    if (!target) return;
+
+    const pointerInit: PointerEventInit = {
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: y,
+      screenX: event.screenX,
+      screenY: event.screenY,
+      button: event.button,
+      buttons: event.buttons,
+      ctrlKey: event.ctrlKey,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      metaKey: event.metaKey,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+    };
+    target.dispatchEvent(new PointerEvent("pointerdown", pointerInit));
+    target.dispatchEvent(new PointerEvent("pointerup", pointerInit));
+    target.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: y,
+        screenX: event.screenX,
+        screenY: event.screenY,
+      }),
+    );
+  }, []);
+
+  const onOverlayPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-onboarding-ui="true"]')) return;
+
+      if (step === 0 || step === 5 || spotlights.length === 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
+      const insideSpotlight = spotlights.some((rect) => pointInside(rect, event.clientX, event.clientY));
+      if (!insideSpotlight) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      forwardInteraction(event);
+    },
+    [forwardInteraction, spotlights, step],
+  );
+
+  if (!active || !mounted || typeof document === "undefined") return null;
+
+  const primarySpotlight = spotlights[0] ?? null;
+  const leftDockSpotlight = spotlights.find((spotlight) => spotlight.id === "left-participants") ?? null;
+  const rightDockSpotlight =
+    spotlights.find((spotlight) => spotlight.id === "right-solve") ??
+    spotlights.find((spotlight) => spotlight.id === "right-fan-toggle") ??
+    null;
+
+  const participantsPanelOpen = leftPanelState.open && leftPanelState.tab === "participants";
+  const timeRangesPanelOpen = leftPanelState.open && leftPanelState.tab === "time-ranges";
+  const blockageToolSelectable = primarySpotlight?.id === "right-blockage";
+
+  const stepCard = (() => {
+    if (!primarySpotlight) return null;
+    if (step === 1 || step === 2 || step === 4) {
+      return tooltipStyle(primarySpotlight, viewport, "right");
     }
-  };
+    if (step === 3) {
+      return tooltipStyle(primarySpotlight, viewport, "left");
+    }
+    return tooltipStyle(primarySpotlight, viewport, "bottom");
+  })();
 
-  const stepTitle = {
-    1: t("onboarding.step_1_title"),
-    2: t("onboarding.step_2_title"),
-    3: t("onboarding.step_3_title"),
-    4: t("onboarding.step_4_title"),
-    5: t("onboarding.step_5_title"),
-  }[step as 1 | 2 | 3 | 4 | 5];
+  const content = (
+    <div
+      ref={overlayRef}
+      className="fixed inset-0 z-[500] isolate pointer-events-auto"
+      onPointerDown={onOverlayPointerDown}
+      aria-hidden={false}
+    >
+      <svg className="absolute inset-0 z-[500] pointer-events-none" width={viewport.width} height={viewport.height}>
+        <defs>
+          <mask id={`onboarding-mask-${maskId}`}>
+            <rect x="0" y="0" width={viewport.width} height={viewport.height} fill="white" />
+            {spotlights.map((spotlight) => (
+              <motion.rect
+                key={`mask-hole-${spotlight.id}`}
+                x={spotlight.left}
+                y={spotlight.top}
+                width={spotlight.width}
+                height={spotlight.height}
+                rx={SPOTLIGHT_RADIUS}
+                fill="black"
+                animate={{
+                  x: spotlight.left,
+                  y: spotlight.top,
+                  width: spotlight.width,
+                  height: spotlight.height,
+                }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
+              />
+            ))}
+          </mask>
+        </defs>
+        <rect
+          x="0"
+          y="0"
+          width={viewport.width}
+          height={viewport.height}
+          fill={`rgba(0,0,0,${OVERLAY_ALPHA})`}
+          mask={`url(#onboarding-mask-${maskId})`}
+        />
+      </svg>
 
-  const stepDescription = {
-    1: t("onboarding.step_1_description"),
-    2: t("onboarding.step_2_description"),
-    3: t("onboarding.step_3_description"),
-    4: t("onboarding.step_4_description"),
-    5: t("onboarding.step_5_description"),
-  }[step as 1 | 2 | 3 | 4 | 5];
+      <AnimatePresence>
+        {spotlights.map((spotlight) => (
+          <motion.div
+            key={`spotlight-ring-${spotlight.id}`}
+            className="pointer-events-none absolute z-[501] rounded-xl border border-white/90"
+            initial={false}
+            animate={{
+              left: spotlight.left,
+              top: spotlight.top,
+              width: spotlight.width,
+              height: spotlight.height,
+              boxShadow: [
+                "0 0 0 0 rgba(255,255,255,0.55)",
+                "0 0 0 8px rgba(255,255,255,0)",
+                "0 0 0 0 rgba(255,255,255,0.55)",
+              ],
+            }}
+            transition={{
+              left: { duration: 0.3, ease: "easeInOut" },
+              top: { duration: 0.3, ease: "easeInOut" },
+              width: { duration: 0.3, ease: "easeInOut" },
+              height: { duration: 0.3, ease: "easeInOut" },
+              boxShadow: { duration: 1.8, repeat: Infinity, ease: "easeInOut" },
+            }}
+          />
+        ))}
+      </AnimatePresence>
 
-  return (
-    <>
-      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[170] w-[calc(100%-2rem)] max-w-[480px] pointer-events-auto">
-        <div className="relative rounded-xl border border-gray-200 bg-white shadow-lg">
-          <div className="px-4 pt-4">
-            <button
-              type="button"
-              className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-              onClick={completeAndHide}
-              aria-label={t("common.close")}
-            >
-              <X className="h-4 w-4" />
-            </button>
+      {step === 0 && leftDockSpotlight ? (
+        <motion.div
+          data-onboarding-ui="true"
+          className="absolute z-[504] max-w-[320px] rounded-xl border border-gray-200 bg-white p-4 shadow-2xl"
+          style={tooltipStyle(leftDockSpotlight, viewport, "right")}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <h3 className="text-base font-semibold text-gray-900">{t("onboarding.entity_dock_title")}</h3>
+          <p className="mt-1 text-sm text-gray-700">{t("onboarding.entity_dock_description")}</p>
+        </motion.div>
+      ) : null}
 
-            <div className="mb-3 flex items-center gap-2 pr-8">
-              {Array.from({ length: totalSteps }, (_, index) => index + 1).map((dot) => {
-                const active = dot === step;
-                const completed = dot < step;
-                return (
-                  <span
-                    key={`onboarding-dot-${dot}`}
-                    className={`h-2.5 w-2.5 rounded-full ${
-                      active || completed ? "bg-black" : "bg-gray-300"
-                    }`}
-                  />
-                );
-              })}
-            </div>
+      {step === 0 && rightDockSpotlight ? (
+        <motion.div
+          data-onboarding-ui="true"
+          className="absolute z-[504] max-w-[320px] rounded-xl border border-gray-200 bg-white p-4 shadow-2xl"
+          style={tooltipStyle(rightDockSpotlight, viewport, "left")}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <h3 className="text-base font-semibold text-gray-900">{t("onboarding.action_dock_title")}</h3>
+          <p className="mt-1 text-sm text-gray-700">{t("onboarding.action_dock_description")}</p>
+        </motion.div>
+      ) : null}
 
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={`onboarding-step-${step}`}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.2 }}
-              >
-                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                  {t("onboarding.title")}
+      {step >= 1 && step <= 4 && stepCard ? (
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={`onboarding-card-step-${step}`}
+            data-onboarding-ui="true"
+            className="absolute z-[504] max-w-[320px] rounded-xl border border-gray-200 bg-white p-4 shadow-2xl"
+            style={stepCard}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            {step === 1 ? (
+              <>
+                <h3 className="text-base font-semibold text-gray-900">{t("onboarding.participant_step_title")}</h3>
+                <p className="mt-1 text-sm text-gray-700">
+                  {participantsPanelOpen
+                    ? t("onboarding.participant_step_click_add")
+                    : t("onboarding.participant_step_open_bubble")}
                 </p>
-                <h3 className="text-base font-semibold text-gray-900">{stepTitle}</h3>
-                <p className="mt-1 text-sm text-gray-700">{stepDescription}</p>
+                <p className="mt-3 text-xs text-gray-500">
+                  {t("onboarding.waiting_participant_creation", { count: participantsCount })}
+                </p>
+              </>
+            ) : null}
 
-                {step === 2 ? (
-                  <div className="mt-3 space-y-2">
-                    <button
-                      type="button"
-                      className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white"
-                      onClick={() => {
-                        setTimeRangeFormOpen((prev) => !prev);
-                        setError(null);
-                      }}
-                    >
-                      {t("onboarding.add_time_range")}
-                    </button>
-
-                    {timeRangeFormOpen ? (
-                      <div className="flex items-center gap-2">
-                        <input
-                          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                          placeholder={t("common.name")}
-                          value={timeRangeName}
-                          onChange={(event) => setTimeRangeName(event.target.value)}
-                        />
-                        <button
-                          type="button"
-                          className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                          disabled={timeRangeSaving}
-                          onClick={() => void handleAddTimeRange()}
-                        >
-                          {timeRangeSaving ? t("common.saving") : t("common.add")}
-                        </button>
-                      </div>
-                    ) : null}
-
-                    {timeRangeCreatedFlash ? (
-                      <div className="inline-flex items-center gap-1 text-sm text-green-700">
-                        <Check className="h-4 w-4" />
-                        {t("onboarding.time_range_created")}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {step === 5 ? (
+            {step === 2 ? (
+              <>
+                <h3 className="text-base font-semibold text-gray-900">{t("onboarding.time_range_step_title")}</h3>
+                <p className="mt-1 text-sm text-gray-700">
+                  {timeRangesPanelOpen
+                    ? t("onboarding.time_range_step_click_add")
+                    : t("onboarding.time_range_step_open_bubble")}
+                </p>
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <p className="text-xs text-gray-500">
+                    {t("onboarding.waiting_time_range_creation", { count: timeRangesCount })}
+                  </p>
                   <button
                     type="button"
-                    className="mt-3 text-sm text-gray-600 underline underline-offset-2"
-                    onClick={() => router.push(`/grid/${encodeURIComponent(gridCode)}/settings`)}
+                    data-onboarding-ui="true"
+                    className="text-sm text-gray-600 underline underline-offset-2"
+                    onClick={() => {
+                      void goToStep(3);
+                    }}
                   >
-                    {t("onboarding.go_to_settings")}
+                    {t("onboarding.skip")}
                   </button>
-                ) : null}
-              </motion.div>
-            </AnimatePresence>
-
-            {error ? (
-              <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                {error}
-              </div>
+                </div>
+              </>
             ) : null}
+
+            {step === 3 ? (
+              <>
+                <h3 className="text-base font-semibold text-gray-900">{t("onboarding.blockage_step_title")}</h3>
+                <p className="mt-1 text-sm text-gray-700">
+                  {blockageToolSelectable
+                    ? t("onboarding.blockage_step_select_tool")
+                    : t("onboarding.blockage_step_open_actions")}
+                </p>
+                <div className="mt-3 text-right">
+                  <button
+                    type="button"
+                    data-onboarding-ui="true"
+                    className="text-sm text-gray-600 underline underline-offset-2"
+                    onClick={() => {
+                      void goToStep(4);
+                    }}
+                  >
+                    {t("onboarding.skip")}
+                  </button>
+                </div>
+              </>
+            ) : null}
+
+            {step === 4 ? (
+              <>
+                <h3 className="text-base font-semibold text-gray-900">{t("onboarding.cell_step_title")}</h3>
+                <p className="mt-1 text-sm text-gray-700">{t("onboarding.cell_step_description")}</p>
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <p className="text-xs text-gray-500">{t("onboarding.waiting_cell_creation", { count: cellsCount })}</p>
+                  <button
+                    type="button"
+                    data-onboarding-ui="true"
+                    className="text-sm text-gray-600 underline underline-offset-2"
+                    onClick={() => {
+                      void goToStep(5);
+                    }}
+                  >
+                    {t("onboarding.skip")}
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </motion.div>
+        </AnimatePresence>
+      ) : null}
+
+      {step === 5 ? (
+        <motion.div
+          data-onboarding-ui="true"
+          className="absolute left-1/2 top-1/2 z-[504] w-[calc(100%-2rem)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-gray-200 bg-white p-5 shadow-2xl"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <h3 className="text-base font-semibold text-gray-900">{t("onboarding.final_step_title")}</h3>
+          <p className="mt-1 text-sm text-gray-700">{t("onboarding.final_step_description")}</p>
+
+          <button
+            type="button"
+            data-onboarding-ui="true"
+            className="mt-3 text-sm text-gray-600 underline underline-offset-2"
+            onClick={() => router.push(`/grid/${encodeURIComponent(gridCode)}/settings`)}
+          >
+            {t("onboarding.go_to_settings")}
+          </button>
+
+          <div className="mt-5 text-right">
+            <button
+              type="button"
+              data-onboarding-ui="true"
+              className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white"
+              onClick={finishGuide}
+            >
+              {t("onboarding.finish")}
+            </button>
           </div>
+        </motion.div>
+      ) : null}
 
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-gray-100 px-4 py-3">
-            <div>
-              {step === 2 ? (
-                <button
-                  type="button"
-                  className="text-sm text-gray-500 underline underline-offset-2"
-                  onClick={() => setStep(3)}
-                >
-                  {t("onboarding.skip")}
-                </button>
-              ) : step === 4 ? (
-                <button
-                  type="button"
-                  className="text-sm text-gray-500 underline underline-offset-2"
-                  onClick={completeAndHide}
-                >
-                  {t("onboarding.later")}
-                </button>
-              ) : <span />}
-            </div>
-
-            <div className="flex items-center gap-2">
-              {step === 1 ? (
-                <button
-                  type="button"
-                  className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white"
-                  onClick={() => setParticipantDialogOpen(true)}
-                >
-                  {t("onboarding.add_participant")}
-                </button>
-              ) : null}
-
-              {step === 2 && timeRangeCount > 0 ? (
-                <button
-                  type="button"
-                  className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white"
-                  onClick={() => setStep(3)}
-                >
-                  {t("common.next")}
-                </button>
-              ) : null}
-
-              {step === 3 ? (
-                <button
-                  type="button"
-                  className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white"
-                  onClick={() => setStep(4)}
-                >
-                  {t("onboarding.skip_for_now")}
-                </button>
-              ) : null}
-
-              {step === 4 ? (
-                <button
-                  type="button"
-                  className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white"
-                  onClick={() => void handleOpenCreateCell()}
-                >
-                  {t("onboarding.create_cell")}
-                </button>
-              ) : null}
-
-              {step === 5 ? (
-                <button
-                  type="button"
-                  className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white"
-                  onClick={completeAndHide}
-                >
-                  {t("onboarding.got_it")}
-                </button>
-              ) : null}
-            </div>
-          </div>
+      <div data-onboarding-ui="true" className="fixed bottom-3 left-1/2 z-[505] -translate-x-1/2">
+        <div className="flex items-center gap-2 rounded-full bg-black/30 px-3 py-2 backdrop-blur-sm">
+          {Array.from({ length: TOTAL_STEPS }, (_, index) => {
+            const isCurrent = index === step;
+            const isDone = index < step;
+            return (
+              <span
+                key={`onboarding-progress-${index}`}
+                className={`h-2.5 w-2.5 rounded-full border ${
+                  isCurrent || isDone ? "border-white bg-white" : "border-white/70 bg-transparent"
+                }`}
+              />
+            );
+          })}
         </div>
       </div>
 
-      <AddParticipantDialog
-        gridId={gridId}
-        open={participantDialogOpen}
-        onOpenChange={setParticipantDialogOpen}
-        onCreated={handleParticipantCreated}
-      />
-
-      <CreateCellDialog
-        gridId={gridId}
-        open={createCellDialogOpen}
-        onOpenChange={(nextOpen) => {
-          void handleCreateCellOpenChange(nextOpen);
-        }}
-      />
-    </>
+      {step === 0 ? (
+        <div data-onboarding-ui="true" className="fixed bottom-12 left-1/2 z-[505] -translate-x-1/2">
+          <button
+            type="button"
+            className="rounded-full bg-white px-4 py-2 text-sm font-medium text-gray-900 shadow-lg"
+            onClick={() => {
+              if (participantsCount > 0) {
+                void goToStep(2);
+                return;
+              }
+              void goToStep(1);
+            }}
+          >
+            {t("onboarding.got_it")}
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
+
+  return createPortal(content, document.body);
 }

@@ -40,6 +40,7 @@ type ParticipantTier = "PRIMARY" | "SECONDARY" | "TERTIARY" | null;
 
 type ParticipantLite = {
   id: string;
+  routeId: string;
   name: string;
   tier: ParticipantTier;
 };
@@ -140,12 +141,29 @@ export default function ParticipantScheduleOverlay({
     let active = true;
     (async () => {
       try {
+        const screenContextRes = await fetch(
+          `/api/grids/${gridId}/screen-context/?view=${scheduleViewMode}`,
+          { cache: "no-store" },
+        ).catch(() => null);
+
+        if (screenContextRes?.ok) {
+          const data = await screenContextRes.json().catch(() => ({}));
+          const scheduleCandidate = data?.schedule ?? data?.published_schedule ?? data?.latest ?? data;
+          const placements = Array.isArray(scheduleCandidate?.placements)
+            ? scheduleCandidate.placements
+            : Array.isArray(scheduleCandidate?.schedule)
+            ? scheduleCandidate.schedule
+            : [];
+          if (active) setSchedulePlacements(placements);
+          return;
+        }
+
         const scheduleEndpoint =
           scheduleViewMode === "published"
             ? `/api/grids/${gridId}/published-schedule/`
             : `/api/grids/${gridId}/schedule/`;
-        const r = await fetch(scheduleEndpoint, { cache: "no-store" });
-        if (!r.ok) {
+        const r = await fetch(scheduleEndpoint, { cache: "no-store" }).catch(() => null);
+        if (!r || !r.ok) {
           if (active) setSchedulePlacements([]);
           return;
         }
@@ -208,6 +226,7 @@ export default function ParticipantScheduleOverlay({
             const fullName = `${p?.name ?? ""}${p?.surname ? ` ${p.surname}` : ""}`.trim();
             return {
               id: String(p.id),
+              routeId: String(p.grid_participant_id ?? p.id),
               name: fullName || `Participant ${p.id}`,
               tier,
             };
@@ -344,7 +363,7 @@ export default function ParticipantScheduleOverlay({
                     type="button"
                     onClick={() =>
                       router.push(
-                        `/grid/${encodeURIComponent(gridCode)}/participants/${encodeURIComponent(participant.id)}?view=${targetView}`,
+                        `/grid/${encodeURIComponent(gridCode)}/participants/${encodeURIComponent(participant.routeId)}?view=${targetView}`,
                       )
                     }
                     className="absolute left-2 right-0 rounded-xl border px-3 py-2 text-right shadow-[0_12px_18px_-14px_rgba(0,0,0,0.55)] transition-transform duration-150 focus:outline-none focus:ring-2 focus:ring-black/20"

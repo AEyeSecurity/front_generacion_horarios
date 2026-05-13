@@ -17,16 +17,19 @@ function DockButton({
   active,
   onClick,
   title,
+  onboardingTarget,
   children,
 }: {
   active?: boolean;
   onClick?: (e: MouseEvent) => void;
   title: string;
+  onboardingTarget?: string;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
+      data-onboarding-target={onboardingTarget}
       title={title}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => {
@@ -49,6 +52,7 @@ export default function LeftSideDock({
   gridCode,
   role,
   selfParticipantId,
+  selfParticipantRouteId,
   horizonStart,
   horizonEnd,
   cellSizeMin,
@@ -59,6 +63,7 @@ export default function LeftSideDock({
   gridCode?: string | null;
   role: Role;
   selfParticipantId?: number | null;
+  selfParticipantRouteId?: string | number | null;
   horizonStart?: string;
   horizonEnd?: string;
   cellSizeMin?: number;
@@ -138,19 +143,20 @@ export default function LeftSideDock({
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.dispatchEvent(
-      new CustomEvent<{ gridId: string; open: boolean }>(GRID_LEFT_PANEL_STATE_EVENT, {
-        detail: { gridId: String(gridId), open },
+      new CustomEvent<{ gridId: string; open: boolean; tab: Tab }>(GRID_LEFT_PANEL_STATE_EVENT, {
+        detail: { gridId: String(gridId), open, tab },
       }),
     );
-  }, [gridId, open]);
+  }, [gridId, open, tab]);
 
   if (role === "viewer") return null;
   if (isNarrowMobile && commentsPanelOpen) return null;
 
   if (role === "editor") {
     const gotoSelf = () => {
-      if (!selfParticipantId) return;
-      router.push(`${gridBase}/participants/${selfParticipantId}`);
+      const routeId = selfParticipantRouteId ?? selfParticipantId;
+      if (!routeId) return;
+      router.push(`${gridBase}/participants/${encodeURIComponent(String(routeId))}`);
     };
     return (
       <div className="pointer-events-none">
@@ -178,13 +184,14 @@ export default function LeftSideDock({
       >
         <DockButton
           title={t("side_dock.participants")}
+          onboardingTarget="left-dock-participants"
           active={open && tab === "participants"}
           onClick={() => switchTo("participants")}
         >
           <Users className="w-5 h-5" />
         </DockButton>
 
-        <DockButton title={t("side_dock.cells")} onClick={gotoCells}>
+        <DockButton title={t("side_dock.cells")} onboardingTarget="left-dock-cells" onClick={gotoCells}>
           <LayoutGrid className="w-5 h-5" />
         </DockButton>
 
@@ -198,6 +205,7 @@ export default function LeftSideDock({
 
         <DockButton
           title={t("side_dock.time_ranges")}
+          onboardingTarget="left-dock-time-ranges"
           active={open && tab === "time-ranges"}
           onClick={() => switchTo("time-ranges")}
         >

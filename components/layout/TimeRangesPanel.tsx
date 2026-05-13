@@ -352,106 +352,12 @@ export default function TimeRangesPanel({
   const unassignedOffset = -runningOffset;
 
   return (
-    <PanelShell title={t("grid_solver_settings.time_ranges_title")} error={err}>
-      <div className="flex-1 overflow-y-auto rounded border bg-white p-3 space-y-4">
-        <section className="rounded-md border p-3">
-          <div className="text-sm font-medium text-gray-900">{t("grid_time_ranges.configure")}</div>
-          <div className="mt-3 flex items-center gap-4">
-            <svg width="160" height="160" viewBox="0 0 160 160" className="shrink-0">
-              <g transform="translate(80, 80) rotate(-90)">
-                <circle r={chartRadius} fill="none" stroke="#f3f4f6" strokeWidth="18" />
-                {coloredSlices.map((segment) => (
-                  <circle
-                    key={`slice-${segment.id}`}
-                    r={chartRadius}
-                    fill="none"
-                    stroke={segment.color}
-                    strokeWidth="18"
-                    strokeDasharray={`${segment.dash} ${Math.max(0, chartCircumference - segment.dash)}`}
-                    strokeDashoffset={segment.dashOffset}
-                    strokeLinecap="butt"
-                  />
-                ))}
-                {unassignedDash > 0 ? (
-                  <circle
-                    r={chartRadius}
-                    fill="none"
-                    stroke={pieSegments.unassigned.color}
-                    strokeWidth="18"
-                    strokeDasharray={`${unassignedDash} ${Math.max(0, chartCircumference - unassignedDash)}`}
-                    strokeDashoffset={unassignedOffset}
-                    strokeLinecap="butt"
-                  />
-                ) : null}
-              </g>
-              <text x="80" y="76" textAnchor="middle" className="fill-gray-900 text-[12px] font-medium">
-                {t("entity.time_ranges")}
-              </text>
-              <text x="80" y="94" textAnchor="middle" className="fill-gray-500 text-[11px]">
-                {`${Math.round(pieSegments.horizonSpan / 60)}h`}
-              </text>
-            </svg>
+    <PanelShell title={t("grid_solver_settings.time_ranges_title")} error={err} className="min-h-0">
+      <div className="flex flex-1 min-h-0 flex-col gap-3 overflow-hidden">
+        <section className="flex max-h-[45%] min-h-[260px] flex-shrink-0 flex-col overflow-hidden rounded-md border bg-white p-3">
+          <div className="shrink-0 text-sm font-medium text-gray-900">{t("grid_time_ranges.configure")}</div>
 
-            <div className="min-w-0 flex-1 space-y-2">
-              {pieSegments.colored.map((segment) => {
-                const placementCount = statsByTimeRangeId[String(segment.id)]?.placementCount;
-                return (
-                  <div key={`legend-${segment.id}`} className="flex items-center gap-2 text-xs">
-                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.color }} />
-                    <span className="truncate font-medium text-gray-800">
-                      {segment.name}
-                    </span>
-                    <span className="text-gray-500">{`${segment.start}-${segment.end}`}</span>
-                    <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600">
-                      {placementCount != null ? `${placementCount} cells` : "â€”"}
-                    </span>
-                    <span className="text-gray-500">{formatPercent(segment.ratio)}</span>
-                  </div>
-                );
-              })}
-              <div className="flex items-center gap-2 text-xs">
-                <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-300" />
-                <span className="font-medium text-gray-700">Unassigned</span>
-                <span className="ml-auto text-gray-500">{formatPercent(pieSegments.unassigned.ratio)}</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-md border p-3 space-y-3">
-          <div className="text-sm font-medium text-gray-900">{t("time_ranges.add_new")}</div>
-          <div className="grid grid-cols-12 gap-2">
-            <input
-              className="col-span-6 border rounded px-2 py-1.5 text-sm"
-              placeholder={t("common.name")}
-              value={newName}
-              onChange={(event) => setNewName(event.target.value)}
-            />
-            <input
-              className="col-span-3 border rounded px-2 py-1.5 text-sm"
-              type="time"
-              value={newStart}
-              onChange={(event) => setNewStart(event.target.value)}
-            />
-            <input
-              className="col-span-3 border rounded px-2 py-1.5 text-sm"
-              type="time"
-              value={newEnd}
-              onChange={(event) => setNewEnd(event.target.value)}
-            />
-          </div>
-          <div className="text-right">
-            <button
-              type="button"
-              className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-60"
-              disabled={creating}
-              onClick={() => void addRange()}
-            >
-              {creating ? t("common.saving") : t("common.add")}
-            </button>
-          </div>
-
-          <div className="space-y-2">
+          <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden pr-1">
             {loading ? (
               <div className="text-sm text-gray-500">{t("common.loading")}</div>
             ) : items.length === 0 ? (
@@ -475,28 +381,28 @@ export default function TimeRangesPanel({
                 const barWidth = `${Math.max(1, (endRatio - startRatio) * 100)}%`;
                 return (
                   <div key={`time-range-row-${entry.id}`} className="rounded border p-2">
-                    <div className="grid grid-cols-12 gap-2 items-center">
+                    <div className="grid grid-cols-12 items-center gap-2">
                       <input
-                        className="col-span-5 border rounded px-2 py-1 text-sm"
+                        className="col-span-5 min-w-0 rounded border px-2 py-1 text-sm"
                         value={entry.name}
                         onChange={(event) => updateRowField(entry.id, "name", event.target.value)}
                         disabled={busy}
                       />
                       <input
-                        className="col-span-2 border rounded px-2 py-1 text-sm"
+                        className="col-span-2 min-w-0 rounded border px-2 py-1 text-sm"
                         type="time"
                         value={entry.start_time}
                         onChange={(event) => updateRowField(entry.id, "start_time", event.target.value)}
                         disabled={busy}
                       />
                       <input
-                        className="col-span-2 border rounded px-2 py-1 text-sm"
+                        className="col-span-2 min-w-0 rounded border px-2 py-1 text-sm"
                         type="time"
                         value={entry.end_time}
                         onChange={(event) => updateRowField(entry.id, "end_time", event.target.value)}
                         disabled={busy}
                       />
-                      <div className="col-span-3 flex items-center justify-end gap-1">
+                      <div className="col-span-3 flex min-w-0 items-center justify-end gap-1">
                         <button
                           type="button"
                           className="rounded border px-2 py-1 text-xs disabled:opacity-60"
@@ -507,26 +413,26 @@ export default function TimeRangesPanel({
                         </button>
                         <button
                           type="button"
-                          className="w-8 h-8 inline-flex items-center justify-center rounded hover:bg-gray-100"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded hover:bg-gray-100"
                           title={t("common.edit")}
                           onClick={() => {
                             setEditTarget(entry);
                             setEditOpen(true);
                           }}
                         >
-                          <Pencil className="w-4 h-4" />
+                          <Pencil className="h-4 w-4" />
                         </button>
                         <button
                           type="button"
-                          className="w-8 h-8 inline-flex items-center justify-center rounded hover:bg-red-50"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded hover:bg-red-50"
                           title={t("common.delete")}
                           onClick={() => void deleteRow(entry.id)}
                         >
-                          <Trash2 className="w-4 h-4 text-red-600" />
+                          <Trash2 className="h-4 w-4 text-red-600" />
                         </button>
                       </div>
                     </div>
-                    <div className="mt-2 h-2 rounded bg-gray-200 relative">
+                    <div className="relative mt-2 h-2 rounded bg-gray-200">
                       <div className="absolute top-0 h-2 rounded bg-black/75" style={{ left: barLeft, width: barWidth }} />
                     </div>
                     {entry.rowError ? <div className="mt-1 text-xs text-red-600">{entry.rowError}</div> : null}
@@ -534,6 +440,108 @@ export default function TimeRangesPanel({
                 );
               })
             )}
+          </div>
+
+          <div className="mt-3 shrink-0 border-t bg-white pt-3">
+            <div className="grid grid-cols-12 gap-2">
+              <input
+                className="col-span-6 rounded border px-2 py-1.5 text-sm"
+                placeholder={t("common.name")}
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+              />
+              <input
+                className="col-span-3 rounded border px-2 py-1.5 text-sm"
+                type="time"
+                value={newStart}
+                onChange={(event) => setNewStart(event.target.value)}
+              />
+              <input
+                className="col-span-3 rounded border px-2 py-1.5 text-sm"
+                type="time"
+                value={newEnd}
+                onChange={(event) => setNewEnd(event.target.value)}
+              />
+            </div>
+            <div className="mt-2 text-right">
+              <button
+                type="button"
+                className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-60"
+                disabled={creating}
+                onClick={() => void addRange()}
+              >
+                {creating ? t("common.saving") : t("common.add")}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="flex flex-1 min-h-0 flex-col overflow-hidden rounded-md border bg-white p-3">
+          <div className="h-full min-h-0 flex flex-col gap-3">
+            <div className="shrink-0 text-sm font-medium text-gray-900">{t("entity.time_ranges")}</div>
+
+            <div className="flex min-h-0 flex-1 items-center gap-3 overflow-hidden">
+              <div className="flex h-full min-w-0 flex-1 items-center justify-center">
+                <div className="aspect-square h-full max-h-full w-full max-w-full">
+                  <svg viewBox="0 0 160 160" className="h-full w-full">
+                    <g transform="translate(80, 80) rotate(-90)">
+                      <circle r={chartRadius} fill="none" stroke="#f3f4f6" strokeWidth="18" />
+                      {coloredSlices.map((segment) => (
+                        <circle
+                          key={`slice-${segment.id}`}
+                          r={chartRadius}
+                          fill="none"
+                          stroke={segment.color}
+                          strokeWidth="18"
+                          strokeDasharray={`${segment.dash} ${Math.max(0, chartCircumference - segment.dash)}`}
+                          strokeDashoffset={segment.dashOffset}
+                          strokeLinecap="butt"
+                        />
+                      ))}
+                      {unassignedDash > 0 ? (
+                        <circle
+                          r={chartRadius}
+                          fill="none"
+                          stroke={pieSegments.unassigned.color}
+                          strokeWidth="18"
+                          strokeDasharray={`${unassignedDash} ${Math.max(0, chartCircumference - unassignedDash)}`}
+                          strokeDashoffset={unassignedOffset}
+                          strokeLinecap="butt"
+                        />
+                      ) : null}
+                    </g>
+                    <text x="80" y="76" textAnchor="middle" className="fill-gray-900 text-[12px] font-medium">
+                      {t("entity.time_ranges")}
+                    </text>
+                    <text x="80" y="94" textAnchor="middle" className="fill-gray-500 text-[11px]">
+                      {`${Math.round(pieSegments.horizonSpan / 60)}h`}
+                    </text>
+                  </svg>
+                </div>
+              </div>
+
+              <div className="h-full w-[46%] max-w-[200px] min-w-0 space-y-2 overflow-y-auto pr-1">
+                {pieSegments.colored.map((segment) => {
+                  const placementCount = statsByTimeRangeId[String(segment.id)]?.placementCount;
+                  return (
+                    <div key={`legend-${segment.id}`} className="flex items-center gap-2 text-xs">
+                      <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.color }} />
+                      <span className="truncate font-medium text-gray-800">{segment.name}</span>
+                      <span className="text-gray-500">{`${segment.start}-${segment.end}`}</span>
+                      <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600">
+                        {placementCount != null ? `${placementCount} cells` : "—"}
+                      </span>
+                      <span className="text-gray-500">{formatPercent(segment.ratio)}</span>
+                    </div>
+                  );
+                })}
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-300" />
+                  <span className="font-medium text-gray-700">Unassigned</span>
+                  <span className="ml-auto text-gray-500">{formatPercent(pieSegments.unassigned.ratio)}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       </div>
@@ -550,4 +558,5 @@ export default function TimeRangesPanel({
     </PanelShell>
   );
 }
+
 

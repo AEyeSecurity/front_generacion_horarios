@@ -21,6 +21,7 @@ const EN_US = {
   "common.saving": "Saving...",
   "common.send_invite": "Send invite",
   "common.create": "Create",
+  "common.back": "Back",
 
   "entity.unit": "Unit",
   "entity.bundle": "Bundle",
@@ -360,6 +361,43 @@ const EN_US = {
   "onboarding.later": "Later",
   "onboarding.go_to_settings": "Go to Settings",
   "onboarding.got_it": "Got it",
+  "onboarding.finish": "Finish",
+  "onboarding.entity_dock_title": "Entity Dock",
+  "onboarding.entity_dock_description":
+    "This is the Entity Dock. Use it to create and manage Participants, Cells, and Categories.",
+  "onboarding.action_dock_title": "Action Dock",
+  "onboarding.action_dock_description":
+    "This is the Action Dock. Use it to Solve, Edit placements, and Publish your schedule.",
+  "onboarding.participant_step_title": "Add your first participant",
+  "onboarding.participant_step_description":
+    "First, add a participant. Click the Participants button in the left dock.",
+  "onboarding.participant_step_open_bubble":
+    "First click the Participants bubble in the left dock.",
+  "onboarding.participant_step_click_add":
+    "Now click Add Participant in the left panel.",
+  "onboarding.waiting_participant_creation": "Waiting for participant creation. Current participants: {count}.",
+  "onboarding.time_range_step_title": "Define time ranges",
+  "onboarding.time_range_step_description":
+    "Optionally, define time ranges to constrain when cells can be placed.",
+  "onboarding.time_range_step_open_bubble":
+    "Click the Time Ranges bubble in the left dock.",
+  "onboarding.time_range_step_click_add":
+    "Now add a time range from the panel footer.",
+  "onboarding.waiting_time_range_creation": "Time ranges created: {count}.",
+  "onboarding.blockage_step_title": "Add a blockage",
+  "onboarding.blockage_step_description":
+    "Optionally, block time slots where no activities should be scheduled. Open the right dock tools and choose blockage.",
+  "onboarding.blockage_step_open_actions":
+    "Open the action tools from the + button on the right dock.",
+  "onboarding.blockage_step_select_tool":
+    "Now choose the blockage tool.",
+  "onboarding.cell_step_title": "Create your first cell",
+  "onboarding.cell_step_description":
+    "Now create a Cell, the activity that will be placed on the schedule.",
+  "onboarding.waiting_cell_creation": "Current cells: {count}. Create one or skip.",
+  "onboarding.final_step_title": "You're all set!",
+  "onboarding.final_step_description":
+    "You can adjust solver objectives and constraints anytime in Settings.",
   "solver_wizard.title": "Create New Grid",
   "solver_wizard.go_to_step": "Go to step {step}",
   "solver_wizard.step_x_of_y": "Step {step} of {total}",
@@ -370,7 +408,17 @@ const EN_US = {
   "solver_wizard.org_type_work": "Work",
   "solver_wizard.org_type_gym": "Gym",
   "solver_wizard.org_type_private_tutor": "Private tutor",
+  "solver_wizard.org_type_event": "Event / Volunteering",
   "solver_wizard.org_type_other": "Other",
+  "solver_wizard.org_type_school_description": "Schedules for classes, courses and student groups.",
+  "solver_wizard.org_type_work_description": "Schedules for teams, shifts and workplace operations.",
+  "solver_wizard.org_type_gym_description": "Schedules for classes, trainers and gym resources.",
+  "solver_wizard.org_type_private_tutor_description":
+    "Schedules for individual sessions, lessons and appointments.",
+  "solver_wizard.org_type_event_description":
+    "Schedules for event staff, volunteers, activities and spaces.",
+  "solver_wizard.org_type_other_description": "A different scheduling scenario not listed above.",
+  "solver_wizard.q1_prompt": "Where will you use this schedule?",
   "solver_wizard.custom_description": "Custom description",
   "solver_wizard.custom_description_placeholder": "Describe your organization",
   "solver_wizard.section_basics": "Grid basics",
@@ -391,9 +439,90 @@ const EN_US = {
   "solver_wizard.unit_nature_none": "None",
   "solver_wizard.unit_nature_none_help":
     "No unit-level coupling is needed.",
+  "solver_wizard.unit_nature_space": "Space",
+  "solver_wizard.unit_nature_space_help":
+    "Units represent space constraints and spatial separation needs.",
+  "solver_wizard.unit_nature_space_help_short": "Space-based grouping and conflicts.",
   "solver_wizard.unit_nature_internal_group": "Internal group",
   "solver_wizard.unit_nature_internal_group_help":
     "Units represent internal organizational divisions.",
+  "solver_wizard.unit_nature_school_question": "What do you want to organize in this schedule?",
+  "solver_wizard.unit_nature_work_question": "What do you want to organize mainly?",
+  "solver_wizard.unit_nature_gym_question": "What do you want to organize?",
+  "solver_wizard.unit_nature_private_tutor_question": "What do you want to organize?",
+  "solver_wizard.unit_nature_event_question": "What do you want to organize?",
+  "solver_wizard.unit_nature_other_question": "What do the main units represent?",
+  "solver_wizard.unit_nature_school_audience_label": "Courses, divisions or student groups",
+  "solver_wizard.unit_nature_school_audience_description":
+    "Use this when the schedule is built for groups that receive activities, such as classes, years, divisions or academic groups.",
+  "solver_wizard.unit_nature_school_space_label": "Physical spaces such as classrooms or labs",
+  "solver_wizard.unit_nature_school_space_description":
+    "Use this when rooms, classrooms, laboratories or similar spaces must not be assigned to two activities at the same time.",
+  "solver_wizard.unit_nature_school_none_label": "Only participants or teachers",
+  "solver_wizard.unit_nature_school_none_description":
+    "Use this when the schedule is mainly organized around people, without needing unit-based views.",
+  "solver_wizard.unit_nature_work_none_label": "People covering shifts or tasks",
+  "solver_wizard.unit_nature_work_none_description":
+    "Use this when employees or staff members must be assigned to shifts, tasks or work periods.",
+  "solver_wizard.unit_nature_work_internal_label": "Areas, teams or departments",
+  "solver_wizard.unit_nature_work_internal_description":
+    "Use this when the schedule is organized by internal company groupings such as teams, departments or areas.",
+  "solver_wizard.unit_nature_work_audience_label": "Trainings or activities for groups",
+  "solver_wizard.unit_nature_work_audience_description":
+    "Use this when groups of people receive activities, such as onboarding sessions, internal training or workshops.",
+  "solver_wizard.unit_nature_work_space_label": "Physical spaces such as offices, desks or rooms",
+  "solver_wizard.unit_nature_work_space_description":
+    "Use this when physical spaces or resources must not be assigned to two activities at the same time.",
+  "solver_wizard.unit_nature_gym_audience_label": "Group classes for clients or students",
+  "solver_wizard.unit_nature_gym_audience_description":
+    "Use this when groups of clients or students receive scheduled classes or activities.",
+  "solver_wizard.unit_nature_gym_none_label": "Instructor or staff shifts",
+  "solver_wizard.unit_nature_gym_none_description":
+    "Use this when the goal is to assign instructors, reception staff or other workers to shifts or tasks.",
+  "solver_wizard.unit_nature_gym_space_label": "Spaces such as rooms, courts or training areas",
+  "solver_wizard.unit_nature_gym_space_description":
+    "Use this when rooms, courts, boxes or training areas must not overlap.",
+  "solver_wizard.unit_nature_private_tutor_none_label": "Individual lesson agenda",
+  "solver_wizard.unit_nature_private_tutor_none_description":
+    "Use this when the schedule is mainly an agenda for individual sessions or appointments.",
+  "solver_wizard.unit_nature_private_tutor_audience_label": "Student groups",
+  "solver_wizard.unit_nature_private_tutor_audience_description":
+    "Use this when several students or groups receive activities and need their own schedule view.",
+  "solver_wizard.unit_nature_private_tutor_space_label": "Physical spaces",
+  "solver_wizard.unit_nature_private_tutor_space_description":
+    "Use this when rooms, offices or other spaces must be assigned without overlaps.",
+  "solver_wizard.unit_nature_event_none_label": "People covering tasks or stations",
+  "solver_wizard.unit_nature_event_none_description":
+    "Use this when volunteers or staff members must be assigned to tasks, stations or time slots.",
+  "solver_wizard.unit_nature_event_audience_label": "Activities for groups or attendees",
+  "solver_wizard.unit_nature_event_audience_description":
+    "Use this when groups or attendees receive scheduled activities, workshops or sessions.",
+  "solver_wizard.unit_nature_event_space_label": "Spaces, stands or rooms",
+  "solver_wizard.unit_nature_event_space_description":
+    "Use this when stands, rooms, halls or event spaces must not overlap.",
+  "solver_wizard.unit_nature_other_audience_label": "Groups that receive activities",
+  "solver_wizard.unit_nature_other_audience_description":
+    "Use this when units are groups of people that receive scheduled activities.",
+  "solver_wizard.unit_nature_other_space_label": "Spaces or physical resources",
+  "solver_wizard.unit_nature_other_space_description":
+    "Use this when units are physical spaces or resources that cannot overlap.",
+  "solver_wizard.unit_nature_other_internal_label": "Internal groupings",
+  "solver_wizard.unit_nature_other_internal_description":
+    "Use this when units are categories such as teams, areas, departments or activity types.",
+  "solver_wizard.unit_nature_other_none_label": "I do not need units",
+  "solver_wizard.unit_nature_other_none_description":
+    "Use this when the schedule is mainly organized around participants and shift cells.",
+  "solver_wizard.other_context_label": "Briefly describe your scheduling case",
+  "solver_wizard.other_context_placeholder":
+    "Example: rotating shifts for a small clinic, music academy schedules, church volunteers...",
+  "solver_wizard.other_context_helper":
+    "This helps us understand new scheduling use cases and improve the system.",
+  "solver_wizard.validation_organization_required": "Please select where you will use this schedule.",
+  "solver_wizard.validation_unit_nature_required": "Please choose what you want to organize.",
+  "solver_wizard.validation_unit_nature_invalid":
+    "The selected option is not valid for this organization type.",
+  "solver_wizard.other_context_required_error": "Please describe your scheduling case.",
+  "solver_wizard.other_context_max_length_error": "Description must be 500 characters or less.",
   "solver_wizard.q4_unit_nooverlap": "Keep unit placements from overlapping",
   "solver_wizard.q4_yes": "Yes",
   "solver_wizard.q4_no": "No",
@@ -416,6 +545,9 @@ const EN_US = {
   "solver_wizard.priority_unit_gap": "Minimize gaps in units",
   "solver_wizard.priority_unit_days": "Concentrate unit activities",
   "solver_wizard.priority_soft_window": "Respect preferred time windows",
+  "solver_wizard.priority_participant_workload_equity": "Participant workload equity",
+  "solver_wizard.priority_participant_workload_equity_desc":
+    "Should weekly assigned cells be balanced fairly across comparable participants?",
   "solver_wizard.day_spread_separate": "Separate",
   "solver_wizard.day_spread_cluster": "Cluster",
   "solver_wizard.q1_required": "Please select an organization type.",
@@ -675,6 +807,14 @@ const EN_US = {
   "create_cell.split_handle": "Split {index}",
   "create_cell.flexible_order": "Flexible order",
   "create_cell.allow_overstaffing": "Allow overstaffing for this cell",
+  "create_cell.unit_mode_global_label": "Global unit mode",
+  "create_cell.unit_mode_global_value_and": "AND",
+  "create_cell.unit_mode_global_value_or": "OR",
+  "create_cell.unit_mode_override": "Override global unit mode",
+  "create_cell.unit_mode_override_help_and":
+    "Global mode is AND. Turning this on uses OR for this cell.",
+  "create_cell.unit_mode_override_help_or":
+    "Global mode is OR. Turning this on uses AND for this cell.",
   "create_cell.equally": "Equally",
   "create_cell.split_preview": "Day {day}: {cells} cells ({minutes} min)",
   "create_cell.split_preview_compact": "{cells} cells ({minutes} min)",
@@ -751,6 +891,7 @@ const ES_AR: Dictionary = {
   "common.close": "Cerrar",
   "common.settings": "Configuracion",
   "common.create": "Crear",
+  "common.back": "Volver",
 
   "entity.unit": "Unidad",
   "entity.bundle": "Conjunto",
@@ -879,6 +1020,44 @@ const ES_AR: Dictionary = {
   "onboarding.later": "Mas tarde",
   "onboarding.go_to_settings": "Ir a Configuracion",
   "onboarding.got_it": "Entendido",
+  "onboarding.finish": "Finalizar",
+  "onboarding.entity_dock_title": "Dock de Entidades",
+  "onboarding.entity_dock_description":
+    "Este es el Dock de Entidades. Usalo para crear y administrar Participantes, Celdas y Categorias.",
+  "onboarding.action_dock_title": "Dock de Acciones",
+  "onboarding.action_dock_description":
+    "Este es el Dock de Acciones. Usalo para Resolver, Editar asignaciones y Publicar tu horario.",
+  "onboarding.participant_step_title": "Agrega tu primer participante",
+  "onboarding.participant_step_description":
+    "Primero agrega un participante. Hace click en el boton de Participantes del dock izquierdo.",
+  "onboarding.participant_step_open_bubble":
+    "Primero hace click en la burbuja de Participantes del dock izquierdo.",
+  "onboarding.participant_step_click_add":
+    "Ahora hace click en Agregar participante dentro del panel izquierdo.",
+  "onboarding.waiting_participant_creation":
+    "Esperando creacion de participante. Participantes actuales: {count}.",
+  "onboarding.time_range_step_title": "Define rangos horarios",
+  "onboarding.time_range_step_description":
+    "Opcionalmente, defini rangos horarios para restringir cuando se pueden ubicar celdas.",
+  "onboarding.time_range_step_open_bubble":
+    "Hace click en la burbuja de Rangos horarios del dock izquierdo.",
+  "onboarding.time_range_step_click_add":
+    "Ahora agrega un rango horario desde el pie del panel.",
+  "onboarding.waiting_time_range_creation": "Rangos horarios creados: {count}.",
+  "onboarding.blockage_step_title": "Agrega un bloqueo",
+  "onboarding.blockage_step_description":
+    "Opcionalmente, bloquea franjas donde no deban ubicarse actividades. Abri las herramientas del dock derecho y elegi bloqueo.",
+  "onboarding.blockage_step_open_actions":
+    "Abri las herramientas de acciones con el boton + del dock derecho.",
+  "onboarding.blockage_step_select_tool":
+    "Ahora elegi la herramienta de bloqueo.",
+  "onboarding.cell_step_title": "Crea tu primera celda",
+  "onboarding.cell_step_description":
+    "Ahora crea una Celda, la actividad que se va a ubicar en el horario.",
+  "onboarding.waiting_cell_creation": "Celdas actuales: {count}. Crea una o salta este paso.",
+  "onboarding.final_step_title": "Todo listo!",
+  "onboarding.final_step_description":
+    "Podes ajustar objetivos y restricciones del solver cuando quieras desde Configuracion.",
   "solver_wizard.title": "Crear nueva grilla",
   "solver_wizard.go_to_step": "Ir al paso {step}",
   "solver_wizard.step_x_of_y": "Paso {step} de {total}",
@@ -889,7 +1068,21 @@ const ES_AR: Dictionary = {
   "solver_wizard.org_type_work": "Trabajo",
   "solver_wizard.org_type_gym": "Gimnasio",
   "solver_wizard.org_type_private_tutor": "Tutor particular",
+  "solver_wizard.org_type_event": "Evento / Voluntariado",
   "solver_wizard.org_type_other": "Otro",
+  "solver_wizard.org_type_school_description":
+    "Horarios para clases, cursos y grupos de estudiantes.",
+  "solver_wizard.org_type_work_description":
+    "Horarios para equipos, turnos y operaciones de trabajo.",
+  "solver_wizard.org_type_gym_description":
+    "Horarios para clases, instructores y recursos del gimnasio.",
+  "solver_wizard.org_type_private_tutor_description":
+    "Horarios para sesiones individuales, clases y turnos.",
+  "solver_wizard.org_type_event_description":
+    "Horarios para personal, voluntariado, actividades y espacios de eventos.",
+  "solver_wizard.org_type_other_description":
+    "Un caso de horarios diferente que no aparece en la lista.",
+  "solver_wizard.q1_prompt": "¿Dónde querés usar este horario?",
   "solver_wizard.custom_description": "Descripcion personalizada",
   "solver_wizard.custom_description_placeholder": "Describe tu organizacion",
   "solver_wizard.section_basics": "Datos basicos de la grilla",
@@ -910,9 +1103,118 @@ const ES_AR: Dictionary = {
   "solver_wizard.unit_nature_none": "Ninguna",
   "solver_wizard.unit_nature_none_help":
     "No se necesita acoplamiento por unidad.",
+  "solver_wizard.unit_nature_space": "Espacio",
+  "solver_wizard.unit_nature_space_help":
+    "Las unidades representan restricciones de espacio y separacion espacial.",
+  "solver_wizard.unit_nature_space_help_short": "Agrupacion y conflictos por espacio.",
   "solver_wizard.unit_nature_internal_group": "Grupo interno",
   "solver_wizard.unit_nature_internal_group_help":
     "Las unidades representan divisiones internas de la organizacion.",
+  "solver_wizard.unit_nature_school_question":
+    "¿Qué querés organizar dentro de este horario?",
+  "solver_wizard.unit_nature_work_question":
+    "¿Qué querés organizar principalmente?",
+  "solver_wizard.unit_nature_gym_question": "¿Qué querés organizar?",
+  "solver_wizard.unit_nature_private_tutor_question": "¿Qué querés organizar?",
+  "solver_wizard.unit_nature_event_question": "¿Qué querés organizar?",
+  "solver_wizard.unit_nature_other_question":
+    "¿Qué representan las unidades principales?",
+  "solver_wizard.unit_nature_school_audience_label":
+    "Cursos, divisiones o grupos de estudiantes",
+  "solver_wizard.unit_nature_school_audience_description":
+    "Usá esta opción cuando el horario se arma para grupos que reciben actividades, como cursos, años, divisiones o grupos académicos.",
+  "solver_wizard.unit_nature_school_space_label":
+    "Espacios físicos como aulas o laboratorios",
+  "solver_wizard.unit_nature_school_space_description":
+    "Usá esta opción cuando aulas, laboratorios u otros espacios similares no pueden asignarse a dos actividades al mismo tiempo.",
+  "solver_wizard.unit_nature_school_none_label":
+    "Solo participantes o docentes",
+  "solver_wizard.unit_nature_school_none_description":
+    "Usá esta opción cuando el horario se organiza principalmente alrededor de personas, sin necesitar vistas por unidades.",
+  "solver_wizard.unit_nature_work_none_label":
+    "Personas cubriendo turnos o tareas",
+  "solver_wizard.unit_nature_work_none_description":
+    "Usá esta opción cuando empleados o miembros del personal deben asignarse a turnos, tareas o períodos de trabajo.",
+  "solver_wizard.unit_nature_work_internal_label":
+    "Áreas, equipos o departamentos",
+  "solver_wizard.unit_nature_work_internal_description":
+    "Usá esta opción cuando el horario se organiza por agrupaciones internas de la empresa, como equipos, departamentos o áreas.",
+  "solver_wizard.unit_nature_work_audience_label":
+    "Capacitaciones o actividades para grupos",
+  "solver_wizard.unit_nature_work_audience_description":
+    "Usá esta opción cuando grupos de personas reciben actividades, como inducciones, capacitaciones internas o talleres.",
+  "solver_wizard.unit_nature_work_space_label":
+    "Espacios físicos como oficinas, puestos o salas",
+  "solver_wizard.unit_nature_work_space_description":
+    "Usá esta opción cuando espacios o recursos físicos no pueden asignarse a dos actividades al mismo tiempo.",
+  "solver_wizard.unit_nature_gym_audience_label":
+    "Clases grupales para clientes o alumnos",
+  "solver_wizard.unit_nature_gym_audience_description":
+    "Usá esta opción cuando grupos de clientes o alumnos reciben clases o actividades programadas.",
+  "solver_wizard.unit_nature_gym_none_label":
+    "Turnos de instructores o personal",
+  "solver_wizard.unit_nature_gym_none_description":
+    "Usá esta opción cuando el objetivo es asignar instructores, recepción u otro personal a turnos o tareas.",
+  "solver_wizard.unit_nature_gym_space_label":
+    "Espacios como salas, canchas o áreas de entrenamiento",
+  "solver_wizard.unit_nature_gym_space_description":
+    "Usá esta opción cuando salas, canchas, boxes o áreas de entrenamiento no pueden superponerse.",
+  "solver_wizard.unit_nature_private_tutor_none_label":
+    "Agenda de clases individuales",
+  "solver_wizard.unit_nature_private_tutor_none_description":
+    "Usá esta opción cuando el horario funciona principalmente como agenda de clases individuales o turnos.",
+  "solver_wizard.unit_nature_private_tutor_audience_label":
+    "Grupos de estudiantes",
+  "solver_wizard.unit_nature_private_tutor_audience_description":
+    "Usá esta opción cuando varios estudiantes o grupos reciben actividades y necesitan su propia vista de horario.",
+  "solver_wizard.unit_nature_private_tutor_space_label":
+    "Espacios físicos",
+  "solver_wizard.unit_nature_private_tutor_space_description":
+    "Usá esta opción cuando salas, oficinas u otros espacios deben asignarse sin superposiciones.",
+  "solver_wizard.unit_nature_event_none_label":
+    "Personas cubriendo tareas o puestos",
+  "solver_wizard.unit_nature_event_none_description":
+    "Usá esta opción cuando voluntarios o miembros del equipo deben asignarse a tareas, puestos o franjas horarias.",
+  "solver_wizard.unit_nature_event_audience_label":
+    "Actividades para grupos o asistentes",
+  "solver_wizard.unit_nature_event_audience_description":
+    "Usá esta opción cuando grupos o asistentes reciben actividades, talleres o sesiones programadas.",
+  "solver_wizard.unit_nature_event_space_label":
+    "Espacios, stands o salas",
+  "solver_wizard.unit_nature_event_space_description":
+    "Usá esta opción cuando stands, salas, auditorios o espacios del evento no pueden superponerse.",
+  "solver_wizard.unit_nature_other_audience_label":
+    "Grupos que reciben actividades",
+  "solver_wizard.unit_nature_other_audience_description":
+    "Usá esta opción cuando las unidades son grupos de personas que reciben actividades programadas.",
+  "solver_wizard.unit_nature_other_space_label":
+    "Espacios o recursos físicos",
+  "solver_wizard.unit_nature_other_space_description":
+    "Usá esta opción cuando las unidades son espacios o recursos físicos que no pueden superponerse.",
+  "solver_wizard.unit_nature_other_internal_label":
+    "Agrupaciones internas",
+  "solver_wizard.unit_nature_other_internal_description":
+    "Usá esta opción cuando las unidades son categorías como equipos, áreas, departamentos o tipos de actividad.",
+  "solver_wizard.unit_nature_other_none_label":
+    "No necesito unidades",
+  "solver_wizard.unit_nature_other_none_description":
+    "Usá esta opción cuando el horario se organiza principalmente alrededor de participantes y celdas horarias.",
+  "solver_wizard.other_context_label":
+    "Describí brevemente tu caso de horarios",
+  "solver_wizard.other_context_placeholder":
+    "Ejemplo: guardias rotativas para una clínica, horarios de una academia de música, voluntarios de una iglesia...",
+  "solver_wizard.other_context_helper":
+    "Esto nos ayuda a entender nuevos casos de uso y mejorar el sistema.",
+  "solver_wizard.validation_organization_required":
+    "Seleccioná dónde vas a usar este horario.",
+  "solver_wizard.validation_unit_nature_required":
+    "Elegí qué querés organizar.",
+  "solver_wizard.validation_unit_nature_invalid":
+    "La opción elegida no es válida para este tipo de organización.",
+  "solver_wizard.other_context_required_error":
+    "Describí tu caso de horarios.",
+  "solver_wizard.other_context_max_length_error":
+    "La descripción debe tener como máximo 500 caracteres.",
   "solver_wizard.q4_unit_nooverlap": "Evitar superposicion entre unidades",
   "solver_wizard.q4_yes": "Si",
   "solver_wizard.q4_no": "No",
@@ -935,6 +1237,9 @@ const ES_AR: Dictionary = {
   "solver_wizard.priority_unit_gap": "Minimizar huecos en unidades",
   "solver_wizard.priority_unit_days": "Concentrar actividades de unidad",
   "solver_wizard.priority_soft_window": "Respetar ventanas horarias preferidas",
+  "solver_wizard.priority_participant_workload_equity": "Equidad de carga semanal entre participantes",
+  "solver_wizard.priority_participant_workload_equity_desc":
+    "Deberia el solver balancear las celdas semanales entre participantes comparables?",
   "solver_wizard.day_spread_separate": "Separar",
   "solver_wizard.day_spread_cluster": "Agrupar",
   "solver_wizard.q1_required": "Selecciona un tipo de organizacion.",
@@ -968,6 +1273,14 @@ const ES_AR: Dictionary = {
   "create_cell.split_handle": "Division {index}",
   "create_cell.flexible_order": "Orden flexible",
   "create_cell.allow_overstaffing": "Permitir sobreasignacion para esta celda",
+  "create_cell.unit_mode_global_label": "Modo global de unidades",
+  "create_cell.unit_mode_global_value_and": "AND",
+  "create_cell.unit_mode_global_value_or": "OR",
+  "create_cell.unit_mode_override": "Sobrescribir modo global de unidades",
+  "create_cell.unit_mode_override_help_and":
+    "El modo global es AND. Al activar esto, esta celda usa OR.",
+  "create_cell.unit_mode_override_help_or":
+    "El modo global es OR. Al activar esto, esta celda usa AND.",
   "create_cell.equally": "Equitativamente",
   "create_cell.split_preview": "Dia {day}: {cells} celdas ({minutes} min)",
   "create_cell.split_preview_compact": "{cells} celdas ({minutes} min)",

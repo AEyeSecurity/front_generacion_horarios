@@ -16,6 +16,7 @@ export const OBJECTIVE_WEIGHT_DEFAULTS = {
   weight_random_tiebreak: 0.0,
   weight_participant_daily_load_balance: 3.0,
   weight_participant_day_spread: 0.0,
+  weight_participant_workload_equity: 0.0,
 } as const;
 export type ObjectiveWeightKey = keyof typeof OBJECTIVE_WEIGHT_DEFAULTS;
 export const OBJECTIVE_WEIGHT_KEYS = Object.keys(OBJECTIVE_WEIGHT_DEFAULTS) as ObjectiveWeightKey[];

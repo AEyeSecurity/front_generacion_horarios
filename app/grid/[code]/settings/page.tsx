@@ -3,6 +3,8 @@ import { backendFetchJSON } from "@/lib/backend";
 import { requireUserOrRedirect } from "@/lib/auth";
 import { resolveGridByCode } from "../_helpers";
 import { getTranslation } from "@/lib/i18n";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 export default async function GridSettingsPage({
   params,
@@ -29,8 +31,20 @@ export default async function GridSettingsPage({
 
   if (!canConfigure) {
     return (
-      <div className="p-4">
+      <div className="p-4" data-grid-settings-view>
+        <style>{`
+          body:has([data-grid-settings-view]) [data-grid-topbar] { display: none; }
+        `}</style>
         <div className="w-[80%] mx-auto rounded-lg border bg-white p-6 shadow-sm">
+          <div className="mb-4">
+            <Link
+              href={`/grid/${encodeURIComponent(grid.grid_code || code)}`}
+              className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-black"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              {t("common.back")}
+            </Link>
+          </div>
           <h1 className="text-2xl font-semibold">{t("grid_solver_settings.title")}</h1>
           <p className="mt-4 text-sm text-gray-600">{t("grid_settings.only_supervisors")}</p>
         </div>
@@ -39,8 +53,20 @@ export default async function GridSettingsPage({
   }
 
   return (
-    <div className="p-4">
+    <div className="p-4" data-grid-settings-view>
+      <style>{`
+        body:has([data-grid-settings-view]) [data-grid-topbar] { display: none; }
+      `}</style>
       <div className="w-[80%] mx-auto">
+        <div className="mb-4">
+          <Link
+            href={`/grid/${encodeURIComponent(grid.grid_code || code)}`}
+            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-black"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t("common.back")}
+          </Link>
+        </div>
         <GridSolverSettingsForm
           gridId={Number(grid.id)}
           daysEnabled={Array.isArray(grid.days_enabled) ? grid.days_enabled : []}

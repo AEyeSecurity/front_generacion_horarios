@@ -238,6 +238,7 @@ export default function RightSideDock({
           {!fanOpen && !showToolScroller && (
             <button
               type="button"
+              data-onboarding-target="right-dock-solve"
               title={pendingCandidateReview ? pendingCandidateTitle : solveDisabledReason}
               onClick={() => {
                 if (pendingCandidateReview) {
@@ -294,6 +295,7 @@ export default function RightSideDock({
                   disabled: !hasOverstaffableCells,
                   onClick: () => onActivateTool?.("participants"),
                   angle: -78,
+                  onboardingTarget: undefined as string | undefined,
                 },
                 {
                   key: "break" as const,
@@ -303,6 +305,7 @@ export default function RightSideDock({
                   disabled: !hasPlacedCells,
                   onClick: () => onActivateTool?.("break"),
                   angle: -26,
+                  onboardingTarget: undefined as string | undefined,
                 },
                 {
                   key: "blockage" as const,
@@ -312,6 +315,7 @@ export default function RightSideDock({
                   disabled: false,
                   onClick: () => onActivateTool?.("blockage"),
                   angle: 26,
+                  onboardingTarget: "right-dock-blockage",
                 },
                 {
                   key: "cells" as const,
@@ -321,6 +325,7 @@ export default function RightSideDock({
                   disabled: !hasUnassignedCells,
                   onClick: () => onActivateTool?.("unassigned"),
                   angle: 78,
+                  onboardingTarget: undefined as string | undefined,
                 },
               ].map((action, idx, list) => {
                 const angleRad = (action.angle * Math.PI) / 180;
@@ -332,6 +337,7 @@ export default function RightSideDock({
                   <button
                     key={action.key}
                     type="button"
+                    data-onboarding-target={action.onboardingTarget}
                     title={action.title}
                     disabled={action.disabled}
                     onClick={(event) => {
@@ -356,6 +362,7 @@ export default function RightSideDock({
 
               <button
                 type="button"
+                data-onboarding-target="right-dock-fan-toggle"
                 title={labels.add}
                 onClick={() => setFanOpen((prev) => !prev)}
                 disabled={!canManualEditCards}

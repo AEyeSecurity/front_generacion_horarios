@@ -115,6 +115,7 @@ export default function SidePanel({
               {tab === "participants" ? (
                 <>
                   <button
+                    data-onboarding-target="participants-add-button"
                     onClick={() => setShowPerson(true)}
                     className="w-full py-2 rounded bg-black text-white text-sm"
                   >

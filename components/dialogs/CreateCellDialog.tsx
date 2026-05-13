@@ -28,11 +28,15 @@ type GridConfig = {
   cell_size_min?: number | null;
   days_enabled?: number[] | null;
   allow_overstaffing?: boolean | null;
+  default_unit_mode?: string | null;
   day_start?: string | null;
   day_end?: string | null;
   tier_enable?: boolean | null;
   tier_enabled?: boolean | null;
   tiers_enabled?: boolean | null;
+  solve_preference?: {
+    default_unit_mode?: string | null;
+  } | null;
 };
 
 function clampInt(value: number, min: number, max: number) {
@@ -47,6 +51,16 @@ function parseClockToMin(value: string | null | undefined) {
   const mm = Number(parts[1]);
   if (!Number.isFinite(hh) || !Number.isFinite(mm)) return 0;
   return hh * 60 + mm;
+}
+
+function readDefaultUnitMode(source: unknown): "AND" | "OR" {
+  if (!source || typeof source !== "object") return "AND";
+  const typed = source as {
+    default_unit_mode?: unknown;
+    solve_preference?: { default_unit_mode?: unknown } | null;
+  };
+  const raw = typed.default_unit_mode ?? typed.solve_preference?.default_unit_mode;
+  return String(raw || "").toUpperCase() === "OR" ? "OR" : "AND";
 }
 
 function arraysEqual(a: number[], b: number[]) {
@@ -316,6 +330,8 @@ export default function CreateCellDialog({
   const [allowOverstaffing, setAllowOverstaffing] = React.useState(false);
   const [gridAllowsOverstaffing, setGridAllowsOverstaffing] = React.useState(true);
   const [gridTierEnabled, setGridTierEnabled] = React.useState(true);
+  const [globalUnitMode, setGlobalUnitMode] = React.useState<"AND" | "OR">("AND");
+  const [unitModeOverride, setUnitModeOverride] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
@@ -383,6 +399,18 @@ export default function CreateCellDialog({
     () => Math.min(maxSplitDaysSafe, durationCellsSafe),
     [maxSplitDaysSafe, durationCellsSafe]
   );
+  const selectedTimeRangeSpanMin = React.useMemo(() => {
+    const selectedId = String(timeRangeId || "");
+    if (!selectedId) return null;
+    const selectedRange = timeRanges.find((range) => String(range.id) === selectedId);
+    if (!selectedRange) return null;
+    const span = parseClockToMin(selectedRange.end_time) - parseClockToMin(selectedRange.start_time);
+    return span > 0 ? span : null;
+  }, [timeRangeId, timeRanges]);
+  const selectedTimeRangeDayCells = React.useMemo(() => {
+    if (selectedTimeRangeSpanMin == null) return null;
+    return Math.max(1, Math.floor(selectedTimeRangeSpanMin / Math.max(1, cellMin)));
+  }, [selectedTimeRangeSpanMin, cellMin]);
   const canEnableMultiDay = maxSplitByDuration >= 2;
   const splitDaysSafe = React.useMemo(() => {
     if (!multiDayEnabled || !canEnableMultiDay) return 1;
@@ -393,6 +421,7 @@ export default function CreateCellDialog({
     [multiDayEnabled, splitDaysSafe, durationCellsSafe]
   );
   const maxDurationDayCells = React.useMemo(() => {
+    if (selectedTimeRangeDayCells != null) return selectedTimeRangeDayCells;
     const minutesFromGrid = horizonDayMinutes && horizonDayMinutes > 0 ? horizonDayMinutes : 0;
     if (minutesFromGrid > 0) {
       return Math.max(1, Math.floor(minutesFromGrid / Math.max(1, cellMin)));
@@ -402,12 +431,18 @@ export default function CreateCellDialog({
       .filter((span) => span > 0);
     if (spans.length === 0) return null;
     return Math.max(1, Math.floor(Math.max(...spans) / Math.max(1, cellMin)));
-  }, [horizonDayMinutes, cellMin, timeRanges]);
+  }, [selectedTimeRangeDayCells, horizonDayMinutes, cellMin, timeRanges]);
+  const requiredSplitDays = React.useMemo(() => {
+    if (maxDurationDayCells == null || maxDurationDayCells <= 0) return 1;
+    const required = Math.ceil(durationCellsSafe / maxDurationDayCells);
+    return clampInt(required, 1, Math.max(1, Math.min(maxSplitDaysSafe, durationCellsSafe)));
+  }, [maxDurationDayCells, durationCellsSafe, maxSplitDaysSafe]);
+  const minSplitDaysRequired = React.useMemo(() => Math.max(2, requiredSplitDays), [requiredSplitDays]);
   const maxDurationCellsAllowed = React.useMemo(() => {
     if (maxDurationDayCells == null) return null;
-    const dayFactor = multiDayEnabled ? Math.max(1, enabledDaysCount) : 1;
+    const dayFactor = enabledDaysCount > 1 ? Math.max(1, enabledDaysCount) : 1;
     return Math.max(1, maxDurationDayCells * dayFactor);
-  }, [maxDurationDayCells, multiDayEnabled, enabledDaysCount]);
+  }, [maxDurationDayCells, enabledDaysCount]);
   const hasTimeRangeOptions = timeRanges.length > 0;
   const canShowMultiDayToggle = enabledDaysCount > 1;
   const hasUnitsStep = units.length > 0;
@@ -458,6 +493,30 @@ export default function CreateCellDialog({
     if (durationCellsSafe <= maxDurationCellsAllowed) return;
     setDurationCells(maxDurationCellsAllowed);
   }, [maxDurationCellsAllowed, durationCellsSafe]);
+
+  React.useEffect(() => {
+    if (!canShowMultiDayToggle) return;
+    if (requiredSplitDays <= 1) return;
+    if (!multiDayEnabled) {
+      setMultiDayEnabled(true);
+      setEqualSplit(false);
+      setSplitOrderFlexible(false);
+    }
+    const targetDays = clampInt(requiredSplitDays, 2, Math.max(2, maxSplitByDuration));
+    if (splitDays !== targetDays) {
+      setSplitDays(targetDays);
+    }
+    setSplitBoundaries((prev) =>
+      normalizeBoundaries(prev, Math.max(2, durationCellsSafe), targetDays),
+    );
+  }, [
+    canShowMultiDayToggle,
+    requiredSplitDays,
+    multiDayEnabled,
+    splitDays,
+    maxSplitByDuration,
+    durationCellsSafe,
+  ]);
 
   React.useEffect(() => {
     if (!multiDayEnabled) return;
@@ -557,6 +616,8 @@ export default function CreateCellDialog({
     setStaffGroups([]);
     setGridAllowsOverstaffing(true);
     setGridTierEnabled(true);
+    setGlobalUnitMode("AND");
+    setUnitModeOverride(false);
     setAllowOverstaffing(false);
     (async () => {
       try {
@@ -583,6 +644,7 @@ export default function CreateCellDialog({
           const overstaffingEnabled = g?.allow_overstaffing !== false;
           setGridAllowsOverstaffing(overstaffingEnabled);
           setGridTierEnabled(readGridTierEnabled(g, true));
+          setGlobalUnitMode(readDefaultUnitMode(g));
           if (!overstaffingEnabled) {
             setAllowOverstaffing(false);
           }
@@ -712,7 +774,11 @@ export default function CreateCellDialog({
       setDurationCells(2);
     }
     setMultiDayEnabled(true);
-    const targetDays = clampInt(splitDays, 2, Math.max(2, maxSplitByDuration));
+    const targetDays = clampInt(
+      Math.max(splitDays, minSplitDaysRequired),
+      2,
+      Math.max(2, maxSplitByDuration),
+    );
     setSplitDays(targetDays);
     setSplitBoundaries((prev) => normalizeBoundaries(prev, Math.max(2, durationCellsSafe), targetDays));
   };
@@ -845,6 +911,7 @@ export default function CreateCellDialog({
         tier_counts: normalizedTierCounts,
         tier_pools: normalizedTierPools,
         allow_overstaffing: gridAllowsOverstaffing ? allowOverstaffing : null,
+        unit_mode_override: unitModeOverride,
       };
       if (!gridTierEnabled) {
         template.eligible_participants = normalizedEligibleParticipants;
@@ -977,6 +1044,31 @@ export default function CreateCellDialog({
                       </select>
                     </div>
                   )}
+                  <div className="sm:col-span-4">
+                    <label className="block text-sm mb-1">{t("create_cell.unit_mode_global_label")}</label>
+                    <div className="text-xs text-gray-600 mb-1.5">
+                      {t("create_cell.unit_mode_global_label")}:{" "}
+                      <span className="font-medium text-gray-800">
+                        {globalUnitMode === "OR"
+                          ? t("create_cell.unit_mode_global_value_or")
+                          : t("create_cell.unit_mode_global_value_and")}
+                      </span>
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-sm select-none">
+                      <input
+                        type="checkbox"
+                        checked={unitModeOverride}
+                        onChange={(e) => setUnitModeOverride(e.target.checked)}
+                        className="h-4 w-4"
+                      />
+                      {t("create_cell.unit_mode_override")}
+                    </label>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {globalUnitMode === "OR"
+                        ? t("create_cell.unit_mode_override_help_or")
+                        : t("create_cell.unit_mode_override_help_and")}
+                    </div>
+                  </div>
                   <div className="sm:col-span-1 ml-auto">
                     <label className="block text-sm mb-1">{t("create_cell.color")}</label>
                     <div className="relative">
@@ -1122,11 +1214,15 @@ export default function CreateCellDialog({
                       <input
                         className="w-full border rounded px-3 py-2 text-sm"
                         type="number"
-                        min={2}
+                        min={Math.max(2, minSplitDaysRequired)}
                         max={Math.max(2, maxSplitByDuration)}
                         value={splitDaysSafe}
                         onChange={(e) => {
-                          const next = clampInt(Number(e.target.value) || 2, 2, Math.max(2, maxSplitByDuration));
+                          const next = clampInt(
+                            Number(e.target.value) || Math.max(2, minSplitDaysRequired),
+                            Math.max(2, minSplitDaysRequired),
+                            Math.max(2, maxSplitByDuration),
+                          );
                           setSplitDays(next);
                           if (equalSplit && durationCellsSafe % next !== 0) setEqualSplit(false);
                         }}

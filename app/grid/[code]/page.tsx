@@ -75,6 +75,7 @@ export default async function GridOverview({
   // Resolve my role and (if editor) my participant id in this grid
   let role: Role = "viewer";
   let selfPid: number | null = null;
+  let selfRoutePid: string | number | null = null;
   if (me) {
     // Role
     try {
@@ -99,6 +100,7 @@ export default async function GridOverview({
         (p: any) => (p.user_id ?? (typeof p.user === "number" ? p.user : p.user?.id)) === me.id
       );
       if (myp?.id != null) selfPid = Number(myp.id);
+      if (myp?.grid_participant_id != null) selfRoutePid = myp.grid_participant_id;
     } catch {}
   }
 
@@ -109,6 +111,7 @@ export default async function GridOverview({
         gridCode={grid.grid_code || code}
         role={role}
         selfParticipantId={selfPid ?? undefined}
+        selfParticipantRouteId={selfRoutePid ?? undefined}
         horizonStart={grid.day_start}
         horizonEnd={grid.day_end}
         cellSizeMin={grid.cell_size_min}

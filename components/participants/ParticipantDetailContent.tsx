@@ -13,11 +13,6 @@ import EditParticipantDialog from "@/components/dialogs/EditParticipantDialog";
 import { EditorInviteInline } from "@/components/invitations";
 import ParticipantScheduleOverlay from "@/components/participants/ParticipantScheduleOverlay";
 import { GradualBlur } from "@/components/animations";
-import {
-  DEFAULT_UNIT_NOOVERLAP_ENABLED,
-  getGridSolverSettingsKey,
-  parseGridSolverSettings,
-} from "@/lib/grid-solver-settings";
 import { useI18n } from "@/lib/use-i18n";
 import DeleteDropBubble from "@/components/layout/DeleteDropBubble";
 
@@ -162,7 +157,6 @@ export default function ParticipantDetailContent({
   initialView = "rules",
 }: Props) {
   const { t } = useI18n();
-  const [showScheduleTab, setShowScheduleTab] = useState(DEFAULT_UNIT_NOOVERLAP_ENABLED);
   const [displayParticipantName, setDisplayParticipantName] = useState(participantName);
   const [hasParticipantPlacement, setHasParticipantPlacement] = useState(false);
   const [participantLinkedState, setParticipantLinkedState] = useState(participantLinked);
@@ -210,36 +204,7 @@ export default function ParticipantDetailContent({
     pointerId: number;
   } | null>(null);
 
-  useEffect(() => {
-    const readSettings = () => {
-      try {
-        const key = getGridSolverSettingsKey(gridId);
-        const parsed = parseGridSolverSettings(window.localStorage.getItem(key));
-        const enabled =
-          typeof parsed.unit_nooverlap_enabled === "boolean"
-            ? parsed.unit_nooverlap_enabled
-            : DEFAULT_UNIT_NOOVERLAP_ENABLED;
-        setShowScheduleTab(enabled);
-      } catch {
-        setShowScheduleTab(DEFAULT_UNIT_NOOVERLAP_ENABLED);
-      }
-    };
-
-    const onStorage = (event: StorageEvent) => {
-      const key = getGridSolverSettingsKey(gridId);
-      if (event.key === key) readSettings();
-    };
-
-    readSettings();
-    window.addEventListener("focus", readSettings);
-    window.addEventListener("storage", onStorage);
-    return () => {
-      window.removeEventListener("focus", readSettings);
-      window.removeEventListener("storage", onStorage);
-    };
-  }, [gridId]);
-
-  const canOpenScheduleTab = showScheduleTab && hasParticipantPlacement;
+  const canOpenScheduleTab = hasParticipantPlacement;
 
   useEffect(() => {
     if (!canOpenScheduleTab && view === "schedule") {
@@ -297,14 +262,12 @@ export default function ParticipantDetailContent({
 
     (async () => {
       try {
-        const endpoints = [
-          `/api/grids/${gridId}/schedule/`,
-          `/api/grids/${gridId}/schedule`,
-          `/api/grids/${gridId}/published-schedule/`,
-          `/api/grids/${gridId}/published-schedule`,
+        const screenContextEndpoints = [
+          `/api/grids/${gridId}/screen-context/?view=draft`,
+          `/api/grids/${gridId}/screen-context/?view=published`,
         ];
         let found = false;
-        for (const endpoint of endpoints) {
+        for (const endpoint of screenContextEndpoints) {
           const res = await fetch(endpoint, { cache: "no-store" }).catch(() => null);
           if (!res || !res.ok) continue;
           const payload = await res.json().catch(() => null);
@@ -313,7 +276,28 @@ export default function ParticipantDetailContent({
             break;
           }
         }
-        if (active) setHasParticipantPlacement(found);
+        if (found) {
+          if (active) setHasParticipantPlacement(true);
+          return;
+        }
+
+        const endpoints = [
+          `/api/grids/${gridId}/schedule/`,
+          `/api/grids/${gridId}/schedule`,
+          `/api/grids/${gridId}/published-schedule/`,
+          `/api/grids/${gridId}/published-schedule`,
+        ];
+        let fallbackFound = false;
+        for (const endpoint of endpoints) {
+          const res = await fetch(endpoint, { cache: "no-store" }).catch(() => null);
+          if (!res || !res.ok) continue;
+          const payload = await res.json().catch(() => null);
+          if (hasPlacementForParticipant(payload)) {
+            fallbackFound = true;
+            break;
+          }
+        }
+        if (active) setHasParticipantPlacement(fallbackFound);
       } catch {
         if (active) setHasParticipantPlacement(false);
       }

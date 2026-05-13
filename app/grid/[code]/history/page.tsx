@@ -48,6 +48,7 @@ export default async function GridHistoryPage({
 
   let role: Role = "viewer";
   let selfPid: number | null = null;
+  let selfRoutePid: string | number | null = null;
   if (me) {
     try {
       const data = await backendFetchJSON<Record<string, unknown> | Record<string, unknown>[]>(
@@ -73,6 +74,7 @@ export default async function GridHistoryPage({
         : [];
       const mine = participants.find((participant) => Number(participant.user_id) === Number(me.id));
       if (mine?.id != null) selfPid = Number(mine.id);
+      if (mine?.grid_participant_id != null) selfRoutePid = mine.grid_participant_id as string | number;
     } catch {}
   }
 
@@ -109,6 +111,7 @@ export default async function GridHistoryPage({
         gridCode={gridCode}
         role={role}
         selfParticipantId={selfPid ?? undefined}
+        selfParticipantRouteId={selfRoutePid ?? undefined}
         horizonStart={grid.day_start}
         horizonEnd={grid.day_end}
         cellSizeMin={grid.cell_size_min}

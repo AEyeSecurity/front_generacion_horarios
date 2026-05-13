@@ -27,7 +27,7 @@ export default async function GridTopBar({
   const me = await getCurrentUser();
   const homeHref = me ? "/dashboard" : "/";
   return (
-    <div className="w-full border-b bg-white">
+    <div data-grid-topbar className="w-full border-b bg-white">
       <div className="max-w-5xl mx-auto flex items-center justify-between px-4 h-14">
         <div className="flex items-center gap-3 min-w-0">
           <Link href={homeHref} className="flex items-center gap-2 shrink-0" title="Back to dashboard">

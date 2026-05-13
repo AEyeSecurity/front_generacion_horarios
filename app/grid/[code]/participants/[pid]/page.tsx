@@ -36,14 +36,21 @@ export default async function ParticipantAvailabilityPage({
   );
   const initialView = sp?.view === "schedule" ? "schedule" : "rules";
 
-  const fetchParticipant = async (participantId: string) => {
+  const fetchParticipant = async (gridParticipantId: string) => {
     try {
-      const p = await backendFetchJSON<{ id: number; name: string; surname?: string; user?: any; user_id?: number }>(
-        `/api/participants/${participantId}/`,
+      const p = await backendFetchJSON<{
+        id: number;
+        grid_participant_id?: number | string | null;
+        name: string;
+        surname?: string;
+        user?: any;
+        user_id?: number;
+      }>(
+        `/api/grids/${id}/participants/${encodeURIComponent(gridParticipantId)}/`,
       );
       return p;
     } catch {
-      return { id: Number(participantId), name: `#${participantId}` } as any;
+      return { id: Number(gridParticipantId), name: `#${gridParticipantId}` } as any;
     }
   };
 
@@ -64,7 +71,9 @@ export default async function ParticipantAvailabilityPage({
     }
   };
 
-  const [participant, rules] = await Promise.all([fetchParticipant(pid), fetchRules(pid)]);
+  const participant = await fetchParticipant(pid);
+  const resolvedParticipantId = String((participant as any)?.id ?? pid);
+  const rules = await fetchRules(resolvedParticipantId);
   const participantName = `${(participant as any).name}${(participant as any).surname ? " " + (participant as any).surname : ""}`;
   const participantLinked = Boolean((participant as any).user_id ?? (participant as any).user);
 
@@ -99,7 +108,7 @@ export default async function ParticipantAvailabilityPage({
       <ParticipantDetailContent
         gridId={Number(grid.id)}
         gridCode={String(grid.grid_code || code)}
-        participantId={Number(pid)}
+        participantId={Number(resolvedParticipantId)}
         participantName={participantName}
         participantLinked={participantLinked}
         role={role}

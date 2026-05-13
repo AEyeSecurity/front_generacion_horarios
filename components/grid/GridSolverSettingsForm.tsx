@@ -536,6 +536,13 @@ export default function GridSolverSettingsForm({
         min: 0,
         step: 0.1,
       },
+      {
+        key: "weight_participant_workload_equity",
+        label: "Participant workload equity",
+        help: "Higher values balance weekly assigned cells across comparable participants.",
+        min: 0,
+        step: 0.1,
+      },
     ],
     [],
   );

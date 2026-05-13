@@ -18,6 +18,7 @@ import EditParticipantDialog from "@/components/dialogs/EditParticipantDialog";
 
 type Participant = {
   id: number;
+  grid_participant_id?: number | string | null;
   name: string;
   surname?: string;
   tier?: Tier;
@@ -144,7 +145,8 @@ export default function ParticipantsPanel({
                 onClick={() => {
                   clearRowClickTimer();
                   rowClickTimerRef.current = window.setTimeout(() => {
-                    router.push(`${gridBase}/participants/${p.id}`);
+                    const routeId = p.grid_participant_id ?? p.id;
+                    router.push(`${gridBase}/participants/${encodeURIComponent(String(routeId))}`);
                     rowClickTimerRef.current = null;
                   }, 180);
                 }}

@@ -47,7 +47,7 @@ export default async function ParticipantsPage({ params }: { params: Promise<{ c
             {participants.map((p) => (
               <Link
                 key={p.id}
-                href={`${gridBase}/participants/${p.id}`}
+                href={`${gridBase}/participants/${encodeURIComponent(String(p.grid_participant_id ?? p.id))}`}
                 className="border rounded-lg p-4 bg-white hover:shadow-md transition"
               >
                 <div className="font-semibold">
