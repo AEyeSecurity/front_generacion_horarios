@@ -8,6 +8,15 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "vars": {
+    "AUTH_ACCESS_COOKIE": "shift_access",
+    "AUTH_REFRESH_COOKIE": "shift_refresh",
+    "AUTH_COOKIE_DOMAIN": "shift.aeye.com.ar",
+    "AUTH_COOKIE_SECURE": "true",
+    "BACKEND_URL": "https://backshift.aeye.com.ar",
+    "NEXT_PUBLIC_API_URL": "https://backshift.aeye.com.ar",
+    "NEXT_PUBLIC_GOOGLE_CLIENT_ID": "530475565484-qa89hgh8c6n55f1a3p5nngg1e7rvb9kp.apps.googleusercontent.com"
+  },
   "observability": {
     "enabled": true
   }
