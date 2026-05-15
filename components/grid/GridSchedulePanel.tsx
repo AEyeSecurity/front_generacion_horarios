@@ -315,7 +315,9 @@ export default function GridSchedulePanel({
   const deleteDropRef = useRef<HTMLDivElement | null>(null);
   const panelRootRef = useRef<HTMLDivElement | null>(null);
   const scheduleShellRef = useRef<HTMLElement | null>(null);
+  const scheduleHeaderScrollRef = useRef<HTMLDivElement | null>(null);
   const scheduleScrollRef = useRef<HTMLDivElement | null>(null);
+  const syncingHorizontalScrollRef = useRef<"header" | "body" | null>(null);
   const commentsOpenShellWidthPercent = 82;
   const commentsOpenShellLeftShiftPx = 50;
   const scheduleShellBaseStyleRef = useRef<{
@@ -417,6 +419,30 @@ export default function GridSchedulePanel({
   }, [historyMode]);
 
   const sidePanelOpen = commentsPanelOpen || historyMode;
+  const minDayColumnPx = 180;
+  const scheduleGridTemplateColumns = useMemo(
+    () => `${timeColPx}px repeat(${days.length}, minmax(${minDayColumnPx}px, 1fr))`,
+    [days.length, minDayColumnPx, timeColPx],
+  );
+  const scheduleMinWidthPx = useMemo(
+    () => timeColPx + days.length * minDayColumnPx,
+    [days.length, minDayColumnPx, timeColPx],
+  );
+
+  const syncScheduleHorizontalScroll = useCallback((source: "header" | "body", nextScrollLeft: number) => {
+    const headerEl = scheduleHeaderScrollRef.current;
+    const bodyEl = scheduleScrollRef.current;
+    if (!headerEl || !bodyEl) return;
+    syncingHorizontalScrollRef.current = source;
+    if (source === "header") {
+      bodyEl.scrollLeft = nextScrollLeft;
+    } else {
+      headerEl.scrollLeft = nextScrollLeft;
+    }
+    window.requestAnimationFrame(() => {
+      if (syncingHorizontalScrollRef.current === source) syncingHorizontalScrollRef.current = null;
+    });
+  }, []);
 
   useEffect(() => {
     const root = panelRootRef.current;
@@ -1551,114 +1577,130 @@ export default function GridSchedulePanel({
   return (
     <>
       <div ref={panelRootRef}>
-        <div className="grid select-none" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-          <div className="bg-gray-50 border-b h-12 flex items-center justify-center px-1.5">
-            {canUseDraftHistory && (
-              <div className="inline-flex items-center gap-0.5">
-                <button
-                  type="button"
-                  title={t("grid_schedule.undo_title")}
-                  onClick={() => {
-                    if (!canUndoDraft) return;
-                    void undoDraft();
-                  }}
-                  aria-disabled={!canUndoDraft}
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
-                    canUndoDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
-                  }`}
-                >
-                  <Undo2 className="h-5 w-5" />
-                </button>
-                <button
-                  type="button"
-                  title={t("grid_schedule.redo_title")}
-                  onClick={() => {
-                    if (!canRedoDraft) return;
-                    void redoDraft();
-                  }}
-                  aria-disabled={!canRedoDraft}
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
-                    canRedoDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
-                  }`}
-                >
-                  <Redo2 className="h-5 w-5" />
-                </button>
-                <button
-                  type="button"
-                  title={t("grid_schedule.restore_draft_title")}
-                  onClick={() => {
-                    if (!canRestoreDraft) return;
-                    promptRestorePublished();
-                  }}
-                  aria-disabled={!canRestoreDraft}
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
-                    canRestoreDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
-                  }`}
-                >
-                  <RotateCcw className="h-5 w-5" />
-                </button>
+        <div
+          ref={scheduleHeaderScrollRef}
+          className="overflow-x-auto overflow-y-hidden hide-scrollbar"
+          onScroll={(event) => {
+            if (syncingHorizontalScrollRef.current === "body") return;
+            syncScheduleHorizontalScroll("header", event.currentTarget.scrollLeft);
+          }}
+        >
+          <div style={{ minWidth: scheduleMinWidthPx }}>
+            <div className="grid select-none" style={{ gridTemplateColumns: scheduleGridTemplateColumns }}>
+              <div className="sticky left-0 z-[410] bg-gray-50 border-b h-12 flex items-center justify-center px-1.5 relative">
+                <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-gray-50" />
+                {canUseDraftHistory && (
+                  <div className="inline-flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      title={t("grid_schedule.undo_title")}
+                      onClick={() => {
+                        if (!canUndoDraft) return;
+                        void undoDraft();
+                      }}
+                      aria-disabled={!canUndoDraft}
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
+                        canUndoDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
+                      }`}
+                    >
+                      <Undo2 className="h-5 w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      title={t("grid_schedule.redo_title")}
+                      onClick={() => {
+                        if (!canRedoDraft) return;
+                        void redoDraft();
+                      }}
+                      aria-disabled={!canRedoDraft}
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
+                        canRedoDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
+                      }`}
+                    >
+                      <Redo2 className="h-5 w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      title={t("grid_schedule.restore_draft_title")}
+                      onClick={() => {
+                        if (!canRestoreDraft) return;
+                        promptRestorePublished();
+                      }}
+                      aria-disabled={!canRestoreDraft}
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
+                        canRestoreDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
+                      }`}
+                    >
+                      <RotateCcw className="h-5 w-5" />
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          {days.map((day) => (
-            <div key={day} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
-              {day}
+              {days.map((day) => (
+                <div key={day} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
+                  {day}
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
 
         <div
           ref={scheduleScrollRef}
           data-schedule-scroll
-          className="relative max-h-[70vh] overflow-y-auto hide-scrollbar select-none"
+          className="relative max-h-[70vh] overflow-auto hide-scrollbar select-none"
+          onScroll={(event) => {
+            if (syncingHorizontalScrollRef.current === "header") return;
+            syncScheduleHorizontalScroll("body", event.currentTarget.scrollLeft);
+          }}
         >
-          <div className="pointer-events-none absolute left-0 top-0 z-[2]" style={{ width: timeColPx, height: bodyHeight }}>
-            <div className="absolute inset-x-0 top-1 text-center text-xs text-gray-500">{fmt(dayStartMin)}</div>
-            {rows.slice(1).map((time, index) => (
-              <div
-                key={`time-axis-${time}`}
-                className="absolute inset-x-0 -translate-y-1/2 text-center text-xs text-gray-500"
-                style={{ top: (index + 1) * rowPx }}
-              >
-                {fmt(time)}
+          <div className="relative" style={{ minWidth: scheduleMinWidthPx }}>
+            {rows.map((time, rowIndex) => (
+              <div key={time} className="grid" style={{ gridTemplateColumns: scheduleGridTemplateColumns }}>
+                <div className="sticky left-0 z-[400] h-16 border-r bg-white relative">
+                  <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-white" />
+                  <div
+                    className={`absolute inset-x-0 text-center text-xs text-gray-500 ${
+                      rowIndex === 0 ? "top-1" : "-top-2 -translate-y-1/2"
+                    }`}
+                  >
+                    {fmt(time)}
+                  </div>
+                  {rowIndex === rows.length - 1 && (
+                    <div className="absolute inset-x-0 bottom-1 text-center text-xs text-gray-500">{fmt(dayEndMin)}</div>
+                  )}
+                </div>
+                {days.map((day, dayIndex) => (
+                  <div
+                    key={`${time}-${day}`}
+                    className={`border-b ${dayIndex < days.length - 1 ? "border-r" : ""} h-16 hover:bg-gray-50`}
+                  />
+                ))}
               </div>
             ))}
-            <div className="absolute inset-x-0 bottom-1 text-center text-xs text-gray-500">{fmt(dayEndMin)}</div>
+
+            <UnitTabs
+              gridId={gridId}
+              role={role}
+              units={units}
+              daysCount={days.length}
+              dayLabels={days}
+              rowPx={rowPx}
+              timeColPx={timeColPx}
+              bodyHeight={bodyHeight}
+              dayStartMin={dayStartMin}
+              slotMin={slotMin}
+              scheduleViewMode={scheduleViewMode}
+              enablePinning={role === "supervisor" && scheduleViewMode === "draft"}
+              externalRefreshTick={contextRefreshTick}
+              onDraftMutated={handleDraftMutated}
+              commentsPanelOpen={historyMode ? false : commentsPanelOpen}
+              onCommentsPanelOpenChange={historyMode ? undefined : setCommentsPanelOpen}
+              historyMode={historyMode}
+              historyGridCode={historyGridCode}
+
+            />
           </div>
-
-          {rows.map((time) => (
-            <div key={time} className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-              <div className="h-16 border-r" />
-              {days.map((day, dayIndex) => (
-                <div
-                  key={`${time}-${day}`}
-                  className={`border-b ${dayIndex < days.length - 1 ? "border-r" : ""} h-16 hover:bg-gray-50`}
-                />
-              ))}
-            </div>
-          ))}
-
-          <UnitTabs
-            gridId={gridId}
-            role={role}
-            units={units}
-            daysCount={days.length}
-            dayLabels={days}
-            rowPx={rowPx}
-            timeColPx={timeColPx}
-            bodyHeight={bodyHeight}
-            dayStartMin={dayStartMin}
-            slotMin={slotMin}
-            scheduleViewMode={scheduleViewMode}
-            enablePinning={role === "supervisor" && scheduleViewMode === "draft"}
-            externalRefreshTick={contextRefreshTick}
-            onDraftMutated={handleDraftMutated}
-            commentsPanelOpen={historyMode ? false : commentsPanelOpen}
-            onCommentsPanelOpenChange={historyMode ? undefined : setCommentsPanelOpen}
-            historyMode={historyMode}
-            historyGridCode={historyGridCode}
-
-          />
         </div>
         {historyError && historyErrorAnchor && (
           <ScheduleErrorCard
@@ -1679,7 +1721,7 @@ export default function GridSchedulePanel({
         exponential
         opacity={1}
         showWhen="not-at-start"
-        style={{ top: "3rem" }}
+        style={{ top: "3rem", left: `${timeColPx}px`, width: `calc(100% - ${timeColPx}px)` }}
       />
       <GradualBlur
         target="parent"
@@ -1691,6 +1733,7 @@ export default function GridSchedulePanel({
         exponential
         opacity={1}
         showWhen="not-at-end"
+        style={{ left: `${timeColPx}px`, width: `calc(100% - ${timeColPx}px)` }}
       />
       </div>
     </>

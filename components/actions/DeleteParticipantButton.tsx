@@ -34,10 +34,11 @@ export default function DeleteParticipantButton({
   return (
     <button
       type="button"
-      className="inline-flex items-center gap-2 px-3 py-2 rounded border text-red-600 hover:bg-red-50"
+      className="inline-flex items-center gap-2 px-3 py-2 rounded border text-red-600 hover:bg-red-50 max-[700px]:h-9 max-[700px]:w-9 max-[700px]:justify-center max-[700px]:px-0"
       onClick={onDelete}
     >
-      <Trash2 className="w-4 h-4" /> Delete Participant
+      <Trash2 className="w-4 h-4" />
+      <span className="max-[700px]:hidden">Delete Participant</span>
     </button>
   );
 }

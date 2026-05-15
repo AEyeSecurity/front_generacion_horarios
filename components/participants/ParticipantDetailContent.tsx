@@ -192,7 +192,12 @@ export default function ParticipantDetailContent({
   const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
   const [ruleResizeBusy, setRuleResizeBusy] = useState(false);
   const [autoMergeBusy, setAutoMergeBusy] = useState(false);
+  const rulesHeaderScrollRef = useRef<HTMLDivElement | null>(null);
   const rulesScrollRef = useRef<HTMLDivElement | null>(null);
+  const rulesSyncingHorizontalRef = useRef<"header" | "body" | null>(null);
+  const scheduleHeaderScrollRef = useRef<HTMLDivElement | null>(null);
+  const scheduleScrollRef = useRef<HTMLDivElement | null>(null);
+  const scheduleSyncingHorizontalRef = useRef<"header" | "body" | null>(null);
   const ruleDeleteDropRef = useRef<HTMLDivElement | null>(null);
   const resizePointerYRef = useRef<number | null>(null);
   const movePointerRef = useRef<{ x: number; y: number } | null>(null);
@@ -340,13 +345,38 @@ export default function ParticipantDetailContent({
 
   const ROW_PX = 64;
   const TIME_COL_PX = 100;
+  const MIN_DAY_COL_PX = 180;
   const BODY_H = rows.length * ROW_PX;
+  const timetableTemplateColumns = `${TIME_COL_PX}px repeat(${days.length}, minmax(${MIN_DAY_COL_PX}px, 1fr))`;
+  const timetableMinWidthPx = TIME_COL_PX + days.length * MIN_DAY_COL_PX;
   const gridBase = `/grid/${encodeURIComponent(gridCode)}`;
   const clearMoveHoldTimer = useCallback(() => {
     if (moveHoldTimerRef.current != null) {
       window.clearTimeout(moveHoldTimerRef.current);
       moveHoldTimerRef.current = null;
     }
+  }, []);
+  const syncRulesHorizontalScroll = useCallback((source: "header" | "body", left: number) => {
+    const header = rulesHeaderScrollRef.current;
+    const body = rulesScrollRef.current;
+    if (!header || !body) return;
+    rulesSyncingHorizontalRef.current = source;
+    if (source === "header") body.scrollLeft = left;
+    else header.scrollLeft = left;
+    window.requestAnimationFrame(() => {
+      if (rulesSyncingHorizontalRef.current === source) rulesSyncingHorizontalRef.current = null;
+    });
+  }, []);
+  const syncScheduleHorizontalScroll = useCallback((source: "header" | "body", left: number) => {
+    const header = scheduleHeaderScrollRef.current;
+    const body = scheduleScrollRef.current;
+    if (!header || !body) return;
+    scheduleSyncingHorizontalRef.current = source;
+    if (source === "header") body.scrollLeft = left;
+    else header.scrollLeft = left;
+    window.requestAnimationFrame(() => {
+      if (scheduleSyncingHorizontalRef.current === source) scheduleSyncingHorizontalRef.current = null;
+    });
   }, []);
 
   useEffect(() => () => clearMoveHoldTimer(), [clearMoveHoldTimer]);
@@ -1055,55 +1085,75 @@ export default function ParticipantDetailContent({
 
       {view === "rules" && (
         <div className="relative border rounded-lg bg-white overflow-hidden shadow-sm">
-          <div className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-            <div className="bg-gray-50 border-b h-12" />
-            {days.map((d) => (
-              <div key={d} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
-                {d}
+          <div
+            ref={rulesHeaderScrollRef}
+            className="overflow-x-auto overflow-y-hidden hide-scrollbar"
+            onScroll={(event) => {
+              if (rulesSyncingHorizontalRef.current === "body") return;
+              syncRulesHorizontalScroll("header", event.currentTarget.scrollLeft);
+            }}
+          >
+            <div style={{ minWidth: timetableMinWidthPx }}>
+              <div className="grid" style={{ gridTemplateColumns: timetableTemplateColumns }}>
+                  <div className="bg-gray-50 border-b h-12 sticky left-0 z-[410] relative">
+                  <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-gray-50" />
+                </div>
+                {days.map((d) => (
+                  <div key={d} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
+                    {d}
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
 
           <div
             data-schedule-scroll
             ref={rulesScrollRef}
-            className={`relative max-h-[70vh] ${ruleMove ? "overflow-y-hidden" : "overflow-y-auto"} hide-scrollbar`}
+            className={`relative max-h-[70vh] overflow-x-auto ${ruleMove ? "overflow-y-hidden" : "overflow-y-auto"} hide-scrollbar`}
+            onScroll={(event) => {
+              if (rulesSyncingHorizontalRef.current === "header") return;
+              syncRulesHorizontalScroll("body", event.currentTarget.scrollLeft);
+            }}
             style={{ ["--time-col" as never]: `${TIME_COL_PX}px` }}
           >
-            <div className="pointer-events-none absolute left-0 top-0 z-[2]" style={{ width: TIME_COL_PX, height: BODY_H }}>
-              <div className="absolute inset-x-0 top-1 text-center text-xs text-gray-500">{formatMinutes(dayStartMin)}</div>
-              {rows.slice(1).map((t, index) => (
-                <div
-                  key={`rules-time-axis-${t}`}
-                  className="absolute inset-x-0 -translate-y-1/2 text-center text-xs text-gray-500"
-                  style={{ top: (index + 1) * ROW_PX }}
-                >
-                  {formatMinutes(t)}
+            <div className="relative" style={{ minWidth: timetableMinWidthPx }}>
+              <div
+                className="pointer-events-none sticky left-0 top-0 z-[95] border-r border-gray-200 bg-white/98"
+                style={{ width: TIME_COL_PX, height: BODY_H }}
+              />
+              {rows.map((t, rowIndex) => (
+                <div key={t} className="grid" style={{ gridTemplateColumns: timetableTemplateColumns }}>
+                      <div className="sticky left-0 z-[400] h-16 border-r bg-white relative">
+                    <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-white" />
+                    <div
+                      className={`absolute inset-x-0 text-center text-xs text-gray-500 ${
+                        rowIndex === 0 ? "top-1" : "-top-2 -translate-y-1/2"
+                      }`}
+                    >
+                      {formatMinutes(t)}
+                    </div>
+                    {rowIndex === rows.length - 1 && (
+                      <div className="absolute inset-x-0 bottom-1 text-center text-xs text-gray-500">
+                        {formatMinutes(dayEndMin)}
+                      </div>
+                    )}
+                  </div>
+                  {days.map((d, j) => (
+                    <button
+                      key={`${t}-${d}`}
+                      type="button"
+                      disabled={!canManageRules}
+                      className={`border-b ${j < days.length - 1 ? "border-r" : ""} h-16 text-left ${
+                        canManageRules ? "cursor-pointer hover:bg-gray-50/80" : ""
+                      }`}
+                      onClick={() => openAddRuleFromCell(j, t)}
+                    />
+                  ))}
                 </div>
               ))}
-              <div className="absolute inset-x-0 bottom-1 text-center text-xs text-gray-500">
-                {formatMinutes(dayEndMin)}
-              </div>
-            </div>
 
-            {rows.map((t) => (
-              <div key={t} className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-                <div className="h-16 border-r" />
-                {days.map((d, j) => (
-                  <button
-                    key={`${t}-${d}`}
-                    type="button"
-                    disabled={!canManageRules}
-                    className={`border-b ${j < days.length - 1 ? "border-r" : ""} h-16 text-left ${
-                      canManageRules ? "cursor-pointer hover:bg-gray-50/80" : ""
-                    }`}
-                    onClick={() => openAddRuleFromCell(j, t)}
-                  />
-                ))}
-              </div>
-            ))}
-
-            <div className="pointer-events-none absolute inset-0" style={{ height: BODY_H }}>
+              <div className="pointer-events-none absolute inset-0" style={{ height: BODY_H }}>
               <AnimatePresence initial={false}>
               {visibleRules.map((r) => {
                 const renderDay = ruleDraftDayById[r.id] ?? r.day_of_week;
@@ -1305,22 +1355,23 @@ export default function ParticipantDetailContent({
                 );
               })}
               </AnimatePresence>
-            </div>
+              </div>
 
-            <ParticipantScheduleOverlay
-              gridId={gridId}
-              gridCode={gridCode}
-              participantId={participantId}
-              targetView="rules"
-              showPlacements={false}
-              hideSideStack={Boolean(ruleMove)}
-              daysCount={days.length}
-              rowPx={ROW_PX}
-              timeColPx={TIME_COL_PX}
-              bodyHeight={BODY_H}
-              dayStartMin={dayStartMin}
-              slotMin={cellSizeMin}
-            />
+              <ParticipantScheduleOverlay
+                gridId={gridId}
+                gridCode={gridCode}
+                participantId={participantId}
+                targetView="rules"
+                showPlacements={false}
+                hideSideStack={Boolean(ruleMove)}
+                daysCount={days.length}
+                rowPx={ROW_PX}
+                timeColPx={TIME_COL_PX}
+                bodyHeight={BODY_H}
+                dayStartMin={dayStartMin}
+                slotMin={cellSizeMin}
+              />
+            </div>
           </div>
 
           <GradualBlur
@@ -1333,7 +1384,7 @@ export default function ParticipantDetailContent({
             exponential
             opacity={1}
             showWhen="not-at-start"
-            style={{ top: "3rem" }}
+            style={{ top: "3rem", left: `${TIME_COL_PX}px`, width: `calc(100% - ${TIME_COL_PX}px)` }}
           />
           <GradualBlur
             target="parent"
@@ -1345,6 +1396,7 @@ export default function ParticipantDetailContent({
             exponential
             opacity={1}
             showWhen="not-at-end"
+            style={{ left: `${TIME_COL_PX}px`, width: `calc(100% - ${TIME_COL_PX}px)` }}
           />
         </div>
       )}
@@ -1363,58 +1415,80 @@ export default function ParticipantDetailContent({
 
       {view === "schedule" && (
         <div className="relative border rounded-lg bg-white overflow-hidden shadow-sm">
-          <div className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-            <div className="bg-gray-50 border-b h-12" />
-            {days.map((d) => (
-              <div key={d} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
-                {d}
+          <div
+            ref={scheduleHeaderScrollRef}
+            className="overflow-x-auto overflow-y-hidden hide-scrollbar"
+            onScroll={(event) => {
+              if (scheduleSyncingHorizontalRef.current === "body") return;
+              syncScheduleHorizontalScroll("header", event.currentTarget.scrollLeft);
+            }}
+          >
+            <div style={{ minWidth: timetableMinWidthPx }}>
+              <div className="grid" style={{ gridTemplateColumns: timetableTemplateColumns }}>
+                  <div className="bg-gray-50 border-b h-12 sticky left-0 z-[410] relative">
+                  <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-gray-50" />
+                </div>
+                {days.map((d) => (
+                  <div key={d} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
+                    {d}
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
 
           <div
             data-schedule-scroll
-            className="relative max-h-[70vh] overflow-y-auto hide-scrollbar"
+            ref={scheduleScrollRef}
+            className="relative max-h-[70vh] overflow-auto hide-scrollbar"
+            onScroll={(event) => {
+              if (scheduleSyncingHorizontalRef.current === "header") return;
+              syncScheduleHorizontalScroll("body", event.currentTarget.scrollLeft);
+            }}
             style={{ ["--time-col" as never]: `${TIME_COL_PX}px` }}
           >
-            <div className="pointer-events-none absolute left-0 top-0 z-[2]" style={{ width: TIME_COL_PX, height: BODY_H }}>
-              <div className="absolute inset-x-0 top-1 text-center text-xs text-gray-500">{formatMinutes(dayStartMin)}</div>
-              {rows.slice(1).map((t, index) => (
-                <div
-                  key={`schedule-time-axis-${t}`}
-                  className="absolute inset-x-0 -translate-y-1/2 text-center text-xs text-gray-500"
-                  style={{ top: (index + 1) * ROW_PX }}
-                >
-                  {formatMinutes(t)}
+            <div className="relative" style={{ minWidth: timetableMinWidthPx }}>
+              <div
+                className="pointer-events-none sticky left-0 top-0 z-[95] border-r border-gray-200 bg-white/98"
+                style={{ width: TIME_COL_PX, height: BODY_H }}
+              />
+              {rows.map((t, rowIndex) => (
+                <div key={t} className="grid" style={{ gridTemplateColumns: timetableTemplateColumns }}>
+                      <div className="sticky left-0 z-[400] h-16 border-r bg-white relative">
+                    <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-white" />
+                    <div
+                      className={`absolute inset-x-0 text-center text-xs text-gray-500 ${
+                        rowIndex === 0 ? "top-1" : "-top-2 -translate-y-1/2"
+                      }`}
+                    >
+                      {formatMinutes(t)}
+                    </div>
+                    {rowIndex === rows.length - 1 && (
+                      <div className="absolute inset-x-0 bottom-1 text-center text-xs text-gray-500">
+                        {formatMinutes(dayEndMin)}
+                      </div>
+                    )}
+                  </div>
+                  {days.map((d, j) => (
+                    <div key={`${t}-${d}`} className={`border-b ${j < days.length - 1 ? "border-r" : ""} h-16`} />
+                  ))}
                 </div>
               ))}
-              <div className="absolute inset-x-0 bottom-1 text-center text-xs text-gray-500">
-                {formatMinutes(dayEndMin)}
-              </div>
+
+              <ParticipantScheduleOverlay
+                gridId={gridId}
+                gridCode={gridCode}
+                participantId={participantId}
+                targetView="schedule"
+                showPlacements
+                daysCount={days.length}
+                rowPx={ROW_PX}
+                timeColPx={TIME_COL_PX}
+                bodyHeight={BODY_H}
+                dayStartMin={dayStartMin}
+                slotMin={cellSizeMin}
+              />
             </div>
-
-            {rows.map((t) => (
-              <div key={t} className="grid" style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}>
-                <div className="h-16 border-r" />
-                {days.map((d, j) => (
-                  <div key={`${t}-${d}`} className={`border-b ${j < days.length - 1 ? "border-r" : ""} h-16`} />
-                ))}
-              </div>
-            ))}
-
-            <ParticipantScheduleOverlay
-              gridId={gridId}
-              gridCode={gridCode}
-              participantId={participantId}
-              targetView="schedule"
-              showPlacements
-              daysCount={days.length}
-              rowPx={ROW_PX}
-              timeColPx={TIME_COL_PX}
-              bodyHeight={BODY_H}
-              dayStartMin={dayStartMin}
-              slotMin={cellSizeMin}
-            />
           </div>
 
           <GradualBlur
@@ -1427,7 +1501,7 @@ export default function ParticipantDetailContent({
             exponential
             opacity={1}
             showWhen="not-at-start"
-            style={{ top: "3rem" }}
+            style={{ top: "3rem", left: `${TIME_COL_PX}px`, width: `calc(100% - ${TIME_COL_PX}px)` }}
           />
           <GradualBlur
             target="parent"
@@ -1439,6 +1513,7 @@ export default function ParticipantDetailContent({
             exponential
             opacity={1}
             showWhen="not-at-end"
+            style={{ left: `${TIME_COL_PX}px`, width: `calc(100% - ${TIME_COL_PX}px)` }}
           />
         </div>
       )}

@@ -2787,6 +2787,47 @@ export default function SolveOverlay({
   }, [filteredSchedule.length, hideScheduleOverlay, historyMode]);
 
   useEffect(() => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    const explicit = mainScheduleScrollRef.current;
+    const fallback = (overlay.closest("[data-schedule-scroll]") as HTMLElement | null) ?? null;
+    const scrollEl = explicit ?? fallback;
+    if (!scrollEl) return;
+
+    let rafId: number | null = null;
+    const applyClip = () => {
+      const leftInset = Math.max(0, timeColPx + scrollEl.scrollLeft);
+      const clip = `inset(0px 0px 0px ${leftInset}px)`;
+      overlay.style.setProperty("clip-path", clip);
+      overlay.style.setProperty("-webkit-clip-path", clip);
+    };
+    const requestApply = () => {
+      if (rafId != null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        applyClip();
+      });
+    };
+
+    applyClip();
+    scrollEl.addEventListener("scroll", requestApply, { passive: true });
+    window.addEventListener("resize", requestApply);
+    return () => {
+      scrollEl.removeEventListener("scroll", requestApply);
+      window.removeEventListener("resize", requestApply);
+      if (rafId != null) window.cancelAnimationFrame(rafId);
+    };
+  }, [
+    timeColPx,
+    filteredSchedule.length,
+    visibleScheduleBlockages.length,
+    isJiggleMode,
+    blockageDraft,
+    hideScheduleOverlay,
+    historyMode,
+  ]);
+
+  useEffect(() => {
     const explicit = mainScheduleScrollRef.current;
     const fallback =
       (overlayRef.current?.closest("[data-schedule-scroll]") as HTMLElement | null) ?? null;
@@ -5924,7 +5965,7 @@ export default function SolveOverlay({
           blockageDraft != null) && (
         <div
           ref={overlayRef}
-          className={`absolute inset-x-0 ${
+          className={`absolute inset-x-0 z-[5] ${
             canManualEditCards && isBlockageToolActive ? "pointer-events-auto" : "pointer-events-none"
           }`}
           style={{ top: topOffset, height: bodyHeight }}
