@@ -1,6 +1,6 @@
 "use client";
 
-import LoginBox from "@/components/auth/LoginBox";
+import LoginBox from "@/components/auth/LoginBox"; //import
 import { useI18n } from "@/lib/use-i18n";
 
 export default function LoginPage() {
