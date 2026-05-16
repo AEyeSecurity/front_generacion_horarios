@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUserOrRedirect } from "@/lib/auth";
 import { getTranslation } from "@/lib/i18n";
-import ClientRecentProjects from "@/components/dashboard/ClientRecentProjects";
+import ClientRecentProjects from "./ClientRecentProjects";
 
 export default async function DashboardPage() {
   // Mantenemos la seguridad y la traducción en el servidor (esto ya funcionaba)
