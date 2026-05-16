@@ -1,34 +1,12 @@
-// app/(site)/dashboard/page.tsx
 import Link from "next/link";
 import { requireUserOrRedirect } from "@/lib/auth";
-import type { ApiList, Grid } from "@/lib/types";
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
-import RecentProjects from "@/components/dashboard/RecentProjects";
 import { getTranslation } from "@/lib/i18n";
-
-type GridsResp = ApiList<Grid> | Grid[];
-const norm = (r: GridsResp) => (Array.isArray(r) ? r : (r.results ?? []));
+import ClientRecentProjects from "@/components/dashboard/ClientRecentProjects";
 
 export default async function DashboardPage() {
+  // Mantenemos la seguridad y la traducción en el servidor (esto ya funcionaba)
   const me = await requireUserOrRedirect("/dashboard");
   const t = (key: Parameters<typeof getTranslation>[1]) => getTranslation(me.preferred_language, key);
-
-  const h = await headers();
-  const cookie = h.get("cookie") ?? "";
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  const host = h.get("host")!;
-  const origin = `${proto}://${host}`;
-
-  const res = await fetch(`${origin}/api/grids`, {
-    headers: { cookie },
-    cache: "no-store",
-  });
-  if (res.status === 401) {
-    redirect(`/login?next=${encodeURIComponent("/dashboard")}`);
-  }
-  if (!res.ok) throw new Error(`Failed to load grids (${res.status})`);
-  const grids = norm(await res.json());
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -48,9 +26,9 @@ export default async function DashboardPage() {
         </div>
       </section>
 
-      {/* Recent projects */}
+      {/* Recent projects cargados desde el cliente para saltear el bache de red */}
       <section className="max-w-6xl mx-auto px-6 py-8">
-        <RecentProjects meId={me.id} initialItems={grids} />
+        <ClientRecentProjects meId={me.id} />
       </section>
     </div>
   );
