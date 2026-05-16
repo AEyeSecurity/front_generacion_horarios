@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import RecentProjects from "./RecentProjects";
+// Usamos el alias oficial para asegurarnos de que Next.js encuentre el archivo
+import RecentProjects from "@/components/dashboard/RecentProjects";
 
 interface ClientRecentProjectsProps {
-  meId: string;
+  meId: any; // Cambiado a any para evitar que explote si es un número
 }
 
 export default function ClientRecentProjects({ meId }: ClientRecentProjectsProps) {
@@ -13,14 +14,12 @@ export default function ClientRecentProjects({ meId }: ClientRecentProjectsProps
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // El navegador le pega a la ruta relativa de forma directa y automática
     fetch("/api/grids", { cache: "no-store" })
       .then((res) => {
         if (!res.ok) throw new Error(`${res.status}`);
         return res.json();
       })
-      .then((data) => {
-        // La misma lógica de normalización que tenías en el server
+      .then((data: any) => {
         const normalized = Array.isArray(data) ? data : (data.results ?? []);
         setGrids(normalized);
         setLoading(false);
