@@ -9,6 +9,7 @@ export type EntityPageHeaderProps = {
   backHref: string;
   canCreate?: boolean;
   createLabel?: string;
+  createOnboardingTarget?: string;
   onCreateClick?: () => void;
   dialog?: ReactNode;
   rightSlot?: ReactNode;
@@ -19,6 +20,7 @@ export default function EntityPageHeader({
   backHref,
   canCreate = false,
   createLabel = "Create",
+  createOnboardingTarget,
   onCreateClick,
   dialog,
   rightSlot,
@@ -41,11 +43,12 @@ export default function EntityPageHeader({
         {canCreate && onCreateClick ? (
           <button
             type="button"
+            data-onboarding-target={createOnboardingTarget}
             onClick={onCreateClick}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded bg-black text-white text-sm"
+            className="inline-flex items-center gap-1 rounded bg-black px-3 py-2 text-sm text-white sm:gap-2 sm:px-4"
           >
             <Plus className="w-4 h-4" />
-            {createLabel}
+            <span className="hidden sm:inline">{createLabel}</span>
           </button>
         ) : null}
         {rightSlot}

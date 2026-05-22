@@ -5,6 +5,7 @@ import type { Grid, Role } from "@/lib/types";
 import LeftSideDock from "@/components/layout/LeftSideDock";
 import GridSchedulePanel from "@/components/grid/GridSchedulePanel";
 import OnboardingGuide from "@/components/grid/OnboardingGuide";
+import { readGridTierEnabled } from "@/lib/grid-tier";
 import { resolveGridByCode } from "./_helpers";
 import { t as translate } from "@/lib/i18n";
 import { redirect } from "next/navigation";
@@ -25,12 +26,13 @@ export default async function GridOverview({
   searchParams,
 }: {
   params: Promise<{ code: string }>;
-  searchParams?: Promise<{ onboarding?: string }>;
+  searchParams?: Promise<{ onboarding?: string | string[] }>;
 }) {
   const { code } = await params;
   const sp = await searchParams;
   const nextPath = `/grid/${encodeURIComponent(code)}`;
-  const showOnboarding = sp?.onboarding === "1";
+  const onboardingParam = Array.isArray(sp?.onboarding) ? sp?.onboarding[0] : sp?.onboarding;
+  const showOnboarding = onboardingParam === "1" || onboardingParam === "true";
 
   let grid: Grid;
   try {
@@ -62,6 +64,7 @@ export default async function GridOverview({
   };
   const start = toMin(grid.day_start);
   const end = toMin(grid.day_end);
+  const tiersEnabled = readGridTierEnabled(grid, false);
   const days = (grid.days_enabled || []).map((i) => t(DAY_KEYS[i] ?? "day.mon_short"));
   const ROW_PX = 64;
   const TIME_COL_PX = 100;
@@ -117,11 +120,13 @@ export default async function GridOverview({
         cellSizeMin={grid.cell_size_min}
         dayStartMin={start}
         dayEndMin={end}
+        tiersEnabled={tiersEnabled}
       />
       <OnboardingGuide
         gridId={Number(grid.id)}
         gridCode={String(grid.grid_code || code)}
         show={showOnboarding}
+        unitNature={grid.unit_nature ?? null}
       />
 
       <div className="p-4">

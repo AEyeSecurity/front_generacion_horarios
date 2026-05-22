@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/use-i18n";
 type Grid = {
   id: number;
   grid_code?: string | null;
+  code?: string | null;
   name: string;
   description?: string;
   day_start: string;
@@ -217,6 +218,24 @@ function toMin(t: string) {
   return h * 60 + m;
 }
 
+function extractCreatedGrid(raw: unknown): Grid | null {
+  if (!raw || typeof raw !== "object") return null;
+  const source = raw as Record<string, unknown>;
+  if (typeof source.id === "number" || typeof source.id === "string") {
+    return source as Grid;
+  }
+  for (const key of ["grid", "data", "result"]) {
+    const nested = source[key];
+    if (nested && typeof nested === "object") {
+      const nestedSource = nested as Record<string, unknown>;
+      if (typeof nestedSource.id === "number" || typeof nestedSource.id === "string") {
+        return nestedSource as Grid;
+      }
+    }
+  }
+  return null;
+}
+
 export default function NewGridPage() {
   const router = useRouter();
   const { t } = useI18n();
@@ -226,7 +245,7 @@ export default function NewGridPage() {
     return translated === key ? fallback : translated;
   };
 
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
   const [name, setName] = useState("");
   const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4]);
@@ -330,17 +349,11 @@ export default function NewGridPage() {
   const needsOtherDescription = organizationType === "other";
   const otherDescriptionValid = !needsOtherDescription || (trimmedOtherDescription.length > 0 && trimmedOtherDescription.length <= 500);
   const q2Allowed = unitNature != null && allowedUnitNatures.has(unitNature);
-  const step2Valid = Boolean(organizationType && q2Allowed && otherDescriptionValid);
-
-  const contextError = useMemo(() => {
+  const step2Valid = Boolean(organizationType && otherDescriptionValid);
+  const step3Valid = Boolean(organizationType && q2Allowed);
+  const organizationError = useMemo(() => {
     if (!organizationType) {
       return tt("solver_wizard.validation_organization_required", "Please select where you will use this schedule.");
-    }
-    if (!unitNature) {
-      return tt("solver_wizard.validation_unit_nature_required", "Please choose what you want to organize.");
-    }
-    if (!allowedUnitNatures.has(unitNature)) {
-      return tt("solver_wizard.validation_unit_nature_invalid", "The selected option is not valid for this organization type.");
     }
     if (needsOtherDescription && trimmedOtherDescription.length === 0) {
       return tt("solver_wizard.other_context_required_error", "Please describe your scheduling case.");
@@ -349,7 +362,17 @@ export default function NewGridPage() {
       return tt("solver_wizard.other_context_max_length_error", "Description must be 500 characters or less.");
     }
     return null;
-  }, [organizationType, unitNature, allowedUnitNatures, needsOtherDescription, trimmedOtherDescription, tt]);
+  }, [organizationType, needsOtherDescription, trimmedOtherDescription, tt]);
+
+  const unitNatureError = useMemo(() => {
+    if (!unitNature) {
+      return tt("solver_wizard.validation_unit_nature_required", "Please choose what you want to organize.");
+    }
+    if (!allowedUnitNatures.has(unitNature)) {
+      return tt("solver_wizard.validation_unit_nature_invalid", "The selected option is not valid for this organization type.");
+    }
+    return null;
+  }, [allowedUnitNatures, unitNature, tt]);
 
   function toggleDay(idx: number) {
     setDays((prev) =>
@@ -368,10 +391,11 @@ export default function NewGridPage() {
     setErr(null);
   }
 
-  function canGoToStep(target: 1 | 2 | 3) {
+  function canGoToStep(target: 1 | 2 | 3 | 4) {
     if (target === 1) return true;
     if (target === 2) return step1Valid;
-    return step1Valid && step2Valid;
+    if (target === 3) return step1Valid && step2Valid;
+    return step1Valid && step2Valid && step3Valid;
   }
 
   function validateBeforeSubmit() {
@@ -388,7 +412,11 @@ export default function NewGridPage() {
       return false;
     }
     if (!step2Valid) {
-      setErr(contextError);
+      setErr(organizationError);
+      return false;
+    }
+    if (!step3Valid) {
+      setErr(unitNatureError);
       return false;
     }
     return true;
@@ -422,9 +450,16 @@ export default function NewGridPage() {
         throw new Error(raw || `Failed to create grid (${createRes.status})`);
       }
 
-      const grid = (await createRes.json()) as Grid;
+      const rawGrid = await createRes.json();
+      const grid = extractCreatedGrid(rawGrid);
+      if (!grid) {
+        throw new Error(tt("solver_wizard.create_failed", "Could not create grid."));
+      }
       const gridId = Number(grid?.id ?? 0);
-      const target = String(grid?.grid_code || grid?.id || "");
+      const target = String(grid?.grid_code || grid?.code || grid?.id || "");
+      if (typeof window !== "undefined" && Number.isFinite(gridId) && gridId > 0) {
+        window.localStorage.removeItem(`onboarding-done-grid-${gridId}`);
+      }
       router.replace(`/grid/${encodeURIComponent(target || String(gridId))}?onboarding=1`);
     } catch (error: unknown) {
       setErr(error instanceof Error ? error.message : tt("solver_wizard.create_failed", "Could not create grid."));
@@ -434,13 +469,17 @@ export default function NewGridPage() {
   }
 
   function handleStepChange(nextStep: number) {
-    const target = nextStep as 1 | 2 | 3;
+    const target = nextStep as 1 | 2 | 3 | 4;
     if (target === 2 && !step1Valid) {
       void validateBeforeSubmit();
       return;
     }
     if (target === 3 && !step2Valid) {
-      setErr(contextError);
+      setErr(organizationError);
+      return;
+    }
+    if (target === 4 && !step3Valid) {
+      setErr(unitNatureError);
       return;
     }
     setErr(null);
@@ -458,7 +497,7 @@ export default function NewGridPage() {
           <div className="px-6 py-5 border-b border-gray-100">
             <h1 className="text-2xl font-semibold text-gray-900">{tt("solver_wizard.title", "Create New Grid")}</h1>
             <p className="mt-1 text-sm text-gray-500">
-              {tt("solver_wizard.step_x_of_y", "Step {step} of {total}", { step, total: 3 })}
+              {tt("solver_wizard.step_x_of_y", "Step {step} of {total}", { step, total: 4 })}
             </p>
           </div>
 
@@ -471,7 +510,11 @@ export default function NewGridPage() {
               nextButtonText={tt("solver_wizard.next_step", "Next step")}
               completeButtonText={loading ? tt("solver_wizard.creating", "Creating...") : tt("solver_wizard.create_grid", "Create Grid")}
               nextButtonProps={{
-                disabled: loading || (step === 1 && !step1Valid) || (step === 2 && !step2Valid),
+                disabled:
+                  loading ||
+                  (step === 1 && !step1Valid) ||
+                  (step === 2 && !step2Valid) ||
+                  (step === 3 && !step3Valid),
               }}
               backButtonProps={{ disabled: loading }}
               stepCircleContainerClassName="mt-4 max-w-full rounded-xl border-0 shadow-none"
@@ -480,7 +523,7 @@ export default function NewGridPage() {
               footerClassName="px-0 pb-0"
               className="min-h-0 p-0"
               renderStepIndicator={({ step: stepNumber, currentStep, onStepClick }) => {
-                const stepIdx = stepNumber as 1 | 2 | 3;
+                const stepIdx = stepNumber as 1 | 2 | 3 | 4;
                 const enabled = canGoToStep(stepIdx) && !loading;
                 const isActive = currentStep === stepNumber;
                 const isComplete = currentStep > stepNumber;
@@ -646,36 +689,46 @@ export default function NewGridPage() {
                       </div>
                     ) : null}
 
-                    {organizationType ? (
-                      <div className="mt-5">
-                        <label className="block text-sm mb-2 text-gray-700">{unitNatureQuestion}</label>
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          {availableUnitOptions.map((option) => {
-                            const selected = unitNature === option.value;
-                            return (
-                              <button
-                                key={option.value}
-                                type="button"
-                                onClick={() => {
-                                  setUnitNature(option.value);
-                                  setErr(null);
-                                }}
-                                className={`rounded-xl border px-3 py-3 text-left transition-colors ${
-                                  selected
-                                    ? "border-black bg-black text-white"
-                                    : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                                }`}
-                              >
-                                <div className="text-sm font-medium">{tt(option.labelKey, option.labelFallback)}</div>
-                                <div className={`mt-1 text-xs ${selected ? "text-gray-200" : "text-gray-500"}`}>
-                                  {tt(option.descriptionKey, option.descriptionFallback)}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
+                  </section>
+                </div>
+              </Step>
+
+              <Step>
+                <div className="space-y-4">
+                  {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
+                  <section className={questionCardClass}>
+                    <h2 className="text-base font-medium text-gray-900">{unitNatureQuestion}</h2>
+                    <p className="mt-1 text-sm text-gray-500">
+                      {tt(
+                        "solver_wizard.unit_nature_optional_hint",
+                        "Choose the option that best matches what this grid needs to organize.",
+                      )}
+                    </p>
+                    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {availableUnitOptions.map((option) => {
+                        const selected = unitNature === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => {
+                              setUnitNature(option.value);
+                              setErr(null);
+                            }}
+                            className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                              selected
+                                ? "border-black bg-black text-white"
+                                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                            }`}
+                          >
+                            <div className="text-sm font-medium">{tt(option.labelKey, option.labelFallback)}</div>
+                            <div className={`mt-1 text-xs ${selected ? "text-gray-200" : "text-gray-500"}`}>
+                              {tt(option.descriptionKey, option.descriptionFallback)}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </section>
                 </div>
               </Step>

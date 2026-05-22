@@ -58,47 +58,54 @@ export default function CategoriesPanel({
       }, {}),
     [list],
   );
+  const latestCategoryId = useMemo(() => {
+    if (list.length === 0) return null;
+    return Math.max(...list.map((item) => Number(item.id) || 0));
+  }, [list]);
 
   return (
-    <PanelShell title="Categories" error={err}>
-      <input
-        className="w-full border rounded px-3 py-2 text-sm"
-        placeholder="Search..."
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-      />
+    <div className="h-full" data-onboarding-target="categories-panel">
+      <PanelShell title="Categories" error={err}>
+        <input
+          className="w-full border rounded px-3 py-2 text-sm"
+          placeholder="Search..."
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
 
-      <PanelScrollArea loading={loading} empty={filtered.length === 0} emptyLabel="No categories found">
-        <ul className="grid gap-2">
-          {filtered.map((c) => (
-            <li key={c.id}>
-              <button
-                className="w-full text-left border rounded p-2 text-sm hover:bg-gray-50"
-                onClick={() => {
-                  setSelected(c);
-                  setShowDialog(true);
-                }}
-              >
-                <div className="font-medium">{c.name}</div>
-                {c.parent !== null && (
-                  <div className="text-xs text-gray-500">Parent: {parentNameById[c.parent] ?? c.parent}</div>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </PanelScrollArea>
+        <PanelScrollArea loading={loading} empty={filtered.length === 0} emptyLabel="No categories found">
+          <ul className="grid gap-2">
+            {filtered.map((c) => (
+              <li key={c.id}>
+                <button
+                  data-onboarding-target={Number(c.id) === latestCategoryId ? "categories-latest-row" : undefined}
+                  className="w-full text-left border rounded p-2 text-sm hover:bg-gray-50"
+                  onClick={() => {
+                    setSelected(c);
+                    setShowDialog(true);
+                  }}
+                >
+                  <div className="font-medium">{c.name}</div>
+                  {c.parent !== null && (
+                    <div className="text-xs text-gray-500">Parent: {parentNameById[c.parent] ?? c.parent}</div>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </PanelScrollArea>
 
-      <CategoryDialog
-        category={selected}
-        open={showDialog}
-        onOpenChange={setShowDialog}
-        onDeleted={() => {
-          setShowDialog(false);
-          setSelected(null);
-          void load();
-        }}
-      />
-    </PanelShell>
+        <CategoryDialog
+          category={selected}
+          open={showDialog}
+          onOpenChange={setShowDialog}
+          onDeleted={() => {
+            setShowDialog(false);
+            setSelected(null);
+            void load();
+          }}
+        />
+      </PanelShell>
+    </div>
   );
 }

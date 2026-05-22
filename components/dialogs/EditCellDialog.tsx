@@ -1338,7 +1338,7 @@ export default function EditCellDialog({
       }}
     >
       <DialogContent
-        className="sm:max-w-[880px] z-[96]"
+        className="sm:max-w-[880px] z-[1801]"
         showCloseButton={false}
         onPointerDownOutside={ignoreOutsideClose}
         onInteractOutside={ignoreOutsideClose}

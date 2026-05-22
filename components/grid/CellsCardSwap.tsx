@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import CardSwap, { Card } from "@/components/animations/CardSwap";
 import EditCellDialog from "@/components/dialogs/EditCellDialog";
@@ -54,6 +54,13 @@ type CellCardGroup = {
 };
 type TierKey = "PRIMARY" | "SECONDARY" | "TERTIARY";
 const TIERS: TierKey[] = ["PRIMARY", "SECONDARY", "TERTIARY"];
+
+const clampTextStyle = (lines: number): CSSProperties => ({
+  display: "-webkit-box",
+  WebkitBoxOrient: "vertical",
+  WebkitLineClamp: lines,
+  overflow: "hidden",
+});
 
 export default function CellsCardSwap({
   cells,
@@ -123,7 +130,7 @@ export default function CellsCardSwap({
   const [editCell, setEditCell] = useState<Cell | null>(null);
   const [staffNameById, setStaffNameById] = useState<Record<string, string>>({});
   const [participantNameById, setParticipantNameById] = useState<Record<string, string>>({});
-  const [gridTierEnabled, setGridTierEnabled] = useState(true);
+  const [gridTierEnabled, setGridTierEnabled] = useState(false);
 
   const perStack = 5;
   const pages = useMemo(() => {
@@ -164,7 +171,7 @@ export default function CellsCardSwap({
         }
         if (gridRes?.ok) {
           const gridData = await gridRes.json().catch(() => null);
-          if (active) setGridTierEnabled(readGridTierEnabled(gridData, true));
+          if (active) setGridTierEnabled(readGridTierEnabled(gridData, false));
         }
         if (active) {
           setStaffNameById(smap);
@@ -239,10 +246,23 @@ export default function CellsCardSwap({
               const eligibleParticipants = Array.isArray(cell.eligible_participants)
                 ? cell.eligible_participants.map(String)
                 : [];
+              const eligibleIds = Array.from(
+                new Set(
+                  [
+                    ...Object.values(tierPools).flatMap((ids) => (Array.isArray(ids) ? ids : [])),
+                    ...eligibleParticipants,
+                  ].map((id) => String(id))
+                )
+              );
+              const eligibleNames = eligibleIds.map((id) => participantNameById[id] || `#${id}`);
+              const hasBundles = group.bundleNames.length > 0;
+              const hasStaffs = staffNames.length > 0;
+              const hasEligible = eligibleNames.length > 0;
+              const showBothStaffingSources = hasStaffs && hasEligible;
               return (
                 <Card
                   key={group.key}
-                  customClass="shadow-lg p-4 border"
+                  customClass="shadow-lg p-4 border overflow-hidden"
                   onDoubleClick={() =>
                     setEditCell({
                       ...cell,
@@ -252,9 +272,12 @@ export default function CellsCardSwap({
                   }
                   style={{ backgroundColor: color || "#ffffff", borderColor: border || "#e5e7eb", color: textDark || undefined }}
                 >
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-4">
-                      <h3 className="min-w-0 text-lg font-semibold leading-tight" style={{ color: textLight || undefined }}>
+                  <div className="flex h-full min-h-0 flex-col overflow-hidden">
+                    <div className="flex min-h-0 items-start justify-between gap-4">
+                      <h3
+                        className="min-w-0 text-lg font-semibold leading-tight"
+                        style={{ color: textLight || undefined, ...clampTextStyle(2) }}
+                      >
                         {group.displayName}
                       </h3>
                       <div className="relative shrink-0 overflow-hidden px-3 py-1 text-xs font-bold" style={{ color: textLight || undefined }}>
@@ -265,73 +288,77 @@ export default function CellsCardSwap({
                         <span className="relative z-10 whitespace-nowrap">{cell.duration_min ?? 0} min</span>
                       </div>
                     </div>
-                    <div className="flex items-start justify-between gap-4 text-xs">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1">
-                          <span className="font-medium" style={{ color: textLight || undefined }}>
+
+                    <div className="mt-2 min-h-[30px] overflow-hidden text-xs">
+                      {hasBundles && (
+                        <div className="flex min-w-0 items-center gap-1">
+                          <span className="shrink-0 font-medium" style={{ color: textLight || undefined }}>
                             {t("cells_card_swap.bundles")}
                           </span>
-                          {group.bundleNames.length > 0 ? group.bundleNames.map((bundleName) => (
-                            <span
-                              key={bundleName}
-                              className="rounded-md border px-2 py-1"
-                              style={{ borderColor: border || "#d1d5db", color: textDark || undefined }}
-                            >
-                              {bundleName}
-                            </span>
-                          )) : (
-                            <span>-</span>
-                          )}
+                          <div className="flex min-w-0 flex-1 flex-wrap gap-1 overflow-hidden">
+                            {group.bundleNames.map((bundleName) => (
+                              <span
+                                key={bundleName}
+                                className="max-w-full truncate rounded-md border px-2 py-1"
+                                style={{ borderColor: border || "#d1d5db", color: textDark || undefined }}
+                                title={bundleName}
+                              >
+                                {bundleName}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
-                    <div className="text-xs">
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span className="font-medium" style={{ color: textLight || undefined }}>
-                          {t("cells_card_swap.staffs")}
-                        </span>
-                        {staffNames.length > 0 ? staffNames.map((staffName) => (
-                          <span
-                            key={staffName}
-                            className="rounded-md border px-2 py-1"
-                            style={{ borderColor: border || "#d1d5db", color: textDark || undefined }}
+
+                    <div className="mt-1 min-h-0 flex-1 overflow-hidden text-xs">
+                      {hasStaffs && (
+                        <div className={showBothStaffingSources ? "mb-2" : ""}>
+                          <div className="mb-1 font-medium" style={{ color: textLight || undefined }}>
+                            {t("cells_card_swap.staffs")}
+                          </div>
+                          <div
+                            className="leading-relaxed"
+                            style={{ color: textDark || undefined, ...clampTextStyle(showBothStaffingSources ? 2 : 5) }}
+                            title={staffNames.join(", ")}
                           >
-                            {staffName}
-                          </span>
-                        )) : (
-                          <span>-</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="text-xs font-medium" style={{ color: textLight || undefined }}>
-                        Eligible Participants
-                      </div>
-                      {gridTierEnabled ? (
-                        <div className="grid grid-cols-3 gap-3 text-xs">
-                          {TIERS.map((tier) => {
-                            const ids = Array.isArray(tierPools[tier]) ? tierPools[tier]! : [];
-                            const names = ids.map((id) => participantNameById[String(id)] || `#${id}`).join(", ");
-                            return (
-                              <div key={tier} className="min-w-0">
-                                <div className="break-words leading-relaxed">{names || "-"}</div>
-                              </div>
-                            );
-                          })}
+                            {staffNames.join(", ")}
+                          </div>
                         </div>
-                      ) : (
-                        <div className="text-xs break-words leading-relaxed">
-                          {Array.from(
-                            new Set(
-                              [
-                                ...Object.values(tierPools).flatMap((ids) => (Array.isArray(ids) ? ids : [])),
-                                ...eligibleParticipants,
-                              ]
-                                .map((id) => String(id))
-                            )
-                          )
-                            .map((id) => participantNameById[id] || `#${id}`)
-                            .join(", ") || "-"}
+                      )}
+
+                      {hasEligible && (
+                        <div>
+                          <div className="mb-1 text-xs font-medium" style={{ color: textLight || undefined }}>
+                            Eligible Participants
+                          </div>
+                          {gridTierEnabled ? (
+                            <div className="grid min-w-0 grid-cols-3 gap-2">
+                              {TIERS.map((tier) => {
+                                const ids = Array.isArray(tierPools[tier]) ? tierPools[tier]! : [];
+                                const names = ids.map((id) => participantNameById[String(id)] || `#${id}`).join(", ");
+                                if (!names) return <div key={tier} />;
+                                return (
+                                  <div
+                                    key={tier}
+                                    className="min-w-0 leading-relaxed"
+                                    style={{ color: textDark || undefined, ...clampTextStyle(showBothStaffingSources ? 2 : 5) }}
+                                    title={names}
+                                  >
+                                    {names}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div
+                              className="leading-relaxed"
+                              style={{ color: textDark || undefined, ...clampTextStyle(showBothStaffingSources ? 2 : 5) }}
+                              title={eligibleNames.join(", ")}
+                            >
+                              {eligibleNames.join(", ")}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

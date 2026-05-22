@@ -5,6 +5,7 @@ import { Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/use-i18n";
 
 const TIME_RANGE_STATS_EVENT = "shift:time-range-stats";
+const TIME_RANGE_SAVED_EVENT = "shift:onboarding-time-range-saved";
 const PIE_COLORS = ["#3B82F6", "#8B5CF6", "#F59E0B", "#10B981", "#EF4444", "#EC4899"];
 
 type TimeRangeApi = {
@@ -24,9 +25,21 @@ type TimeRangeDraft = {
   originalStartOffsetMin: number;
   originalEndOffsetMin: number;
   rowError: string | null;
+  needsInitialSave: boolean;
 };
 
 type TimeRangeStatsMap = Record<string, { placementCount: number }>;
+
+type PieRangeInfo = {
+  id: string;
+  index: number;
+  startOffsetMin: number;
+  endOffsetMin: number;
+  name: string;
+  color: string;
+  labelStart: string;
+  labelEnd: string;
+};
 
 type PieSegment = {
   id: string;
@@ -35,9 +48,14 @@ type PieSegment = {
   type: "range" | "unassigned";
   name: string;
   color: string;
+  colors: string[];
+  names: string[];
+  ranges: PieRangeInfo[];
   labelStart: string;
   labelEnd: string;
   isNarrow: boolean;
+  isOverlap: boolean;
+  patternId?: string;
 };
 
 type SliderDragState = {
@@ -94,25 +112,21 @@ function polar(cx: number, cy: number, radius: number, angleDeg: number) {
   return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
 }
 
-function describeDonutArc(
+function describePieSlice(
   cx: number,
   cy: number,
-  innerRadius: number,
-  outerRadius: number,
+  radius: number,
   startAngleDeg: number,
   endAngleDeg: number,
 ) {
   const sweep = ((endAngleDeg - startAngleDeg) + 360) % 360;
   const largeArc = sweep > 180 ? 1 : 0;
-  const outerStart = polar(cx, cy, outerRadius, startAngleDeg);
-  const outerEnd = polar(cx, cy, outerRadius, endAngleDeg);
-  const innerEnd = polar(cx, cy, innerRadius, endAngleDeg);
-  const innerStart = polar(cx, cy, innerRadius, startAngleDeg);
+  const outerStart = polar(cx, cy, radius, startAngleDeg);
+  const outerEnd = polar(cx, cy, radius, endAngleDeg);
   return [
-    `M ${outerStart.x} ${outerStart.y}`,
-    `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${outerEnd.x} ${outerEnd.y}`,
-    `L ${innerEnd.x} ${innerEnd.y}`,
-    `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${innerStart.x} ${innerStart.y}`,
+    `M ${cx} ${cy}`,
+    `L ${outerStart.x} ${outerStart.y}`,
+    `A ${radius} ${radius} 0 ${largeArc} 1 ${outerEnd.x} ${outerEnd.y}`,
     "Z",
   ].join(" ");
 }
@@ -206,6 +220,7 @@ export default function TimeRangesEditor({
         originalStartOffsetMin: startOffsetMin,
         originalEndOffsetMin: endOffsetMin,
         rowError: null,
+        needsInitialSave: false,
       };
     },
     [horizonSpanMin, horizonStartMin, stepMin, t],
@@ -268,6 +283,7 @@ export default function TimeRangesEditor({
 
   const isDirty = useCallback(
     (row: TimeRangeDraft) =>
+      row.needsInitialSave ||
       row.name.trim() !== row.originalName.trim() ||
       row.startOffsetMin !== row.originalStartOffsetMin ||
       row.endOffsetMin !== row.originalEndOffsetMin,
@@ -310,9 +326,15 @@ export default function TimeRangesEditor({
                 originalName: entry.name.trim(),
                 originalStartOffsetMin: entry.startOffsetMin,
                 originalEndOffsetMin: entry.endOffsetMin,
+                needsInitialSave: false,
               }
             : entry,
         ),
+      );
+      window.dispatchEvent(
+        new CustomEvent(TIME_RANGE_SAVED_EVENT, {
+          detail: { gridId: String(gridId), rangeId: String(id) },
+        }),
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t("grid_solver_settings.time_ranges_save_failed");
@@ -361,8 +383,21 @@ export default function TimeRangesEditor({
         const raw = await res.text().catch(() => "");
         throw new Error(parseApiErrorMessage(raw, t("grid_solver_settings.time_ranges_create_failed")));
       }
+      const created = (await res.json().catch(() => null)) as TimeRangeApi | null;
       setNewName("");
-      await load();
+      if (created?.id != null) {
+        const createdDraft = {
+          ...mapApiToDraft(created),
+          needsInitialSave: true,
+        };
+        setRanges((prev) =>
+          [...prev.filter((entry) => entry.id !== createdDraft.id), createdDraft].sort(
+            (a, b) => a.startOffsetMin - b.startOffsetMin || a.endOffsetMin - b.endOffsetMin || a.id - b.id,
+          ),
+        );
+      } else {
+        await load();
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t("grid_solver_settings.time_ranges_create_failed"));
     } finally {
@@ -371,7 +406,7 @@ export default function TimeRangesEditor({
   };
 
   const pieSegments = useMemo<PieSegment[]>(() => {
-    const normalized = ranges
+    const normalized: PieRangeInfo[] = ranges
       .map((row, idx) => {
         const start = clamp(row.startOffsetMin, 0, horizonSpanMin);
         const end = clamp(row.endOffsetMin, 0, horizonSpanMin);
@@ -382,6 +417,7 @@ export default function TimeRangesEditor({
           startOffsetMin: start,
           endOffsetMin: end,
           name: row.name.trim() || `${t("entity.time_range")} ${row.id}`,
+          color: PIE_COLORS[idx % PIE_COLORS.length],
           labelStart: minutesToClock(horizonStartMin + start),
           labelEnd: minutesToClock(horizonStartMin + end),
         };
@@ -389,53 +425,59 @@ export default function TimeRangesEditor({
       .filter((row): row is NonNullable<typeof row> => Boolean(row))
       .sort((a, b) => a.startOffsetMin - b.startOffsetMin || a.endOffsetMin - b.endOffsetMin || a.index - b.index);
 
+    const boundaries = Array.from(
+      new Set([0, horizonSpanMin, ...normalized.flatMap((row) => [row.startOffsetMin, row.endOffsetMin])]),
+    ).sort((a, b) => a - b);
+
     const segments: PieSegment[] = [];
-    let cursor = 0;
-    for (const row of normalized) {
-      const rowStart = Math.max(cursor, row.startOffsetMin);
-      if (rowStart > cursor) {
+    for (let idx = 0; idx < boundaries.length - 1; idx += 1) {
+      const start = boundaries[idx];
+      const end = boundaries[idx + 1];
+      if (end <= start) continue;
+
+      const active = normalized.filter((row) => row.startOffsetMin < end && row.endOffsetMin > start);
+      const arcDeg = ((end - start) / horizonSpanMin) * 360;
+
+      if (active.length === 0) {
         segments.push({
-          id: `u-${cursor}-${rowStart}`,
-          startOffsetMin: cursor,
-          endOffsetMin: rowStart,
+          id: `u-${start}-${end}`,
+          startOffsetMin: start,
+          endOffsetMin: end,
           type: "unassigned",
           name: "Unassigned",
           color: "#E5E7EB",
-          labelStart: minutesToClock(horizonStartMin + cursor),
-          labelEnd: minutesToClock(horizonStartMin + rowStart),
-          isNarrow: false,
-        });
-      }
-      const rowEnd = Math.max(rowStart, row.endOffsetMin);
-      if (rowEnd > rowStart) {
-        const arcDeg = ((rowEnd - rowStart) / horizonSpanMin) * 360;
-        segments.push({
-          id: row.id,
-          startOffsetMin: rowStart,
-          endOffsetMin: rowEnd,
-          type: "range",
-          name: row.name,
-          color: PIE_COLORS[row.index % PIE_COLORS.length],
-          labelStart: row.labelStart,
-          labelEnd: row.labelEnd,
+          colors: ["#E5E7EB"],
+          names: ["Unassigned"],
+          ranges: [],
+          labelStart: minutesToClock(horizonStartMin + start),
+          labelEnd: minutesToClock(horizonStartMin + end),
           isNarrow: arcDeg < 30,
+          isOverlap: false,
         });
+        continue;
       }
-      cursor = Math.max(cursor, row.endOffsetMin);
-    }
-    if (cursor < horizonSpanMin) {
+
+      const colors = active.map((row) => row.color);
+      const names = active.map((row) => row.name);
+      const isOverlap = active.length > 1;
       segments.push({
-        id: `u-${cursor}-${horizonSpanMin}`,
-        startOffsetMin: cursor,
-        endOffsetMin: horizonSpanMin,
-        type: "unassigned",
-        name: "Unassigned",
-        color: "#E5E7EB",
-        labelStart: minutesToClock(horizonStartMin + cursor),
-        labelEnd: minutesToClock(horizonStartMin + horizonSpanMin),
-        isNarrow: false,
+        id: `r-${start}-${end}-${active.map((row) => row.id).join("-")}`,
+        startOffsetMin: start,
+        endOffsetMin: end,
+        type: "range",
+        name: names.join(" + "),
+        color: colors[0],
+        colors,
+        names,
+        ranges: active,
+        labelStart: minutesToClock(horizonStartMin + start),
+        labelEnd: minutesToClock(horizonStartMin + end),
+        isNarrow: arcDeg < 30,
+        isOverlap,
+        patternId: isOverlap ? `time-range-overlap-${start}-${end}-${active.map((row) => row.id).join("-")}` : undefined,
       });
     }
+
     return segments;
   }, [horizonSpanMin, horizonStartMin, ranges, t]);
 
@@ -449,183 +491,245 @@ export default function TimeRangesEditor({
     }, unassigned[0]);
   }, [pieSegments]);
 
-  const chartSize = 260;
+  const boundaryLabels = useMemo(() => {
+    const boundaries = new Map<number, string>([
+      [0, minutesToClock(horizonStartMin)],
+      [horizonSpanMin, minutesToClock(horizonEndMin)],
+    ]);
+    for (const segment of pieSegments) {
+      if (segment.type !== "range") continue;
+      boundaries.set(segment.startOffsetMin, segment.labelStart);
+      boundaries.set(segment.endOffsetMin, segment.labelEnd);
+    }
+    return Array.from(boundaries.entries())
+      .map(([offsetMin, label]) => ({ offsetMin, label }))
+      .sort((a, b) => a.offsetMin - b.offsetMin);
+  }, [horizonEndMin, horizonSpanMin, horizonStartMin, pieSegments]);
+
+  const chartSize = 340;
   const cx = chartSize / 2;
   const cy = chartSize / 2;
-  const outerRadius = 92;
-  const innerRadius = 42;
+  const outerRadius = 126;
+  const latestRangeId = useMemo(
+    () => ranges.reduce<number | null>((latest, row) => (latest == null || row.id > latest ? row.id : latest), null),
+    [ranges],
+  );
 
   const toAngle = (offsetMin: number) => (offsetMin / horizonSpanMin) * 360 - 90;
 
-  const horizonDurationLabel = `${Math.round(horizonSpanMin / 60)}h`;
-
   return (
-    <div className="flex h-full min-h-0 w-full max-w-full flex-col gap-2 overflow-hidden overflow-x-hidden pr-1 pb-1">
+    <div
+      className="flex h-full min-h-0 w-full max-w-full flex-col gap-3 overflow-hidden overflow-x-hidden pr-1 pb-1"
+      data-onboarding-target="time-ranges-panel"
+    >
       <div className="shrink-0">
         <h2 className="text-lg font-semibold text-gray-900">{t("entity.time_ranges")}</h2>
       </div>
 
-      <div className="rounded-lg border bg-white p-4 pb-3 basis-[56%] shrink-0 min-h-0 overflow-hidden overflow-x-hidden">
-        <div className="flex h-full min-h-0 flex-col">
-          {error ? <div className="mb-2 text-sm text-red-600">{error}</div> : null}
-          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 space-y-2">
-            {loading ? (
-              <div className="text-sm text-gray-500 py-2">{t("common.loading")}</div>
-            ) : ranges.length === 0 ? (
-              <div className="text-sm text-gray-500 py-2">{t("time_ranges.no_items")}</div>
-            ) : (
-              ranges.map((row) => {
-                const busy = Boolean(busyById[row.id]);
-                const dirty = isDirty(row);
-                const startPercent = (row.startOffsetMin / horizonSpanMin) * 100;
-                const endPercent = (row.endOffsetMin / horizonSpanMin) * 100;
-                return (
-                  <div key={`time-range-card-${row.id}`} className="rounded border p-3 w-full min-w-0 overflow-x-hidden">
-                    <div className="flex items-center gap-2">
-                      <input
-                        className="flex-1 min-w-0 w-full rounded border px-2 py-1.5 text-sm"
-                        value={row.name}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setRanges((prev) =>
-                            prev.map((entry) => (entry.id === row.id ? { ...entry, name: value, rowError: null } : entry)),
-                          );
-                        }}
-                        disabled={!canEdit || busy}
-                      />
-                      {canEdit ? (
-                        <button
-                          type="button"
-                          className="h-8 w-8 inline-flex items-center justify-center rounded hover:bg-red-50"
-                          title={t("common.delete")}
-                          onClick={() => void deleteRow(row.id)}
-                          disabled={busy}
+      <div className="grid min-h-0 flex-1 grid-rows-2 gap-3 overflow-hidden">
+        <div className="min-h-0 overflow-hidden overflow-x-hidden rounded-lg border bg-white p-4 pb-3">
+          <div className="flex h-full min-h-0 flex-col">
+            {error ? <div className="mb-2 text-sm text-red-600">{error}</div> : null}
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden pr-1">
+              {loading ? (
+                <div className="text-sm text-gray-500 py-2">{t("common.loading")}</div>
+              ) : ranges.length === 0 ? (
+                <div className="text-sm text-gray-500 py-2">{t("time_ranges.no_items")}</div>
+              ) : (
+                ranges.map((row) => {
+                  const busy = Boolean(busyById[row.id]);
+                  const dirty = isDirty(row);
+                  const startPercent = (row.startOffsetMin / horizonSpanMin) * 100;
+                  const endPercent = (row.endOffsetMin / horizonSpanMin) * 100;
+                  return (
+                    <div
+                      key={`time-range-card-${row.id}`}
+                      className="w-full min-w-0 overflow-x-hidden rounded border p-3"
+                      data-onboarding-target={row.id === latestRangeId ? "time-range-latest-card" : undefined}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          className="w-full min-w-0 flex-1 rounded border px-2 py-1.5 text-sm"
+                          value={row.name}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setRanges((prev) =>
+                              prev.map((entry) => (entry.id === row.id ? { ...entry, name: value, rowError: null } : entry)),
+                            );
+                          }}
+                          disabled={!canEdit || busy}
+                        />
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded hover:bg-red-50"
+                            title={t("common.delete")}
+                            onClick={() => void deleteRow(row.id)}
+                            disabled={busy}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-3 px-2">
+                        <div
+                          ref={(node) => {
+                            trackRefs.current[row.id] = node;
+                          }}
+                          className="relative h-2 w-full cursor-default rounded bg-gray-200"
                         >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </button>
+                          <div
+                            className="absolute top-0 h-2 rounded bg-black"
+                            style={{ left: `${startPercent}%`, width: `${Math.max(0, endPercent - startPercent)}%` }}
+                          />
+                          <div
+                            className="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-black bg-white cursor-ew-resize"
+                            style={{ left: `calc(${startPercent}% - 8px)` }}
+                            onPointerDown={(event) => {
+                              if (!canEdit || busy) return;
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setSliderDrag({ rangeId: row.id, knob: "start" });
+                            }}
+                          />
+                          <div
+                            className="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-black bg-white cursor-ew-resize"
+                            style={{ left: `calc(${endPercent}% - 8px)` }}
+                            onPointerDown={(event) => {
+                              if (!canEdit || busy) return;
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setSliderDrag({ rangeId: row.id, knob: "end" });
+                            }}
+                          />
+                        </div>
+                        <div className="mt-2 flex items-center justify-between text-xs text-gray-600">
+                          <span>{minutesToClock(horizonStartMin + row.startOffsetMin)}</span>
+                          <span>{minutesToClock(horizonStartMin + row.endOffsetMin)}</span>
+                        </div>
+                      </div>
+
+                      {row.rowError ? <div className="mt-2 text-xs text-red-600">{row.rowError}</div> : null}
+                      {canEdit && dirty ? (
+                        <div className="mt-2 flex justify-end">
+                          <button
+                            type="button"
+                            className="rounded bg-black px-3 py-1 text-xs text-white disabled:opacity-60"
+                            onClick={() => void saveRow(row.id)}
+                            disabled={busy}
+                          >
+                            {busy ? t("common.saving") : t("common.save")}
+                          </button>
+                        </div>
                       ) : null}
                     </div>
+                  );
+                })
+              )}
+            </div>
 
-                    <div className="mt-3 px-2">
-                      <div
-                        ref={(node) => {
-                          trackRefs.current[row.id] = node;
-                        }}
-                        className="relative h-2 w-full rounded bg-gray-200 cursor-default"
-                      >
-                        <div
-                          className="absolute top-0 h-2 rounded bg-black"
-                          style={{ left: `${startPercent}%`, width: `${Math.max(0, endPercent - startPercent)}%` }}
-                        />
-                        <div
-                          className="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-black bg-white cursor-ew-resize"
-                          style={{ left: `calc(${startPercent}% - 8px)` }}
-                          onPointerDown={(event) => {
-                            if (!canEdit || busy) return;
-                            event.preventDefault();
-                            event.stopPropagation();
-                            setSliderDrag({ rangeId: row.id, knob: "start" });
-                          }}
-                        />
-                        <div
-                          className="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-black bg-white cursor-ew-resize"
-                          style={{ left: `calc(${endPercent}% - 8px)` }}
-                          onPointerDown={(event) => {
-                            if (!canEdit || busy) return;
-                            event.preventDefault();
-                            event.stopPropagation();
-                            setSliderDrag({ rangeId: row.id, knob: "end" });
-                          }}
-                        />
-                      </div>
-                      <div className="mt-2 flex items-center justify-between text-xs text-gray-600">
-                        <span>{minutesToClock(horizonStartMin + row.startOffsetMin)}</span>
-                        <span>{minutesToClock(horizonStartMin + row.endOffsetMin)}</span>
-                      </div>
-                    </div>
-
-                    {row.rowError ? <div className="mt-2 text-xs text-red-600">{row.rowError}</div> : null}
-                    {canEdit && dirty ? (
-                      <div className="mt-2 flex justify-end">
-                        <button
-                          type="button"
-                          className="rounded bg-black px-3 py-1 text-xs text-white disabled:opacity-60"
-                          onClick={() => void saveRow(row.id)}
-                          disabled={busy}
-                        >
-                          {busy ? t("common.saving") : t("common.save")}
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          <div className="mt-3 border-t pt-3 bg-white shrink-0">
-            <div className="flex items-center gap-2">
-              <input
-                className="flex-1 min-w-0 w-full rounded border px-2 py-1.5 text-sm"
-                placeholder={t("common.name")}
-                value={newName}
-                onChange={(event) => setNewName(event.target.value)}
-                disabled={!canEdit || creating}
-              />
-              <button
-                type="button"
-                data-onboarding-target="time-ranges-add-button"
-                className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-60"
-                onClick={() => void addRange()}
-                disabled={!canEdit || creating}
-              >
-                {creating ? t("common.saving") : t("common.add")}
-              </button>
+            <div
+              className="mt-3 shrink-0 border-t bg-white pt-3"
+              data-onboarding-target="time-ranges-add-row"
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  className="w-full min-w-0 flex-1 rounded border px-2 py-1.5 text-sm"
+                  data-onboarding-target="time-ranges-name-input"
+                  placeholder={t("common.name")}
+                  value={newName}
+                  onChange={(event) => setNewName(event.target.value)}
+                  disabled={!canEdit || creating}
+                />
+                <button
+                  type="button"
+                  className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-60"
+                  onClick={() => void addRange()}
+                  disabled={!canEdit || creating || !newName.trim()}
+                >
+                  {creating ? t("common.saving") : t("common.add")}
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="rounded-lg border bg-white p-3 flex-1 min-h-0 overflow-hidden">
-        <div className="h-full flex items-center justify-center">
-          <svg viewBox={`0 0 ${chartSize} ${chartSize}`} className="w-full h-full max-w-full max-h-full">
+        <div className="min-h-0 overflow-hidden bg-white">
+          <div className="flex h-full min-h-0 items-center justify-center overflow-hidden">
+            <svg viewBox={`0 0 ${chartSize} ${chartSize}`} className="h-full max-h-full w-full max-w-full">
+            <defs>
+              {pieSegments
+                .filter((segment) => segment.isOverlap && segment.patternId)
+                .map((segment) => {
+                  const stripeWidth = 7;
+                  const patternWidth = Math.max(stripeWidth * segment.colors.length, stripeWidth);
+                  return (
+                    <pattern
+                      key={segment.patternId}
+                      id={segment.patternId}
+                      patternUnits="userSpaceOnUse"
+                      width={patternWidth}
+                      height={8}
+                      patternTransform="rotate(45)"
+                    >
+                      {segment.colors.map((color, index) => (
+                        <rect
+                          key={`${segment.patternId}-${color}-${index}`}
+                          x={index * stripeWidth}
+                          y={0}
+                          width={stripeWidth}
+                          height={8}
+                          fill={color}
+                        />
+                      ))}
+                    </pattern>
+                  );
+                })}
+            </defs>
             {pieSegments.map((segment) => {
               const startAngle = toAngle(segment.startOffsetMin);
               const endAngle = toAngle(segment.endOffsetMin);
-              const path = describeDonutArc(cx, cy, innerRadius, outerRadius, startAngle, endAngle);
-              return <path key={`arc-${segment.id}-${segment.startOffsetMin}`} d={path} fill={segment.color} />;
+              const isFullCircle = segment.endOffsetMin - segment.startOffsetMin >= horizonSpanMin;
+              const fill = segment.patternId ? `url(#${segment.patternId})` : segment.color;
+              if (isFullCircle) {
+                return <circle key={`arc-${segment.id}-${segment.startOffsetMin}`} cx={cx} cy={cy} r={outerRadius} fill={fill} />;
+              }
+              const path = describePieSlice(cx, cy, outerRadius, startAngle, endAngle);
+              return <path key={`arc-${segment.id}-${segment.startOffsetMin}`} d={path} fill={fill} />;
             })}
 
-            {pieSegments
-              .filter((segment) => segment.type === "range")
-              .flatMap((segment) => {
-                const startAngle = toAngle(segment.startOffsetMin);
-                const endAngle = toAngle(segment.endOffsetMin);
-                const startInner = polar(cx, cy, innerRadius, startAngle);
-                const startOuter = polar(cx, cy, outerRadius, startAngle);
-                const endInner = polar(cx, cy, innerRadius, endAngle);
-                const endOuter = polar(cx, cy, outerRadius, endAngle);
-                return [
-                  <line
-                    key={`line-start-${segment.id}`}
-                    x1={startInner.x}
-                    y1={startInner.y}
-                    x2={startOuter.x}
-                    y2={startOuter.y}
-                    stroke="#374151"
-                    strokeWidth={1.5}
-                  />,
-                  <line
-                    key={`line-end-${segment.id}`}
-                    x1={endInner.x}
-                    y1={endInner.y}
-                    x2={endOuter.x}
-                    y2={endOuter.y}
-                    stroke="#374151"
-                    strokeWidth={1.5}
-                  />,
-                ];
-              })}
+            {boundaryLabels.map(({ offsetMin, label }) => {
+              if (horizonSpanMin >= 1440 && offsetMin === horizonSpanMin) return null;
+              const angle = toAngle(offsetMin);
+              const outer = polar(cx, cy, outerRadius, angle);
+              let labelPoint = polar(cx, cy, outerRadius + 18, angle);
+              let anchor: "start" | "middle" | "end" =
+                Math.abs(labelPoint.x - cx) < 8 ? "middle" : labelPoint.x > cx ? "start" : "end";
+              if (horizonSpanMin < 1440 && (offsetMin === 0 || offsetMin === horizonSpanMin)) {
+                labelPoint = {
+                  x: cx + (offsetMin === 0 ? 18 : -18),
+                  y: cy - outerRadius - 18,
+                };
+                anchor = offsetMin === 0 ? "start" : "end";
+              }
+              return (
+                <g key={`boundary-${offsetMin}`}>
+                  <line x1={cx} y1={cy} x2={outer.x} y2={outer.y} stroke="#374151" strokeWidth={1.4} />
+                  <text
+                    x={labelPoint.x}
+                    y={labelPoint.y}
+                    textAnchor={anchor}
+                    dominantBaseline="middle"
+                    fontSize={10}
+                    fontWeight={600}
+                    fill="#374151"
+                  >
+                    {label}
+                  </text>
+                </g>
+              );
+            })}
 
             {pieSegments
               .filter((segment) => segment.type === "range")
@@ -633,48 +737,56 @@ export default function TimeRangesEditor({
                 const startAngle = toAngle(segment.startOffsetMin);
                 const endAngle = toAngle(segment.endOffsetMin);
                 const midAngle = startAngle + (((endAngle - startAngle) + 360) % 360) / 2;
-                const innerLabelRadius = innerRadius + (outerRadius - innerRadius) * 0.62;
-
-                if (!segment.isNarrow) {
-                  const p = polar(cx, cy, innerLabelRadius, midAngle);
+                if (segment.isOverlap || segment.isNarrow) {
+                  const pOuter = polar(cx, cy, outerRadius, midAngle);
+                  const pLeader = polar(cx, cy, outerRadius + 12, midAngle);
+                  const pText = polar(cx, cy, outerRadius + 26, midAngle);
+                  const anchor = pText.x >= cx ? "start" : "end";
+                  const labelNames = segment.names.slice(0, 3);
                   return (
-                    <text
-                      key={`label-inside-${segment.id}`}
-                      x={p.x}
-                      y={p.y}
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      fontSize={10}
-                      fill="#ffffff"
-                    >
-                      <tspan x={p.x} dy="-4">{segment.labelStart}-</tspan>
-                      <tspan x={p.x} dy="10">{segment.labelEnd}</tspan>
-                    </text>
+                    <g key={`label-out-${segment.id}`}>
+                      <line x1={pOuter.x} y1={pOuter.y} x2={pLeader.x} y2={pLeader.y} stroke="#374151" strokeWidth={1} />
+                      <line
+                        x1={pLeader.x}
+                        y1={pLeader.y}
+                        x2={pText.x + (anchor === "start" ? -4 : 4)}
+                        y2={pText.y}
+                        stroke="#374151"
+                        strokeWidth={1}
+                      />
+                      <text
+                        x={pText.x}
+                        y={pText.y - (labelNames.length - 1) * 5}
+                        textAnchor={anchor}
+                        dominantBaseline="middle"
+                        fontSize={10}
+                        fontWeight={700}
+                        fill="#374151"
+                      >
+                        {labelNames.map((name, index) => (
+                          <tspan key={`${segment.id}-${name}`} x={pText.x} dy={index === 0 ? 0 : 11}>
+                            {name}
+                          </tspan>
+                        ))}
+                      </text>
+                    </g>
                   );
                 }
 
-                const pOuter = polar(cx, cy, outerRadius, midAngle);
-                const pLeader = polar(cx, cy, outerRadius + 12, midAngle);
-                const pText = polar(cx, cy, outerRadius + 26, midAngle);
-                const anchor = pText.x >= cx ? "start" : "end";
+                const p = polar(cx, cy, outerRadius * 0.58, midAngle);
                 return (
-                  <g key={`label-out-${segment.id}`}>
-                    <line x1={pOuter.x} y1={pOuter.y} x2={pLeader.x} y2={pLeader.y} stroke="#374151" strokeWidth={1} />
-                    <line
-                      x1={pLeader.x}
-                      y1={pLeader.y}
-                      x2={pText.x + (anchor === "start" ? -4 : 4)}
-                      y2={pText.y}
-                      stroke="#374151"
-                      strokeWidth={1}
-                    />
-                    <text x={pText.x} y={pText.y - 4} textAnchor={anchor} fontSize={10} fill="#374151">
-                      {segment.labelStart}-
-                    </text>
-                    <text x={pText.x} y={pText.y + 8} textAnchor={anchor} fontSize={10} fill="#374151">
-                      {segment.labelEnd}
-                    </text>
-                  </g>
+                  <text
+                    key={`label-inside-${segment.id}`}
+                    x={p.x}
+                    y={p.y}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={11}
+                    fontWeight={700}
+                    fill="#ffffff"
+                  >
+                    {segment.name}
+                  </text>
                 );
               })}
 
@@ -682,23 +794,16 @@ export default function TimeRangesEditor({
               const startAngle = toAngle(largestUnassigned.startOffsetMin);
               const endAngle = toAngle(largestUnassigned.endOffsetMin);
               const midAngle = startAngle + (((endAngle - startAngle) + 360) % 360) / 2;
-              const p = polar(cx, cy, innerRadius + (outerRadius - innerRadius) * 0.58, midAngle);
+              const p = polar(cx, cy, outerRadius * 0.56, midAngle);
               return (
                 <text x={p.x} y={p.y} textAnchor="middle" dominantBaseline="middle" fontSize={12} fill="#6b7280">
                   Unassigned
                 </text>
               );
             })() : null}
-
-            <circle cx={cx} cy={cy} r={innerRadius - 1} fill="#ffffff" />
-            <text x={cx} y={cy - 6} textAnchor="middle" fontSize={12} fill="#374151" fontWeight={600}>
-              {t("entity.time_ranges")}
-            </text>
-            <text x={cx} y={cy + 12} textAnchor="middle" fontSize={11} fill="#6b7280">
-              {horizonDurationLabel}
-            </text>
           </svg>
         </div>
+      </div>
       </div>
       <div className="sr-only" aria-hidden>
         {Object.values(statsByTimeRangeId).reduce((sum, entry) => sum + (entry?.placementCount || 0), 0)}

@@ -361,6 +361,8 @@ const EN_US = {
   "onboarding.later": "Later",
   "onboarding.go_to_settings": "Go to Settings",
   "onboarding.got_it": "Got it",
+  "onboarding.previous": "Previous",
+  "onboarding.next": "Next",
   "onboarding.finish": "Finish",
   "onboarding.entity_dock_title": "Entity Dock",
   "onboarding.entity_dock_description":
@@ -368,14 +370,39 @@ const EN_US = {
   "onboarding.action_dock_title": "Action Dock",
   "onboarding.action_dock_description":
     "This is the Action Dock. Use it to Solve, Edit placements, and Publish your schedule.",
-  "onboarding.participant_step_title": "Add your first participant",
+  "onboarding.participant_step_title": "Add participants",
   "onboarding.participant_step_description":
-    "First, add a participant. Click the Participants button in the left dock.",
+    "Create at least one participant before creating cells.",
   "onboarding.participant_step_open_bubble":
-    "First click the Participants bubble in the left dock.",
+    "Click the Participants bubble in the left dock.",
   "onboarding.participant_step_click_add":
     "Now click Add Participant in the left panel.",
+  "onboarding.participant_step_complete_dialog":
+    "Complete the participant form. You can click anywhere inside the dialog.",
   "onboarding.waiting_participant_creation": "Waiting for participant creation. Current participants: {count}.",
+  "onboarding.category_step_title": "Create categories",
+  "onboarding.category_step_description":
+    "Optionally, create categories and values to generate unit tabs for your schedule.",
+  "onboarding.category_step_unit_hint_audience":
+    "You chose group-based units; category values become the group tabs in your schedule.",
+  "onboarding.category_step_unit_hint_space":
+    "You chose space-based units; category values can represent rooms, courts, desks or other spaces.",
+  "onboarding.category_step_unit_hint_internal":
+    "You chose internal units; category values can represent areas, teams or departments.",
+  "onboarding.category_step_unit_hint_none":
+    "You chose no units; skip this unless you want unit tabs later.",
+  "onboarding.category_step_unit_hint_default":
+    "Category values become unit tabs in your schedule.",
+  "onboarding.category_step_open_bubble":
+    "Click the Categories bubble in the left dock.",
+  "onboarding.category_step_click_add":
+    "Now click Add Category in the left panel.",
+  "onboarding.category_step_complete_dialog":
+    "Create a category, then add at least one value.",
+  "onboarding.category_step_add_value":
+    "Add a category value. Each value becomes a unit tab automatically.",
+  "onboarding.category_step_unit_tabs":
+    "The new unit tabs are now available at the bottom of the schedule.",
   "onboarding.time_range_step_title": "Define time ranges",
   "onboarding.time_range_step_description":
     "Optionally, define time ranges to constrain when cells can be placed.",
@@ -383,6 +410,8 @@ const EN_US = {
     "Click the Time Ranges bubble in the left dock.",
   "onboarding.time_range_step_click_add":
     "Now add a time range from the panel footer.",
+  "onboarding.time_range_step_adjust_created":
+    "Adjust the new time range by moving its slider handles, then click Save.",
   "onboarding.waiting_time_range_creation": "Time ranges created: {count}.",
   "onboarding.blockage_step_title": "Add a blockage",
   "onboarding.blockage_step_description":
@@ -391,9 +420,15 @@ const EN_US = {
     "Open the action tools from the + button on the right dock.",
   "onboarding.blockage_step_select_tool":
     "Now choose the blockage tool.",
+  "onboarding.blockage_step_tabs":
+    "Use these tabs to choose between global blockages and blockages for a specific unit.",
+  "onboarding.blockage_step_click_timetable":
+    "Click anywhere on the timetable where you would like to add a blockage. Click outside the timetable to leave edit mode.",
   "onboarding.cell_step_title": "Create your first cell",
   "onboarding.cell_step_description":
-    "Now create a Cell, the activity that will be placed on the schedule.",
+    "Click the Cells button in the Entity Dock to open the Cells view.",
+  "onboarding.cell_step_click_create":
+    "Now click Create and define your first Cell.",
   "onboarding.waiting_cell_creation": "Current cells: {count}. Create one or skip.",
   "onboarding.final_step_title": "You're all set!",
   "onboarding.final_step_description":
@@ -697,6 +732,9 @@ const EN_US = {
 
   "participants_page.no_participants": "No participants yet. Create one with the Create button above.",
   "participants_page.linked_user": "Linked user",
+  "participants_panel.no_participants_found": "No participants found",
+  "participants_panel.filter_by_tier": "Filter by tier",
+  "participants_panel.double_click_edit": "Double click to edit participant",
   "side_panel.manage_panel": "Manage panel",
   "side_panel.add_participant": "+ Add Participant",
   "side_panel.add_category": "+ Add Category",
@@ -1020,6 +1058,8 @@ const ES_AR: Dictionary = {
   "onboarding.later": "Mas tarde",
   "onboarding.go_to_settings": "Ir a Configuracion",
   "onboarding.got_it": "Entendido",
+  "onboarding.previous": "Anterior",
+  "onboarding.next": "Siguiente",
   "onboarding.finish": "Finalizar",
   "onboarding.entity_dock_title": "Dock de Entidades",
   "onboarding.entity_dock_description":
@@ -1027,15 +1067,40 @@ const ES_AR: Dictionary = {
   "onboarding.action_dock_title": "Dock de Acciones",
   "onboarding.action_dock_description":
     "Este es el Dock de Acciones. Usalo para Resolver, Editar asignaciones y Publicar tu horario.",
-  "onboarding.participant_step_title": "Agrega tu primer participante",
+  "onboarding.participant_step_title": "Agrega participantes",
   "onboarding.participant_step_description":
-    "Primero agrega un participante. Hace click en el boton de Participantes del dock izquierdo.",
+    "Crea al menos un participante antes de crear celdas.",
   "onboarding.participant_step_open_bubble":
-    "Primero hace click en la burbuja de Participantes del dock izquierdo.",
+    "Hace click en la burbuja de Participantes del dock izquierdo.",
   "onboarding.participant_step_click_add":
     "Ahora hace click en Agregar participante dentro del panel izquierdo.",
+  "onboarding.participant_step_complete_dialog":
+    "Completa el formulario del participante. Podes hacer click en cualquier parte del dialogo.",
   "onboarding.waiting_participant_creation":
     "Esperando creacion de participante. Participantes actuales: {count}.",
+  "onboarding.category_step_title": "Crea categorias",
+  "onboarding.category_step_description":
+    "Opcionalmente, crea categorias y valores para generar pestanas de unidades en tu horario.",
+  "onboarding.category_step_unit_hint_audience":
+    "Elegiste unidades por grupos; los valores de categoria se convierten en pestanas de grupos.",
+  "onboarding.category_step_unit_hint_space":
+    "Elegiste unidades por espacios; los valores pueden representar salas, canchas, puestos u otros espacios.",
+  "onboarding.category_step_unit_hint_internal":
+    "Elegiste unidades internas; los valores pueden representar areas, equipos o departamentos.",
+  "onboarding.category_step_unit_hint_none":
+    "Elegiste no usar unidades; podes omitir esto salvo que quieras pestanas de unidades mas adelante.",
+  "onboarding.category_step_unit_hint_default":
+    "Los valores de categoria se convierten en pestanas de unidades en tu horario.",
+  "onboarding.category_step_open_bubble":
+    "Hace click en la burbuja de Categorias del dock izquierdo.",
+  "onboarding.category_step_click_add":
+    "Ahora hace click en Agregar categoria dentro del panel izquierdo.",
+  "onboarding.category_step_complete_dialog":
+    "Crea una categoria y despues agrega al menos un valor.",
+  "onboarding.category_step_add_value":
+    "Agrega un valor de categoria. Cada valor crea automaticamente una pestana de unidad.",
+  "onboarding.category_step_unit_tabs":
+    "Las nuevas pestanas de unidad ya estan disponibles abajo del horario.",
   "onboarding.time_range_step_title": "Define rangos horarios",
   "onboarding.time_range_step_description":
     "Opcionalmente, defini rangos horarios para restringir cuando se pueden ubicar celdas.",
@@ -1043,6 +1108,8 @@ const ES_AR: Dictionary = {
     "Hace click en la burbuja de Rangos horarios del dock izquierdo.",
   "onboarding.time_range_step_click_add":
     "Ahora agrega un rango horario desde el pie del panel.",
+  "onboarding.time_range_step_adjust_created":
+    "Ajusta el nuevo rango horario moviendo sus controles y despues hace click en Guardar.",
   "onboarding.waiting_time_range_creation": "Rangos horarios creados: {count}.",
   "onboarding.blockage_step_title": "Agrega un bloqueo",
   "onboarding.blockage_step_description":
@@ -1051,9 +1118,15 @@ const ES_AR: Dictionary = {
     "Abri las herramientas de acciones con el boton + del dock derecho.",
   "onboarding.blockage_step_select_tool":
     "Ahora elegi la herramienta de bloqueo.",
+  "onboarding.blockage_step_tabs":
+    "Usa estas pestanas para elegir entre bloqueos globales y bloqueos para una unidad especifica.",
+  "onboarding.blockage_step_click_timetable":
+    "Hace click en el horario donde quieras agregar un bloqueo. Hace click fuera del horario para salir del modo edicion.",
   "onboarding.cell_step_title": "Crea tu primera celda",
   "onboarding.cell_step_description":
-    "Ahora crea una Celda, la actividad que se va a ubicar en el horario.",
+    "Hace click en el boton de Celdas del Dock de Entidades para abrir la vista de Celdas.",
+  "onboarding.cell_step_click_create":
+    "Ahora hace click en Crear y defini tu primera Celda.",
   "onboarding.waiting_cell_creation": "Celdas actuales: {count}. Crea una o salta este paso.",
   "onboarding.final_step_title": "Todo listo!",
   "onboarding.final_step_description":
@@ -1287,6 +1360,15 @@ const ES_AR: Dictionary = {
   "create_cell.previous_step": "Paso anterior",
   "create_cell.next_step": "Siguiente paso",
   "create_cell.go_to_step": "Ir al paso {step}",
+
+  "participants_page.no_participants": "Todavia no hay participantes. Crea uno con el boton Crear.",
+  "participants_page.linked_user": "Usuario vinculado",
+  "participants_panel.no_participants_found": "No se encontraron participantes",
+  "participants_panel.filter_by_tier": "Filtrar por categoria",
+  "participants_panel.double_click_edit": "Doble click para editar participante",
+  "side_panel.manage_panel": "Panel de administracion",
+  "side_panel.add_participant": "+ Agregar participante",
+  "side_panel.add_category": "+ Agregar categoria",
 
   "grid_schedule.loading_participants": "Cargando participantes...",
   "grid_schedule.no_participants_found": "No se encontraron participantes para esta grilla.",

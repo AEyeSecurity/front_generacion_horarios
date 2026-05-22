@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useI18n } from "@/lib/use-i18n";
 
@@ -10,9 +11,12 @@ type OnboardingGuideProps = {
   gridId: number;
   gridCode: string;
   show: boolean;
+  unitNature?: string | null;
 };
 
-type GuideStep = 0 | 1 | 2 | 3 | 4 | 5;
+type GuideStep = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+type LeftPanelTab = "participants" | "categories" | "time-ranges" | null;
+type BlockageGuidePhase = "tool" | "tabs" | "schedule";
 
 type Viewport = {
   width: number;
@@ -25,9 +29,8 @@ type SpotlightRect = {
   top: number;
   width: number;
   height: number;
+  passive?: boolean;
 };
-
-type LeftPanelTab = "participants" | "categories" | "time-ranges" | null;
 
 type LeftPanelState = {
   open: boolean;
@@ -37,19 +40,52 @@ type LeftPanelState = {
 const SPOTLIGHT_PADDING = 8;
 const SPOTLIGHT_RADIUS = 12;
 const OVERLAY_ALPHA = 0.45;
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 7;
+const TOOLTIP_CARD_HEIGHT = 164;
+const TOOLTIP_GAP = 16;
 const GRID_LEFT_PANEL_STATE_EVENT = "shift:grid-left-panel-state";
+const GRID_ONBOARDING_LEFT_PANEL_REQUEST_EVENT = "shift:onboarding-left-panel-request";
+const GRID_ONBOARDING_RIGHT_FAN_REQUEST_EVENT = "shift:onboarding-right-fan-request";
+const TIME_RANGE_SAVED_EVENT = "shift:onboarding-time-range-saved";
 
 const SELECTORS = {
+  leftDock: "#sidedock",
+  rightDock: "[data-right-side-dock]",
   leftParticipants: '[data-onboarding-target="left-dock-participants"]',
+  leftCategories: '[data-onboarding-target="left-dock-categories"]',
   leftTimeRanges: '[data-onboarding-target="left-dock-time-ranges"]',
   leftCells: '[data-onboarding-target="left-dock-cells"]',
+  participantsPanel: '[data-onboarding-target="participants-panel"]',
   participantsAddButton: '[data-onboarding-target="participants-add-button"]',
-  timeRangesAddButton: '[data-onboarding-target="time-ranges-add-button"]',
+  participantDialog: '[data-onboarding-target="participant-dialog"]',
+  participantsLatestRow: '[data-onboarding-target="participants-latest-row"]',
+  categoriesPanel: '[data-onboarding-target="categories-panel"]',
+  categoriesAddButton: '[data-onboarding-target="categories-add-button"]',
+  categoriesLatestRow: '[data-onboarding-target="categories-latest-row"]',
+  categoryDialog: '[data-onboarding-target="category-dialog"]',
+  categoryValueAddRow: '[data-onboarding-target="category-value-add-row"]',
+  categoryValueNameInput: '[data-onboarding-target="category-value-name-input"]',
+  categoryValueLatestRow: '[data-onboarding-target="category-value-latest-row"]',
+  unitTabs: '[data-onboarding-target="unit-tabs"]',
+  globalBlockageTab: '[data-onboarding-target="global-blockage-tab"]',
+  timeRangesAddRow: '[data-onboarding-target="time-ranges-add-row"]',
+  timeRangesNameInput: '[data-onboarding-target="time-ranges-name-input"]',
+  timeRangesPanel: '[data-onboarding-target="time-ranges-panel"]',
+  timeRangeLatestCard: '[data-onboarding-target="time-range-latest-card"]',
+  cellsPage: '[data-onboarding-target="cells-page"]',
+  cellCreateButton: '[data-onboarding-target="cell-create-button"]',
+  cellDialog: '[data-onboarding-target="cell-dialog"]',
+  scheduleScroll: "[data-schedule-scroll]",
   rightSolve: '[data-onboarding-target="right-dock-solve"]',
+  rightFan: '[data-onboarding-target="right-dock-fan"]',
   rightFanToggle: '[data-onboarding-target="right-dock-fan-toggle"]',
   rightBlockage: '[data-onboarding-target="right-dock-blockage"]',
+  rightBlockageActive: '[data-onboarding-target="right-dock-blockage"][data-onboarding-active="true"]',
+  rightPublish: '[data-onboarding-target="right-dock-publish"]',
 } as const;
+
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -94,8 +130,89 @@ function querySpotlight(selector: string, id: string, viewport: Viewport): Spotl
   return { id, left, top, width: right - left, height: bottom - top };
 }
 
+function queryUnionSpotlight(selectors: string[], id: string, viewport: Viewport): SpotlightRect | null {
+  if (typeof document === "undefined") return null;
+  const rects = selectors
+    .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+    .map((element) => (element as HTMLElement).getBoundingClientRect())
+    .filter((rect) => rect.width > 0 && rect.height > 0);
+
+  if (rects.length === 0) return null;
+
+  const rawLeft = Math.min(...rects.map((rect) => rect.left));
+  const rawTop = Math.min(...rects.map((rect) => rect.top));
+  const rawRight = Math.max(...rects.map((rect) => rect.right));
+  const rawBottom = Math.max(...rects.map((rect) => rect.bottom));
+  const left = clamp(rawLeft - SPOTLIGHT_PADDING, 0, Math.max(0, viewport.width - 1));
+  const top = clamp(rawTop - SPOTLIGHT_PADDING, 0, Math.max(0, viewport.height - 1));
+  const right = clamp(rawRight + SPOTLIGHT_PADDING, left + 1, viewport.width);
+  const bottom = clamp(rawBottom + SPOTLIGHT_PADDING, top + 1, viewport.height);
+  return { id, left, top, width: right - left, height: bottom - top };
+}
+
+function queryAncestorSpotlight(selector: string, ancestorSelector: string, id: string, viewport: Viewport): SpotlightRect | null {
+  if (typeof document === "undefined") return null;
+  const element = document.querySelector(selector) as HTMLElement | null;
+  const ancestor = element?.closest(ancestorSelector) as HTMLElement | null;
+  if (!ancestor) return null;
+  const rect = ancestor.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+
+  const left = clamp(rect.left - SPOTLIGHT_PADDING, 0, Math.max(0, viewport.width - 1));
+  const top = clamp(rect.top - SPOTLIGHT_PADDING, 0, Math.max(0, viewport.height - 1));
+  const right = clamp(rect.right + SPOTLIGHT_PADDING, left + 1, viewport.width);
+  const bottom = clamp(rect.bottom + SPOTLIGHT_PADDING, top + 1, viewport.height);
+  return { id, left, top, width: right - left, height: bottom - top };
+}
+
 function pointInside(rect: SpotlightRect, x: number, y: number) {
   return x >= rect.left && x <= rect.left + rect.width && y >= rect.top && y <= rect.top + rect.height;
+}
+
+function asPassiveSpotlight(rect: SpotlightRect | null): SpotlightRect[] {
+  return rect ? [{ ...rect, passive: true }] : [];
+}
+
+function readSavedStep(key: string): GuideStep | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(key);
+  const parsed = Number(raw);
+  return parsed >= 0 && parsed <= 6 ? (parsed as GuideStep) : null;
+}
+
+function isBlockageToolActive() {
+  if (typeof document === "undefined") return false;
+  return Boolean(document.querySelector(SELECTORS.rightBlockageActive));
+}
+
+function selectorContainsTarget(selector: string, target: HTMLElement | null) {
+  if (!target) return false;
+  const owner = document.querySelector(selector) as HTMLElement | null;
+  return Boolean(target.closest(selector) || owner?.contains(target));
+}
+
+function queryAllowedFocusable(selectors: string[]) {
+  const seen = new Set<HTMLElement>();
+  const elements: HTMLElement[] = [];
+  for (const selector of selectors) {
+    const containers = Array.from(document.querySelectorAll<HTMLElement>(selector));
+    for (const container of containers) {
+      const candidates = Array.from(container.matches(FOCUSABLE_SELECTOR) ? [container] : []).concat(
+        Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
+      );
+      for (const candidate of candidates) {
+        if (seen.has(candidate)) continue;
+        if (candidate.offsetParent === null && candidate !== document.activeElement) continue;
+        seen.add(candidate);
+        elements.push(candidate);
+      }
+    }
+  }
+  return elements;
+}
+
+function hasExistingCategorySetup(categoryBaseline: number | null, unitBaseline: number | null) {
+  return (categoryBaseline != null && categoryBaseline > 0) || (unitBaseline != null && unitBaseline > 0);
 }
 
 function tooltipStyle(
@@ -104,28 +221,79 @@ function tooltipStyle(
   side: "left" | "right" | "bottom",
 ): React.CSSProperties {
   const cardWidth = Math.min(320, Math.max(240, viewport.width - 48));
-  const cardHeight = 164;
   let left = 16;
   let top = 16;
 
   if (side === "right") {
     left = rect.left + rect.width + 16;
-    top = rect.top + rect.height * 0.5 - cardHeight * 0.5;
+    top = rect.top + rect.height * 0.5 - TOOLTIP_CARD_HEIGHT * 0.5;
   } else if (side === "left") {
     left = rect.left - cardWidth - 16;
-    top = rect.top + rect.height * 0.5 - cardHeight * 0.5;
+    top = rect.top + rect.height * 0.5 - TOOLTIP_CARD_HEIGHT * 0.5;
   } else {
     left = rect.left + rect.width * 0.5 - cardWidth * 0.5;
     top = rect.top + rect.height + 16;
   }
 
   left = clamp(left, 16, Math.max(16, viewport.width - cardWidth - 16));
-  top = clamp(top, 16, Math.max(16, viewport.height - cardHeight - 16));
+  top = clamp(top, 16, Math.max(16, viewport.height - TOOLTIP_CARD_HEIGHT - 16));
 
   return { width: cardWidth, left, top };
 }
 
-export default function OnboardingGuide({ gridId, gridCode, show }: OnboardingGuideProps) {
+function tooltipRect(style: React.CSSProperties) {
+  const width = Number(style.width) || 320;
+  const left = Number(style.left) || 16;
+  const top = Number(style.top) || 16;
+  return { left, top, right: left + width, bottom: top + TOOLTIP_CARD_HEIGHT };
+}
+
+function tooltipsOverlap(a: React.CSSProperties, b: React.CSSProperties) {
+  const ar = tooltipRect(a);
+  const br = tooltipRect(b);
+  return !(
+    ar.right + TOOLTIP_GAP <= br.left ||
+    br.right + TOOLTIP_GAP <= ar.left ||
+    ar.bottom + TOOLTIP_GAP <= br.top ||
+    br.bottom + TOOLTIP_GAP <= ar.top
+  );
+}
+
+function resolveStepZeroTooltipStyles(
+  leftSpotlight: SpotlightRect | null,
+  rightSpotlight: SpotlightRect | null,
+  viewport: Viewport,
+) {
+  if (!leftSpotlight || !rightSpotlight) return null;
+  const left = tooltipStyle(leftSpotlight, viewport, "right");
+  const right = tooltipStyle(rightSpotlight, viewport, "left");
+  if (!tooltipsOverlap(left, right)) return { left, right };
+
+  const cardWidth = Number(left.width) || 320;
+  const bottomReserved = 120;
+  if (viewport.width < cardWidth * 2 + TOOLTIP_GAP * 4) {
+    const centeredLeft = clamp((viewport.width - cardWidth) / 2, 16, Math.max(16, viewport.width - cardWidth - 16));
+    const top = clamp(96, 16, Math.max(16, viewport.height - TOOLTIP_CARD_HEIGHT - 16));
+    const minBottomTop = top + TOOLTIP_CARD_HEIGHT + TOOLTIP_GAP;
+    const maxBottomTop = Math.max(minBottomTop, viewport.height - TOOLTIP_CARD_HEIGHT - bottomReserved);
+    return {
+      left: { width: cardWidth, left: centeredLeft, top },
+      right: { width: cardWidth, left: centeredLeft, top: maxBottomTop },
+    };
+  }
+
+  const top = clamp(
+    Math.min(Number(left.top) || 16, Number(right.top) || 16),
+    16,
+    Math.max(16, viewport.height - bottomReserved - TOOLTIP_CARD_HEIGHT),
+  );
+  return {
+    left: { ...left, left: 16, top },
+    right: { ...right, left: viewport.width - cardWidth - 16, top },
+  };
+}
+
+export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: OnboardingGuideProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -137,35 +305,37 @@ export default function OnboardingGuide({ gridId, gridCode, show }: OnboardingGu
   const [viewport, setViewport] = useState<Viewport>(readViewport);
   const [spotlights, setSpotlights] = useState<SpotlightRect[]>([]);
   const [participantsCount, setParticipantsCount] = useState(0);
+  const [categoriesCount, setCategoriesCount] = useState(0);
+  const [unitsCount, setUnitsCount] = useState(0);
   const [timeRangesCount, setTimeRangesCount] = useState(0);
   const [cellsCount, setCellsCount] = useState(0);
+  const [timeRangeSavedInStep, setTimeRangeSavedInStep] = useState(false);
+  const [blockagePhase, setBlockagePhase] = useState<BlockageGuidePhase>("tool");
   const [leftPanelState, setLeftPanelState] = useState<LeftPanelState>({ open: false, tab: null });
+  const [categoryBaseline, setCategoryBaseline] = useState<number | null>(null);
+  const [unitBaseline, setUnitBaseline] = useState<number | null>(null);
   const [timeRangeBaseline, setTimeRangeBaseline] = useState<number | null>(null);
   const [cellBaseline, setCellBaseline] = useState<number | null>(null);
+  const [dismissedCreatedHighlights, setDismissedCreatedHighlights] = useState<Record<string, boolean>>({});
   const [mounted, setMounted] = useState(false);
 
   const overlayRef = useRef<HTMLDivElement | null>(null);
+  const lastFocusedTargetRef = useRef<string | null>(null);
   const doneKey = useMemo(() => `onboarding-done-grid-${gridId}`, [gridId]);
+  const stepKey = useMemo(() => `onboarding-step-grid-${gridId}`, [gridId]);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    const onLeftPanelState = (
-      event: Event,
-    ) => {
+    const onLeftPanelState = (event: Event) => {
       const custom = event as CustomEvent<{ gridId?: string; open?: boolean; tab?: string }>;
       if (custom.detail?.gridId !== String(gridId)) return;
       const rawTab = custom.detail?.tab;
       const normalizedTab: LeftPanelTab =
-        rawTab === "participants" || rawTab === "categories" || rawTab === "time-ranges"
-          ? rawTab
-          : null;
-      setLeftPanelState({
-        open: Boolean(custom.detail?.open),
-        tab: normalizedTab,
-      });
+        rawTab === "participants" || rawTab === "categories" || rawTab === "time-ranges" ? rawTab : null;
+      setLeftPanelState({ open: Boolean(custom.detail?.open), tab: normalizedTab });
     };
     window.addEventListener(GRID_LEFT_PANEL_STATE_EVENT, onLeftPanelState as EventListener);
     return () => window.removeEventListener(GRID_LEFT_PANEL_STATE_EVENT, onLeftPanelState as EventListener);
@@ -176,84 +346,190 @@ export default function OnboardingGuide({ gridId, gridCode, show }: OnboardingGu
     if (!currentParams.has("onboarding")) return;
     currentParams.delete("onboarding");
     const query = currentParams.toString();
-    const next = query ? `${pathname}?${query}` : pathname;
-    router.replace(next, { scroll: false });
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   }, [pathname, router, searchParams]);
 
   const finishGuide = useCallback(() => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(doneKey, "1");
+      window.localStorage.removeItem(stepKey);
     }
     setActive(false);
     stripOnboardingParam();
-  }, [doneKey, stripOnboardingParam]);
+  }, [doneKey, stepKey, stripOnboardingParam]);
+
+  const requestLeftPanel = useCallback(
+    (tab: LeftPanelTab) => {
+      if (typeof window === "undefined") return;
+      window.dispatchEvent(
+        new CustomEvent<{ gridId: string; open: boolean; tab: LeftPanelTab }>(GRID_ONBOARDING_LEFT_PANEL_REQUEST_EVENT, {
+          detail: { gridId: String(gridId), open: tab != null, tab },
+        }),
+      );
+    },
+    [gridId],
+  );
+
+  const requestRightFan = useCallback((open: boolean) => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent<{ open: boolean }>(GRID_ONBOARDING_RIGHT_FAN_REQUEST_EVENT, { detail: { open } }));
+  }, []);
 
   const resolveStepSpotlights = useCallback(
     (currentStep: GuideStep, currentViewport: Viewport, panelState: LeftPanelState) => {
+      const leftDock =
+        querySpotlight(SELECTORS.leftDock, "left-dock", currentViewport) ??
+        queryUnionSpotlight(
+          [SELECTORS.leftParticipants, SELECTORS.leftCells, SELECTORS.leftCategories, SELECTORS.leftTimeRanges],
+          "left-dock",
+          currentViewport,
+        );
+      const rightDock =
+        querySpotlight(SELECTORS.rightDock, "right-dock", currentViewport) ??
+        queryUnionSpotlight([SELECTORS.rightSolve, SELECTORS.rightFanToggle, SELECTORS.rightPublish], "right-dock", currentViewport);
       const leftParticipants = querySpotlight(SELECTORS.leftParticipants, "left-participants", currentViewport);
+      const leftCategories = querySpotlight(SELECTORS.leftCategories, "left-categories", currentViewport);
       const leftTimeRanges = querySpotlight(SELECTORS.leftTimeRanges, "left-time-ranges", currentViewport);
       const leftCells = querySpotlight(SELECTORS.leftCells, "left-cells", currentViewport);
-      const participantsAddButton = querySpotlight(
-        SELECTORS.participantsAddButton,
-        "participants-add-button",
-        currentViewport,
-      );
-      const timeRangesAddButton = querySpotlight(
-        SELECTORS.timeRangesAddButton,
-        "time-ranges-add-button",
-        currentViewport,
-      );
+      const participantsAddButton = querySpotlight(SELECTORS.participantsAddButton, "participants-add-button", currentViewport);
+      const participantsPanel = querySpotlight(SELECTORS.participantsPanel, "participants-panel", currentViewport);
+      const participantsPanelArea =
+        queryAncestorSpotlight(SELECTORS.participantsPanel, '[data-slot="sheet-content"]', "participants-panel", currentViewport) ??
+        queryUnionSpotlight([SELECTORS.participantsPanel, SELECTORS.participantsAddButton], "participants-panel", currentViewport) ??
+        participantsPanel;
+      const participantDialog = querySpotlight(SELECTORS.participantDialog, "participant-dialog", currentViewport);
+      const participantsLatestRow = querySpotlight(SELECTORS.participantsLatestRow, "participants-latest-row", currentViewport);
+      const categoriesAddButton = querySpotlight(SELECTORS.categoriesAddButton, "categories-add-button", currentViewport);
+      const categoriesPanel = querySpotlight(SELECTORS.categoriesPanel, "categories-panel", currentViewport);
+      const categoriesPanelArea =
+        queryAncestorSpotlight(SELECTORS.categoriesPanel, '[data-slot="sheet-content"]', "categories-panel", currentViewport) ??
+        queryUnionSpotlight([SELECTORS.categoriesPanel, SELECTORS.categoriesAddButton], "categories-panel", currentViewport) ??
+        categoriesPanel;
+      const categoriesLatestRow = querySpotlight(SELECTORS.categoriesLatestRow, "categories-latest-row", currentViewport);
+      const categoryDialog = querySpotlight(SELECTORS.categoryDialog, "category-dialog", currentViewport);
+      const categoryValueAddRow = querySpotlight(SELECTORS.categoryValueAddRow, "category-value-add-row", currentViewport);
+      const categoryValueLatestRow = querySpotlight(SELECTORS.categoryValueLatestRow, "category-value-latest-row", currentViewport);
+      const unitTabs = querySpotlight(SELECTORS.unitTabs, "unit-tabs", currentViewport);
+      const globalBlockageTab = querySpotlight(SELECTORS.globalBlockageTab, "global-blockage-tab", currentViewport);
+      const timeRangesAddRow = querySpotlight(SELECTORS.timeRangesAddRow, "time-ranges-add-row", currentViewport);
+      const timeRangesPanel = querySpotlight(SELECTORS.timeRangesPanel, "time-ranges-panel", currentViewport);
+      const timeRangeLatestCard = querySpotlight(SELECTORS.timeRangeLatestCard, "time-range-latest-card", currentViewport);
+      const cellDialog = querySpotlight(SELECTORS.cellDialog, "cell-dialog", currentViewport);
+      const cellCreateButton = querySpotlight(SELECTORS.cellCreateButton, "cell-create-button", currentViewport);
+      const cellsPage = querySpotlight(SELECTORS.cellsPage, "cells-page", currentViewport);
+      const scheduleScroll = querySpotlight(SELECTORS.scheduleScroll, "schedule-grid", currentViewport);
       const rightSolve = querySpotlight(SELECTORS.rightSolve, "right-solve", currentViewport);
       const rightFanToggle = querySpotlight(SELECTORS.rightFanToggle, "right-fan-toggle", currentViewport);
       const rightBlockage = querySpotlight(SELECTORS.rightBlockage, "right-blockage", currentViewport);
 
-      if (currentStep === 0) {
-        return [leftParticipants, rightSolve ?? rightFanToggle].filter(Boolean) as SpotlightRect[];
-      }
+      if (currentStep === 0) return [leftDock, rightDock].filter(Boolean) as SpotlightRect[];
       if (currentStep === 1) {
-        if (panelState.open && panelState.tab === "participants" && participantsAddButton) {
-          return [participantsAddButton];
-        }
+        if (participantDialog) return [participantDialog];
+        if (participantsCount > 0 && !dismissedCreatedHighlights.participant && participantsLatestRow) return [participantsLatestRow];
+        if (panelState.open && panelState.tab === "participants" && participantsPanelArea) return [participantsPanelArea];
         return leftParticipants ? [leftParticipants] : [];
       }
       if (currentStep === 2) {
-        if (panelState.open && panelState.tab === "time-ranges" && timeRangesAddButton) {
-          return [timeRangesAddButton];
+        if (categoryValueLatestRow && !dismissedCreatedHighlights.categoryValue) {
+          return [categoryValueLatestRow, categoryDialog].filter(Boolean) as SpotlightRect[];
         }
-        return leftTimeRanges ? [leftTimeRanges] : [];
+        if (categoryValueAddRow) {
+          return [categoryValueAddRow, categoryDialog].filter(Boolean) as SpotlightRect[];
+        }
+        if (categoryDialog) return [categoryDialog];
+        if (
+          panelState.open &&
+          panelState.tab === "categories" &&
+          categoriesCount > 0 &&
+          !dismissedCreatedHighlights.category &&
+          categoriesLatestRow
+        ) {
+          return [categoriesLatestRow];
+        }
+        if (categoriesCount > 0 && unitTabs) return [unitTabs];
+        if (panelState.open && panelState.tab === "categories" && categoriesPanelArea) return [categoriesPanelArea];
+        return leftCategories ? [leftCategories] : [];
       }
       if (currentStep === 3) {
+        if (panelState.open && panelState.tab === "time-ranges" && timeRangeBaseline != null && timeRangesCount > timeRangeBaseline && !timeRangeSavedInStep && timeRangeLatestCard) {
+          return [timeRangeLatestCard];
+        }
+        if ((timeRangeBaseline != null && timeRangeBaseline > 0) || timeRangeSavedInStep) {
+          return asPassiveSpotlight(timeRangesPanel ?? leftTimeRanges);
+        }
+        if (panelState.open && panelState.tab === "time-ranges" && timeRangesAddRow) return [timeRangesAddRow];
+        if (panelState.open && panelState.tab === "time-ranges" && timeRangesPanel) return [timeRangesPanel];
+        return leftTimeRanges ? [leftTimeRanges] : [];
+      }
+      if (currentStep === 4) {
+        if (isBlockageToolActive()) {
+          if (blockagePhase === "tabs") {
+            if (globalBlockageTab) return [globalBlockageTab];
+            if (unitTabs) return [unitTabs];
+          }
+          if (scheduleScroll) return [scheduleScroll];
+        }
         if (rightBlockage) return [rightBlockage];
         const fallback = rightFanToggle ?? rightSolve;
         return fallback ? [fallback] : [];
       }
-      if (currentStep === 4) {
+      if (currentStep === 5) {
+        if (cellDialog) return [cellDialog];
+        if (cellCreateButton) return [cellCreateButton];
+        if (cellsCount > 0) return asPassiveSpotlight(cellsPage ?? leftCells);
         return leftCells ? [leftCells] : [];
       }
       return [];
     },
-    [],
+    [
+      blockagePhase,
+      categoriesCount,
+      cellsCount,
+      dismissedCreatedHighlights,
+      participantsCount,
+      timeRangeBaseline,
+      timeRangeSavedInStep,
+      timeRangesCount,
+    ],
   );
 
   const goToStep = useCallback(
     async (nextStep: GuideStep) => {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(stepKey, String(nextStep));
+      }
       setStep(nextStep);
+      if (nextStep < 5 && pathname.endsWith("/cells")) {
+        router.push(`/grid/${encodeURIComponent(gridCode)}?onboarding=1`);
+      }
       if (nextStep === 2) {
+        const [categoryCount, unitCount] = await Promise.all([
+          fetchCollectionCount(`/api/categories?grid=${encodeURIComponent(String(gridId))}`),
+          fetchCollectionCount(`/api/units?grid=${encodeURIComponent(String(gridId))}`),
+        ]);
+        setCategoriesCount(categoryCount);
+        setCategoryBaseline(categoryCount);
+        setUnitsCount(unitCount);
+        setUnitBaseline(unitCount);
+      }
+      if (nextStep === 3) {
         const nextCount = await fetchCollectionCount(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`);
         setTimeRangesCount(nextCount);
         setTimeRangeBaseline(nextCount);
+        setTimeRangeSavedInStep(false);
       }
-      if (nextStep === 4) {
+      if (nextStep === 5) {
         const nextCount = await fetchCollectionCount(`/api/cells?grid=${encodeURIComponent(String(gridId))}`);
         setCellsCount(nextCount);
         setCellBaseline(nextCount);
       }
     },
-    [gridId],
+    [gridCode, gridId, pathname, router, stepKey],
   );
 
   useEffect(() => {
-    if (!show) {
+    const savedStep = readSavedStep(stepKey);
+    if (!show && savedStep == null) {
       setActive(false);
       return;
     }
@@ -266,18 +542,24 @@ export default function OnboardingGuide({ gridId, gridCode, show }: OnboardingGu
 
     let cancelled = false;
     setActive(true);
-    setStep(0);
+    setStep(savedStep ?? 0);
 
     (async () => {
-      const [pCount, trCount, cCount] = await Promise.all([
+      const [pCount, catCount, unitCount, trCount, cCount] = await Promise.all([
         fetchCollectionCount(`/api/participants?grid=${encodeURIComponent(String(gridId))}`),
+        fetchCollectionCount(`/api/categories?grid=${encodeURIComponent(String(gridId))}`),
+        fetchCollectionCount(`/api/units?grid=${encodeURIComponent(String(gridId))}`),
         fetchCollectionCount(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`),
         fetchCollectionCount(`/api/cells?grid=${encodeURIComponent(String(gridId))}`),
       ]);
       if (cancelled) return;
       setParticipantsCount(pCount);
+      setCategoriesCount(catCount);
+      setUnitsCount(unitCount);
       setTimeRangesCount(trCount);
       setCellsCount(cCount);
+      setCategoryBaseline(catCount);
+      setUnitBaseline(unitCount);
       setTimeRangeBaseline(trCount);
       setCellBaseline(cCount);
     })();
@@ -285,7 +567,7 @@ export default function OnboardingGuide({ gridId, gridCode, show }: OnboardingGu
     return () => {
       cancelled = true;
     };
-  }, [doneKey, gridId, show, stripOnboardingParam]);
+  }, [doneKey, gridId, show, stepKey, stripOnboardingParam]);
 
   useEffect(() => {
     if (!active) return;
@@ -299,7 +581,6 @@ export default function OnboardingGuide({ gridId, gridCode, show }: OnboardingGu
     if (!active) return;
     const refresh = () => setSpotlights(resolveStepSpotlights(step, viewport, leftPanelState));
     refresh();
-
     const onScroll = () => refresh();
     const onResize = () => refresh();
     window.addEventListener("scroll", onScroll, true);
@@ -314,62 +595,96 @@ export default function OnboardingGuide({ gridId, gridCode, show }: OnboardingGu
 
   useEffect(() => {
     if (!active) return;
-    if (![1, 2, 4].includes(step)) return;
-    let cancelled = false;
+    if (step !== 4) {
+      setBlockagePhase("tool");
+      return;
+    }
+    if (!isBlockageToolActive()) {
+      setBlockagePhase("tool");
+      return;
+    }
+    setBlockagePhase((prev) => (prev === "tool" ? "tabs" : prev));
+  }, [active, step, spotlights]);
 
+  useEffect(() => {
+    if (!active) return;
+    if (step === 1) {
+      requestLeftPanel("participants");
+      requestRightFan(false);
+      return;
+    }
+    if (step === 2) {
+      requestLeftPanel("categories");
+      requestRightFan(false);
+      return;
+    }
+    if (step === 3) {
+      requestLeftPanel("time-ranges");
+      requestRightFan(false);
+      return;
+    }
+    requestLeftPanel(null);
+    requestRightFan(step === 4);
+  }, [active, requestLeftPanel, requestRightFan, step]);
+
+  useEffect(() => {
+    if (!active) return;
+    if (![1, 2, 3, 5].includes(step)) return;
+    let cancelled = false;
     const poll = async () => {
       if (step === 1) {
         const count = await fetchCollectionCount(`/api/participants?grid=${encodeURIComponent(String(gridId))}`);
-        if (cancelled) return;
-        setParticipantsCount(count);
-        if (count > 0) {
-          await goToStep(2);
-        }
+        if (!cancelled) setParticipantsCount(count);
         return;
       }
-
       if (step === 2) {
-        const count = await fetchCollectionCount(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`);
-        if (cancelled) return;
-        setTimeRangesCount(count);
-        if (timeRangeBaseline != null && count > timeRangeBaseline) {
-          await goToStep(3);
+        const [categoryCount, unitCount] = await Promise.all([
+          fetchCollectionCount(`/api/categories?grid=${encodeURIComponent(String(gridId))}`),
+          fetchCollectionCount(`/api/units?grid=${encodeURIComponent(String(gridId))}`),
+        ]);
+        if (!cancelled) {
+          setCategoriesCount(categoryCount);
+          setUnitsCount(unitCount);
         }
         return;
       }
-
-      if (step === 4) {
+      if (step === 3) {
+        const count = await fetchCollectionCount(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`);
+        if (!cancelled) setTimeRangesCount(count);
+        return;
+      }
+      if (step === 5) {
         const count = await fetchCollectionCount(`/api/cells?grid=${encodeURIComponent(String(gridId))}`);
-        if (cancelled) return;
-        setCellsCount(count);
-        if (cellBaseline != null && count > cellBaseline) {
-          await goToStep(5);
-        }
+        if (!cancelled) setCellsCount(count);
       }
     };
-
     void poll();
-    const id = window.setInterval(() => {
-      void poll();
-    }, 2000);
-
+    const id = window.setInterval(() => void poll(), 2000);
     return () => {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [active, cellBaseline, goToStep, gridId, step, timeRangeBaseline]);
+  }, [active, gridId, step]);
 
-  const forwardInteraction = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+  useEffect(() => {
+    if (!active) return;
+    const onSaved = () => setTimeRangeSavedInStep(true);
+    window.addEventListener(TIME_RANGE_SAVED_EVENT, onSaved);
+    return () => window.removeEventListener(TIME_RANGE_SAVED_EVENT, onSaved);
+  }, [active]);
+
+  const forwardInteraction = useCallback((event: React.PointerEvent<HTMLDivElement>, allowedSelectors?: string[]) => {
     const overlay = overlayRef.current;
     if (!overlay) return;
     const x = event.clientX;
     const y = event.clientY;
-
     overlay.style.pointerEvents = "none";
     const target = document.elementFromPoint(x, y) as HTMLElement | null;
     overlay.style.pointerEvents = "auto";
     if (!target) return;
-
+    if (allowedSelectors?.length && !allowedSelectors.some((selector) => selectorContainsTarget(selector, target))) {
+      return;
+    }
     const pointerInit: PointerEventInit = {
       bubbles: true,
       cancelable: true,
@@ -400,12 +715,107 @@ export default function OnboardingGuide({ gridId, gridCode, show }: OnboardingGu
     );
   }, []);
 
+  const forwardPointerDownOnly = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    const x = event.clientX;
+    const y = event.clientY;
+    overlay.style.pointerEvents = "none";
+    const target = document.elementFromPoint(x, y) as HTMLElement | null;
+    overlay.style.pointerEvents = "auto";
+    if (!target) return;
+    target.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: y,
+        screenX: event.screenX,
+        screenY: event.screenY,
+        button: event.button,
+        buttons: event.buttons,
+        pointerId: event.pointerId,
+        pointerType: event.pointerType,
+      }),
+    );
+  }, []);
+
   const onOverlayPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest('[data-onboarding-ui="true"]')) return;
 
-      if (step === 0 || step === 5 || spotlights.length === 0) {
+      const isInsideSelector = (selector: string) => {
+        const element = document.querySelector(selector) as HTMLElement | null;
+        if (!element) return false;
+        const rect = element.getBoundingClientRect();
+        return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+      };
+
+      const activeSpotlight = spotlights.find((rect) => !rect.passive) ?? null;
+      const dismissCreatedHighlight = (key: string) => {
+        setDismissedCreatedHighlights((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+      };
+
+      if (activeSpotlight?.id === "participants-latest-row") {
+        event.preventDefault();
+        event.stopPropagation();
+        dismissCreatedHighlight("participant");
+        return;
+      }
+
+      if (activeSpotlight?.id === "categories-latest-row") {
+        event.preventDefault();
+        event.stopPropagation();
+        dismissCreatedHighlight("category");
+        return;
+      }
+
+      if (activeSpotlight?.id === "category-value-latest-row") {
+        event.preventDefault();
+        event.stopPropagation();
+        dismissCreatedHighlight("categoryValue");
+        return;
+      }
+
+      if (step === 1 && participantsCount > 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (
+          isInsideSelector(SELECTORS.participantsPanel) ||
+          isInsideSelector(SELECTORS.participantDialog) ||
+          isInsideSelector(SELECTORS.participantsAddButton)
+        ) {
+          forwardInteraction(event, [SELECTORS.participantsPanel, SELECTORS.participantDialog, SELECTORS.participantsAddButton]);
+          return;
+        }
+        void goToStep(2);
+        return;
+      }
+
+      const timeRangeHasPendingSave =
+        step === 3 && timeRangeBaseline != null && timeRangesCount > timeRangeBaseline && !timeRangeSavedInStep;
+      const completedStepTargets =
+        step === 2 && hasExistingCategorySetup(categoryBaseline, unitBaseline)
+          ? [SELECTORS.categoriesPanel, SELECTORS.categoriesAddButton, SELECTORS.categoryDialog]
+          : step === 3 && !timeRangeHasPendingSave && ((timeRangeBaseline != null && timeRangeBaseline > 0) || timeRangeSavedInStep)
+          ? [SELECTORS.timeRangesPanel, SELECTORS.timeRangesAddRow]
+          : step === 5 && cellsCount > 0
+          ? [SELECTORS.cellsPage, SELECTORS.cellCreateButton, SELECTORS.cellDialog]
+          : [];
+
+      if (completedStepTargets.length > 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (completedStepTargets.some((selector) => isInsideSelector(selector))) {
+          forwardInteraction(event, completedStepTargets);
+          return;
+        }
+        void goToStep((step + 1) as GuideStep);
+        return;
+      }
+
+      if (step === 0 || step === 6 || spotlights.length === 0) {
         event.preventDefault();
         event.stopPropagation();
         return;
@@ -420,48 +830,261 @@ export default function OnboardingGuide({ gridId, gridCode, show }: OnboardingGu
 
       event.preventDefault();
       event.stopPropagation();
-      forwardInteraction(event);
+      if (
+        step === 4 &&
+        blockagePhase === "tabs" &&
+        spotlights.some((rect) => (rect.id === "global-blockage-tab" || rect.id === "unit-tabs") && pointInside(rect, event.clientX, event.clientY))
+      ) {
+        forwardInteraction(event, [SELECTORS.globalBlockageTab, SELECTORS.unitTabs]);
+        setBlockagePhase("schedule");
+        return;
+      }
+      if (step === 4 && spotlights.some((rect) => rect.id === "schedule-grid" && pointInside(rect, event.clientX, event.clientY))) {
+        forwardPointerDownOnly(event);
+        return;
+      }
+      const allowedSelectors =
+        step === 1
+          ? [SELECTORS.leftParticipants, SELECTORS.participantsPanel, SELECTORS.participantsAddButton, SELECTORS.participantDialog]
+          : step === 2
+          ? [
+              SELECTORS.leftCategories,
+              SELECTORS.categoriesPanel,
+              SELECTORS.categoriesAddButton,
+              SELECTORS.categoryDialog,
+              SELECTORS.categoryValueAddRow,
+              SELECTORS.categoryValueLatestRow,
+              SELECTORS.unitTabs,
+            ]
+          : step === 3
+          ? [SELECTORS.leftTimeRanges, SELECTORS.timeRangesPanel, SELECTORS.timeRangesAddRow, SELECTORS.timeRangeLatestCard]
+          : step === 4
+          ? [SELECTORS.rightFanToggle, SELECTORS.rightBlockage, SELECTORS.rightFan, SELECTORS.globalBlockageTab, SELECTORS.unitTabs]
+          : step === 5
+          ? [SELECTORS.leftCells, SELECTORS.cellCreateButton, SELECTORS.cellDialog, SELECTORS.cellsPage]
+          : [];
+      forwardInteraction(event, allowedSelectors);
     },
-    [forwardInteraction, spotlights, step],
+    [
+      blockagePhase,
+      categoryBaseline,
+      cellsCount,
+      forwardInteraction,
+      forwardPointerDownOnly,
+      goToStep,
+      participantsCount,
+      spotlights,
+      step,
+      timeRangeBaseline,
+      timeRangeSavedInStep,
+      timeRangesCount,
+      unitBaseline,
+    ],
   );
+
+  const getCurrentAllowedSelectors = useCallback(() => {
+    const activeSpotlight = spotlights.find((rect) => !rect.passive) ?? null;
+    const uiSelectors = ['[data-onboarding-ui="true"]'];
+
+    if (step === 1) {
+      return [
+        ...uiSelectors,
+        SELECTORS.leftParticipants,
+        SELECTORS.participantsPanel,
+        SELECTORS.participantsAddButton,
+        SELECTORS.participantDialog,
+      ];
+    }
+    if (step === 2) {
+      return [
+        ...uiSelectors,
+        SELECTORS.leftCategories,
+        SELECTORS.categoriesPanel,
+        SELECTORS.categoriesAddButton,
+        SELECTORS.categoryDialog,
+        SELECTORS.categoryValueAddRow,
+        SELECTORS.categoryValueLatestRow,
+        SELECTORS.unitTabs,
+      ];
+    }
+    if (step === 3) {
+      return [
+        ...uiSelectors,
+        SELECTORS.leftTimeRanges,
+        SELECTORS.timeRangesPanel,
+        SELECTORS.timeRangesAddRow,
+        SELECTORS.timeRangeLatestCard,
+      ];
+    }
+    if (step === 4) {
+      return [
+        ...uiSelectors,
+        SELECTORS.rightFanToggle,
+        SELECTORS.rightFan,
+        SELECTORS.rightBlockage,
+        SELECTORS.globalBlockageTab,
+        SELECTORS.unitTabs,
+        activeSpotlight?.id === "schedule-grid" ? SELECTORS.scheduleScroll : "",
+      ].filter(Boolean);
+    }
+    if (step === 5) {
+      return [...uiSelectors, SELECTORS.leftCells, SELECTORS.cellsPage, SELECTORS.cellCreateButton, SELECTORS.cellDialog];
+    }
+    return uiSelectors;
+  }, [spotlights, step]);
+
+  useEffect(() => {
+    if (!active) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const focusable = queryAllowedFocusable(getCurrentAllowedSelectors());
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const current = document.activeElement as HTMLElement | null;
+      const currentIndex = current ? focusable.indexOf(current) : -1;
+      const nextIndex =
+        currentIndex === -1
+          ? 0
+          : event.shiftKey
+          ? (currentIndex - 1 + focusable.length) % focusable.length
+          : (currentIndex + 1) % focusable.length;
+      event.preventDefault();
+      focusable[nextIndex]?.focus();
+    };
+
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [active, getCurrentAllowedSelectors]);
+
+  useEffect(() => {
+    if (!active) return;
+    const activeSpotlight = spotlights.find((rect) => !rect.passive) ?? null;
+    if (!activeSpotlight) return;
+
+    const focusTargetSelector =
+      activeSpotlight.id === "participant-dialog"
+        ? `${SELECTORS.participantDialog} input`
+        : activeSpotlight.id === "category-dialog"
+        ? `${SELECTORS.categoryDialog} input`
+        : activeSpotlight.id === "category-value-add-row"
+        ? SELECTORS.categoryValueNameInput
+        : activeSpotlight.id === "time-ranges-add-row"
+        ? SELECTORS.timeRangesNameInput
+        : activeSpotlight.id === "cell-dialog"
+        ? `${SELECTORS.cellDialog} input`
+        : null;
+
+    if (!focusTargetSelector) return;
+    const focusKey = `${step}:${activeSpotlight.id}`;
+    if (lastFocusedTargetRef.current === focusKey) return;
+    lastFocusedTargetRef.current = focusKey;
+
+    window.setTimeout(() => {
+      const target = document.querySelector<HTMLElement>(focusTargetSelector);
+      target?.focus();
+    }, 50);
+  }, [active, spotlights, step]);
 
   if (!active || !mounted || typeof document === "undefined") return null;
 
-  const primarySpotlight = spotlights[0] ?? null;
-  const leftDockSpotlight = spotlights.find((spotlight) => spotlight.id === "left-participants") ?? null;
-  const rightDockSpotlight =
-    spotlights.find((spotlight) => spotlight.id === "right-solve") ??
-    spotlights.find((spotlight) => spotlight.id === "right-fan-toggle") ??
-    null;
-
+  const primarySpotlight = spotlights.find((spotlight) => !spotlight.passive) ?? null;
+  const leftDockSpotlight = spotlights.find((spotlight) => spotlight.id === "left-dock") ?? null;
+  const rightDockSpotlight = spotlights.find((spotlight) => spotlight.id === "right-dock") ?? null;
+  const stepZeroTooltips = resolveStepZeroTooltipStyles(leftDockSpotlight, rightDockSpotlight, viewport);
   const participantsPanelOpen = leftPanelState.open && leftPanelState.tab === "participants";
+  const participantDialogVisible = primarySpotlight?.id === "participant-dialog";
+  const participantCreatedInStep = step === 1 && participantsCount > 0;
+  const categoriesPanelOpen = leftPanelState.open && leftPanelState.tab === "categories";
+  const categoryDialogVisible = primarySpotlight?.id === "category-dialog";
+  const categoryValueAddVisible = primarySpotlight?.id === "category-value-add-row";
+  const unitTabsVisible = primarySpotlight?.id === "unit-tabs" || primarySpotlight?.id === "global-blockage-tab";
   const timeRangesPanelOpen = leftPanelState.open && leftPanelState.tab === "time-ranges";
+  const timeRangeCreatedInStep = timeRangeBaseline != null && timeRangesCount > timeRangeBaseline;
   const blockageToolSelectable = primarySpotlight?.id === "right-blockage";
+  const blockageToolActive = primarySpotlight?.id === "schedule-grid";
+  const cellCreateButtonVisible = primarySpotlight?.id === "cell-create-button";
+  const categoryUnitHintKey =
+    unitNature === "audience" || unitNature === "space" || unitNature === "internal" || unitNature === "none"
+      ? `onboarding.category_step_unit_hint_${unitNature}`
+      : "onboarding.category_step_unit_hint_default";
+  const timeRangeHasPendingSave =
+    step === 3 && timeRangeBaseline != null && timeRangesCount > timeRangeBaseline && !timeRangeSavedInStep;
+  const canMoveForward = step === 6 ? true : (step !== 1 || participantsCount > 0) && !timeRangeHasPendingSave;
+  const canSkipCurrentStep = step >= 2 && step <= 5;
+
+  const moveBackward = () => {
+    if (step <= 0) return;
+    void goToStep((step - 1) as GuideStep);
+  };
+
+  const moveForward = () => {
+    if (!canMoveForward) return;
+    if (step === 6) {
+      finishGuide();
+      return;
+    }
+    if (step === 4 && blockagePhase === "tabs") {
+      setBlockagePhase("schedule");
+      return;
+    }
+    void goToStep((step + 1) as GuideStep);
+  };
+
+  const moveToStep = (targetStep: GuideStep) => {
+    if (targetStep > 1 && participantsCount <= 0) return;
+    void goToStep(targetStep);
+  };
+
+  const skipCurrentStep = () => {
+    if (!canSkipCurrentStep) return;
+    void goToStep((step + 1) as GuideStep);
+  };
 
   const stepCard = (() => {
     if (!primarySpotlight) return null;
-    if (step === 1 || step === 2 || step === 4) {
-      return tooltipStyle(primarySpotlight, viewport, "right");
+    if (step === 3 && timeRangeCreatedInStep) return null;
+    if (
+      primarySpotlight.id === "participant-dialog" ||
+      primarySpotlight.id === "category-dialog" ||
+      primarySpotlight.id === "category-value-add-row" ||
+      primarySpotlight.id === "category-value-latest-row" ||
+      primarySpotlight.id === "cell-dialog"
+    ) {
+      return null;
     }
-    if (step === 3) {
-      return tooltipStyle(primarySpotlight, viewport, "left");
+    if (step === 5) {
+      return tooltipStyle(primarySpotlight, viewport, cellCreateButtonVisible && viewport.width >= 640 ? "left" : "bottom");
     }
+    if (step === 4) return tooltipStyle(primarySpotlight, viewport, "left");
+    if (step === 1 || step === 2 || step === 3) return tooltipStyle(primarySpotlight, viewport, "right");
     return tooltipStyle(primarySpotlight, viewport, "bottom");
   })();
 
   const content = (
-    <div
-      ref={overlayRef}
-      className="fixed inset-0 z-[500] isolate pointer-events-auto"
-      onPointerDown={onOverlayPointerDown}
-      aria-hidden={false}
-    >
-      <svg className="absolute inset-0 z-[500] pointer-events-none" width={viewport.width} height={viewport.height}>
+    <>
+      <div
+        ref={overlayRef}
+        className="fixed inset-0 isolate pointer-events-auto"
+        style={{ zIndex: 1700 }}
+        onPointerDown={onOverlayPointerDown}
+        aria-hidden={false}
+      >
+        <svg className="absolute inset-0 pointer-events-none" width={viewport.width} height={viewport.height}>
         <defs>
-          <mask id={`onboarding-mask-${maskId}`}>
+          <mask
+            id={`onboarding-mask-${maskId}`}
+            maskUnits="userSpaceOnUse"
+            x={0}
+            y={0}
+            width={viewport.width}
+            height={viewport.height}
+          >
             <rect x="0" y="0" width={viewport.width} height={viewport.height} fill="white" />
             {spotlights.map((spotlight) => (
-              <motion.rect
+              <rect
                 key={`mask-hole-${spotlight.id}`}
                 x={spotlight.left}
                 y={spotlight.top}
@@ -469,13 +1092,6 @@ export default function OnboardingGuide({ gridId, gridCode, show }: OnboardingGu
                 height={spotlight.height}
                 rx={SPOTLIGHT_RADIUS}
                 fill="black"
-                animate={{
-                  x: spotlight.left,
-                  y: spotlight.top,
-                  width: spotlight.width,
-                  height: spotlight.height,
-                }}
-                transition={{ duration: 0.3, ease: "easeInOut" }}
               />
             ))}
           </mask>
@@ -490,69 +1106,73 @@ export default function OnboardingGuide({ gridId, gridCode, show }: OnboardingGu
         />
       </svg>
 
+      </div>
+
+      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 1800 }}>
       <AnimatePresence>
-        {spotlights.map((spotlight) => (
-          <motion.div
-            key={`spotlight-ring-${spotlight.id}`}
-            className="pointer-events-none absolute z-[501] rounded-xl border border-white/90"
-            initial={false}
-            animate={{
-              left: spotlight.left,
-              top: spotlight.top,
-              width: spotlight.width,
-              height: spotlight.height,
-              boxShadow: [
-                "0 0 0 0 rgba(255,255,255,0.55)",
-                "0 0 0 8px rgba(255,255,255,0)",
-                "0 0 0 0 rgba(255,255,255,0.55)",
-              ],
-            }}
-            transition={{
-              left: { duration: 0.3, ease: "easeInOut" },
-              top: { duration: 0.3, ease: "easeInOut" },
-              width: { duration: 0.3, ease: "easeInOut" },
-              height: { duration: 0.3, ease: "easeInOut" },
-              boxShadow: { duration: 1.8, repeat: Infinity, ease: "easeInOut" },
-            }}
-          />
-        ))}
+        {spotlights
+          .filter((spotlight) => !spotlight.passive)
+          .map((spotlight) => (
+            <motion.div
+              key={`spotlight-ring-${spotlight.id}`}
+              className="pointer-events-none absolute rounded-xl border border-white/90"
+              initial={false}
+              animate={{
+                left: spotlight.left,
+                top: spotlight.top,
+                width: spotlight.width,
+                height: spotlight.height,
+                boxShadow: [
+                  "0 0 0 0 rgba(255,255,255,0.55)",
+                  "0 0 0 8px rgba(255,255,255,0)",
+                  "0 0 0 0 rgba(255,255,255,0.55)",
+                ],
+              }}
+              transition={{
+                left: { duration: 0.3, ease: "easeInOut" },
+                top: { duration: 0.3, ease: "easeInOut" },
+                width: { duration: 0.3, ease: "easeInOut" },
+                height: { duration: 0.3, ease: "easeInOut" },
+                boxShadow: { duration: 1.8, repeat: Infinity, ease: "easeInOut" },
+              }}
+            />
+          ))}
       </AnimatePresence>
 
-      {step === 0 && leftDockSpotlight ? (
-        <motion.div
-          data-onboarding-ui="true"
-          className="absolute z-[504] max-w-[320px] rounded-xl border border-gray-200 bg-white p-4 shadow-2xl"
-          style={tooltipStyle(leftDockSpotlight, viewport, "right")}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2 }}
-        >
-          <h3 className="text-base font-semibold text-gray-900">{t("onboarding.entity_dock_title")}</h3>
-          <p className="mt-1 text-sm text-gray-700">{t("onboarding.entity_dock_description")}</p>
-        </motion.div>
+      {step === 0 && stepZeroTooltips ? (
+        <>
+          <motion.div
+            data-onboarding-ui="true"
+            className="pointer-events-auto absolute max-w-[320px] rounded-xl border border-gray-200 bg-white p-4 shadow-2xl"
+            style={{ ...stepZeroTooltips.left, zIndex: 504 }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <h3 className="text-base font-semibold text-gray-900">{t("onboarding.entity_dock_title")}</h3>
+            <p className="mt-1 text-sm text-gray-700">{t("onboarding.entity_dock_description")}</p>
+          </motion.div>
+          <motion.div
+            data-onboarding-ui="true"
+            className="pointer-events-auto absolute max-w-[320px] rounded-xl border border-gray-200 bg-white p-4 shadow-2xl"
+            style={{ ...stepZeroTooltips.right, zIndex: 504 }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <h3 className="text-base font-semibold text-gray-900">{t("onboarding.action_dock_title")}</h3>
+            <p className="mt-1 text-sm text-gray-700">{t("onboarding.action_dock_description")}</p>
+          </motion.div>
+        </>
       ) : null}
 
-      {step === 0 && rightDockSpotlight ? (
-        <motion.div
-          data-onboarding-ui="true"
-          className="absolute z-[504] max-w-[320px] rounded-xl border border-gray-200 bg-white p-4 shadow-2xl"
-          style={tooltipStyle(rightDockSpotlight, viewport, "left")}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2 }}
-        >
-          <h3 className="text-base font-semibold text-gray-900">{t("onboarding.action_dock_title")}</h3>
-          <p className="mt-1 text-sm text-gray-700">{t("onboarding.action_dock_description")}</p>
-        </motion.div>
-      ) : null}
-
-      {step >= 1 && step <= 4 && stepCard ? (
+      {step >= 1 && step <= 5 && stepCard && !participantCreatedInStep ? (
         <AnimatePresence mode="wait">
           <motion.div
             key={`onboarding-card-step-${step}`}
             data-onboarding-ui="true"
-            className="absolute z-[504] max-w-[320px] rounded-xl border border-gray-200 bg-white p-4 shadow-2xl"
-            style={stepCard}
+            className="pointer-events-auto absolute max-w-[320px] rounded-xl border border-gray-200 bg-white p-4 shadow-2xl"
+            style={{ ...stepCard, zIndex: 504 }}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
@@ -563,98 +1183,93 @@ export default function OnboardingGuide({ gridId, gridCode, show }: OnboardingGu
                 <h3 className="text-base font-semibold text-gray-900">{t("onboarding.participant_step_title")}</h3>
                 <p className="mt-1 text-sm text-gray-700">
                   {participantsPanelOpen
-                    ? t("onboarding.participant_step_click_add")
+                    ? participantDialogVisible
+                      ? t("onboarding.participant_step_complete_dialog")
+                      : t("onboarding.participant_step_click_add")
                     : t("onboarding.participant_step_open_bubble")}
-                </p>
-                <p className="mt-3 text-xs text-gray-500">
-                  {t("onboarding.waiting_participant_creation", { count: participantsCount })}
                 </p>
               </>
             ) : null}
 
             {step === 2 ? (
               <>
-                <h3 className="text-base font-semibold text-gray-900">{t("onboarding.time_range_step_title")}</h3>
+                <h3 className="text-base font-semibold text-gray-900">{t("onboarding.category_step_title")}</h3>
                 <p className="mt-1 text-sm text-gray-700">
-                  {timeRangesPanelOpen
-                    ? t("onboarding.time_range_step_click_add")
-                    : t("onboarding.time_range_step_open_bubble")}
+                  {unitTabsVisible
+                    ? t("onboarding.category_step_unit_tabs")
+                    : categoryValueAddVisible
+                    ? t("onboarding.category_step_add_value")
+                    : categoryDialogVisible
+                    ? t("onboarding.category_step_complete_dialog")
+                    : categoriesPanelOpen
+                    ? t("onboarding.category_step_click_add")
+                    : `${t(categoryUnitHintKey as Parameters<typeof t>[0])} ${t("onboarding.category_step_open_bubble")}`}
                 </p>
-                <div className="mt-3 flex items-center justify-between gap-2">
-                  <p className="text-xs text-gray-500">
-                    {t("onboarding.waiting_time_range_creation", { count: timeRangesCount })}
-                  </p>
-                  <button
-                    type="button"
-                    data-onboarding-ui="true"
-                    className="text-sm text-gray-600 underline underline-offset-2"
-                    onClick={() => {
-                      void goToStep(3);
-                    }}
-                  >
-                    {t("onboarding.skip")}
-                  </button>
-                </div>
               </>
             ) : null}
 
             {step === 3 ? (
               <>
-                <h3 className="text-base font-semibold text-gray-900">{t("onboarding.blockage_step_title")}</h3>
+                <h3 className="text-base font-semibold text-gray-900">{t("onboarding.time_range_step_title")}</h3>
                 <p className="mt-1 text-sm text-gray-700">
-                  {blockageToolSelectable
-                    ? t("onboarding.blockage_step_select_tool")
-                    : t("onboarding.blockage_step_open_actions")}
+                  {timeRangesPanelOpen
+                    ? timeRangeCreatedInStep
+                      ? t("onboarding.time_range_step_adjust_created")
+                      : t("onboarding.time_range_step_click_add")
+                    : t("onboarding.time_range_step_open_bubble")}
                 </p>
-                <div className="mt-3 text-right">
-                  <button
-                    type="button"
-                    data-onboarding-ui="true"
-                    className="text-sm text-gray-600 underline underline-offset-2"
-                    onClick={() => {
-                      void goToStep(4);
-                    }}
-                  >
-                    {t("onboarding.skip")}
-                  </button>
-                </div>
               </>
             ) : null}
 
             {step === 4 ? (
               <>
-                <h3 className="text-base font-semibold text-gray-900">{t("onboarding.cell_step_title")}</h3>
-                <p className="mt-1 text-sm text-gray-700">{t("onboarding.cell_step_description")}</p>
-                <div className="mt-3 flex items-center justify-between gap-2">
-                  <p className="text-xs text-gray-500">{t("onboarding.waiting_cell_creation", { count: cellsCount })}</p>
-                  <button
-                    type="button"
-                    data-onboarding-ui="true"
-                    className="text-sm text-gray-600 underline underline-offset-2"
-                    onClick={() => {
-                      void goToStep(5);
-                    }}
-                  >
-                    {t("onboarding.skip")}
-                  </button>
-                </div>
+                <h3 className="text-base font-semibold text-gray-900">{t("onboarding.blockage_step_title")}</h3>
+                <p className="mt-1 text-sm text-gray-700">
+                  {unitTabsVisible
+                    ? t("onboarding.blockage_step_tabs")
+                    : blockageToolActive
+                    ? t("onboarding.blockage_step_click_timetable")
+                    : blockageToolSelectable
+                    ? t("onboarding.blockage_step_select_tool")
+                    : t("onboarding.blockage_step_open_actions")}
+                </p>
               </>
+            ) : null}
+
+            {step === 5 ? (
+              <>
+                <h3 className="text-base font-semibold text-gray-900">{t("onboarding.cell_step_title")}</h3>
+                <p className="mt-1 text-sm text-gray-700">
+                  {cellCreateButtonVisible ? t("onboarding.cell_step_click_create") : t("onboarding.cell_step_description")}
+                </p>
+              </>
+            ) : null}
+
+            {canSkipCurrentStep ? (
+              <button
+                type="button"
+                data-onboarding-ui="true"
+                className="mt-3 text-sm text-gray-500 underline underline-offset-2"
+                onClick={skipCurrentStep}
+              >
+                {t("onboarding.skip")}
+              </button>
             ) : null}
           </motion.div>
         </AnimatePresence>
       ) : null}
 
-      {step === 5 ? (
+      {step === 6 ? (
         <motion.div
           data-onboarding-ui="true"
-          className="absolute left-1/2 top-1/2 z-[504] w-[calc(100%-2rem)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-gray-200 bg-white p-5 shadow-2xl"
+          className="pointer-events-auto absolute left-1/2 top-1/2 w-[calc(100%-2rem)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-gray-200 bg-white p-5 shadow-2xl"
+          style={{ zIndex: 504 }}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2 }}
         >
           <h3 className="text-base font-semibold text-gray-900">{t("onboarding.final_step_title")}</h3>
           <p className="mt-1 text-sm text-gray-700">{t("onboarding.final_step_description")}</p>
-
           <button
             type="button"
             data-onboarding-ui="true"
@@ -663,55 +1278,62 @@ export default function OnboardingGuide({ gridId, gridCode, show }: OnboardingGu
           >
             {t("onboarding.go_to_settings")}
           </button>
-
-          <div className="mt-5 text-right">
-            <button
-              type="button"
-              data-onboarding-ui="true"
-              className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white"
-              onClick={finishGuide}
-            >
-              {t("onboarding.finish")}
-            </button>
-          </div>
         </motion.div>
       ) : null}
 
-      <div data-onboarding-ui="true" className="fixed bottom-3 left-1/2 z-[505] -translate-x-1/2">
-        <div className="flex items-center gap-2 rounded-full bg-black/30 px-3 py-2 backdrop-blur-sm">
+      </div>
+
+      <div
+        data-onboarding-ui="true"
+        className="fixed flex items-center gap-4 pointer-events-auto"
+        style={{ zIndex: 1810, left: "50%", bottom: 40, transform: "translateX(-50%)", pointerEvents: "auto" }}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          className={`flex h-12 w-12 items-center justify-center rounded-full bg-white text-gray-900 shadow-lg transition ${
+            step <= 0 ? "pointer-events-none opacity-45" : "hover:scale-105"
+          }`}
+          onClick={moveBackward}
+          aria-label={t("onboarding.previous")}
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+
+        <div className="flex items-center gap-2 rounded-full bg-black/35 px-3 py-2 backdrop-blur-sm">
           {Array.from({ length: TOTAL_STEPS }, (_, index) => {
+            const targetStep = index as GuideStep;
             const isCurrent = index === step;
             const isDone = index < step;
+            const disabled = targetStep > 1 && participantsCount <= 0;
             return (
-              <span
+              <button
                 key={`onboarding-progress-${index}`}
-                className={`h-2.5 w-2.5 rounded-full border ${
+                type="button"
+                disabled={disabled}
+                onClick={() => moveToStep(targetStep)}
+                className={`h-2.5 w-2.5 rounded-full border transition ${
                   isCurrent || isDone ? "border-white bg-white" : "border-white/70 bg-transparent"
-                }`}
+                } ${disabled ? "cursor-not-allowed opacity-40" : "hover:scale-125"}`}
+                aria-label={`Go to onboarding step ${index + 1}`}
               />
             );
           })}
         </div>
-      </div>
 
-      {step === 0 ? (
-        <div data-onboarding-ui="true" className="fixed bottom-12 left-1/2 z-[505] -translate-x-1/2">
-          <button
-            type="button"
-            className="rounded-full bg-white px-4 py-2 text-sm font-medium text-gray-900 shadow-lg"
-            onClick={() => {
-              if (participantsCount > 0) {
-                void goToStep(2);
-                return;
-              }
-              void goToStep(1);
-            }}
-          >
-            {t("onboarding.got_it")}
-          </button>
-        </div>
-      ) : null}
-    </div>
+        <button
+          type="button"
+          className={`flex h-12 w-12 items-center justify-center rounded-full bg-white text-gray-900 shadow-lg transition ${
+            canMoveForward ? "hover:scale-105" : "pointer-events-none opacity-45"
+          }`}
+          onClick={moveForward}
+          aria-label={t("onboarding.next")}
+        >
+          <ChevronRight className="h-5 w-5" />
+        </button>
+      </div>
+    </>
   );
 
   return createPortal(content, document.body);

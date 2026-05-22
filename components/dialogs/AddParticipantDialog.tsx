@@ -27,22 +27,28 @@ export default function AddParticipantDialog({
   open,
   onOpenChange,
   onCreated,
+  tiersEnabled,
 }: {
   gridId: number;
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onCreated?: () => void;
+  tiersEnabled?: boolean;
 }) {
   const { t } = useI18n();
   const [first, setFirst] = React.useState("");
   const [last, setLast] = React.useState("");
   const [tier, setTier] = React.useState<Tier>("PRIMARY");
-  const [tierEnabled, setTierEnabled] = React.useState(true);
+  const [tierEnabled, setTierEnabled] = React.useState(Boolean(tiersEnabled));
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
+    if (tiersEnabled != null) {
+      setTierEnabled(Boolean(tiersEnabled));
+      return;
+    }
     let active = true;
     (async () => {
       try {
@@ -50,15 +56,15 @@ export default function AddParticipantDialog({
         if (!res.ok) return;
         const data = await res.json().catch(() => null);
         if (!active) return;
-        setTierEnabled(readGridTierEnabled(data, true));
+        setTierEnabled(readGridTierEnabled(data, false));
       } catch {
-        if (active) setTierEnabled(true);
+        if (active) setTierEnabled(false);
       }
     })();
     return () => {
       active = false;
     };
-  }, [gridId, open]);
+  }, [gridId, open, tiersEnabled]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -97,7 +103,7 @@ export default function AddParticipantDialog({
       <DialogPortal>
         {/* Overlay por encima del panel lateral */}
         <DialogOverlay className="fixed inset-0 bg-black/50 z-[180] data-[state=open]:animate-in data-[state=closed]:animate-out" />
-        <DialogContent className="sm:max-w-[720px] z-[181]">
+        <DialogContent className="sm:max-w-[720px] z-[181]" data-onboarding-target="participant-dialog">
           <DialogHeader>
             <DialogTitle>{t("add_participant.title")}</DialogTitle>
           </DialogHeader>

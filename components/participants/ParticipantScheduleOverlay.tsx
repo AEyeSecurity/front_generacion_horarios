@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatSlotRange } from "@/lib/schedule";
-import { readGridTierEnabled } from "@/lib/grid-tier";
 import {
   getGridScheduleViewModeKey,
   readGridScheduleViewMode,
@@ -45,34 +44,18 @@ type ParticipantLite = {
   tier: ParticipantTier;
 };
 
-const PARTICIPANT_TIER_STYLE: Record<
-  Exclude<ParticipantTier, null>,
-  { bg: string; dark: string; light: string; border: string }
-> = {
-  PRIMARY: {
-    bg: "#FDC745",
-    dark: "#432004",
-    light: "#FEFCE8",
-    border: "#D59C08",
-  },
-  SECONDARY: {
-    bg: "#9CA3AF",
-    dark: "#374151",
-    light: "#F9FAFB",
-    border: "#6B7280",
-  },
-  TERTIARY: {
-    bg: "#FF692A",
-    dark: "#441306",
-    light: "#FFEDD4",
-    border: "#D1511B",
-  },
+type ParticipantTabOverride = {
+  id: string | number;
+  routeId?: string | number | null;
+  name?: string | null;
+  tier?: ParticipantTier;
 };
 
 type Props = {
   gridId: number;
   gridCode: string;
   participantId: number;
+  participantTabsOverride?: ParticipantTabOverride[];
   targetView?: "rules" | "schedule";
   showPlacements?: boolean;
   hideSideStack?: boolean;
@@ -83,12 +66,14 @@ type Props = {
   dayStartMin: number;
   slotMin: number;
   topOffset?: number;
+  participantTabsOpacity?: number;
 };
 
 export default function ParticipantScheduleOverlay({
   gridId,
   gridCode,
   participantId,
+  participantTabsOverride,
   targetView = "schedule",
   showPlacements = true,
   hideSideStack = false,
@@ -99,15 +84,15 @@ export default function ParticipantScheduleOverlay({
   dayStartMin,
   slotMin,
   topOffset = 0,
+  participantTabsOpacity = 1,
 }: Props) {
   const router = useRouter();
+  const overlayRef = useRef<HTMLDivElement | null>(null);
   const [schedulePlacements, setSchedulePlacements] = useState<SchedulePlacement[]>([]);
   const [cellNameById, setCellNameById] = useState<Record<string, string>>({});
   const [cellColorById, setCellColorById] = useState<Record<string, string>>({});
   const [bundleNameById, setBundleNameById] = useState<Record<string, string>>({});
   const [participants, setParticipants] = useState<ParticipantLite[]>([]);
-  const [gridTierEnabled, setGridTierEnabled] = useState(true);
-  const [otherFocusIndex, setOtherFocusIndex] = useState(0);
   const [scheduleViewMode, setScheduleViewMode] = useState<ScheduleViewMode>("draft");
 
   useEffect(() => {
@@ -186,15 +171,28 @@ export default function ParticipantScheduleOverlay({
     let active = true;
     (async () => {
       try {
-        const [rc, rb, rp, rg] = await Promise.all([
-          fetch(`/api/cells?grid=${gridId}`, { cache: "no-store" }),
-          fetch(`/api/bundles?grid=${gridId}`, { cache: "no-store" }),
-          fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" }),
-          fetch(`/api/grids/${gridId}/`, { cache: "no-store" }).catch(() => null),
+        const fetchCollection = async (urls: string[]) => {
+          for (const url of urls) {
+            const res = await fetch(url, { cache: "no-store" }).catch(() => null);
+            if (!res || !res.ok) continue;
+            const data = await res.json().catch(() => null);
+            if (Array.isArray(data)) return data;
+            if (Array.isArray((data as any)?.results)) return (data as any).results;
+          }
+          return [] as any[];
+        };
+
+        const [clist, blist, plist] = await Promise.all([
+          fetchCollection([`/api/cells?grid=${gridId}`, `/api/cells/?grid=${gridId}`]),
+          fetchCollection([`/api/bundles?grid=${gridId}`, `/api/bundles/?grid=${gridId}`]),
+          fetchCollection([
+            `/api/participants?grid=${gridId}`,
+            `/api/participants/?grid=${gridId}`,
+            `/api/grids/${gridId}/participants/`,
+            `/api/grids/${gridId}/participants`,
+          ]),
         ]);
 
-        const cdata = await rc.json().catch(() => ([]));
-        const clist = Array.isArray(cdata) ? cdata : cdata.results ?? [];
         const cmap: Record<string, string> = {};
         const ccolors: Record<string, string> = {};
         for (const c of clist) {
@@ -206,15 +204,11 @@ export default function ParticipantScheduleOverlay({
           }
         }
 
-        const bdata = await rb.json().catch(() => ([]));
-        const blist = Array.isArray(bdata) ? bdata : bdata.results ?? [];
         const bmap: Record<string, string> = {};
         for (const b of blist) {
           if (b?.id != null) bmap[String(b.id)] = b.name || `Bundle ${b.id}`;
         }
 
-        const pdata = await rp.json().catch(() => ([]));
-        const plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
         const pitems: ParticipantLite[] = plist
           .filter((p: any) => p?.id != null)
           .map((p: any) => {
@@ -232,16 +226,11 @@ export default function ParticipantScheduleOverlay({
             };
           });
 
-        const tierEnabled = rg?.ok
-          ? readGridTierEnabled(await rg.json().catch(() => null), true)
-          : true;
-
         if (active) {
           setCellNameById(cmap);
           setCellColorById(ccolors);
           setBundleNameById(bmap);
           setParticipants(pitems);
-          setGridTierEnabled(tierEnabled);
         }
       } catch {}
     })();
@@ -255,25 +244,70 @@ export default function ParticipantScheduleOverlay({
     return assigned.map(String).includes(String(participantId));
   });
 
-  const otherParticipants = useMemo(
-    () =>
-      participants
-        .filter((p) => p.id !== String(participantId))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [participants, participantId],
-  );
+  const participantTabs = useMemo(() => {
+    const source =
+      Array.isArray(participantTabsOverride) && participantTabsOverride.length > 0
+        ? participantTabsOverride
+        : participants;
+    return source
+      .map((p) => {
+        const pid = String((p as ParticipantLite).id ?? (p as ParticipantTabOverride).id ?? "");
+        const rawName = (p as ParticipantLite).name ?? (p as ParticipantTabOverride).name ?? "";
+        const name = String(rawName).trim() || `Participant ${pid}`;
+        const rawRouteId =
+          (p as ParticipantLite).routeId ??
+          (p as ParticipantTabOverride).routeId ??
+          pid;
+        const rawTier = typeof (p as any)?.tier === "string" ? String((p as any).tier).toUpperCase() : null;
+        const tier: ParticipantTier =
+          rawTier === "PRIMARY" || rawTier === "SECONDARY" || rawTier === "TERTIARY"
+            ? rawTier
+            : null;
+        return { id: pid, routeId: String(rawRouteId), name, tier };
+      })
+      .filter((p) => p.id)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [participantTabsOverride, participants]);
 
   useEffect(() => {
-    setOtherFocusIndex((prev) => {
-      if (otherParticipants.length <= 1) return 0;
-      return Math.max(0, Math.min(otherParticipants.length - 1, prev));
-    });
-  }, [otherParticipants.length]);
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    const scrollEl = overlay.closest("[data-schedule-scroll]") as HTMLElement | null;
+    if (!scrollEl) return;
+
+    let rafId: number | null = null;
+    const applyClip = () => {
+      const leftInset = Math.max(0, timeColPx + scrollEl.scrollLeft);
+      const clip = `inset(0px 0px 0px ${leftInset}px)`;
+      overlay.style.setProperty("clip-path", clip);
+      overlay.style.setProperty("-webkit-clip-path", clip);
+    };
+    const requestApply = () => {
+      if (rafId != null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        applyClip();
+      });
+    };
+
+    applyClip();
+    scrollEl.addEventListener("scroll", requestApply, { passive: true });
+    window.addEventListener("resize", requestApply);
+    return () => {
+      scrollEl.removeEventListener("scroll", requestApply);
+      window.removeEventListener("resize", requestApply);
+      if (rafId != null) window.cancelAnimationFrame(rafId);
+    };
+  }, [timeColPx, bodyHeight, rowPx, daysCount]);
 
   return (
     <>
       {showPlacements && (
-        <div className="pointer-events-none absolute inset-x-0" style={{ top: topOffset, height: bodyHeight }}>
+        <div
+          ref={overlayRef}
+          className="pointer-events-none absolute inset-x-0 z-[5]"
+          style={{ top: topOffset, height: bodyHeight }}
+        >
           {filteredSchedule.map((s, idx) => {
             const col = s.day_index;
             if (col < 0 || col >= daysCount) return null;
@@ -313,90 +347,42 @@ export default function ParticipantScheduleOverlay({
         </div>
       )}
 
-      {!hideSideStack && otherParticipants.length > 0 && (
-        <div className="fixed left-[-108px] top-1/2 -translate-y-1/2 z-[165] pointer-events-none">
-          <div className="w-[228px] pointer-events-auto">
-            <div
-              className="relative h-[312px] pl-2 overflow-hidden overscroll-contain"
-              onWheel={(event) => {
-                event.stopPropagation();
-                if (otherParticipants.length <= 1) return;
-                event.preventDefault();
-                const dir = event.deltaY > 0 ? 1 : event.deltaY < 0 ? -1 : 0;
-                if (!dir) return;
-                setOtherFocusIndex((prev) =>
-                  Math.max(0, Math.min(otherParticipants.length - 1, prev + dir)),
-                );
-              }}
-            >
-              {otherParticipants.map((participant, index) => {
-                const distance = index - otherFocusIndex;
-                if (Math.abs(distance) > 2) return null;
-                const tierStyle = gridTierEnabled && participant.tier
-                  ? PARTICIPANT_TIER_STYLE[participant.tier]
-                  : null;
-                const absDistance = Math.abs(distance);
-                const scale = absDistance === 0 ? 1 : absDistance === 1 ? 0.78 : 0.62;
-                const opacity = absDistance === 0 ? 1 : absDistance === 1 ? 0.92 : 0.82;
-                const cardHeight = absDistance === 0 ? 86 : 52;
-                const baseCenterY = 156;
-                const visualNearHeight = 52 * 0.78;
-                const visualFarHeight = 52 * 0.62;
-                const sign = distance === 0 ? 0 : distance > 0 ? 1 : -1;
-                const nearOffset = 52;
-                const nearToFarOffset = visualNearHeight / 2 + visualFarHeight / 2;
-                const yOffset =
-                  absDistance === 0
-                    ? 0
-                    : absDistance === 1
-                    ? nearOffset
-                    : nearOffset + nearToFarOffset;
-                const y = baseCenterY + sign * yOffset;
-                const z = 120 - absDistance * 20;
-                const cardBg = "#F3F4F6";
-                const cardBorder = "#E5E7EB";
-                const nameColor = "#111827";
-                const tierColor = tierStyle?.dark ?? "#374151";
-                return (
-                  <button
-                    key={`other-participant-${participant.id}`}
-                    type="button"
-                    onClick={() =>
-                      router.push(
-                        `/grid/${encodeURIComponent(gridCode)}/participants/${encodeURIComponent(participant.routeId)}?view=${targetView}`,
-                      )
-                    }
-                    className="absolute left-2 right-0 rounded-xl border px-3 py-2 text-right shadow-[0_12px_18px_-14px_rgba(0,0,0,0.55)] transition-transform duration-150 focus:outline-none focus:ring-2 focus:ring-black/20"
-                    style={{
-                      top: `${y - cardHeight / 2}px`,
-                      height: `${cardHeight}px`,
-                      backgroundColor: cardBg,
-                      borderColor: cardBorder,
-                      transform: `scale(${scale})`,
-                      opacity,
-                      zIndex: z,
-                    }}
-                  >
-                    <div className="flex h-full w-full items-center justify-end text-right">
-                      <div className="min-w-0 w-full">
-                        <div
-                          className="truncate text-xs font-semibold"
-                          style={{ color: nameColor }}
-                          title={participant.name}
-                        >
-                          {participant.name}
-                        </div>
-                        {absDistance === 0 && gridTierEnabled && participant.tier ? (
-                          <div className="mt-1 text-[10px] font-medium" style={{ color: tierColor }}>
-                            {participant.tier}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+      {!hideSideStack && participantTabs.length > 0 && (
+        <div
+          data-participant-tabs
+          className="fixed inset-x-0 bottom-0 z-[70] pointer-events-none"
+          style={{
+            opacity: participantTabsOpacity,
+            transform: `translateY(${Math.round((1 - participantTabsOpacity) * 18)}px)`,
+            pointerEvents: participantTabsOpacity > 0.05 ? undefined : "none",
+          }}
+        >
+          <div className="max-w-5xl mx-auto flex items-end gap-2 px-4 pt-2 pb-3 overflow-x-auto overflow-y-hidden pointer-events-auto hide-scrollbar">
+            {participantTabs.map((participant) => {
+              const isActive = String(participant.id) === String(participantId);
+              return (
+                <button
+                  key={`participant-tab-${participant.id}`}
+                  type="button"
+                  onClick={() => {
+                    if (isActive) return;
+                    router.push(
+                      `/grid/${encodeURIComponent(gridCode)}/participants/${encodeURIComponent(participant.routeId)}?view=${targetView}`,
+                    );
+                  }}
+                  className={[
+                    "px-4 py-2 text-sm border rounded-t-xl rounded-b-none origin-bottom",
+                    "transition-colors transition-shadow transition-transform duration-150 ease-out whitespace-nowrap",
+                    isActive
+                      ? "bg-white text-black shadow-lg border-gray-300"
+                      : "bg-gray-100 text-gray-700 shadow-md hover:shadow-lg hover:bg-white hover:scale-[1.02]",
+                  ].join(" ")}
+                  title={participant.name}
+                >
+                  {participant.name}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

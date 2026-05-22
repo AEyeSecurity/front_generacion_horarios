@@ -3,6 +3,7 @@ import LeftSideDock from "@/components/layout/LeftSideDock";
 import GridSchedulePanel from "@/components/grid/GridSchedulePanel";
 import { backendFetchJSON } from "@/lib/backend";
 import { requireUserOrRedirect } from "@/lib/auth";
+import { readGridTierEnabled } from "@/lib/grid-tier";
 import type { Role } from "@/lib/types";
 import { resolveGridByCode, resolveScheduleByGridCode } from "../_helpers";
 
@@ -26,6 +27,7 @@ export default async function GridHistoryPage({
 
   const start = toMin(grid.day_start);
   const end = toMin(grid.day_end);
+  const tiersEnabled = readGridTierEnabled(grid, false);
   const days = (grid.days_enabled || []).map((i) => EN_DAY[i] ?? String(i));
   const ROW_PX = 64;
   const TIME_COL_PX = 100;
@@ -117,6 +119,7 @@ export default async function GridHistoryPage({
         cellSizeMin={grid.cell_size_min}
         dayStartMin={start}
         dayEndMin={end}
+        tiersEnabled={tiersEnabled}
       />
       <div className="p-4">
         <div className="w-[80%] mx-auto">

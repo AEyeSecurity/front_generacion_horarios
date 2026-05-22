@@ -278,7 +278,10 @@ export default function GridSchedulePanel({
     for (let t = dayStartMin; t < dayEndMin; t += slotMin) out.push(t);
     return out;
   }, [dayStartMin, dayEndMin, slotMin]);
-  const bodyHeight = rows.length * rowPx;
+  const baseBodyHeight = rows.length * rowPx;
+  const [effectiveRowPx, setEffectiveRowPx] = useState(rowPx);
+  const [scheduleViewportHeight, setScheduleViewportHeight] = useState(baseBodyHeight);
+  const bodyHeight = rows.length * effectiveRowPx;
 
   const [scheduleViewMode, setScheduleViewMode] = useState<ScheduleViewMode>(
     historyMode ? "published" : "draft",
@@ -310,6 +313,7 @@ export default function GridSchedulePanel({
   const [isDeleteDropActive, setIsDeleteDropActive] = useState(false);
   const [catalogFocusIndex, setCatalogFocusIndex] = useState(0);
   const [participantBoardSelectedUnitId, setParticipantBoardSelectedUnitId] = useState<string | null>(null);
+  const [compactHorizontal, setCompactHorizontal] = useState(false);
   const longPressTimerRef = useRef<number | null>(null);
   const participantBoardRef = useRef<HTMLDivElement | null>(null);
   const deleteDropRef = useRef<HTMLDivElement | null>(null);
@@ -419,7 +423,7 @@ export default function GridSchedulePanel({
   }, [historyMode]);
 
   const sidePanelOpen = commentsPanelOpen || historyMode;
-  const minDayColumnPx = 180;
+  const minDayColumnPx = compactHorizontal ? 180 : 0;
   const scheduleGridTemplateColumns = useMemo(
     () => `${timeColPx}px repeat(${days.length}, minmax(${minDayColumnPx}px, 1fr))`,
     [days.length, minDayColumnPx, timeColPx],
@@ -427,6 +431,10 @@ export default function GridSchedulePanel({
   const scheduleMinWidthPx = useMemo(
     () => timeColPx + days.length * minDayColumnPx,
     [days.length, minDayColumnPx, timeColPx],
+  );
+  const scheduleContentStyle = useMemo<React.CSSProperties | undefined>(
+    () => (compactHorizontal ? { minWidth: scheduleMinWidthPx } : undefined),
+    [compactHorizontal, scheduleMinWidthPx],
   );
 
   const syncScheduleHorizontalScroll = useCallback((source: "header" | "body", nextScrollLeft: number) => {
@@ -443,6 +451,91 @@ export default function GridSchedulePanel({
       if (syncingHorizontalScrollRef.current === source) syncingHorizontalScrollRef.current = null;
     });
   }, []);
+
+  useEffect(() => {
+    setEffectiveRowPx(rowPx);
+  }, [rowPx]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mediaQuery = window.matchMedia("(max-width: 1024px)");
+    const apply = () => setCompactHorizontal(mediaQuery.matches);
+    apply();
+    mediaQuery.addEventListener("change", apply);
+    return () => mediaQuery.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
+    setScheduleViewportHeight(baseBodyHeight);
+  }, [baseBodyHeight]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let rafId: number | null = null;
+    const scheduleEl = scheduleScrollRef.current;
+    if (!scheduleEl) return;
+
+    const requestRecalc = () => {
+      if (rafId != null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        const scrollEl = scheduleScrollRef.current;
+        const rootEl = panelRootRef.current;
+        if (!scrollEl || !rootEl) return;
+        const navEl = document.querySelector("header") as HTMLElement | null;
+        const navBottom = navEl ? navEl.getBoundingClientRect().bottom : 56;
+        const tabsEl = document.querySelector("[data-unit-tabs]") as HTMLElement | null;
+        const tabsTop = tabsEl ? tabsEl.getBoundingClientRect().top : window.innerHeight;
+        const scrollTop = scrollEl.getBoundingClientRect().top;
+        const topGap = Math.max(8, rootEl.getBoundingClientRect().top - navBottom);
+        const desiredBottomGap = topGap * 2;
+        const availableToTabs = tabsTop - scrollTop;
+        if (!Number.isFinite(availableToTabs) || availableToTabs <= 0) return;
+        const minBottomGap = 14;
+        const maxViewportByGeometry = Math.max(220, availableToTabs - minBottomGap);
+        const targetViewportHeight = Math.max(
+          220,
+          Math.min(maxViewportByGeometry, availableToTabs - desiredBottomGap),
+        );
+
+        const rowsCount = Math.max(1, rows.length);
+        const maxRowPx = 92;
+        let nextRowPx = rowPx;
+        let nextBodyHeight = baseBodyHeight;
+
+        if (baseBodyHeight <= targetViewportHeight) {
+          nextRowPx = Math.round(Math.max(rowPx, Math.min(maxRowPx, targetViewportHeight / rowsCount)));
+          nextBodyHeight = rowsCount * nextRowPx;
+        }
+
+        const nextViewport = Math.round(Math.min(nextBodyHeight, targetViewportHeight));
+
+        setEffectiveRowPx((prev) => (Math.abs(prev - nextRowPx) >= 1 ? nextRowPx : prev));
+        setScheduleViewportHeight((prev) => (Math.abs(prev - nextViewport) >= 1 ? nextViewport : prev));
+      });
+    };
+
+    requestRecalc();
+    window.addEventListener("resize", requestRecalc);
+    window.addEventListener("orientationchange", requestRecalc);
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", requestRecalc);
+    vv?.addEventListener("scroll", requestRecalc);
+
+    const observer = new ResizeObserver(requestRecalc);
+    observer.observe(scheduleEl);
+    const tabsEl = document.querySelector("[data-unit-tabs]") as HTMLElement | null;
+    if (tabsEl) observer.observe(tabsEl);
+
+    return () => {
+      window.removeEventListener("resize", requestRecalc);
+      window.removeEventListener("orientationchange", requestRecalc);
+      vv?.removeEventListener("resize", requestRecalc);
+      vv?.removeEventListener("scroll", requestRecalc);
+      observer.disconnect();
+      if (rafId != null) window.cancelAnimationFrame(rafId);
+    };
+  }, [baseBodyHeight, rowPx, rows.length]);
 
   useEffect(() => {
     const root = panelRootRef.current;
@@ -1579,13 +1672,13 @@ export default function GridSchedulePanel({
       <div ref={panelRootRef}>
         <div
           ref={scheduleHeaderScrollRef}
-          className="overflow-x-auto overflow-y-hidden hide-scrollbar"
+          className={`${compactHorizontal ? "overflow-x-auto" : "overflow-x-hidden"} overflow-y-hidden hide-scrollbar`}
           onScroll={(event) => {
             if (syncingHorizontalScrollRef.current === "body") return;
             syncScheduleHorizontalScroll("header", event.currentTarget.scrollLeft);
           }}
         >
-          <div style={{ minWidth: scheduleMinWidthPx }}>
+          <div style={scheduleContentStyle}>
             <div className="grid select-none" style={{ gridTemplateColumns: scheduleGridTemplateColumns }}>
               <div className="sticky left-0 z-[410] bg-gray-50 border-b h-12 flex items-center justify-center px-1.5 relative">
                 <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-gray-50" />
@@ -1648,16 +1741,20 @@ export default function GridSchedulePanel({
         <div
           ref={scheduleScrollRef}
           data-schedule-scroll
-          className="relative max-h-[70vh] overflow-auto hide-scrollbar select-none"
+          className={`relative ${compactHorizontal ? "overflow-auto" : "overflow-y-auto overflow-x-hidden"} hide-scrollbar select-none`}
+          style={{ height: scheduleViewportHeight, maxHeight: scheduleViewportHeight }}
           onScroll={(event) => {
             if (syncingHorizontalScrollRef.current === "header") return;
             syncScheduleHorizontalScroll("body", event.currentTarget.scrollLeft);
           }}
         >
-          <div className="relative" style={{ minWidth: scheduleMinWidthPx }}>
+          <div className="relative" style={scheduleContentStyle}>
             {rows.map((time, rowIndex) => (
               <div key={time} className="grid" style={{ gridTemplateColumns: scheduleGridTemplateColumns }}>
-                <div className="sticky left-0 z-[400] h-16 border-r bg-white relative">
+                <div
+                  className="sticky left-0 z-[400] border-r bg-white relative"
+                  style={{ height: effectiveRowPx }}
+                >
                   <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-white" />
                   <div
                     className={`absolute inset-x-0 text-center text-xs text-gray-500 ${
@@ -1673,7 +1770,8 @@ export default function GridSchedulePanel({
                 {days.map((day, dayIndex) => (
                   <div
                     key={`${time}-${day}`}
-                    className={`border-b ${dayIndex < days.length - 1 ? "border-r" : ""} h-16 hover:bg-gray-50`}
+                    className={`border-b ${dayIndex < days.length - 1 ? "border-r" : ""} hover:bg-gray-50`}
+                    style={{ height: effectiveRowPx }}
                   />
                 ))}
               </div>
@@ -1685,7 +1783,7 @@ export default function GridSchedulePanel({
               units={units}
               daysCount={days.length}
               dayLabels={days}
-              rowPx={rowPx}
+              rowPx={effectiveRowPx}
               timeColPx={timeColPx}
               bodyHeight={bodyHeight}
               dayStartMin={dayStartMin}

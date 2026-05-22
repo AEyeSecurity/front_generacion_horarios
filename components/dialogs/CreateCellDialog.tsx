@@ -952,7 +952,7 @@ export default function CreateCellDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[880px] z-[96]">
+        <DialogContent className="sm:max-w-[880px] z-[1801]" data-onboarding-target="cell-dialog">
           <DialogHeader className="relative min-h-9 pr-8">
             <DialogTitle>{t("create_cell.title")}</DialogTitle>
             <div className="absolute left-1/2 top-0 -translate-x-1/2 flex items-center gap-2 select-none">

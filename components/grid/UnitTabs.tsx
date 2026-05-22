@@ -155,12 +155,13 @@ export default function UnitTabs({
       />
 
       {!hideTabBar && tabs.length > 0 && (
-        <div data-unit-tabs className="fixed bottom-0 left-0 right-0 z-[40] pointer-events-none">
+        <div data-unit-tabs data-onboarding-target="unit-tabs" className="fixed bottom-0 left-0 right-0 z-[40] pointer-events-none">
           <div className="max-w-5xl mx-auto flex items-end gap-2 px-4 pt-2 pb-0 overflow-x-auto overflow-y-hidden pointer-events-auto">
             {tabs.map((t) => (
               <button
                 key={t.id}
                 type="button"
+                data-onboarding-target={t.id === GLOBAL_BLOCKAGE_TAB_ID ? "global-blockage-tab" : undefined}
                 onClick={() => setSelected(t.id)}
                 className={[
                   "px-4 py-2 text-sm border rounded-t-xl rounded-b-none origin-bottom",

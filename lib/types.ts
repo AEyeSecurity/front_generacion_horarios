@@ -30,6 +30,15 @@ export type Grid = {
   cell_size_min: number;     // minutos
   day_heatmap?: Partial<Record<string, number>> | null;
   allow_overstaffing?: boolean | null;
+  tier_enable?: boolean | null;
+  tier_enabled?: boolean | null;
+  tiers_enabled?: boolean | null;
+  organization_type?: "school" | "work" | "gym" | "private_tutor" | "event" | "other" | null;
+  unit_nature?: "audience" | "space" | "internal" | "none" | null;
+  other_context_description?: string | null;
+  solver_profile?: string | null;
+  solver_options?: Record<string, unknown> | null;
+  objective_weights?: Record<string, number> | null;
   creator: number | null;
   created_at: string;        // ISO
 };

@@ -23,6 +23,7 @@ export default function SidePanel({
   cellSizeMin,
   dayStartMin,
   dayEndMin,
+  tiersEnabled,
   role,
   tab,
   open,
@@ -35,6 +36,7 @@ export default function SidePanel({
   cellSizeMin?: number;
   dayStartMin?: number;
   dayEndMin?: number;
+  tiersEnabled?: boolean;
   role: Role;
   tab: "participants" | "categories" | "time-ranges";
   open: boolean;
@@ -92,7 +94,13 @@ export default function SidePanel({
             }
           >
             {tab === "participants" ? (
-              <ParticipantsPanel gridId={gridId} gridCode={gridCode} role={role} refreshKey={participantsKey} />
+              <ParticipantsPanel
+                gridId={gridId}
+                gridCode={gridCode}
+                role={role}
+                refreshKey={participantsKey}
+                tiersEnabled={tiersEnabled}
+              />
             ) : tab === "time-ranges" ? (
               <TimeRangesEditor
                 gridId={gridId}
@@ -126,11 +134,13 @@ export default function SidePanel({
                     open={showPerson}
                     onOpenChange={setShowPerson}
                     onCreated={() => setParticipantsKey((k) => k + 1)}
+                    tiersEnabled={tiersEnabled}
                   />
                 </>
               ) : (
                 <>
                   <button
+                    data-onboarding-target="categories-add-button"
                     onClick={() => setShowCategory(true)}
                     className="w-full py-2 rounded bg-black text-white text-sm"
                   >

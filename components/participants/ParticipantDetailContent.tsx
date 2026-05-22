@@ -42,6 +42,12 @@ type Props = {
   dayEndHHMM: string;
   rules: Rule[];
   initialView?: "rules" | "schedule";
+  initialParticipantTabs?: Array<{
+    id: string | number;
+    routeId?: string | number | null;
+    name?: string | null;
+    tier?: "PRIMARY" | "SECONDARY" | "TERTIARY" | null;
+  }>;
 };
 
 type EditableParticipant = {
@@ -52,6 +58,14 @@ type EditableParticipant = {
   min_hours_week_override?: number | null;
   max_hours_week_override?: number | null;
 };
+
+const GRID_TOP_BAR_HEIGHT_PX = 56;
+const PARTICIPANT_BAR_HEIGHT_PX = 96;
+const PARTICIPANT_BAR_MASK_HEIGHT_PX = PARTICIPANT_BAR_HEIGHT_PX;
+const BASE_TIMETABLE_ROW_PX = 64;
+const MIN_TIMETABLE_BODY_HEIGHT_PX = 260;
+const MAX_TIMETABLE_ROW_PX = 96;
+const PARTICIPANT_TAB_FADE_DISTANCE_PX = 420;
 
 const formatParticipantName = (participant: { name?: string | null; surname?: string | null }, fallback: string) => {
   const fullName = `${participant.name ?? ""}${participant.surname ? ` ${participant.surname}` : ""}`.trim();
@@ -155,6 +169,7 @@ export default function ParticipantDetailContent({
   dayEndHHMM,
   rules,
   initialView = "rules",
+  initialParticipantTabs = [],
 }: Props) {
   const { t } = useI18n();
   const [displayParticipantName, setDisplayParticipantName] = useState(participantName);
@@ -192,8 +207,19 @@ export default function ParticipantDetailContent({
   const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
   const [ruleResizeBusy, setRuleResizeBusy] = useState(false);
   const [autoMergeBusy, setAutoMergeBusy] = useState(false);
+  const [compactHorizontal, setCompactHorizontal] = useState(false);
+  const [linkedPlacementsCount, setLinkedPlacementsCount] = useState(0);
+  const [linkedPlacementsLoading, setLinkedPlacementsLoading] = useState(false);
+  const [dangerZoneVisible, setDangerZoneVisible] = useState(false);
+  const [participantTabsOpacity, setParticipantTabsOpacity] = useState(1);
+  const [timetableViewportHeight, setTimetableViewportHeight] = useState(350);
+  const [effectiveRowPx, setEffectiveRowPx] = useState(BASE_TIMETABLE_ROW_PX);
+  const dangerZoneRef = useRef<HTMLDivElement | null>(null);
+  const participantTabsFadeStartRef = useRef<number | null>(null);
+  const timetableViewportKeyRef = useRef<string | null>(null);
   const rulesHeaderScrollRef = useRef<HTMLDivElement | null>(null);
   const rulesScrollRef = useRef<HTMLDivElement | null>(null);
+  const rulesOverlayRef = useRef<HTMLDivElement | null>(null);
   const rulesSyncingHorizontalRef = useRef<"header" | "body" | null>(null);
   const scheduleHeaderScrollRef = useRef<HTMLDivElement | null>(null);
   const scheduleScrollRef = useRef<HTMLDivElement | null>(null);
@@ -314,6 +340,58 @@ export default function ParticipantDetailContent({
   }, [gridId, participantId]);
 
   useEffect(() => {
+    if (role !== "supervisor") {
+      setLinkedPlacementsCount(0);
+      setLinkedPlacementsLoading(false);
+      return;
+    }
+    let active = true;
+    setLinkedPlacementsLoading(true);
+    const countInPayload = (raw: unknown) => {
+      const source = (raw ?? {}) as Record<string, unknown>;
+      const scheduleCandidate =
+        source?.schedule ?? source?.published_schedule ?? source?.latest ?? source;
+      const placements = Array.isArray((scheduleCandidate as any)?.placements)
+        ? (scheduleCandidate as any).placements
+        : Array.isArray((scheduleCandidate as any)?.schedule)
+        ? (scheduleCandidate as any).schedule
+        : [];
+      return placements.filter((placement: any) =>
+        (Array.isArray(placement?.assigned_participants) ? placement.assigned_participants : [])
+          .map(String)
+          .includes(String(participantId)),
+      ).length;
+    };
+
+    (async () => {
+      try {
+        let total = 0;
+        const endpoints = [
+          `/api/grids/${gridId}/schedule/`,
+          `/api/grids/${gridId}/schedule`,
+          `/api/grids/${gridId}/published-schedule/`,
+          `/api/grids/${gridId}/published-schedule`,
+        ];
+        for (const endpoint of endpoints) {
+          const res = await fetch(endpoint, { cache: "no-store" }).catch(() => null);
+          if (!res || !res.ok) continue;
+          const payload = await res.json().catch(() => null);
+          total += countInPayload(payload);
+        }
+        if (active) setLinkedPlacementsCount(total);
+      } catch {
+        if (active) setLinkedPlacementsCount(0);
+      } finally {
+        if (active) setLinkedPlacementsLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [gridId, participantId, role]);
+
+  useEffect(() => {
     if (typeof daysIdx[0] === "number") {
       setInlineAddDay(daysIdx[0]);
     }
@@ -343,12 +421,14 @@ export default function ParticipantDetailContent({
     return out;
   }, [cellSizeMin, dayEndMin, dayStartMin]);
 
-  const ROW_PX = 64;
+  const ROW_PX = effectiveRowPx;
   const TIME_COL_PX = 100;
-  const MIN_DAY_COL_PX = 180;
+  const MIN_DAY_COL_PX = compactHorizontal ? 180 : 0;
   const BODY_H = rows.length * ROW_PX;
+  const scrollBodyHeight = Math.min(BODY_H, timetableViewportHeight);
   const timetableTemplateColumns = `${TIME_COL_PX}px repeat(${days.length}, minmax(${MIN_DAY_COL_PX}px, 1fr))`;
   const timetableMinWidthPx = TIME_COL_PX + days.length * MIN_DAY_COL_PX;
+  const timetableContentStyle = compactHorizontal ? { minWidth: timetableMinWidthPx } : undefined;
   const gridBase = `/grid/${encodeURIComponent(gridCode)}`;
   const clearMoveHoldTimer = useCallback(() => {
     if (moveHoldTimerRef.current != null) {
@@ -377,6 +457,172 @@ export default function ParticipantDetailContent({
     window.requestAnimationFrame(() => {
       if (scheduleSyncingHorizontalRef.current === source) scheduleSyncingHorizontalRef.current = null;
     });
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mediaQuery = window.matchMedia("(max-width: 1024px)");
+    const apply = () => setCompactHorizontal(mediaQuery.matches);
+    apply();
+    mediaQuery.addEventListener("change", apply);
+    return () => mediaQuery.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
+    setEffectiveRowPx(BASE_TIMETABLE_ROW_PX);
+    setTimetableViewportHeight(rows.length * BASE_TIMETABLE_ROW_PX);
+  }, [rows.length]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let rafId: number | null = null;
+    const getPageScrollY = () =>
+      window.scrollY ||
+      document.scrollingElement?.scrollTop ||
+      document.documentElement.scrollTop ||
+      document.body.scrollTop ||
+      0;
+    const requestRecalc = () => {
+      if (rafId != null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        const dropdownOpen = document.querySelector(
+          '[data-slot="dropdown-menu-content"][data-state="open"], [data-slot="dropdown-menu-sub-content"][data-state="open"]',
+        );
+        if (dropdownOpen) return;
+        const viewportWidth = Math.round(window.visualViewport?.width ?? window.innerWidth);
+        const viewportHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
+        const viewportKey = `${viewportWidth}x${viewportHeight}`;
+        const viewportChanged = timetableViewportKeyRef.current !== viewportKey;
+        timetableViewportKeyRef.current = viewportKey;
+        const pageScrollY = getPageScrollY();
+        if (pageScrollY > 8 && !viewportChanged) return;
+        const scrollEl = view === "rules" ? rulesScrollRef.current : scheduleScrollRef.current;
+        if (!scrollEl) return;
+        const tabsEl = document.querySelector("[data-participant-tabs]") as HTMLElement | null;
+        const tabsTop = tabsEl ? tabsEl.getBoundingClientRect().top : window.innerHeight;
+        const scrollTop = scrollEl.getBoundingClientRect().top;
+        const gapAboveTabs = 18;
+        const availableToTabs = tabsTop - scrollTop - gapAboveTabs;
+        if (!Number.isFinite(availableToTabs) || availableToTabs <= 0) return;
+
+        const rowsCount = Math.max(1, rows.length);
+        const baseBodyHeight = rowsCount * BASE_TIMETABLE_ROW_PX;
+        const targetViewportHeight = Math.max(MIN_TIMETABLE_BODY_HEIGHT_PX, availableToTabs);
+        let nextRowPx = BASE_TIMETABLE_ROW_PX;
+        let nextBodyHeight = baseBodyHeight;
+
+        if (baseBodyHeight <= targetViewportHeight) {
+          nextRowPx = Math.round(
+            Math.max(
+              BASE_TIMETABLE_ROW_PX,
+              Math.min(MAX_TIMETABLE_ROW_PX, targetViewportHeight / rowsCount),
+            ),
+          );
+          nextBodyHeight = rowsCount * nextRowPx;
+        }
+
+        const nextViewportHeight = Math.round(Math.min(nextBodyHeight, targetViewportHeight));
+        setEffectiveRowPx((prev) => (Math.abs(prev - nextRowPx) >= 1 ? nextRowPx : prev));
+        setTimetableViewportHeight((prev) =>
+          Math.abs(prev - nextViewportHeight) >= 1 ? nextViewportHeight : prev,
+        );
+      });
+    };
+
+    requestRecalc();
+    window.addEventListener("resize", requestRecalc);
+    window.addEventListener("orientationchange", requestRecalc);
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", requestRecalc);
+    const observer = new ResizeObserver(requestRecalc);
+    const tabsEl = document.querySelector("[data-participant-tabs]") as HTMLElement | null;
+    if (tabsEl) observer.observe(tabsEl);
+
+    return () => {
+      window.removeEventListener("resize", requestRecalc);
+      window.removeEventListener("orientationchange", requestRecalc);
+      vv?.removeEventListener("resize", requestRecalc);
+      observer.disconnect();
+      if (rafId != null) window.cancelAnimationFrame(rafId);
+    };
+  }, [view, rows.length]);
+
+  useEffect(() => {
+    const overlay = rulesOverlayRef.current;
+    const scrollEl = rulesScrollRef.current;
+    if (!overlay || !scrollEl) return;
+
+    let rafId: number | null = null;
+    const applyClip = () => {
+      const leftInset = Math.max(0, TIME_COL_PX + scrollEl.scrollLeft);
+      const clip = `inset(0px 0px 0px ${leftInset}px)`;
+      overlay.style.setProperty("clip-path", clip);
+      overlay.style.setProperty("-webkit-clip-path", clip);
+    };
+    const requestApply = () => {
+      if (rafId != null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        applyClip();
+      });
+    };
+
+    applyClip();
+    scrollEl.addEventListener("scroll", requestApply, { passive: true });
+    window.addEventListener("resize", requestApply);
+    return () => {
+      scrollEl.removeEventListener("scroll", requestApply);
+      window.removeEventListener("resize", requestApply);
+      if (rafId != null) window.cancelAnimationFrame(rafId);
+    };
+  }, [TIME_COL_PX, BODY_H, ROW_PX, days.length]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let rafId: number | null = null;
+    let lastOpacity = 1;
+    let lastDangerVisible = false;
+    const getScrollY = () =>
+      window.scrollY ||
+      document.scrollingElement?.scrollTop ||
+      document.documentElement.scrollTop ||
+      document.body.scrollTop ||
+      0;
+    participantTabsFadeStartRef.current = getScrollY();
+
+    const apply = () => {
+      rafId = null;
+      const baseline = participantTabsFadeStartRef.current ?? 0;
+      const delta = Math.max(0, getScrollY() - baseline);
+      const scrollRoot = document.scrollingElement ?? document.documentElement;
+      const maxScrollY = Math.max(0, scrollRoot.scrollHeight - window.innerHeight);
+      const availableFadeDistance = Math.max(1, maxScrollY - baseline);
+      const fadeDistance = Math.min(PARTICIPANT_TAB_FADE_DISTANCE_PX, availableFadeDistance);
+      const nextOpacity = Math.max(0, Math.min(1, 1 - delta / fadeDistance));
+      const nextDangerVisible = delta > 2;
+      if (Math.abs(nextOpacity - lastOpacity) >= 0.01) {
+        lastOpacity = nextOpacity;
+        setParticipantTabsOpacity(nextOpacity);
+      }
+      if (nextDangerVisible !== lastDangerVisible) {
+        lastDangerVisible = nextDangerVisible;
+        setDangerZoneVisible(nextDangerVisible);
+      }
+    };
+    const requestApply = () => {
+      if (rafId != null) return;
+      rafId = window.requestAnimationFrame(apply);
+    };
+
+    apply();
+    window.addEventListener("scroll", requestApply, { passive: true });
+    window.addEventListener("resize", requestApply);
+    return () => {
+      window.removeEventListener("scroll", requestApply);
+      window.removeEventListener("resize", requestApply);
+      if (rafId != null) window.cancelAnimationFrame(rafId);
+    };
   }, []);
 
   useEffect(() => () => clearMoveHoldTimer(), [clearMoveHoldTimer]);
@@ -993,109 +1239,126 @@ export default function ParticipantDetailContent({
   }, [autoMergeBusy, autoMergeSignature, canManageRules, hasMergeCandidates, mergeAdjacentSameTypeRules, ruleResizeBusy]);
 
   return (
-    <div className="w-[80%] mx-auto space-y-4">
-      <div className="relative min-h-[64px] flex items-center">
-        <Link
-          href={gridBase}
-          className="absolute left-0 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-gray-100 transition-colors"
-          title="Back to grid"
-        >
-          <ArrowLeft className="w-5 h-5 text-gray-600" />
-        </Link>
+    <div className="w-[80%] mx-auto">
+      <div
+        className="pointer-events-none fixed inset-x-0 border-b border-gray-200 bg-gray-50"
+        style={{ top: GRID_TOP_BAR_HEIGHT_PX, height: PARTICIPANT_BAR_MASK_HEIGHT_PX, zIndex: 1290 }}
+        aria-hidden="true"
+      />
+      <div
+        className="fixed inset-x-0 overflow-hidden border-b border-gray-200 bg-gray-50"
+        style={{
+          top: GRID_TOP_BAR_HEIGHT_PX,
+          height: PARTICIPANT_BAR_HEIGHT_PX,
+          backgroundColor: "#f9fafb",
+          zIndex: 1291,
+        }}
+      >
+        <div className="relative mx-auto w-[80%] min-h-[96px] py-4 flex items-center select-none">
+          <Link
+            href={gridBase}
+            className="absolute left-0 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-gray-100 transition-colors"
+            title="Back to grid"
+          >
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </Link>
 
-        <div className="mx-auto text-center">
-          <div className="flex items-center justify-center gap-2">
-            <h1
-              className={`text-xl md:text-2xl font-semibold ${canManageRules ? "cursor-pointer" : ""}`}
-              title={canManageRules ? "Double click to edit participant" : undefined}
-              onDoubleClick={async () => {
-                if (!canManageRules) return;
-                try {
-                  await loadParticipantForEdit();
-                } catch {
-                  setEditParticipant({
-                    id: participantId,
-                    name: displayParticipantName,
-                    surname: null,
-                    tier: null,
-                    min_hours_week_override: null,
-                    max_hours_week_override: null,
-                  });
-                } finally {
-                  setEditParticipantOpen(true);
-                }
-              }}
-            >
-              {displayParticipantName}
-            </h1>
-            {participantLinkedState ? (
-              <span title="Linked participant">
-                <BadgeCheck className="w-5 h-5 text-emerald-600" />
-              </span>
-            ) : (
-              <EditorInviteInline
-                gridId={String(gridId)}
-                participantId={String(participantId)}
-                allowLinkSelf={role === "supervisor"}
-                onLinked={() => setParticipantLinkedState(true)}
+          <div className="mx-auto text-center">
+            <div className="flex items-center justify-center gap-2">
+              <h1
+                className={`text-xl md:text-2xl font-semibold ${canManageRules ? "cursor-pointer" : ""}`}
+                title={canManageRules ? "Double click to edit participant" : undefined}
+                onDoubleClick={async () => {
+                  if (!canManageRules) return;
+                  try {
+                    await loadParticipantForEdit();
+                  } catch {
+                    setEditParticipant({
+                      id: participantId,
+                      name: displayParticipantName,
+                      surname: null,
+                      tier: null,
+                      min_hours_week_override: null,
+                      max_hours_week_override: null,
+                    });
+                  } finally {
+                    setEditParticipantOpen(true);
+                  }
+                }}
+              >
+                {displayParticipantName}
+              </h1>
+              {participantLinkedState ? (
+                <span title="Linked participant">
+                  <BadgeCheck className="w-5 h-5 text-emerald-600" />
+                </span>
+              ) : (
+                <EditorInviteInline
+                  gridId={String(gridId)}
+                  participantId={String(participantId)}
+                  allowLinkSelf={role === "supervisor"}
+                  onLinked={() => setParticipantLinkedState(true)}
+                />
+              )}
+            </div>
+
+            <div className="mt-1 text-sm text-gray-500 flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => setView("rules")}
+                className={view === "rules" ? "font-semibold text-gray-800" : "hover:text-gray-700"}
+              >
+                Availability Rules
+              </button>
+              {canOpenScheduleTab && (
+                <>
+                  <span className="text-gray-400">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setView("schedule")}
+                    className={view === "schedule" ? "font-semibold text-gray-800" : "hover:text-gray-700"}
+                  >
+                    Schedule
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 flex flex-row-reverse items-center gap-3">
+            {view === "rules" && (
+              <AddRuleButton
+                participantId={participantId}
+                gridStart={dayStartHHMM}
+                gridEnd={dayEndHHMM}
+                allowedDays={daysIdx}
+                minMinutes={cellSizeMin}
+                disabled={!canManageRules}
+                onCreated={async () => {
+                  await mergeAdjacentSameTypeRules();
+                  await reloadParticipantRules();
+                }}
               />
             )}
           </div>
-
-          <div className="mt-1 text-sm text-gray-500 flex items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => setView("rules")}
-              className={view === "rules" ? "font-semibold text-gray-800" : "hover:text-gray-700"}
-            >
-              Availability Rules
-            </button>
-            {canOpenScheduleTab && (
-              <>
-                <span className="text-gray-400">|</span>
-                <button
-                  type="button"
-                  onClick={() => setView("schedule")}
-                  className={view === "schedule" ? "font-semibold text-gray-800" : "hover:text-gray-700"}
-                >
-                  Schedule
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="absolute right-0 top-1/2 -translate-y-1/2 flex flex-row-reverse items-center gap-3">
-          {view === "rules" && (
-            <AddRuleButton
-              participantId={participantId}
-              gridStart={dayStartHHMM}
-              gridEnd={dayEndHHMM}
-              allowedDays={daysIdx}
-              minMinutes={cellSizeMin}
-              disabled={!canManageRules}
-              onCreated={async () => {
-                await mergeAdjacentSameTypeRules();
-                await reloadParticipantRules();
-              }}
-            />
-          )}
         </div>
       </div>
 
+      <div style={{ height: PARTICIPANT_BAR_HEIGHT_PX }} aria-hidden="true" />
+
       {view === "rules" && (
-        <div className="relative border rounded-lg bg-white overflow-hidden shadow-sm">
+        <div className="relative z-0 mt-4 mb-8 border rounded-lg bg-white overflow-hidden shadow-sm">
           <div
             ref={rulesHeaderScrollRef}
-            className="overflow-x-auto overflow-y-hidden hide-scrollbar"
+            className={`${compactHorizontal ? "overflow-x-auto" : "overflow-x-hidden"} overflow-y-hidden hide-scrollbar`}
             onScroll={(event) => {
               if (rulesSyncingHorizontalRef.current === "body") return;
               syncRulesHorizontalScroll("header", event.currentTarget.scrollLeft);
             }}
           >
-            <div style={{ minWidth: timetableMinWidthPx }}>
+            <div style={timetableContentStyle}>
               <div className="grid" style={{ gridTemplateColumns: timetableTemplateColumns }}>
-                  <div className="bg-gray-50 border-b h-12 sticky left-0 z-[410] relative">
+                  <div className="bg-gray-50 border-b h-12 sticky left-0 z-[30] relative">
                   <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-gray-50" />
                 </div>
                 {days.map((d) => (
@@ -1110,21 +1373,23 @@ export default function ParticipantDetailContent({
           <div
             data-schedule-scroll
             ref={rulesScrollRef}
-            className={`relative max-h-[70vh] overflow-x-auto ${ruleMove ? "overflow-y-hidden" : "overflow-y-auto"} hide-scrollbar`}
+            className={`relative ${compactHorizontal ? "overflow-x-auto" : "overflow-x-hidden"} overflow-y-auto hide-scrollbar`}
             onScroll={(event) => {
               if (rulesSyncingHorizontalRef.current === "header") return;
               syncRulesHorizontalScroll("body", event.currentTarget.scrollLeft);
             }}
-            style={{ ["--time-col" as never]: `${TIME_COL_PX}px` }}
+            style={{
+              ["--time-col" as never]: `${TIME_COL_PX}px`,
+              height: scrollBodyHeight,
+              maxHeight: scrollBodyHeight,
+              minHeight: scrollBodyHeight,
+              overflowY: "auto",
+            }}
           >
-            <div className="relative" style={{ minWidth: timetableMinWidthPx }}>
-              <div
-                className="pointer-events-none sticky left-0 top-0 z-[95] border-r border-gray-200 bg-white/98"
-                style={{ width: TIME_COL_PX, height: BODY_H }}
-              />
+            <div className="relative" style={timetableContentStyle}>
               {rows.map((t, rowIndex) => (
                 <div key={t} className="grid" style={{ gridTemplateColumns: timetableTemplateColumns }}>
-                      <div className="sticky left-0 z-[400] h-16 border-r bg-white relative">
+                      <div className="sticky left-0 z-[20] border-r bg-white relative" style={{ height: ROW_PX }}>
                     <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-white" />
                     <div
                       className={`absolute inset-x-0 text-center text-xs text-gray-500 ${
@@ -1144,16 +1409,21 @@ export default function ParticipantDetailContent({
                       key={`${t}-${d}`}
                       type="button"
                       disabled={!canManageRules}
-                      className={`border-b ${j < days.length - 1 ? "border-r" : ""} h-16 text-left ${
+                      className={`border-b ${j < days.length - 1 ? "border-r" : ""} text-left ${
                         canManageRules ? "cursor-pointer hover:bg-gray-50/80" : ""
                       }`}
+                      style={{ height: ROW_PX }}
                       onClick={() => openAddRuleFromCell(j, t)}
                     />
                   ))}
                 </div>
               ))}
 
-              <div className="pointer-events-none absolute inset-0" style={{ height: BODY_H }}>
+              <div
+                ref={rulesOverlayRef}
+                className="pointer-events-none absolute inset-0 z-[5] overflow-hidden"
+                style={{ height: BODY_H }}
+              >
               <AnimatePresence initial={false}>
               {visibleRules.map((r) => {
                 const renderDay = ruleDraftDayById[r.id] ?? r.day_of_week;
@@ -1361,6 +1631,7 @@ export default function ParticipantDetailContent({
                 gridId={gridId}
                 gridCode={gridCode}
                 participantId={participantId}
+                participantTabsOverride={initialParticipantTabs}
                 targetView="rules"
                 showPlacements={false}
                 hideSideStack={Boolean(ruleMove)}
@@ -1370,6 +1641,7 @@ export default function ParticipantDetailContent({
                 bodyHeight={BODY_H}
                 dayStartMin={dayStartMin}
                 slotMin={cellSizeMin}
+                participantTabsOpacity={participantTabsOpacity}
               />
             </div>
           </div>
@@ -1414,18 +1686,18 @@ export default function ParticipantDetailContent({
       )}
 
       {view === "schedule" && (
-        <div className="relative border rounded-lg bg-white overflow-hidden shadow-sm">
+        <div className="relative z-0 mt-4 mb-8 border rounded-lg bg-white overflow-hidden shadow-sm">
           <div
             ref={scheduleHeaderScrollRef}
-            className="overflow-x-auto overflow-y-hidden hide-scrollbar"
+            className={`${compactHorizontal ? "overflow-x-auto" : "overflow-x-hidden"} overflow-y-hidden hide-scrollbar`}
             onScroll={(event) => {
               if (scheduleSyncingHorizontalRef.current === "body") return;
               syncScheduleHorizontalScroll("header", event.currentTarget.scrollLeft);
             }}
           >
-            <div style={{ minWidth: timetableMinWidthPx }}>
+            <div style={timetableContentStyle}>
               <div className="grid" style={{ gridTemplateColumns: timetableTemplateColumns }}>
-                  <div className="bg-gray-50 border-b h-12 sticky left-0 z-[410] relative">
+                  <div className="bg-gray-50 border-b h-12 sticky left-0 z-[30] relative">
                   <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-gray-50" />
                 </div>
                 {days.map((d) => (
@@ -1440,21 +1712,23 @@ export default function ParticipantDetailContent({
           <div
             data-schedule-scroll
             ref={scheduleScrollRef}
-            className="relative max-h-[70vh] overflow-auto hide-scrollbar"
+            className={`relative ${compactHorizontal ? "overflow-x-auto" : "overflow-x-hidden"} overflow-y-auto hide-scrollbar`}
             onScroll={(event) => {
               if (scheduleSyncingHorizontalRef.current === "header") return;
               syncScheduleHorizontalScroll("body", event.currentTarget.scrollLeft);
             }}
-            style={{ ["--time-col" as never]: `${TIME_COL_PX}px` }}
+            style={{
+              ["--time-col" as never]: `${TIME_COL_PX}px`,
+              height: scrollBodyHeight,
+              maxHeight: scrollBodyHeight,
+              minHeight: scrollBodyHeight,
+              overflowY: "auto",
+            }}
           >
-            <div className="relative" style={{ minWidth: timetableMinWidthPx }}>
-              <div
-                className="pointer-events-none sticky left-0 top-0 z-[95] border-r border-gray-200 bg-white/98"
-                style={{ width: TIME_COL_PX, height: BODY_H }}
-              />
+            <div className="relative" style={timetableContentStyle}>
               {rows.map((t, rowIndex) => (
                 <div key={t} className="grid" style={{ gridTemplateColumns: timetableTemplateColumns }}>
-                      <div className="sticky left-0 z-[400] h-16 border-r bg-white relative">
+                      <div className="sticky left-0 z-[20] border-r bg-white relative" style={{ height: ROW_PX }}>
                     <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-white" />
                     <div
                       className={`absolute inset-x-0 text-center text-xs text-gray-500 ${
@@ -1470,7 +1744,11 @@ export default function ParticipantDetailContent({
                     )}
                   </div>
                   {days.map((d, j) => (
-                    <div key={`${t}-${d}`} className={`border-b ${j < days.length - 1 ? "border-r" : ""} h-16`} />
+                    <div
+                      key={`${t}-${d}`}
+                      className={`border-b ${j < days.length - 1 ? "border-r" : ""}`}
+                      style={{ height: ROW_PX }}
+                    />
                   ))}
                 </div>
               ))}
@@ -1479,6 +1757,7 @@ export default function ParticipantDetailContent({
                 gridId={gridId}
                 gridCode={gridCode}
                 participantId={participantId}
+                participantTabsOverride={initialParticipantTabs}
                 targetView="schedule"
                 showPlacements
                 daysCount={days.length}
@@ -1487,6 +1766,7 @@ export default function ParticipantDetailContent({
                 bodyHeight={BODY_H}
                 dayStartMin={dayStartMin}
                 slotMin={cellSizeMin}
+                participantTabsOpacity={participantTabsOpacity}
               />
             </div>
           </div>
@@ -1549,18 +1829,37 @@ export default function ParticipantDetailContent({
       />
 
       {role === "supervisor" && (
-        <div className="mt-8 p-4 border rounded bg-white flex items-center justify-between">
-          <div>
-            <div className="font-medium">{t("participant_detail.danger_zone")}</div>
-            <div className="text-sm text-gray-600">{t("participant_detail.delete_participant_with_rules")}</div>
-          </div>
-          <DeleteParticipantButton
-            gridId={String(gridId)}
-            gridCode={gridCode}
-            participantId={String(participantId)}
-          />
+        <div className="pt-1">
+          <div ref={dangerZoneRef} className="h-1" aria-hidden="true" />
+          <motion.div
+            initial={false}
+            animate={
+              dangerZoneVisible
+                ? { opacity: 1, y: 0, filter: "blur(0px)" }
+                : { opacity: 0, y: 28, filter: "blur(3px)" }
+            }
+            transition={{ type: "spring", stiffness: 180, damping: 24, mass: 0.85 }}
+            className="mt-2 p-4 border rounded bg-white flex items-center justify-between"
+          >
+            <div>
+              <div className="font-medium">{t("participant_detail.danger_zone")}</div>
+              <div className="text-sm text-gray-600">
+                {linkedPlacementsLoading
+                  ? t("common.loading") || "Loading..."
+                  : linkedPlacementsCount > 0
+                  ? `Linked placements detected: ${linkedPlacementsCount}. Changes here can affect the same scheduling constraints shown when deleting participants.`
+                  : t("participant_detail.delete_participant_with_rules")}
+              </div>
+            </div>
+            <DeleteParticipantButton
+              gridId={String(gridId)}
+              gridCode={gridCode}
+              participantId={String(participantId)}
+            />
+          </motion.div>
         </div>
       )}
+      <div className="h-[45vh] min-h-80" aria-hidden="true" />
       <EditParticipantDialog
         gridId={gridId}
         role={role}

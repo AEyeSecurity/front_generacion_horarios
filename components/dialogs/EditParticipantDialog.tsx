@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, AlertTriangle } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { TierBadge, type Tier } from "@/components/badges/TierBadge";
 import { readGridTierEnabled } from "@/lib/grid-tier";
 import {
@@ -40,22 +40,6 @@ function parseNullableNumber(value: string): number | null | "invalid" {
   return parsed;
 }
 
-function parseLinkedPlacements(raw: unknown, participantId: string): number {
-  const source = (raw ?? {}) as Record<string, unknown>;
-  const scheduleCandidate =
-    source?.schedule ?? source?.published_schedule ?? source?.latest ?? source;
-  const placements = Array.isArray((scheduleCandidate as any)?.placements)
-    ? (scheduleCandidate as any).placements
-    : Array.isArray((scheduleCandidate as any)?.schedule)
-    ? (scheduleCandidate as any).schedule
-    : [];
-  return placements.filter((placement: any) =>
-    (Array.isArray(placement?.assigned_participants) ? placement.assigned_participants : [])
-      .map(String)
-      .includes(participantId),
-  ).length;
-}
-
 export default function EditParticipantDialog({
   gridId,
   role,
@@ -80,8 +64,6 @@ export default function EditParticipantDialog({
   const [minHours, setMinHours] = React.useState("");
   const [maxHours, setMaxHours] = React.useState("");
   const [saving, setSaving] = React.useState(false);
-  const [loadingLinks, setLoadingLinks] = React.useState(false);
-  const [linkedPlacementsCount, setLinkedPlacementsCount] = React.useState(0);
   const [err, setErr] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -120,39 +102,6 @@ export default function EditParticipantDialog({
       active = false;
     };
   }, [gridId, open]);
-
-  React.useEffect(() => {
-    if (!open || !participant) return;
-    let active = true;
-    setLoadingLinks(true);
-    setLinkedPlacementsCount(0);
-    (async () => {
-      try {
-        const participantId = String(participant.id);
-        const endpoints = [
-          `/api/grids/${gridId}/schedule/`,
-          `/api/grids/${gridId}/schedule`,
-          `/api/grids/${gridId}/published-schedule/`,
-          `/api/grids/${gridId}/published-schedule`,
-        ];
-        let total = 0;
-        for (const endpoint of endpoints) {
-          const res = await fetch(endpoint, { cache: "no-store" }).catch(() => null);
-          if (!res || !res.ok) continue;
-          const payload = await res.json().catch(() => null);
-          total += parseLinkedPlacements(payload, participantId);
-        }
-        if (active) setLinkedPlacementsCount(total);
-      } catch {
-        if (active) setLinkedPlacementsCount(0);
-      } finally {
-        if (active) setLoadingLinks(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [gridId, open, participant]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -220,24 +169,6 @@ export default function EditParticipantDialog({
           </DialogHeader>
 
           <form onSubmit={submit} className="space-y-4">
-            {linkedPlacementsCount > 0 ? (
-              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <div>
-                    <div className="font-medium">This participant is linked to schedule placements.</div>
-                    <div>
-                      {`Linked placements detected: ${linkedPlacementsCount}. Changes here can affect the same scheduling constraints shown when deleting participants.`}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : loadingLinks ? (
-              <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                {t("common.loading") || "Loading..."}
-              </div>
-            ) : null}
-
             <div className={`grid grid-cols-1 gap-3 ${tierEnabled && isSupervisor ? "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_112px]" : "sm:grid-cols-2"}`}>
               <div>
                 <label className="block text-sm mb-1">{t("add_participant.first_name_required")}</label>

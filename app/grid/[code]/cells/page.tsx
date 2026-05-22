@@ -2,6 +2,7 @@ import { backendFetchJSON } from "@/lib/backend";
 import { requireUserOrRedirect } from "@/lib/auth";
 import type { Role } from "@/lib/types";
 import CellsCardSwap from "@/components/grid/CellsCardSwap";
+import OnboardingGuide from "@/components/grid/OnboardingGuide";
 import { CellsHeader } from "@/components/grid/headers";
 import { resolveGridByCode } from "../_helpers";
 
@@ -9,10 +10,15 @@ const EN_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default async function GridCellsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ code: string }>;
+  searchParams?: Promise<{ onboarding?: string | string[] }>;
 }) {
   const { code } = await params;
+  const sp = await searchParams;
+  const onboardingParam = Array.isArray(sp?.onboarding) ? sp?.onboarding[0] : sp?.onboarding;
+  const showOnboarding = onboardingParam === "1" || onboardingParam === "true";
   const grid = await resolveGridByCode(code);
   const id = String(grid.id);
   const nextPath = `/grid/${encodeURIComponent(grid.grid_code || code)}/cells`;
@@ -62,8 +68,13 @@ export default async function GridCellsPage({
 
   return (
     <div className="relative">
+      <OnboardingGuide
+        gridId={Number(grid.id)}
+        gridCode={String(grid.grid_code || code)}
+        show={showOnboarding}
+      />
 
-      <div className="p-4">
+      <div className="p-4" data-onboarding-target="cells-page">
         <div className="w-[80%] mx-auto space-y-4">
           <CellsHeader gridId={Number(grid.id)} backHref={gridBase} canCreate={role === "supervisor"} />
 

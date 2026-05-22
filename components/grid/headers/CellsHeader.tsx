@@ -22,6 +22,7 @@ export default function CellsHeader({
       title="Cells"
       backHref={backHref}
       canCreate={canCreate}
+      createOnboardingTarget="cell-create-button"
       onCreateClick={() => setOpen(true)}
       dialog={<CreateCellDialog gridId={gridId} open={open} onOpenChange={setOpen} />}
     />

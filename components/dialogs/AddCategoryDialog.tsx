@@ -36,6 +36,11 @@ export default function AddCategoryDialog({
   const [newValue, setNewValue] = React.useState("");
   const [addingValue, setAddingValue] = React.useState(false);
   const [closing, setClosing] = React.useState(false);
+  const hasParentOptions = (parents ?? []).length > 0;
+
+  React.useEffect(() => {
+    if (!hasParentOptions) setParent("");
+  }, [hasParentOptions]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -141,11 +146,16 @@ export default function AddCategoryDialog({
     }
   }
 
+  const latestValueId = React.useMemo(() => {
+    if (values.length === 0) return null;
+    return Math.max(...values.map((value) => Number(value.id) || 0));
+  }, [values]);
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogPortal>
         <DialogOverlay className="fixed inset-0 bg-black/50 z-[180]" />
-        <DialogContent className="sm:max-w-[720px] z-[181]">
+        <DialogContent className="sm:max-w-[720px] z-[181]" data-onboarding-target="category-dialog">
           <DialogHeader>
             <DialogTitle>{createdId ? t("add_category.add_category_values") : t("add_category.add_category")}</DialogTitle>
           </DialogHeader>
@@ -162,21 +172,23 @@ export default function AddCategoryDialog({
                 />
               </div>
 
-              <div>
-                <label className="block text-sm mb-1">{t("add_category.parent_optional")}</label>
-                <select
-                  className="w-full border rounded px-3 py-2 text-sm"
-                  value={parent === "" ? "" : String(parent)}
-                  onChange={(e) => setParent(e.target.value === "" ? "" : Number(e.target.value))}
-                >
-                  <option value="">{t("add_category.no_parent")}</option>
-                  {(parents ?? []).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {hasParentOptions ? (
+                <div>
+                  <label className="block text-sm mb-1">{t("add_category.parent_optional")}</label>
+                  <select
+                    className="w-full border rounded px-3 py-2 text-sm"
+                    value={parent === "" ? "" : String(parent)}
+                    onChange={(e) => setParent(e.target.value === "" ? "" : Number(e.target.value))}
+                  >
+                    <option value="">{t("add_category.no_parent")}</option>
+                    {(parents ?? []).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
 
               {err && <div className="text-sm text-red-600 whitespace-pre-wrap">{err}</div>}
 
@@ -199,8 +211,9 @@ export default function AddCategoryDialog({
             <div className="space-y-4">
               <div className="text-sm text-gray-600">{t("add_category.add_one_value_required")}</div>
 
-              <form onSubmit={addValue} className="flex items-center gap-2">
+              <form onSubmit={addValue} className="flex items-center gap-2" data-onboarding-target="category-value-add-row">
                 <input
+                  data-onboarding-target="category-value-name-input"
                   className="flex-1 border rounded px-3 py-2 text-sm"
                   placeholder={t("add_category.new_value_name")}
                   value={newValue}
@@ -222,7 +235,11 @@ export default function AddCategoryDialog({
                   <div className="p-3 text-sm text-gray-500">{t("add_category.no_values_yet")}</div>
                 ) : (
                   values.map((v) => (
-                    <div key={v.id} className="flex items-center justify-between p-2 text-sm">
+                    <div
+                      key={v.id}
+                      className="flex items-center justify-between p-2 text-sm"
+                      data-onboarding-target={Number(v.id) === latestValueId ? "category-value-latest-row" : undefined}
+                    >
                       <div>{v.name}</div>
                     </div>
                   ))

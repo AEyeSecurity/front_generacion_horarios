@@ -1,4 +1,4 @@
-export function readGridTierEnabled(raw: unknown, fallback = true): boolean {
+export function readGridTierEnabled(raw: unknown, fallback = false): boolean {
   if (!raw || typeof raw !== "object") return fallback;
   const source = raw as Record<string, unknown>;
   const candidates = [

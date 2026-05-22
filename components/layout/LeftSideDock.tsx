@@ -12,6 +12,7 @@ type Tab = "participants" | "categories" | "time-ranges";
 const SHEET_ANIM_MS = 240;
 const GRID_COMMENTS_PANEL_STATE_EVENT = "shift:grid-comments-panel-state";
 const GRID_LEFT_PANEL_STATE_EVENT = "shift:grid-left-panel-state";
+const GRID_ONBOARDING_LEFT_PANEL_REQUEST_EVENT = "shift:onboarding-left-panel-request";
 
 function DockButton({
   active,
@@ -58,6 +59,7 @@ export default function LeftSideDock({
   cellSizeMin,
   dayStartMin,
   dayEndMin,
+  tiersEnabled,
 }: {
   gridId: number;
   gridCode?: string | null;
@@ -69,6 +71,7 @@ export default function LeftSideDock({
   cellSizeMin?: number;
   dayStartMin?: number;
   dayEndMin?: number;
+  tiersEnabled?: boolean;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -81,7 +84,13 @@ export default function LeftSideDock({
   const pendingTabRef = useRef<Tab | null>(null);
   const router = useRouter();
   const gridBase = `/grid/${encodeURIComponent(gridCode || String(gridId))}`;
-  const gotoCells = () => router.push(`${gridBase}/cells`);
+  const gotoCells = () => {
+    const onboardingActive =
+      typeof window !== "undefined" &&
+      window.localStorage.getItem(`onboarding-step-grid-${gridId}`) != null &&
+      window.localStorage.getItem(`onboarding-done-grid-${gridId}`) !== "1";
+    router.push(`${gridBase}/cells${onboardingActive ? "?onboarding=1" : ""}`);
+  };
 
   const switchTo = useCallback(
     (next: Tab) => {
@@ -149,6 +158,27 @@ export default function LeftSideDock({
     );
   }, [gridId, open, tab]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onOnboardingPanelRequest = (event: Event) => {
+      const custom = event as CustomEvent<{ gridId?: string; open?: boolean; tab?: Tab | null }>;
+      if (custom.detail?.gridId !== String(gridId)) return;
+      lockRef.current = false;
+      pendingTabRef.current = null;
+      if (!custom.detail.open) {
+        setOpen(false);
+        return;
+      }
+      if (custom.detail.tab === "participants" || custom.detail.tab === "categories" || custom.detail.tab === "time-ranges") {
+        setTab(custom.detail.tab);
+        setOpen(true);
+      }
+    };
+    window.addEventListener(GRID_ONBOARDING_LEFT_PANEL_REQUEST_EVENT, onOnboardingPanelRequest as EventListener);
+    return () =>
+      window.removeEventListener(GRID_ONBOARDING_LEFT_PANEL_REQUEST_EVENT, onOnboardingPanelRequest as EventListener);
+  }, [gridId]);
+
   if (role === "viewer") return null;
   if (isNarrowMobile && commentsPanelOpen) return null;
 
@@ -182,6 +212,10 @@ export default function LeftSideDock({
           showDeleteDrop ? "opacity-0 pointer-events-none" : "opacity-100"
         }`}
       >
+        <DockButton title={t("side_dock.cells")} onboardingTarget="left-dock-cells" onClick={gotoCells}>
+          <LayoutGrid className="w-5 h-5" />
+        </DockButton>
+
         <DockButton
           title={t("side_dock.participants")}
           onboardingTarget="left-dock-participants"
@@ -191,12 +225,9 @@ export default function LeftSideDock({
           <Users className="w-5 h-5" />
         </DockButton>
 
-        <DockButton title={t("side_dock.cells")} onboardingTarget="left-dock-cells" onClick={gotoCells}>
-          <LayoutGrid className="w-5 h-5" />
-        </DockButton>
-
         <DockButton
           title={t("side_dock.categories")}
+          onboardingTarget="left-dock-categories"
           active={open && tab === "categories"}
           onClick={() => switchTo("categories")}
         >
@@ -221,6 +252,7 @@ export default function LeftSideDock({
         cellSizeMin={cellSizeMin}
         dayStartMin={dayStartMin}
         dayEndMin={dayEndMin}
+        tiersEnabled={tiersEnabled}
         role={role}
         tab={tab}
         open={open}

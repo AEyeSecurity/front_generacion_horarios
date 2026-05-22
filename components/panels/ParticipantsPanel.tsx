@@ -15,6 +15,7 @@ import {
 import PanelShell from "@/components/panels/PanelShell";
 import PanelScrollArea from "@/components/panels/PanelScrollArea";
 import EditParticipantDialog from "@/components/dialogs/EditParticipantDialog";
+import { useI18n } from "@/lib/use-i18n";
 
 type Participant = {
   id: number;
@@ -32,22 +33,25 @@ export default function ParticipantsPanel({
   gridCode,
   role,
   refreshKey = 0,
+  tiersEnabled,
 }: {
   gridId: number;
   gridCode?: string | null;
   role: Role;
   refreshKey?: number;
+  tiersEnabled?: boolean;
 }) {
   const [list, setList] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [tierFilter, setTierFilter] = useState<"ALL" | Tier>("ALL");
-  const [tierEnabled, setTierEnabled] = useState(true);
+  const [tierEnabled, setTierEnabled] = useState(Boolean(tiersEnabled));
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Participant | null>(null);
   const rowClickTimerRef = useRef<number | null>(null);
   const router = useRouter();
+  const { t } = useI18n();
 
   const clearRowClickTimer = () => {
     if (rowClickTimerRef.current != null) {
@@ -62,14 +66,16 @@ export default function ParticipantsPanel({
     try {
       const [participantsRes, gridRes] = await Promise.all([
         fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" }),
-        fetch(`/api/grids/${gridId}/`, { cache: "no-store" }).catch(() => null),
+        tiersEnabled == null ? fetch(`/api/grids/${gridId}/`, { cache: "no-store" }).catch(() => null) : Promise.resolve(null),
       ]);
       if (!participantsRes.ok) throw new Error(`Failed (${participantsRes.status})`);
       const data = await participantsRes.json();
       const items = Array.isArray(data) ? data : data.results ?? [];
-      if (gridRes?.ok) {
+      if (tiersEnabled != null) {
+        setTierEnabled(Boolean(tiersEnabled));
+      } else if (gridRes?.ok) {
         const gridData = await gridRes.json().catch(() => null);
-        setTierEnabled(readGridTierEnabled(gridData, true));
+        setTierEnabled(readGridTierEnabled(gridData, false));
       }
       setList(items);
     } catch (e: unknown) {
@@ -81,7 +87,7 @@ export default function ParticipantsPanel({
 
   useEffect(() => {
     load();
-  }, [gridId, refreshKey]);
+  }, [gridId, refreshKey, tiersEnabled]);
 
   useEffect(() => () => clearRowClickTimer(), []);
 
@@ -94,14 +100,19 @@ export default function ParticipantsPanel({
       ),
     [list, q, tierEnabled, tierFilter],
   );
+  const latestParticipantId = useMemo(
+    () => list.reduce<number | null>((latest, p) => (latest == null || p.id > latest ? p.id : latest), null),
+    [list],
+  );
   const gridBase = `/grid/${encodeURIComponent(gridCode || String(gridId))}`;
 
   return (
-    <PanelShell title="Participants" error={err}>
+    <div className="h-full" data-onboarding-target="participants-panel">
+    <PanelShell title={t("entity.participants")} error={err}>
       <div className={`grid w-full ${tierEnabled ? "grid-cols-[minmax(0,1fr)_80px]" : "grid-cols-1"} gap-2`}>
         <input
           className="w-full min-w-0 border rounded px-3 py-2 text-sm"
-          placeholder="Search..."
+          placeholder={t("common.search")}
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
@@ -111,7 +122,7 @@ export default function ParticipantsPanel({
               <button
                 type="button"
                 className="flex h-[42px] w-full min-w-0 items-center justify-center gap-1 overflow-hidden rounded border bg-white px-2 py-2"
-                aria-label="Filter by tier"
+                aria-label={t("participants_panel.filter_by_tier")}
               >
                 <span className="flex min-w-0 flex-1 items-center justify-center overflow-hidden">
                   {tierFilter === "ALL" ? <AllTierLabel compact /> : <TierFilterChip tier={tierFilter} />}
@@ -137,11 +148,17 @@ export default function ParticipantsPanel({
         ) : null}
       </div>
 
-      <PanelScrollArea loading={loading} empty={filtered.length === 0} emptyLabel="No participants found">
+      <PanelScrollArea
+        loading={loading}
+        empty={filtered.length === 0}
+        loadingLabel={t("common.loading")}
+        emptyLabel={t("participants_panel.no_participants_found")}
+      >
         <ul className="grid gap-2">
           {filtered.map((p) => (
             <li key={p.id}>
               <button
+                data-onboarding-target={p.id === latestParticipantId ? "participants-latest-row" : undefined}
                 onClick={() => {
                   clearRowClickTimer();
                   rowClickTimerRef.current = window.setTimeout(() => {
@@ -156,7 +173,7 @@ export default function ParticipantsPanel({
                   <div className="min-w-0">
                     <div
                       className="font-medium truncate"
-                      title="Double click to edit participant"
+                      title={t("participants_panel.double_click_edit")}
                       onDoubleClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -191,5 +208,6 @@ export default function ParticipantsPanel({
         onUpdated={load}
       />
     </PanelShell>
+    </div>
   );
 }

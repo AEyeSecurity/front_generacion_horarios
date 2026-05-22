@@ -13,6 +13,13 @@ type Rule = {
   preference: "preferred" | "flexible" | "impossible";
 };
 
+type ParticipantTabEntry = {
+  id: string | number;
+  routeId: string | number;
+  name: string;
+  tier: "PRIMARY" | "SECONDARY" | "TERTIARY" | null;
+};
+
 const EN_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const norm = (t: string) => {
@@ -71,9 +78,56 @@ export default async function ParticipantAvailabilityPage({
     }
   };
 
+  const fetchParticipantTabs = async (): Promise<ParticipantTabEntry[]> => {
+    try {
+      const data = await backendFetchJSON<any>(`/api/participants/?grid=${id}`);
+      const items = Array.isArray(data) ? data : data.results ?? [];
+      return items
+        .filter((p: any) => p?.id != null)
+        .map((p: any) => {
+          const rawTier = typeof p?.tier === "string" ? String(p.tier).toUpperCase() : null;
+          const tier =
+            rawTier === "PRIMARY" || rawTier === "SECONDARY" || rawTier === "TERTIARY"
+              ? rawTier
+              : null;
+          const fullName = `${p?.name ?? ""}${p?.surname ? ` ${p.surname}` : ""}`.trim();
+          return {
+            id: String(p.id),
+            routeId: p.grid_participant_id ?? p.id,
+            name: fullName || `Participant ${p.id}`,
+            tier,
+          };
+        });
+    } catch {
+      try {
+        const data = await backendFetchJSON<any>(`/api/participants?grid=${id}`);
+        const items = Array.isArray(data) ? data : data.results ?? [];
+        return items
+          .filter((p: any) => p?.id != null)
+          .map((p: any) => {
+            const rawTier = typeof p?.tier === "string" ? String(p.tier).toUpperCase() : null;
+            const tier =
+              rawTier === "PRIMARY" || rawTier === "SECONDARY" || rawTier === "TERTIARY"
+                ? rawTier
+                : null;
+            const fullName = `${p?.name ?? ""}${p?.surname ? ` ${p.surname}` : ""}`.trim();
+            return {
+              id: String(p.id),
+              routeId: p.grid_participant_id ?? p.id,
+              name: fullName || `Participant ${p.id}`,
+              tier,
+            };
+          });
+      } catch {
+        return [];
+      }
+    }
+  };
+
   const participant = await fetchParticipant(pid);
   const resolvedParticipantId = String((participant as any)?.id ?? pid);
   const rules = await fetchRules(resolvedParticipantId);
+  const participantTabs = await fetchParticipantTabs();
   const participantName = `${(participant as any).name}${(participant as any).surname ? " " + (participant as any).surname : ""}`;
   const participantLinked = Boolean((participant as any).user_id ?? (participant as any).user);
 
@@ -104,7 +158,7 @@ export default async function ParticipantAvailabilityPage({
   const days = daysIdx.map((i) => EN_DAY[i] ?? String(i));
 
   return (
-    <div className="p-4">
+    <div className="px-4 pb-4">
       <ParticipantDetailContent
         gridId={Number(grid.id)}
         gridCode={String(grid.grid_code || code)}
@@ -122,6 +176,7 @@ export default async function ParticipantAvailabilityPage({
         dayEndHHMM={norm(grid.day_end)}
         rules={rules}
         initialView={initialView}
+        initialParticipantTabs={participantTabs}
       />
     </div>
   );

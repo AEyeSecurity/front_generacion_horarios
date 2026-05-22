@@ -7238,7 +7238,12 @@ export default function SolveOverlay({
       </Dialog>
 
       {previewCandidate && (
-        <div className="fixed inset-0 z-[175] bg-[#f3f4f6]">
+        <div data-candidate-preview-view className="fixed inset-0 z-[175] bg-[#f3f4f6]">
+          <style jsx global>{`
+            body:has([data-candidate-preview-view]) [data-grid-topbar] {
+              display: none !important;
+            }
+          `}</style>
           <div className="h-full flex flex-col">
             <div className="h-14 border-b bg-white px-4 grid grid-cols-[40px_1fr_40px] items-center">
               <button

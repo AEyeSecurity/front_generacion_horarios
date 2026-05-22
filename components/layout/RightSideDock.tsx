@@ -6,6 +6,7 @@ import GlassSurface from "@/components/ui/GlassSurface";
 import { CELL_COLOR_OPTIONS, CELL_TEXT_DARK, CELL_TEXT_LIGHT } from "@/lib/cell-colors";
 
 type ToolKey = "participants" | "break" | "blockage" | "unassigned";
+const GRID_ONBOARDING_RIGHT_FAN_REQUEST_EVENT = "shift:onboarding-right-fan-request";
 
 type ParticipantScrollerItem = {
   id: string;
@@ -207,6 +208,17 @@ export default function RightSideDock({
     if (showToolScroller) setFanOpen(false);
   }, [showToolScroller]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onOnboardingFanRequest = (event: Event) => {
+      const custom = event as CustomEvent<{ open?: boolean }>;
+      setFanOpen(Boolean(custom.detail?.open));
+    };
+    window.addEventListener(GRID_ONBOARDING_RIGHT_FAN_REQUEST_EVENT, onOnboardingFanRequest as EventListener);
+    return () =>
+      window.removeEventListener(GRID_ONBOARDING_RIGHT_FAN_REQUEST_EVENT, onOnboardingFanRequest as EventListener);
+  }, []);
+
   const activeScroller = useMemo(() => {
     if (showParticipantScroller) return "participants" as const;
     if (showUnassignedScroller) return "unassigned" as const;
@@ -265,7 +277,7 @@ export default function RightSideDock({
           )}
 
           {!pendingCandidateReview && !showToolScroller && (
-            <div className="relative h-12 w-12 pointer-events-auto" data-jiggle-tools>
+            <div className="relative h-12 w-12 pointer-events-auto" data-jiggle-tools data-onboarding-target="right-dock-fan">
               <div
                 className={`absolute inset-0 pointer-events-none transition-all duration-200 ${
                   fanOpen ? "opacity-100 scale-100" : "opacity-0 scale-95"
@@ -300,7 +312,7 @@ export default function RightSideDock({
                 {
                   key: "break" as const,
                   title: labels.breaks,
-                  icon: <Coffee className="h-5 w-5" />,
+                  icon: <Coffee className="h-6 w-6" />,
                   active: isBreakToolActive,
                   disabled: !hasPlacedCells,
                   onClick: () => onActivateTool?.("break"),
@@ -310,7 +322,7 @@ export default function RightSideDock({
                 {
                   key: "blockage" as const,
                   title: labels.blockages,
-                  icon: <CircleOff className="h-5 w-5" />,
+                  icon: <CircleOff className="h-6 w-6" />,
                   active: isBlockageToolActive,
                   disabled: false,
                   onClick: () => onActivateTool?.("blockage"),
@@ -338,6 +350,7 @@ export default function RightSideDock({
                     key={action.key}
                     type="button"
                     data-onboarding-target={action.onboardingTarget}
+                    data-onboarding-active={action.active ? "true" : undefined}
                     title={action.title}
                     disabled={action.disabled}
                     onClick={(event) => {
@@ -371,7 +384,7 @@ export default function RightSideDock({
                 }`}
                 aria-disabled={!canManualEditCards}
               >
-                <Plus className={`w-5 h-5 ${iconClass} transition-transform duration-200 ${fanOpen ? "rotate-45" : "rotate-0"}`} />
+                <Plus className={`w-5 h-5 ${iconClass}`} />
               </button>
             </div>
           )}
