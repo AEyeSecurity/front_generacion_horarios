@@ -46,7 +46,9 @@ const TOOLTIP_GAP = 16;
 const GRID_LEFT_PANEL_STATE_EVENT = "shift:grid-left-panel-state";
 const GRID_ONBOARDING_LEFT_PANEL_REQUEST_EVENT = "shift:onboarding-left-panel-request";
 const GRID_ONBOARDING_RIGHT_FAN_REQUEST_EVENT = "shift:onboarding-right-fan-request";
+const GRID_ONBOARDING_RIGHT_TOOL_REQUEST_EVENT = "shift:onboarding-right-tool-request";
 const TIME_RANGE_SAVED_EVENT = "shift:onboarding-time-range-saved";
+const AVAILABILITY_RULE_CREATED_EVENT = "shift:onboarding-availability-rule-created";
 
 const SELECTORS = {
   leftDock: "#sidedock",
@@ -59,6 +61,10 @@ const SELECTORS = {
   participantsAddButton: '[data-onboarding-target="participants-add-button"]',
   participantDialog: '[data-onboarding-target="participant-dialog"]',
   participantsLatestRow: '[data-onboarding-target="participants-latest-row"]',
+  participantDetailPage: '[data-onboarding-target="participant-detail-page"]',
+  availabilityAddRuleButton: '[data-onboarding-target="availability-add-rule-button"]',
+  availabilityRuleDialog: '[data-onboarding-target="availability-rule-dialog"]',
+  availabilityRuleLatest: '[data-onboarding-target="availability-rule-latest"]',
   categoriesPanel: '[data-onboarding-target="categories-panel"]',
   categoriesAddButton: '[data-onboarding-target="categories-add-button"]',
   categoriesLatestRow: '[data-onboarding-target="categories-latest-row"]',
@@ -310,7 +316,9 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
   const [timeRangesCount, setTimeRangesCount] = useState(0);
   const [cellsCount, setCellsCount] = useState(0);
   const [timeRangeSavedInStep, setTimeRangeSavedInStep] = useState(false);
+  const [availabilityRuleCreatedInStep, setAvailabilityRuleCreatedInStep] = useState(false);
   const [blockagePhase, setBlockagePhase] = useState<BlockageGuidePhase>("tool");
+  const [blockageToolRequested, setBlockageToolRequested] = useState(false);
   const [leftPanelState, setLeftPanelState] = useState<LeftPanelState>({ open: false, tab: null });
   const [categoryBaseline, setCategoryBaseline] = useState<number | null>(null);
   const [unitBaseline, setUnitBaseline] = useState<number | null>(null);
@@ -375,6 +383,11 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
     window.dispatchEvent(new CustomEvent<{ open: boolean }>(GRID_ONBOARDING_RIGHT_FAN_REQUEST_EVENT, { detail: { open } }));
   }, []);
 
+  const requestRightTool = useCallback((tool: "blockage") => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent<{ tool: "blockage" }>(GRID_ONBOARDING_RIGHT_TOOL_REQUEST_EVENT, { detail: { tool } }));
+  }, []);
+
   const resolveStepSpotlights = useCallback(
     (currentStep: GuideStep, currentViewport: Viewport, panelState: LeftPanelState) => {
       const leftDock =
@@ -421,6 +434,7 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
       const rightSolve = querySpotlight(SELECTORS.rightSolve, "right-solve", currentViewport);
       const rightFanToggle = querySpotlight(SELECTORS.rightFanToggle, "right-fan-toggle", currentViewport);
       const rightBlockage = querySpotlight(SELECTORS.rightBlockage, "right-blockage", currentViewport);
+      const blockageToolActiveForGuide = isBlockageToolActive();
 
       if (currentStep === 0) return [leftDock, rightDock].filter(Boolean) as SpotlightRect[];
       if (currentStep === 1) {
@@ -430,6 +444,9 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
         return leftParticipants ? [leftParticipants] : [];
       }
       if (currentStep === 2) {
+        if (!panelState.open || panelState.tab !== "categories") {
+          return leftCategories ? [leftCategories] : [];
+        }
         if (categoryValueLatestRow && !dismissedCreatedHighlights.categoryValue) {
           return [categoryValueLatestRow, categoryDialog].filter(Boolean) as SpotlightRect[];
         }
@@ -451,6 +468,9 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
         return leftCategories ? [leftCategories] : [];
       }
       if (currentStep === 3) {
+        if (!panelState.open || panelState.tab !== "time-ranges") {
+          return leftTimeRanges ? [leftTimeRanges] : [];
+        }
         if (panelState.open && panelState.tab === "time-ranges" && timeRangeBaseline != null && timeRangesCount > timeRangeBaseline && !timeRangeSavedInStep && timeRangeLatestCard) {
           return [timeRangeLatestCard];
         }
@@ -462,12 +482,18 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
         return leftTimeRanges ? [leftTimeRanges] : [];
       }
       if (currentStep === 4) {
-        if (isBlockageToolActive()) {
+        if (blockageToolActiveForGuide) {
           if (blockagePhase === "tabs") {
-            if (globalBlockageTab) return [globalBlockageTab];
+            if (globalBlockageTab) return [globalBlockageTab, ...asPassiveSpotlight(unitTabs)];
             if (unitTabs) return [unitTabs];
+            return [];
           }
-          if (scheduleScroll) return [scheduleScroll];
+          if (blockagePhase === "schedule") {
+            if (scheduleScroll) return [scheduleScroll];
+          }
+          if (globalBlockageTab) return [globalBlockageTab, ...asPassiveSpotlight(unitTabs)];
+          if (unitTabs) return [unitTabs];
+          return [];
         }
         if (rightBlockage) return [rightBlockage];
         const fallback = rightFanToggle ?? rightSolve;
@@ -475,14 +501,18 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
       }
       if (currentStep === 5) {
         if (cellDialog) return [cellDialog];
-        if (cellCreateButton) return [cellCreateButton];
-        if (cellsCount > 0) return asPassiveSpotlight(cellsPage ?? leftCells);
+        if (cellsPage) {
+          if (cellCreateButton) return [cellCreateButton];
+          if (cellsCount > 0) return asPassiveSpotlight(cellsPage);
+          return [cellsPage];
+        }
         return leftCells ? [leftCells] : [];
       }
       return [];
     },
     [
       blockagePhase,
+      blockageToolRequested,
       categoriesCount,
       cellsCount,
       dismissedCreatedHighlights,
@@ -495,6 +525,18 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
 
   const goToStep = useCallback(
     async (nextStep: GuideStep) => {
+      if (nextStep !== 1) {
+        setLeftPanelState({ open: false, tab: null });
+        requestLeftPanel(null);
+      }
+      if (nextStep !== 4) {
+        requestRightFan(false);
+      }
+      if (nextStep === 4) {
+        setBlockagePhase("tool");
+        setBlockageToolRequested(false);
+        requestRightFan(false);
+      }
       if (typeof window !== "undefined") {
         window.localStorage.setItem(stepKey, String(nextStep));
       }
@@ -524,7 +566,7 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
         setCellBaseline(nextCount);
       }
     },
-    [gridCode, gridId, pathname, router, stepKey],
+    [gridCode, gridId, pathname, requestLeftPanel, requestRightFan, router, stepKey],
   );
 
   useEffect(() => {
@@ -597,14 +639,16 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
     if (!active) return;
     if (step !== 4) {
       setBlockagePhase("tool");
+      setBlockageToolRequested(false);
       return;
     }
     if (!isBlockageToolActive()) {
       setBlockagePhase("tool");
       return;
     }
+    setBlockageToolRequested(false);
     setBlockagePhase((prev) => (prev === "tool" ? "tabs" : prev));
-  }, [active, step, spotlights]);
+  }, [active, blockageToolRequested, step, spotlights]);
 
   useEffect(() => {
     if (!active) return;
@@ -614,18 +658,31 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
       return;
     }
     if (step === 2) {
-      requestLeftPanel("categories");
+      if (leftPanelState.open && leftPanelState.tab !== "categories") {
+        requestLeftPanel(null);
+      }
       requestRightFan(false);
       return;
     }
     if (step === 3) {
-      requestLeftPanel("time-ranges");
+      if (leftPanelState.open && leftPanelState.tab !== "time-ranges") {
+        requestLeftPanel(null);
+      }
+      requestRightFan(false);
+      return;
+    }
+    if (step === 5) {
+      if (leftPanelState.open) {
+        requestLeftPanel(null);
+      }
       requestRightFan(false);
       return;
     }
     requestLeftPanel(null);
-    requestRightFan(step === 4);
-  }, [active, requestLeftPanel, requestRightFan, step]);
+    if (step !== 4) {
+      requestRightFan(false);
+    }
+  }, [active, blockagePhase, leftPanelState.open, leftPanelState.tab, requestLeftPanel, requestRightFan, step]);
 
   useEffect(() => {
     if (!active) return;
@@ -795,12 +852,18 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
 
       const timeRangeHasPendingSave =
         step === 3 && timeRangeBaseline != null && timeRangesCount > timeRangeBaseline && !timeRangeSavedInStep;
+      const categoryStepEngaged = leftPanelState.open && leftPanelState.tab === "categories";
+      const timeRangeStepEngaged = leftPanelState.open && leftPanelState.tab === "time-ranges";
+      const cellStepEngaged = Boolean(document.querySelector(SELECTORS.cellsPage));
       const completedStepTargets =
-        step === 2 && hasExistingCategorySetup(categoryBaseline, unitBaseline)
+        step === 2 && categoryStepEngaged && hasExistingCategorySetup(categoryBaseline, unitBaseline)
           ? [SELECTORS.categoriesPanel, SELECTORS.categoriesAddButton, SELECTORS.categoryDialog]
-          : step === 3 && !timeRangeHasPendingSave && ((timeRangeBaseline != null && timeRangeBaseline > 0) || timeRangeSavedInStep)
+          : step === 3 &&
+            timeRangeStepEngaged &&
+            !timeRangeHasPendingSave &&
+            ((timeRangeBaseline != null && timeRangeBaseline > 0) || timeRangeSavedInStep)
           ? [SELECTORS.timeRangesPanel, SELECTORS.timeRangesAddRow]
-          : step === 5 && cellsCount > 0
+          : step === 5 && cellStepEngaged && cellsCount > 0
           ? [SELECTORS.cellsPage, SELECTORS.cellCreateButton, SELECTORS.cellDialog]
           : [];
 
@@ -839,6 +902,12 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
         setBlockagePhase("schedule");
         return;
       }
+      if (step === 4 && spotlights.some((rect) => rect.id === "right-blockage" && pointInside(rect, event.clientX, event.clientY))) {
+        requestRightTool("blockage");
+        setBlockageToolRequested(true);
+        setBlockagePhase("tool");
+        return;
+      }
       if (step === 4 && spotlights.some((rect) => rect.id === "schedule-grid" && pointInside(rect, event.clientX, event.clientY))) {
         forwardPointerDownOnly(event);
         return;
@@ -846,22 +915,27 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
       const allowedSelectors =
         step === 1
           ? [SELECTORS.leftParticipants, SELECTORS.participantsPanel, SELECTORS.participantsAddButton, SELECTORS.participantDialog]
-          : step === 2
-          ? [
-              SELECTORS.leftCategories,
-              SELECTORS.categoriesPanel,
-              SELECTORS.categoriesAddButton,
-              SELECTORS.categoryDialog,
-              SELECTORS.categoryValueAddRow,
-              SELECTORS.categoryValueLatestRow,
-              SELECTORS.unitTabs,
-            ]
+        : step === 2
+          ? leftPanelState.open && leftPanelState.tab === "categories"
+            ? [
+                SELECTORS.categoriesPanel,
+                SELECTORS.categoriesAddButton,
+                SELECTORS.categoryDialog,
+                SELECTORS.categoryValueAddRow,
+                SELECTORS.categoryValueLatestRow,
+                SELECTORS.unitTabs,
+              ]
+            : [SELECTORS.leftCategories]
           : step === 3
-          ? [SELECTORS.leftTimeRanges, SELECTORS.timeRangesPanel, SELECTORS.timeRangesAddRow, SELECTORS.timeRangeLatestCard]
+          ? leftPanelState.open && leftPanelState.tab === "time-ranges"
+            ? [SELECTORS.timeRangesPanel, SELECTORS.timeRangesAddRow, SELECTORS.timeRangeLatestCard]
+            : [SELECTORS.leftTimeRanges]
           : step === 4
           ? [SELECTORS.rightFanToggle, SELECTORS.rightBlockage, SELECTORS.rightFan, SELECTORS.globalBlockageTab, SELECTORS.unitTabs]
           : step === 5
-          ? [SELECTORS.leftCells, SELECTORS.cellCreateButton, SELECTORS.cellDialog, SELECTORS.cellsPage]
+          ? document.querySelector(SELECTORS.cellsPage)
+            ? [SELECTORS.cellCreateButton, SELECTORS.cellDialog, SELECTORS.cellsPage]
+            : [SELECTORS.leftCells]
           : [];
       forwardInteraction(event, allowedSelectors);
     },
@@ -872,6 +946,9 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
       forwardInteraction,
       forwardPointerDownOnly,
       goToStep,
+      leftPanelState.open,
+      leftPanelState.tab,
+      requestRightTool,
       participantsCount,
       spotlights,
       step,
@@ -896,9 +973,11 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
       ];
     }
     if (step === 2) {
+      if (!leftPanelState.open || leftPanelState.tab !== "categories") {
+        return [...uiSelectors, SELECTORS.leftCategories];
+      }
       return [
         ...uiSelectors,
-        SELECTORS.leftCategories,
         SELECTORS.categoriesPanel,
         SELECTORS.categoriesAddButton,
         SELECTORS.categoryDialog,
@@ -908,13 +987,10 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
       ];
     }
     if (step === 3) {
-      return [
-        ...uiSelectors,
-        SELECTORS.leftTimeRanges,
-        SELECTORS.timeRangesPanel,
-        SELECTORS.timeRangesAddRow,
-        SELECTORS.timeRangeLatestCard,
-      ];
+      if (!leftPanelState.open || leftPanelState.tab !== "time-ranges") {
+        return [...uiSelectors, SELECTORS.leftTimeRanges];
+      }
+      return [...uiSelectors, SELECTORS.timeRangesPanel, SELECTORS.timeRangesAddRow, SELECTORS.timeRangeLatestCard];
     }
     if (step === 4) {
       return [
@@ -928,10 +1004,13 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
       ].filter(Boolean);
     }
     if (step === 5) {
-      return [...uiSelectors, SELECTORS.leftCells, SELECTORS.cellsPage, SELECTORS.cellCreateButton, SELECTORS.cellDialog];
+      if (!document.querySelector(SELECTORS.cellsPage)) {
+        return [...uiSelectors, SELECTORS.leftCells];
+      }
+      return [...uiSelectors, SELECTORS.cellsPage, SELECTORS.cellCreateButton, SELECTORS.cellDialog];
     }
     return uiSelectors;
-  }, [spotlights, step]);
+  }, [leftPanelState.open, leftPanelState.tab, spotlights, step]);
 
   useEffect(() => {
     if (!active) return;
@@ -1013,7 +1092,22 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
   const timeRangeHasPendingSave =
     step === 3 && timeRangeBaseline != null && timeRangesCount > timeRangeBaseline && !timeRangeSavedInStep;
   const canMoveForward = step === 6 ? true : (step !== 1 || participantsCount > 0) && !timeRangeHasPendingSave;
-  const canSkipCurrentStep = step >= 2 && step <= 5;
+  const optionalStepEngaged =
+    (step === 2 &&
+      (categoriesPanelOpen ||
+        categoryDialogVisible ||
+        categoryValueAddVisible ||
+        primarySpotlight?.id === "categories-latest-row" ||
+        primarySpotlight?.id === "category-value-latest-row" ||
+        unitTabsVisible)) ||
+    (step === 3 && (timeRangesPanelOpen || primarySpotlight?.id === "time-range-latest-card")) ||
+    (step === 4 &&
+      (primarySpotlight?.id === "right-blockage" ||
+        blockagePhase !== "tool" ||
+        blockageToolRequested ||
+        isBlockageToolActive())) ||
+    (step === 5 && primarySpotlight?.id !== "left-cells");
+  const canSkipCurrentStep = step >= 2 && step <= 5 && !optionalStepEngaged;
 
   const moveBackward = () => {
     if (step <= 0) return;
@@ -1024,6 +1118,10 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
     if (!canMoveForward) return;
     if (step === 6) {
       finishGuide();
+      return;
+    }
+    if (step === 4 && isBlockageToolActive() && blockagePhase === "tool") {
+      setBlockagePhase("tabs");
       return;
     }
     if (step === 4 && blockagePhase === "tabs") {

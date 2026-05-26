@@ -7,6 +7,12 @@ import { CELL_COLOR_OPTIONS, CELL_TEXT_DARK, CELL_TEXT_LIGHT } from "@/lib/cell-
 
 type ToolKey = "participants" | "break" | "blockage" | "unassigned";
 const GRID_ONBOARDING_RIGHT_FAN_REQUEST_EVENT = "shift:onboarding-right-fan-request";
+const GRID_ONBOARDING_RIGHT_TOOL_REQUEST_EVENT = "shift:onboarding-right-tool-request";
+const TOOL_KEYS: ToolKey[] = ["participants", "break", "blockage", "unassigned"];
+
+function isToolKey(value: unknown): value is ToolKey {
+  return typeof value === "string" && TOOL_KEYS.includes(value as ToolKey);
+}
 
 type ParticipantScrollerItem = {
   id: string;
@@ -219,6 +225,20 @@ export default function RightSideDock({
       window.removeEventListener(GRID_ONBOARDING_RIGHT_FAN_REQUEST_EVENT, onOnboardingFanRequest as EventListener);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onOnboardingToolRequest = (event: Event) => {
+      const custom = event as CustomEvent<{ tool?: unknown }>;
+      const tool = custom.detail?.tool;
+      if (!isToolKey(tool)) return;
+      onActivateTool?.(tool);
+      setFanOpen(false);
+    };
+    window.addEventListener(GRID_ONBOARDING_RIGHT_TOOL_REQUEST_EVENT, onOnboardingToolRequest as EventListener);
+    return () =>
+      window.removeEventListener(GRID_ONBOARDING_RIGHT_TOOL_REQUEST_EVENT, onOnboardingToolRequest as EventListener);
+  }, [onActivateTool]);
+
   const activeScroller = useMemo(() => {
     if (showParticipantScroller) return "participants" as const;
     if (showUnassignedScroller) return "unassigned" as const;
@@ -384,7 +404,7 @@ export default function RightSideDock({
                 }`}
                 aria-disabled={!canManualEditCards}
               >
-                <Plus className={`w-5 h-5 ${iconClass}`} />
+                <Plus className={`w-5 h-5 ${iconClass} transition-transform duration-200 ${fanOpen ? "rotate-45" : "rotate-0"}`} />
               </button>
             </div>
           )}

@@ -421,7 +421,7 @@ const EN_US = {
   "onboarding.blockage_step_select_tool":
     "Now choose the blockage tool.",
   "onboarding.blockage_step_tabs":
-    "Use these tabs to choose between global blockages and blockages for a specific unit.",
+    "Use the globe tab for global blockages. Choose a unit tab when the blockage only applies to that unit.",
   "onboarding.blockage_step_click_timetable":
     "Click anywhere on the timetable where you would like to add a blockage. Click outside the timetable to leave edit mode.",
   "onboarding.cell_step_title": "Create your first cell",
@@ -437,7 +437,7 @@ const EN_US = {
   "solver_wizard.go_to_step": "Go to step {step}",
   "solver_wizard.step_x_of_y": "Step {step} of {total}",
   "solver_wizard.previous_step": "Previous step",
-  "solver_wizard.next_step": "Next step",
+  "solver_wizard.next_step": "Next",
   "solver_wizard.org_type": "Organization type",
   "solver_wizard.org_type_school": "School",
   "solver_wizard.org_type_work": "Work",
@@ -550,6 +550,7 @@ const EN_US = {
   "solver_wizard.other_context_label": "Briefly describe your scheduling case",
   "solver_wizard.other_context_placeholder":
     "Example: rotating shifts for a small clinic, music academy schedules, church volunteers...",
+  "solver_wizard.other_context_placeholder_short": "Example: rotating shifts",
   "solver_wizard.other_context_helper":
     "This helps us understand new scheduling use cases and improve the system.",
   "solver_wizard.validation_organization_required": "Please select where you will use this schedule.",
@@ -1119,7 +1120,7 @@ const ES_AR: Dictionary = {
   "onboarding.blockage_step_select_tool":
     "Ahora elegi la herramienta de bloqueo.",
   "onboarding.blockage_step_tabs":
-    "Usa estas pestanas para elegir entre bloqueos globales y bloqueos para una unidad especifica.",
+    "Usa la pestana global para bloqueos globales. Elegi una pestana de unidad si el bloqueo aplica solo a esa unidad.",
   "onboarding.blockage_step_click_timetable":
     "Hace click en el horario donde quieras agregar un bloqueo. Hace click fuera del horario para salir del modo edicion.",
   "onboarding.cell_step_title": "Crea tu primera celda",
@@ -1135,7 +1136,7 @@ const ES_AR: Dictionary = {
   "solver_wizard.go_to_step": "Ir al paso {step}",
   "solver_wizard.step_x_of_y": "Paso {step} de {total}",
   "solver_wizard.previous_step": "Paso anterior",
-  "solver_wizard.next_step": "Paso siguiente",
+  "solver_wizard.next_step": "Siguiente",
   "solver_wizard.org_type": "Tipo de organizacion",
   "solver_wizard.org_type_school": "Escuela",
   "solver_wizard.org_type_work": "Trabajo",
@@ -1276,6 +1277,8 @@ const ES_AR: Dictionary = {
     "Describí brevemente tu caso de horarios",
   "solver_wizard.other_context_placeholder":
     "Ejemplo: guardias rotativas para una clínica, horarios de una academia de música, voluntarios de una iglesia...",
+  "solver_wizard.other_context_placeholder_short":
+    "Ejemplo: guardias rotativas",
   "solver_wizard.other_context_helper":
     "Esto nos ayuda a entender nuevos casos de uso y mejorar el sistema.",
   "solver_wizard.validation_organization_required":

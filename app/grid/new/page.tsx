@@ -486,28 +486,75 @@ export default function NewGridPage() {
     setStep(target);
   }
 
-  const questionCardClass = "rounded-xl border border-gray-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
+  const questionCardClass = "rounded-xl bg-white p-0";
+  const stepPanelClass = "h-[clamp(300px,45dvh,410px)] overflow-y-auto px-1 pr-2 space-y-4";
+  const headerStepNumbers = [1, 2, 3, 4] as const;
 
   return (
-    <div className="min-h-screen bg-[#f0ebf8] py-10 px-4">
-      <div className="max-w-3xl mx-auto space-y-4">
-        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-          <div className="h-2 bg-[#673AB7]" />
-
-          <div className="px-6 py-5 border-b border-gray-100">
+    <div className="min-h-screen bg-[#f0ebf8] px-4 py-3 md:py-4">
+      <div className="mx-auto max-w-3xl">
+        <div className="flex h-[min(740px,calc(100dvh-1.5rem))] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-100 px-6 pt-3 pb-7">
             <h1 className="text-2xl font-semibold text-gray-900">{tt("solver_wizard.title", "Create New Grid")}</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              {tt("solver_wizard.step_x_of_y", "Step {step} of {total}", { step, total: 4 })}
-            </p>
+            <div className="mt-3 flex justify-center">
+              <div className="flex w-full max-w-md items-center">
+                {headerStepNumbers.map((stepNumber, index) => {
+                  const enabled = canGoToStep(stepNumber) && !loading;
+                  const isActive = step === stepNumber;
+                  const isComplete = step > stepNumber;
+                  return (
+                    <div key={stepNumber} className={`flex items-center ${index === headerStepNumbers.length - 1 ? "flex-none" : "flex-1"}`}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!enabled) return;
+                          handleStepChange(stepNumber);
+                        }}
+                        disabled={!enabled}
+                        className={`h-9 w-9 rounded-full border-2 text-sm font-semibold transition-colors ${
+                          isComplete || isActive
+                            ? "border-black bg-black text-white"
+                            : enabled
+                            ? "border-gray-300 bg-white text-gray-700"
+                            : "border-gray-200 bg-gray-100 text-gray-400"
+                        }`}
+                        aria-label={tt("solver_wizard.go_to_step", "Go to step {step}", { step: stepNumber })}
+                      >
+                        {isComplete ? (
+                          <svg viewBox="0 0 24 24" className="mx-auto h-4 w-4" aria-hidden="true">
+                            <path
+                              d="M5 13l4 4L19 7"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        ) : isActive ? (
+                          <span className="mx-auto block h-2.5 w-2.5 rounded-full bg-white" />
+                        ) : (
+                          stepNumber
+                        )}
+                      </button>
+                      {index < headerStepNumbers.length - 1 ? (
+                        <div className={`mx-2 h-0.5 flex-1 rounded ${step > stepNumber ? "bg-black" : "bg-gray-200"}`} />
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
-          <div className="p-6">
+          <div className="min-h-0 flex-1 px-6 py-7">
             <Stepper
               currentStep={step}
+              hideStepIndicators
               onStepChange={handleStepChange}
               onFinalStepCompleted={() => void createGrid()}
               backButtonText={tt("solver_wizard.previous_step", "Previous step")}
-              nextButtonText={tt("solver_wizard.next_step", "Next step")}
+              nextButtonText={tt("solver_wizard.next_step", "Next")}
               completeButtonText={loading ? tt("solver_wizard.creating", "Creating...") : tt("solver_wizard.create_grid", "Create Grid")}
               nextButtonProps={{
                 disabled:
@@ -515,50 +562,21 @@ export default function NewGridPage() {
                   (step === 1 && !step1Valid) ||
                   (step === 2 && !step2Valid) ||
                   (step === 3 && !step3Valid),
+                className:
+                  "duration-350 flex min-w-[112px] items-center justify-center whitespace-nowrap rounded-2xl bg-black px-7 py-3 text-base font-medium leading-none tracking-tight text-white transition hover:bg-black/90 active:bg-black/80 disabled:opacity-50",
               }}
-              backButtonProps={{ disabled: loading }}
-              stepCircleContainerClassName="mt-4 max-w-full rounded-xl border-0 shadow-none"
-              stepContainerClassName="px-2 py-0"
+              backButtonProps={{
+                disabled: loading,
+                className:
+                  "duration-350 rounded-2xl px-5 py-3 text-base font-medium leading-none text-neutral-900 transition hover:text-neutral-700 disabled:opacity-50",
+              }}
+              stepCircleContainerClassName="mt-0 max-w-2xl rounded-xl border-0 shadow-none"
               contentClassName="px-0"
-              footerClassName="px-0 pb-0"
+              footerClassName="px-0 pb-0 [&>div]:mt-8"
               className="min-h-0 p-0"
-              renderStepIndicator={({ step: stepNumber, currentStep, onStepClick }) => {
-                const stepIdx = stepNumber as 1 | 2 | 3 | 4;
-                const enabled = canGoToStep(stepIdx) && !loading;
-                const isActive = currentStep === stepNumber;
-                const isComplete = currentStep > stepNumber;
-                return (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!enabled) return;
-                      onStepClick(stepNumber);
-                    }}
-                    disabled={!enabled}
-                    className={`h-9 w-9 rounded-full border-2 text-sm font-semibold transition-colors ${
-                      isComplete || isActive
-                        ? "border-black bg-black text-white"
-                        : enabled
-                        ? "border-gray-300 bg-white text-gray-700"
-                        : "border-gray-200 bg-gray-100 text-gray-400"
-                    }`}
-                    aria-label={tt("solver_wizard.go_to_step", "Go to step {step}", { step: stepNumber })}
-                  >
-                    {isComplete ? (
-                      <svg viewBox="0 0 24 24" className="mx-auto h-4 w-4" aria-hidden="true">
-                        <path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    ) : isActive ? (
-                      <span className="mx-auto block h-2.5 w-2.5 rounded-full bg-white" />
-                    ) : (
-                      stepNumber
-                    )}
-                  </button>
-                );
-              }}
             >
               <Step>
-                <div className="space-y-4">
+                <div className={stepPanelClass}>
                   {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
                   <section className={questionCardClass}>
                     <h2 className="text-base font-medium text-gray-900">{tt("solver_wizard.section_basics", "Grid basics")}</h2>
@@ -634,7 +652,7 @@ export default function NewGridPage() {
               </Step>
 
               <Step>
-                <div className="space-y-4">
+                <div className={stepPanelClass}>
                   {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
                   <section className={questionCardClass}>
                     <h2 className="text-base font-medium text-gray-900">
@@ -643,58 +661,53 @@ export default function NewGridPage() {
                     <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
                       {orgOptions.map((option) => {
                         const selected = organizationType === option.key;
+                        const isOther = option.key === "other";
                         return (
-                          <button
+                          <div
                             key={option.key}
-                            type="button"
+                            role="button"
+                            tabIndex={0}
                             onClick={() => selectOrganization(option.key)}
-                            className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                selectOrganization(option.key);
+                              }
+                            }}
+                            className={`min-h-[104px] rounded-xl border px-3 py-3 text-left transition-colors ${
                               selected
                                 ? "border-black bg-black text-white"
                                 : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
                             }`}
                           >
                             <div className="text-sm font-medium">{option.label}</div>
-                            <div className={`mt-1 text-xs ${selected ? "text-gray-200" : "text-gray-500"}`}>{option.description}</div>
-                          </button>
+                            {isOther && selected ? null : (
+                              <div className={`mt-1 text-xs ${selected ? "text-gray-200" : "text-gray-500"}`}>{option.description}</div>
+                            )}
+                            {isOther && selected ? (
+                              <input
+                                className="mt-2 w-full rounded-md border border-white/30 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400"
+                                value={otherContextDescription}
+                                onClick={(event) => event.stopPropagation()}
+                                onKeyDown={(event) => event.stopPropagation()}
+                                onChange={(event) => setOtherContextDescription(event.target.value)}
+                                placeholder={tt(
+                                  "solver_wizard.other_context_placeholder_short",
+                                  "Example: rotating shifts",
+                                )}
+                                maxLength={500}
+                              />
+                            ) : null}
+                          </div>
                         );
                       })}
                     </div>
-
-                    {organizationType === "other" ? (
-                      <div className="mt-5 space-y-1.5">
-                        <label className="block text-sm text-gray-700">
-                          {tt("solver_wizard.other_context_label", "Briefly describe your scheduling case")}
-                        </label>
-                        <textarea
-                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm resize-none"
-                          value={otherContextDescription}
-                          onChange={(event) => setOtherContextDescription(event.target.value)}
-                          placeholder={tt(
-                            "solver_wizard.other_context_placeholder",
-                            "Example: rotating shifts for a small clinic, music academy schedules, church volunteers...",
-                          )}
-                          maxLength={500}
-                          rows={3}
-                        />
-                        <div className="flex items-center justify-between text-xs text-gray-500">
-                          <span>
-                            {tt(
-                              "solver_wizard.other_context_helper",
-                              "This helps us understand new scheduling use cases and improve the system.",
-                            )}
-                          </span>
-                          <span>{`${trimmedOtherDescription.length}/500`}</span>
-                        </div>
-                      </div>
-                    ) : null}
-
                   </section>
                 </div>
               </Step>
 
               <Step>
-                <div className="space-y-4">
+                <div className={stepPanelClass}>
                   {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
                   <section className={questionCardClass}>
                     <h2 className="text-base font-medium text-gray-900">{unitNatureQuestion}</h2>
@@ -734,7 +747,7 @@ export default function NewGridPage() {
               </Step>
 
               <Step>
-                <div className="space-y-4">
+                <div className={stepPanelClass}>
                   {err ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div> : null}
                   <section className={questionCardClass}>
                     <h2 className="text-base font-medium text-gray-900">{tt("solver_wizard.section_confirm", "Confirmation")}</h2>
