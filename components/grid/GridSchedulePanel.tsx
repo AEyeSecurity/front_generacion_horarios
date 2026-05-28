@@ -82,6 +82,8 @@ type SchedulePlacement = {
   source_cell_id?: string | number | null;
   bundle?: string | number | null;
   bundle_id?: string | number | null;
+  units?: Array<string | number> | null;
+  unit_ids?: Array<string | number> | null;
   day_index: number;
   start_slot: number;
   end_slot: number;
@@ -178,6 +180,7 @@ const DAY_LABEL_TO_INDEX: Record<string, number> = {
 };
 const GRID_COMMENTS_PANEL_STATE_EVENT = "shift:grid-comments-panel-state";
 const GRID_LEFT_PANEL_STATE_EVENT = "shift:grid-left-panel-state";
+const CATEGORY_VALUES_UPDATED_EVENT = "shift:category-values-updated";
 
 const readEntityId = (value: unknown): string | null => {
   if (value == null) return null;
@@ -187,6 +190,31 @@ const readEntityId = (value: unknown): string | null => {
     if (typeof id === "string" || typeof id === "number") return String(id);
   }
   return null;
+};
+
+const readEntityIdArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => readEntityId(item))
+    .filter((id): id is string => id != null);
+};
+
+const getBundleUnitIds = (bundle: unknown): string[] => {
+  if (!bundle || typeof bundle !== "object") return [];
+  const source = bundle as Record<string, unknown>;
+  const candidates = [
+    source.units,
+    source.unit_ids,
+    source.unitIds,
+    source.category_values,
+    source.categoryValues,
+    source.values,
+  ];
+  for (const candidate of candidates) {
+    const ids = readEntityIdArray(candidate);
+    if (ids.length > 0) return ids;
+  }
+  return [];
 };
 
 const parseClockToMin = (value: string) => {
@@ -250,6 +278,36 @@ const normalizeDraftHistory = (value: unknown): DraftHistory => {
   };
 };
 
+const normalizeUnitsCollection = (
+  payload: unknown,
+  fallbackName: (id: string | number) => string,
+): Unit[] => {
+  const list =
+    Array.isArray(payload)
+      ? payload
+      : payload && typeof payload === "object" && Array.isArray((payload as { results?: unknown[] }).results)
+      ? (payload as { results: unknown[] }).results
+      : [];
+  return list
+    .map((entry) => {
+      const raw = entry as { id?: unknown; name?: unknown };
+      if (raw?.id == null) return null;
+      const id = raw.id as string | number;
+      const name = typeof raw.name === "string" && raw.name.trim() ? raw.name : fallbackName(id);
+      return { id, name };
+    })
+    .filter(Boolean) as Unit[];
+};
+
+const areUnitListsEqual = (a: Unit[], b: Unit[]) => {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (String(a[i]?.id) !== String(b[i]?.id)) return false;
+    if (String(a[i]?.name ?? "") !== String(b[i]?.name ?? "")) return false;
+  }
+  return true;
+};
+
 export default function GridSchedulePanel({
   gridId,
   role,
@@ -286,6 +344,7 @@ export default function GridSchedulePanel({
   const [scheduleViewMode, setScheduleViewMode] = useState<ScheduleViewMode>(
     historyMode ? "published" : "draft",
   );
+  const [unitList, setUnitList] = useState<Unit[]>(units);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [participantsLoading, setParticipantsLoading] = useState(true);
   const [cellById, setCellById] = useState<Record<string, Cell>>({});
@@ -361,6 +420,39 @@ export default function GridSchedulePanel({
       window.removeEventListener(SCHEDULE_VIEW_MODE_EVENT, onModeChanged as EventListener);
     };
   }, [gridId, historyMode]);
+
+  useEffect(() => {
+    setUnitList(units);
+  }, [units]);
+
+  useEffect(() => {
+    if (historyMode) return;
+    let active = true;
+    const syncUnits = async () => {
+      const fallbackName = (id: string | number) => t("format.unit_with_id", { id });
+      const endpoints = [`/api/units?grid=${encodeURIComponent(String(gridId))}`, `/api/units/?grid=${encodeURIComponent(String(gridId))}`];
+      for (const endpoint of endpoints) {
+        try {
+          const response = await authFetch(endpoint, { cache: "no-store" });
+          if (!response.ok) continue;
+          const payload = await response.json().catch(() => ({}));
+          const nextUnits = normalizeUnitsCollection(payload, fallbackName);
+          if (!active) return;
+          setUnitList((prev) => (areUnitListsEqual(prev, nextUnits) ? prev : nextUnits));
+          return;
+        } catch {
+          continue;
+        }
+      }
+    };
+
+    void syncUnits();
+    const intervalId = window.setInterval(() => void syncUnits(), 1500);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [gridId, historyMode, t]);
 
   useEffect(() => {
     if (historyMode) return;
@@ -601,9 +693,27 @@ export default function GridSchedulePanel({
         const contextJson = await fetchGridScreenContext(gridId, scheduleViewMode);
         const participantsList = getContextList<Participant>(contextJson?.participants);
         let cellsList = getContextList<Cell>(contextJson?.cells);
-        const bundlesList = getContextList<Bundle>(contextJson?.bundles);
+        let bundlesList = getContextList<Bundle>(contextJson?.bundles);
         const timeRangesList = getContextList<TimeRange>(contextJson?.time_ranges);
         const availabilityRules = getContextList<AvailabilityRule>(contextJson?.availability_rules);
+        if (bundlesList.length === 0) {
+          const gridQuery = encodeURIComponent(String(gridId));
+          const candidateEndpoints = [`/api/bundles/?grid=${gridQuery}`, `/api/bundles?grid=${gridQuery}`];
+          for (const endpoint of candidateEndpoints) {
+            try {
+              const res = await authFetch(endpoint, { cache: "no-store" });
+              if (!res.ok) continue;
+              const payload = await res.json().catch(() => ({}));
+              const items = Array.isArray(payload) ? payload : Array.isArray(payload?.results) ? payload.results : [];
+              if (items.length > 0) {
+                bundlesList = items as Bundle[];
+                break;
+              }
+            } catch {
+              // try fallback endpoint
+            }
+          }
+        }
         const resolveGridAllowsOverstaffing = async () => {
           const contextGrid = contextJson?.grid;
           if (contextGrid && typeof contextGrid === "object") {
@@ -695,11 +805,36 @@ export default function GridSchedulePanel({
         }
         const bundleNameMap: Record<string, string> = {};
         const bundleUnitsMap: Record<string, string[]> = {};
+        const unitNameToIdMap: Record<string, string> = {};
+        for (const unit of unitListApi) {
+          if (unit?.id == null) continue;
+          const uid = String(unit.id);
+          const uname = String(unit.name || "").trim();
+          if (!uname) continue;
+          unitNameToIdMap[uname.toLowerCase()] = uid;
+        }
         for (const bundle of bundlesList) {
           if (bundle?.id == null) continue;
           const key = String(bundle.id);
           bundleNameMap[key] = bundle.name || t("format.bundle_with_id", { id: key });
-          bundleUnitsMap[key] = Array.isArray(bundle.units) ? bundle.units.map(String) : [];
+          let unitIds = getBundleUnitIds(bundle);
+          if (unitIds.length === 0) {
+            const inferred = String(bundle.name || "")
+              .split("+")
+              .map((token) => token.trim().toLowerCase())
+              .map((token) => unitNameToIdMap[token])
+              .filter((id): id is string => Boolean(id));
+            if (inferred.length > 0) unitIds = Array.from(new Set(inferred)).sort();
+          }
+          bundleUnitsMap[key] = unitIds;
+        }
+        // Fallback for deployments where placements carry bundle_id but bundle records are absent:
+        // treat bundle_id as direct unit id mapping.
+        for (const unit of unitListApi) {
+          if (unit?.id == null) continue;
+          const key = String(unit.id);
+          if (!bundleUnitsMap[key]) bundleUnitsMap[key] = [key];
+          if (!bundleNameMap[key]) bundleNameMap[key] = unit.name || t("format.unit_with_id", { id: key });
         }
 
         const timeRangeMap: Record<string, { name: string; startSlot: number; endSlot: number }> = {};
@@ -800,14 +935,14 @@ export default function GridSchedulePanel({
 
   const participantBoardUnitTabs = useMemo(
     () =>
-      units
+      unitList
         .filter((unit) => {
           const id = String(unit.id).toLowerCase();
           const name = (unit.name || "").toLowerCase();
           return id !== "all" && name !== "all";
         })
         .map((unit) => ({ id: String(unit.id), name: unit.name })),
-    [units],
+    [unitList],
   );
 
   useEffect(() => {
@@ -869,7 +1004,13 @@ export default function GridSchedulePanel({
         readEntityId(item.bundle_id) ??
         readEntityId(item.bundle) ??
         null;
-      const bundleUnitIds = bundleId ? (bundleUnitsById[bundleId] || []).map(String) : [];
+      const placementUnitIds = readEntityIdArray(item.unit_ids ?? item.units);
+      const bundleUnitIds =
+        placementUnitIds.length > 0
+          ? placementUnitIds
+          : bundleId
+          ? (bundleUnitsById[bundleId] || []).map(String)
+          : [];
       const cell = cellById[sourceCellId];
       const cellName = cell?.name || t("format.cell_with_id", { id: sourceCellId });
       const color = cell?.colorHex || cell?.color_hex || undefined;
@@ -1058,6 +1199,16 @@ export default function GridSchedulePanel({
     refreshAfterDraftMutation();
     void loadDraftHistory();
   }, [loadDraftHistory, refreshAfterDraftMutation]);
+
+  useEffect(() => {
+    const onCategoryValuesUpdated = () => {
+      refreshAfterDraftMutation();
+    };
+    window.addEventListener(CATEGORY_VALUES_UPDATED_EVENT, onCategoryValuesUpdated as EventListener);
+    return () => {
+      window.removeEventListener(CATEGORY_VALUES_UPDATED_EVENT, onCategoryValuesUpdated as EventListener);
+    };
+  }, [refreshAfterDraftMutation]);
 
   useEffect(() => {
     void loadDraftHistory();
@@ -1780,7 +1931,7 @@ export default function GridSchedulePanel({
             <UnitTabs
               gridId={gridId}
               role={role}
-              units={units}
+              units={unitList}
               daysCount={days.length}
               dayLabels={days}
               rowPx={effectiveRowPx}

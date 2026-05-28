@@ -1,6 +1,7 @@
 import { backendFetchJSON } from "@/lib/backend";
 import { requireUserOrRedirect } from "@/lib/auth";
 import type { Role } from "@/lib/types";
+import OnboardingGuide from "@/components/grid/OnboardingGuide";
 import ParticipantDetailContent from "@/components/participants/ParticipantDetailContent";
 import { resolveGridByCode } from "../../_helpers";
 
@@ -32,14 +33,18 @@ export default async function ParticipantAvailabilityPage({
   searchParams,
 }: {
   params: Promise<{ code: string; pid: string }>;
-  searchParams?: Promise<{ view?: string }>;
+  searchParams?: Promise<{ view?: string | string[]; onboarding?: string | string[] }>;
 }) {
   const { code, pid } = await params;
   const grid = await resolveGridByCode(code);
   const id = String(grid.id);
   const sp = await searchParams;
+  const onboardingParam = Array.isArray(sp?.onboarding) ? sp?.onboarding[0] : sp?.onboarding;
+  const showOnboarding = onboardingParam === "1" || onboardingParam === "true";
+  const viewParam = sp?.view === "schedule" ? "?view=schedule" : "";
+  const onboardingSuffix = showOnboarding ? `${viewParam ? "&" : "?"}onboarding=1` : "";
   const me = await requireUserOrRedirect(
-    `/grid/${encodeURIComponent(grid.grid_code || code)}/participants/${encodeURIComponent(pid)}${sp?.view === "schedule" ? "?view=schedule" : ""}`,
+    `/grid/${encodeURIComponent(grid.grid_code || code)}/participants/${encodeURIComponent(pid)}${viewParam}${onboardingSuffix}`,
   );
   const initialView = sp?.view === "schedule" ? "schedule" : "rules";
 
@@ -159,6 +164,7 @@ export default async function ParticipantAvailabilityPage({
 
   return (
     <div className="px-4 pb-4">
+      <OnboardingGuide gridId={Number(grid.id)} gridCode={String(grid.grid_code || code)} show={showOnboarding} />
       <ParticipantDetailContent
         gridId={Number(grid.id)}
         gridCode={String(grid.grid_code || code)}

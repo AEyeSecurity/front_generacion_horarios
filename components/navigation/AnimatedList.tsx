@@ -30,6 +30,8 @@ const AnimatedItem: React.FC<AnimatedItemProps> = ({ children, delay = 0, index,
 
 interface AnimatedListProps {
   items?: string[];
+  renderItem?: (item: string, index: number, selected: boolean) => ReactNode;
+  itemKey?: (item: string, index: number) => string;
   onItemSelect?: (item: string, index: number) => void;
   showGradients?: boolean;
   enableArrowNavigation?: boolean;
@@ -65,6 +67,8 @@ const AnimatedList: React.FC<AnimatedListProps> = ({
     'Item 14',
     'Item 15'
   ],
+  renderItem,
+  itemKey,
   onItemSelect,
   showGradients = true,
   enableArrowNavigation = true,
@@ -174,42 +178,46 @@ const AnimatedList: React.FC<AnimatedListProps> = ({
   }, [selectedIndex]);
 
   return (
-    <div className={`relative w-[500px] ${className}`}>
+    <div className={`relative w-full ${className}`}>
       <div
         ref={listRef}
-        className={`max-h-[400px] overflow-y-auto ${
+        className={`overflow-y-auto ${
           displayScrollbar
-            ? '[&::-webkit-scrollbar]:w-[8px] [&::-webkit-scrollbar-track]:bg-[#120F17] [&::-webkit-scrollbar-thumb]:bg-[#222] [&::-webkit-scrollbar-thumb]:rounded-[4px]'
+            ? '[&::-webkit-scrollbar]:w-[8px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-[8px] hover:[&::-webkit-scrollbar-thumb]:bg-gray-400'
             : 'scrollbar-hide'
         }`}
         onScroll={handleScroll}
         style={{
           height: resolvedMaxHeightPx != null ? `${resolvedMaxHeightPx}px` : undefined,
           minHeight: resolvedMaxHeightPx != null ? `${resolvedMaxHeightPx}px` : undefined,
-          maxHeight: resolvedMaxHeightPx != null ? `${resolvedMaxHeightPx}px` : undefined,
+          maxHeight: resolvedMaxHeightPx != null ? `${resolvedMaxHeightPx}px` : '400px',
           padding: `${listPaddingPx}px`,
           scrollbarWidth: displayScrollbar ? 'thin' : 'none',
-          scrollbarColor: '#222 #120F17'
+          scrollbarColor: '#d1d5db transparent'
         }}
       >
         <div className="flex flex-col" style={{ rowGap: `${itemGapPx}px` }}>
           {items.map((item, index) => (
             <AnimatedItem
-              key={index}
+              key={itemKey ? itemKey(item, index) : `${index}-${item}`}
               delay={0.1}
               index={index}
               onMouseEnter={() => handleItemMouseEnter(index)}
               onClick={() => handleItemClick(item, index)}
             >
-              <div
-                data-selected={resolvedSelectedIndex === index ? 'true' : 'false'}
-                className={`rounded-lg border border-gray-200 bg-white ${resolvedSelectedIndex === index ? `bg-[#222] ${selectedItemClassName}` : ''} ${
-                  centerItems ? 'flex items-center justify-center text-center' : ''
-                } ${itemClassName}`}
-                style={{ minHeight: `${itemHeightPx}px` }}
-              >
-                <p className="m-0 text-gray-800">{item}</p>
-              </div>
+              {renderItem ? (
+                renderItem(item, index, resolvedSelectedIndex === index)
+              ) : (
+                <div
+                  data-selected={resolvedSelectedIndex === index ? 'true' : 'false'}
+                  className={`rounded-lg border border-gray-200 bg-white ${resolvedSelectedIndex === index ? `bg-[#222] ${selectedItemClassName}` : ''} ${
+                    centerItems ? 'flex items-center justify-center text-center' : ''
+                  } ${itemClassName}`}
+                  style={{ minHeight: `${itemHeightPx}px` }}
+                >
+                  <p className="m-0 text-gray-800">{item}</p>
+                </div>
+              )}
             </AnimatedItem>
           ))}
         </div>

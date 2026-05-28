@@ -5,6 +5,29 @@ import { getAccessToken } from "@/lib/cookies";
 
 const B = getApiBaseUrlNormalized();
 
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const access = await getAccessToken();
+  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+
+  const body = await req.text();
+  const res = await fetch(`${B}/api/category-values/${id}/`, {
+    method: "PATCH",
+    headers: {
+      "content-type": "application/json",
+      Authorization: `Bearer ${access}`,
+      cookie: req.headers.get("cookie") || "",
+    },
+    body,
+    cache: "no-store",
+  });
+  const txt = await res.text().catch(() => "");
+  return new NextResponse(txt, {
+    status: res.status,
+    headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
+  });
+}
+
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const access = await getAccessToken();

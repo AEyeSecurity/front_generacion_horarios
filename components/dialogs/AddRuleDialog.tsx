@@ -28,6 +28,8 @@ type Props = {
   onCreated?: () => void;
 };
 
+const AVAILABILITY_RULE_CREATED_EVENT = "shift:onboarding-availability-rule-created";
+
 const PREFS = ["preferred", "impossible"] as const;
 type PreferenceValue = (typeof PREFS)[number];
 
@@ -368,6 +370,9 @@ export default function AddAvailabilityRuleDialog({
       toast(t("add_rule.created_toast"));
       onOpenChange(false);
       onCreated?.();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent(AVAILABILITY_RULE_CREATED_EVENT));
+      }
     } catch (e: unknown) {
       toast.error(toFriendlyRuleError(e instanceof Error ? e.message : "", t("add_rule.error_creating"), t));
     } finally {
@@ -377,7 +382,7 @@ export default function AddAvailabilityRuleDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl" data-onboarding-target="availability-rule-dialog">
         <DialogHeader>
           <DialogTitle>{t("add_rule.title")}</DialogTitle>
           <DialogDescription>{t("add_rule.description")}</DialogDescription>

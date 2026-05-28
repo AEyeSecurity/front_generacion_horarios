@@ -29,6 +29,7 @@ export default function AddRuleButton({
     <>
       <button
         type="button"
+        data-onboarding-target="availability-add-rule-button"
         className="inline-flex items-center gap-2 px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50 max-[700px]:h-9 max-[700px]:w-9 max-[700px]:justify-center max-[700px]:px-0"
         onClick={() => setOpen(true)}
         disabled={disabled}

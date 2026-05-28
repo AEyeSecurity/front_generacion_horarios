@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
-import { getRefreshToken } from "@/lib/cookies";
+import { getAccessToken, getRefreshToken } from "@/lib/cookies";
 
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
 const REFRESH = process.env.AUTH_REFRESH_COOKIE!;
@@ -28,7 +28,13 @@ async function refreshTokens() {
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const qs = url.searchParams.toString();
-  let r = await fetch(`${getApiBaseUrl()}/api/units/${qs ? `?${qs}` : ""}`, { cache: "no-store" });
+  const access = await getAccessToken();
+  const headers: Record<string, string> = {};
+  if (access) headers.Authorization = `Bearer ${access}`;
+  let r = await fetch(`${getApiBaseUrl()}/api/units/${qs ? `?${qs}` : ""}`, {
+    cache: "no-store",
+    headers,
+  });
   if (r.ok) return NextResponse.json(await r.json(), { status: r.status });
   if (r.status !== 401) {
     const text = await r.text().catch(() => "error");

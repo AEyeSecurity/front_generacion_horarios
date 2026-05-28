@@ -1,8 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown } from "lucide-react";
-import { TierBadge, type Tier } from "@/components/badges/TierBadge";
+import { type Tier } from "@/components/badges/TierBadge";
 import { readGridTierEnabled } from "@/lib/grid-tier";
 import {
   Dialog,
@@ -14,12 +13,6 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useI18n } from "@/lib/use-i18n";
 import type { Role } from "@/lib/types";
 
@@ -191,31 +184,16 @@ export default function EditParticipantDialog({
               {tierEnabled && isSupervisor ? (
                 <div>
                   <label className="block text-sm mb-1">{t("add_participant.tier_required")}</label>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        className="flex h-[42px] w-full min-w-0 items-center justify-center gap-1 overflow-hidden rounded border bg-white px-2 py-2"
-                        aria-label={t("add_participant.select_tier")}
-                      >
-                        <span className="flex min-w-0 flex-1 items-center justify-center overflow-hidden">
-                          <TierBadge tier={tier} compact />
-                        </span>
-                        <ChevronDown className="h-4 w-4 shrink-0 text-gray-500" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" sideOffset={6} className="z-[190] min-w-[8rem]">
-                      <DropdownMenuItem onClick={() => setTier("PRIMARY")} className="justify-center">
-                        <TierBadge tier="PRIMARY" compact />
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setTier("SECONDARY")} className="justify-center">
-                        <TierBadge tier="SECONDARY" compact />
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setTier("TERTIARY")} className="justify-center">
-                        <TierBadge tier="TERTIARY" compact />
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <select
+                    className="h-[42px] w-full rounded border bg-white px-2 py-2 text-sm"
+                    value={tier}
+                    onChange={(event) => setTier(event.target.value as Tier)}
+                    aria-label={t("add_participant.select_tier")}
+                  >
+                    <option value="PRIMARY">{t("tier.primary")}</option>
+                    <option value="SECONDARY">{t("tier.secondary")}</option>
+                    <option value="TERTIARY">{t("tier.tertiary")}</option>
+                  </select>
                 </div>
               ) : null}
             </div>

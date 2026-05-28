@@ -887,6 +887,24 @@ export default function SolveOverlay({
       .map((id) => String(id));
   };
 
+  const getBundleUnitIds = (bundle: unknown): string[] => {
+    if (!bundle || typeof bundle !== "object") return [];
+    const source = bundle as Record<string, unknown>;
+    const candidates = [
+      source.units,
+      source.unit_ids,
+      source.unitIds,
+      source.category_values,
+      source.categoryValues,
+      source.values,
+    ];
+    for (const candidate of candidates) {
+      const ids = normalizeIdArray(candidate);
+      if (ids.length > 0) return ids;
+    }
+    return [];
+  };
+
   const normalizeUnitScopeIds = (value: unknown): string[] =>
     normalizeIdArray(value).filter((id, idx, arr) => arr.indexOf(id) === idx);
 
@@ -1613,6 +1631,50 @@ export default function SolveOverlay({
         trlist = getContextList(context?.time_ranges);
         arlist = getContextList(context?.availability_rules);
 
+        if (blist.length === 0) {
+          const bundleEndpoints = [`/api/bundles?grid=${gridId}`, `/api/bundles/?grid=${gridId}`];
+          for (const endpoint of bundleEndpoints) {
+            try {
+              const res = await authFetch(endpoint, { cache: "no-store" });
+              if (!res.ok) continue;
+              const payload = await res.json().catch(() => ({}));
+              const list = Array.isArray(payload)
+                ? payload
+                : Array.isArray(payload?.results)
+                ? payload.results
+                : [];
+              if (list.length > 0) {
+                blist = list;
+                break;
+              }
+            } catch {
+              // keep trying
+            }
+          }
+        }
+
+        if (ulist.length === 0) {
+          const unitEndpoints = [`/api/units?grid=${gridId}`, `/api/units/?grid=${gridId}`];
+          for (const endpoint of unitEndpoints) {
+            try {
+              const res = await authFetch(endpoint, { cache: "no-store" });
+              if (!res.ok) continue;
+              const payload = await res.json().catch(() => ({}));
+              const list = Array.isArray(payload)
+                ? payload
+                : Array.isArray(payload?.results)
+                ? payload.results
+                : [];
+              if (list.length > 0) {
+                ulist = list;
+                break;
+              }
+            } catch {
+              // keep trying
+            }
+          }
+        }
+
         const resolveGridSettings = async () => {
           let allowOverstaffing: boolean | null = null;
           let tierEnabled = true;
@@ -1878,21 +1940,26 @@ export default function SolveOverlay({
 
         const bundleUnitsMap: Record<string, string[]> = {};
         const bundleNamesMap: Record<string, string> = {};
+        const unitNameToIdMap: Record<string, string> = {};
+        for (const u of ulist) {
+          if (u?.id == null) continue;
+          const uid = String(u.id);
+          const uname = String(u.name || "").trim();
+          if (!uname) continue;
+          unitNameToIdMap[uname.toLowerCase()] = uid;
+        }
         for (const b of blist) {
           if (b?.id == null) continue;
-          const unitIds = Array.isArray(b.units)
-            ? b.units
-                .map((u: unknown) => {
-                  if (u == null) return null;
-                  if (typeof u === "number" || typeof u === "string") return String(u);
-                  if (typeof u === "object" && "id" in u && (u as { id?: number | string }).id != null) {
-                    return String((u as { id?: number | string }).id);
-                  }
-                  return null;
-                })
-                .filter((v: string | null): v is string => Boolean(v))
-                .sort()
-            : [];
+          let unitIds = getBundleUnitIds(b).sort();
+          if (unitIds.length === 0) {
+            const bundleName = String(b?.name || "");
+            const inferred = bundleName
+              .split("+")
+              .map((token) => token.trim().toLowerCase())
+              .map((token) => unitNameToIdMap[token])
+              .filter((id): id is string => Boolean(id));
+            if (inferred.length > 0) unitIds = Array.from(new Set(inferred)).sort();
+          }
           bundleUnitsMap[String(b.id)] = unitIds;
           bundleNamesMap[String(b.id)] = b.name || `Bundle ${b.id}`;
         }
@@ -1922,6 +1989,12 @@ export default function SolveOverlay({
         const umap: Record<string, string> = {};
         for (const u of ulist) {
           if (u?.id != null) umap[String(u.id)] = u.name || `Unit ${u.id}`;
+        }
+        // Fallback: some backends expose placements keyed by bundle_id but do not expose bundle records.
+        // In that case, treat bundle_id as a direct unit id to avoid collapsing everything into "No-Unit".
+        for (const unitId of Object.keys(umap)) {
+          if (!bundleUnitsMap[unitId]) bundleUnitsMap[unitId] = [unitId];
+          if (!bundleNamesMap[unitId]) bundleNamesMap[unitId] = umap[unitId];
         }
         if (active) {
           setHasCells(clist.length > 0);
@@ -2330,6 +2403,23 @@ export default function SolveOverlay({
         readEntityId((placement as { source_cell_id?: unknown }).source_cell_id) ??
         String(placement.id);
       const assignedParticipants = normalizeIdArray((placement as { assigned_participants?: unknown }).assigned_participants);
+      const placementUnitIds = normalizeIdArray(
+        (placement as { unit_ids?: unknown; units?: unknown }).unit_ids ??
+          (placement as { unit_ids?: unknown; units?: unknown }).units,
+      );
+      const sourceCellBundleIds = (cellPinMetaById[String(sourceCellId)]?.bundles || []).map(String);
+      const resolvedUnitIdsFromBundle =
+        bundleId != null
+          ? (bundleUnitsById[String(bundleId)] || []).map(String)
+          : [];
+      const resolvedUnitIds =
+        placementUnitIds.length > 0
+          ? placementUnitIds
+          : resolvedUnitIdsFromBundle.length > 0
+          ? resolvedUnitIdsFromBundle
+          : bundleId != null && unitNameById[String(bundleId)]
+          ? [String(bundleId)]
+          : sourceCellBundleIds.filter((id) => Boolean(unitNameById[String(id)]));
       const breaks = Array.isArray((placement as { breaks?: unknown }).breaks)
         ? ((placement as { breaks?: unknown }).breaks as unknown[])
             .map((entry) => {
@@ -2351,15 +2441,12 @@ export default function SolveOverlay({
         end_slot: Number(placement.end_slot),
         assigned_participants: assignedParticipants,
         participants: assignedParticipants,
-        units:
-          bundleId != null
-            ? (bundleUnitsById[String(bundleId)] || []).map(String)
-            : [],
+        units: resolvedUnitIds,
         locked: Boolean(placement.locked),
         breaks,
       };
     });
-  }, [currentSchedule, bundleUnitsById]);
+  }, [currentSchedule, bundleUnitsById, cellPinMetaById, unitNameById]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2417,9 +2504,13 @@ export default function SolveOverlay({
       Object.entries(cellPinMetaById).some(([, pinMeta]) => {
         const bundles = Array.isArray(pinMeta?.bundles) ? pinMeta.bundles.map(String) : [];
         if (bundles.length === 0) return true;
-        return bundles.some((bundleId) => (bundleUnitsById[bundleId] || []).length === 0);
+        return bundles.some((bundleId) => {
+          const mapped = bundleUnitsById[bundleId] || [];
+          if (mapped.length > 0) return false;
+          return !unitNameById[String(bundleId)];
+        });
       }),
-    [bundleUnitsById, cellPinMetaById],
+    [bundleUnitsById, cellPinMetaById, unitNameById],
   );
 
   const schedulePlacementById = useMemo(() => {
@@ -5374,6 +5465,7 @@ export default function SolveOverlay({
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
+      if (target.closest("[data-onboarding-overlay]")) return;
       if (target.closest("[data-schedule-scroll]")) return;
       if (target.closest("[data-unit-tabs]")) return;
       if (target.closest("[data-left-delete-drop]")) return;
@@ -5442,15 +5534,19 @@ export default function SolveOverlay({
     const directBundle = (row as { bundle_id?: string | number; bundle?: string | number }).bundle_id
       ?? (row as { bundle_id?: string | number; bundle?: string | number }).bundle;
     if (directBundle != null) {
-      return bundleUnitsById[String(directBundle)] || [];
+      const fromBundle = bundleUnitsById[String(directBundle)] || [];
+      if (fromBundle.length > 0) return fromBundle;
+      if (unitNameById[String(directBundle)]) return [String(directBundle)];
     }
     const sourceCellId = String(row.source_cell_id ?? row.cell_id);
     const cellBundles = (cellPinMetaById[sourceCellId]?.bundles || []).map(String);
+    const directUnitIdsFromCell = cellBundles.filter((id) => Boolean(unitNameById[String(id)]));
+    if (directUnitIdsFromCell.length > 0) return directUnitIdsFromCell.sort();
     if (cellBundles.length === 1) {
       return bundleUnitsById[cellBundles[0]] || [];
     }
     return [];
-  }, [bundleUnitsById, cellPinMetaById]);
+  }, [bundleUnitsById, cellPinMetaById, unitNameById]);
 
   const previewBundleLabelById = useCallback(
     (bundleId: string | number): string => {

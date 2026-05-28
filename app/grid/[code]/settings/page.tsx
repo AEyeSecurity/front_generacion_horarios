@@ -1,10 +1,18 @@
-import GridSolverSettingsForm from "@/components/grid/GridSolverSettingsForm";
+import GridSettingsTabs from "@/components/grid/GridSettingsTabs";
 import { backendFetchJSON } from "@/lib/backend";
 import { requireUserOrRedirect } from "@/lib/auth";
 import { resolveGridByCode } from "../_helpers";
 import { getTranslation } from "@/lib/i18n";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+
+type GridMembershipEntry = {
+  role?: string | null;
+  user_id?: number | null;
+  user?: number | { id?: number | null } | null;
+};
+
+type GridMembershipResponse = GridMembershipEntry[] | { results?: GridMembershipEntry[] };
 
 export default async function GridSettingsPage({
   params,
@@ -20,10 +28,10 @@ export default async function GridSettingsPage({
 
   try {
     if (me) {
-      const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
-      const list = Array.isArray(data) ? data : data.results ?? [];
+      const data = await backendFetchJSON<GridMembershipResponse>(`/api/grid-memberships/?grid=${id}`);
+      const list = Array.isArray(data) ? data : Array.isArray(data.results) ? data.results : [];
       const mine = list.find(
-        (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
+        (m) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id,
       );
       canConfigure = mine?.role === "supervisor";
     }
@@ -35,7 +43,7 @@ export default async function GridSettingsPage({
         <style>{`
           body:has([data-grid-settings-view]) [data-grid-topbar] { display: none; }
         `}</style>
-        <div className="w-[80%] mx-auto rounded-lg border bg-white p-6 shadow-sm">
+        <div className="mx-auto max-w-3xl rounded-lg border bg-white p-6 shadow-sm">
           <div className="mb-4">
             <Link
               href={`/grid/${encodeURIComponent(grid.grid_code || code)}`}
@@ -45,7 +53,7 @@ export default async function GridSettingsPage({
               {t("common.back")}
             </Link>
           </div>
-          <h1 className="text-2xl font-semibold">{t("grid_solver_settings.title")}</h1>
+          <h1 className="text-2xl font-semibold">{t("grid_settings.title")}</h1>
           <p className="mt-4 text-sm text-gray-600">{t("grid_settings.only_supervisors")}</p>
         </div>
       </div>
@@ -57,23 +65,10 @@ export default async function GridSettingsPage({
       <style>{`
         body:has([data-grid-settings-view]) [data-grid-topbar] { display: none; }
       `}</style>
-      <div className="w-[80%] mx-auto">
-        <div className="mb-4">
-          <Link
-            href={`/grid/${encodeURIComponent(grid.grid_code || code)}`}
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-black"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            {t("common.back")}
-          </Link>
-        </div>
-        <GridSolverSettingsForm
+      <div className="w-full">
+        <GridSettingsTabs
           gridId={Number(grid.id)}
-          daysEnabled={Array.isArray(grid.days_enabled) ? grid.days_enabled : []}
-          horizonStart={grid.day_start}
-          horizonEnd={grid.day_end}
-          initialDayHeatmap={grid.day_heatmap ?? null}
-          cellSizeMin={grid.cell_size_min}
+          backHref={`/grid/${encodeURIComponent(grid.grid_code || code)}`}
         />
       </div>
     </div>

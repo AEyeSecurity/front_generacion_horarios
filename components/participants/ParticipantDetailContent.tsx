@@ -1180,6 +1180,10 @@ export default function ParticipantDetailContent({
     () => rulesState.filter((r) => daysIdx.includes(r.day_of_week)),
     [daysIdx, rulesState],
   );
+  const latestVisibleRuleId = useMemo(
+    () => visibleRules.reduce<number | null>((latest, rule) => (latest == null || rule.id > latest ? rule.id : latest), null),
+    [visibleRules],
+  );
 
   const hasMergeCandidates = useMemo(() => {
     type CompactRule = {
@@ -1239,7 +1243,7 @@ export default function ParticipantDetailContent({
   }, [autoMergeBusy, autoMergeSignature, canManageRules, hasMergeCandidates, mergeAdjacentSameTypeRules, ruleResizeBusy]);
 
   return (
-    <div className="w-[80%] mx-auto">
+    <div className="w-[80%] mx-auto" data-onboarding-target="participant-detail-page">
       <div
         className="pointer-events-none fixed inset-x-0 border-b border-gray-200 bg-gray-50"
         style={{ top: GRID_TOP_BAR_HEIGHT_PX, height: PARTICIPANT_BAR_MASK_HEIGHT_PX, zIndex: 1290 }}
@@ -1347,7 +1351,10 @@ export default function ParticipantDetailContent({
       <div style={{ height: PARTICIPANT_BAR_HEIGHT_PX }} aria-hidden="true" />
 
       {view === "rules" && (
-        <div className="relative z-0 mt-4 mb-8 border rounded-lg bg-white overflow-hidden shadow-sm">
+        <div
+          className="relative z-0 mt-4 mb-8 border rounded-lg bg-white overflow-hidden shadow-sm"
+          data-onboarding-target="participant-rules-workspace"
+        >
           <div
             ref={rulesHeaderScrollRef}
             className={`${compactHorizontal ? "overflow-x-auto" : "overflow-x-hidden"} overflow-y-hidden hide-scrollbar`}
@@ -1372,6 +1379,7 @@ export default function ParticipantDetailContent({
 
           <div
             data-schedule-scroll
+            data-onboarding-target="participant-rules-timetable"
             ref={rulesScrollRef}
             className={`relative ${compactHorizontal ? "overflow-x-auto" : "overflow-x-hidden"} overflow-y-auto hide-scrollbar`}
             onScroll={(event) => {
@@ -1489,6 +1497,7 @@ export default function ParticipantDetailContent({
                 return (
                   <motion.div
                     key={r.id}
+                    data-onboarding-target={r.id === latestVisibleRuleId ? "availability-rule-latest" : undefined}
                     className={`absolute pointer-events-auto ${isDraggingRule ? "overflow-visible" : "overflow-hidden"} ${
                       isDraggingRule || ruleResize?.ruleId === r.id ? "" : "transition-[top,height] duration-150 ease-out"
                     }`}

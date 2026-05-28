@@ -163,7 +163,13 @@ export default function ParticipantsPanel({
                   clearRowClickTimer();
                   rowClickTimerRef.current = window.setTimeout(() => {
                     const routeId = p.grid_participant_id ?? p.id;
-                    router.push(`${gridBase}/participants/${encodeURIComponent(String(routeId))}`);
+                    const onboardingActive =
+                      typeof window !== "undefined" &&
+                      window.localStorage.getItem(`onboarding-step-grid-${gridId}`) != null &&
+                      window.localStorage.getItem(`onboarding-done-grid-${gridId}`) !== "1";
+                    router.push(
+                      `${gridBase}/participants/${encodeURIComponent(String(routeId))}${onboardingActive ? "?onboarding=1" : ""}`,
+                    );
                     rowClickTimerRef.current = null;
                   }, 180);
                 }}

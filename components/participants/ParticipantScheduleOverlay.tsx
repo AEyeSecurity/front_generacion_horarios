@@ -347,7 +347,7 @@ export default function ParticipantScheduleOverlay({
         </div>
       )}
 
-      {!hideSideStack && participantTabs.length > 0 && (
+      {!hideSideStack && participantTabs.length > 1 && (
         <div
           data-participant-tabs
           className="fixed inset-x-0 bottom-0 z-[70] pointer-events-none"

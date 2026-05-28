@@ -1,7 +1,7 @@
 import "@/styles/globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import localFont from "next/font/local";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +10,11 @@ export const metadata: Metadata = {
   icons: {
     icon: "/shift.png",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 const googleSans = localFont({

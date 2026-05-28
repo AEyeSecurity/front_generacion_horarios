@@ -186,7 +186,11 @@ export default function LeftSideDock({
     const gotoSelf = () => {
       const routeId = selfParticipantRouteId ?? selfParticipantId;
       if (!routeId) return;
-      router.push(`${gridBase}/participants/${encodeURIComponent(String(routeId))}`);
+      const onboardingActive =
+        typeof window !== "undefined" &&
+        window.localStorage.getItem(`onboarding-step-grid-${gridId}`) != null &&
+        window.localStorage.getItem(`onboarding-done-grid-${gridId}`) !== "1";
+      router.push(`${gridBase}/participants/${encodeURIComponent(String(routeId))}${onboardingActive ? "?onboarding=1" : ""}`);
     };
     return (
       <div className="pointer-events-none">

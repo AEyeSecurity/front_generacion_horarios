@@ -37,6 +37,13 @@ type LeftPanelState = {
   tab: LeftPanelTab;
 };
 
+type GuideEngagement = {
+  participantsOpened: boolean;
+  categoriesOpened: boolean;
+  timeRangesOpened: boolean;
+  blockageFanOpened: boolean;
+};
+
 const SPOTLIGHT_PADDING = 8;
 const SPOTLIGHT_RADIUS = 12;
 const OVERLAY_ALPHA = 0.45;
@@ -62,6 +69,8 @@ const SELECTORS = {
   participantDialog: '[data-onboarding-target="participant-dialog"]',
   participantsLatestRow: '[data-onboarding-target="participants-latest-row"]',
   participantDetailPage: '[data-onboarding-target="participant-detail-page"]',
+  participantRulesWorkspace: '[data-onboarding-target="participant-rules-workspace"]',
+  participantRulesTimetable: '[data-onboarding-target="participant-rules-timetable"]',
   availabilityAddRuleButton: '[data-onboarding-target="availability-add-rule-button"]',
   availabilityRuleDialog: '[data-onboarding-target="availability-rule-dialog"]',
   availabilityRuleLatest: '[data-onboarding-target="availability-rule-latest"]',
@@ -186,9 +195,45 @@ function readSavedStep(key: string): GuideStep | null {
   return parsed >= 0 && parsed <= 6 ? (parsed as GuideStep) : null;
 }
 
+function emptyGuideEngagement(): GuideEngagement {
+  return {
+    participantsOpened: false,
+    categoriesOpened: false,
+    timeRangesOpened: false,
+    blockageFanOpened: false,
+  };
+}
+
+function readGuideEngagement(key: string): GuideEngagement {
+  if (typeof window === "undefined") return emptyGuideEngagement();
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return emptyGuideEngagement();
+  try {
+    const parsed = JSON.parse(raw) as Partial<GuideEngagement>;
+    return {
+      participantsOpened: Boolean(parsed.participantsOpened),
+      categoriesOpened: Boolean(parsed.categoriesOpened),
+      timeRangesOpened: Boolean(parsed.timeRangesOpened),
+      blockageFanOpened: Boolean(parsed.blockageFanOpened),
+    };
+  } catch {
+    return emptyGuideEngagement();
+  }
+}
+
 function isBlockageToolActive() {
   if (typeof document === "undefined") return false;
   return Boolean(document.querySelector(SELECTORS.rightBlockageActive));
+}
+
+function isElementInteractive(selector: string) {
+  if (typeof document === "undefined") return false;
+  const element = document.querySelector(selector) as HTMLElement | null;
+  if (!element) return false;
+  const style = window.getComputedStyle(element);
+  if (style.display === "none" || style.visibility === "hidden" || style.pointerEvents === "none") return false;
+  const rect = element.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
 }
 
 function selectorContainsTarget(selector: string, target: HTMLElement | null) {
@@ -325,12 +370,15 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
   const [timeRangeBaseline, setTimeRangeBaseline] = useState<number | null>(null);
   const [cellBaseline, setCellBaseline] = useState<number | null>(null);
   const [dismissedCreatedHighlights, setDismissedCreatedHighlights] = useState<Record<string, boolean>>({});
+  const [engagedSteps, setEngagedSteps] = useState<GuideEngagement>(emptyGuideEngagement);
   const [mounted, setMounted] = useState(false);
 
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const lastFocusedTargetRef = useRef<string | null>(null);
+  const categoryUnitTabsHintSeenRef = useRef(false);
   const doneKey = useMemo(() => `onboarding-done-grid-${gridId}`, [gridId]);
   const stepKey = useMemo(() => `onboarding-step-grid-${gridId}`, [gridId]);
+  const engagementKey = useMemo(() => `onboarding-engaged-grid-${gridId}`, [gridId]);
 
   useEffect(() => {
     setMounted(true);
@@ -344,10 +392,30 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
       const normalizedTab: LeftPanelTab =
         rawTab === "participants" || rawTab === "categories" || rawTab === "time-ranges" ? rawTab : null;
       setLeftPanelState({ open: Boolean(custom.detail?.open), tab: normalizedTab });
+      if (!custom.detail?.open || !normalizedTab) return;
+      setEngagedSteps((prev) => {
+        const next: GuideEngagement = {
+          ...prev,
+          participantsOpened: prev.participantsOpened || normalizedTab === "participants",
+          categoriesOpened: prev.categoriesOpened || normalizedTab === "categories",
+          timeRangesOpened: prev.timeRangesOpened || normalizedTab === "time-ranges",
+        };
+        if (
+          next.participantsOpened === prev.participantsOpened &&
+          next.categoriesOpened === prev.categoriesOpened &&
+          next.timeRangesOpened === prev.timeRangesOpened
+        ) {
+          return prev;
+        }
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(engagementKey, JSON.stringify(next));
+        }
+        return next;
+      });
     };
     window.addEventListener(GRID_LEFT_PANEL_STATE_EVENT, onLeftPanelState as EventListener);
     return () => window.removeEventListener(GRID_LEFT_PANEL_STATE_EVENT, onLeftPanelState as EventListener);
-  }, [gridId]);
+  }, [engagementKey, gridId]);
 
   const stripOnboardingParam = useCallback(() => {
     const currentParams = new URLSearchParams(searchParams?.toString() ?? "");
@@ -361,10 +429,11 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
     if (typeof window !== "undefined") {
       window.localStorage.setItem(doneKey, "1");
       window.localStorage.removeItem(stepKey);
+      window.localStorage.removeItem(engagementKey);
     }
     setActive(false);
     stripOnboardingParam();
-  }, [doneKey, stepKey, stripOnboardingParam]);
+  }, [doneKey, engagementKey, stepKey, stripOnboardingParam]);
 
   const requestLeftPanel = useCallback(
     (tab: LeftPanelTab) => {
@@ -387,6 +456,32 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
     if (typeof window === "undefined") return;
     window.dispatchEvent(new CustomEvent<{ tool: "blockage" }>(GRID_ONBOARDING_RIGHT_TOOL_REQUEST_EVENT, { detail: { tool } }));
   }, []);
+
+  const markEngaged = useCallback(
+    (patch: Partial<GuideEngagement>) => {
+      setEngagedSteps((prev) => {
+        const next: GuideEngagement = {
+          participantsOpened: patch.participantsOpened ?? prev.participantsOpened,
+          categoriesOpened: patch.categoriesOpened ?? prev.categoriesOpened,
+          timeRangesOpened: patch.timeRangesOpened ?? prev.timeRangesOpened,
+          blockageFanOpened: patch.blockageFanOpened ?? prev.blockageFanOpened,
+        };
+        if (
+          next.participantsOpened === prev.participantsOpened &&
+          next.categoriesOpened === prev.categoriesOpened &&
+          next.timeRangesOpened === prev.timeRangesOpened &&
+          next.blockageFanOpened === prev.blockageFanOpened
+        ) {
+          return prev;
+        }
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(engagementKey, JSON.stringify(next));
+        }
+        return next;
+      });
+    },
+    [engagementKey],
+  );
 
   const resolveStepSpotlights = useCallback(
     (currentStep: GuideStep, currentViewport: Viewport, panelState: LeftPanelState) => {
@@ -412,6 +507,12 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
         participantsPanel;
       const participantDialog = querySpotlight(SELECTORS.participantDialog, "participant-dialog", currentViewport);
       const participantsLatestRow = querySpotlight(SELECTORS.participantsLatestRow, "participants-latest-row", currentViewport);
+      const participantDetailPage = querySpotlight(SELECTORS.participantDetailPage, "participant-detail-page", currentViewport);
+      const participantRulesWorkspace = querySpotlight(SELECTORS.participantRulesWorkspace, "participant-rules-workspace", currentViewport);
+      const participantRulesTimetable = querySpotlight(SELECTORS.participantRulesTimetable, "participant-rules-timetable", currentViewport);
+      const availabilityAddRuleButton = querySpotlight(SELECTORS.availabilityAddRuleButton, "availability-add-rule-button", currentViewport);
+      const availabilityRuleDialog = querySpotlight(SELECTORS.availabilityRuleDialog, "availability-rule-dialog", currentViewport);
+      const availabilityRuleLatest = querySpotlight(SELECTORS.availabilityRuleLatest, "availability-rule-latest", currentViewport);
       const categoriesAddButton = querySpotlight(SELECTORS.categoriesAddButton, "categories-add-button", currentViewport);
       const categoriesPanel = querySpotlight(SELECTORS.categoriesPanel, "categories-panel", currentViewport);
       const categoriesPanelArea =
@@ -438,15 +539,22 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
 
       if (currentStep === 0) return [leftDock, rightDock].filter(Boolean) as SpotlightRect[];
       if (currentStep === 1) {
+        const participantRuleReady = availabilityRuleCreatedInStep || Boolean(availabilityRuleLatest);
+        if (participantDetailPage) {
+          if (availabilityRuleDialog) return [availabilityRuleDialog];
+          if (participantRuleReady && participantRulesWorkspace) return [participantRulesWorkspace];
+          if (participantRuleReady && availabilityRuleLatest) return [availabilityRuleLatest];
+          if (availabilityAddRuleButton) return [availabilityAddRuleButton];
+          if (participantRulesWorkspace) return [participantRulesWorkspace];
+          if (participantRulesTimetable) return [participantRulesTimetable];
+          return [participantDetailPage];
+        }
         if (participantDialog) return [participantDialog];
         if (participantsCount > 0 && !dismissedCreatedHighlights.participant && participantsLatestRow) return [participantsLatestRow];
         if (panelState.open && panelState.tab === "participants" && participantsPanelArea) return [participantsPanelArea];
         return leftParticipants ? [leftParticipants] : [];
       }
       if (currentStep === 2) {
-        if (!panelState.open || panelState.tab !== "categories") {
-          return leftCategories ? [leftCategories] : [];
-        }
         if (categoryValueLatestRow && !dismissedCreatedHighlights.categoryValue) {
           return [categoryValueLatestRow, categoryDialog].filter(Boolean) as SpotlightRect[];
         }
@@ -454,6 +562,10 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
           return [categoryValueAddRow, categoryDialog].filter(Boolean) as SpotlightRect[];
         }
         if (categoryDialog) return [categoryDialog];
+        if (categoriesCount > 0 && unitTabs && !dismissedCreatedHighlights.categoryUnitTabs) return [unitTabs];
+        if (!panelState.open || panelState.tab !== "categories") {
+          return leftCategories ? [leftCategories] : [];
+        }
         if (
           panelState.open &&
           panelState.tab === "categories" &&
@@ -463,7 +575,6 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
         ) {
           return [categoriesLatestRow];
         }
-        if (categoriesCount > 0 && unitTabs) return [unitTabs];
         if (panelState.open && panelState.tab === "categories" && categoriesPanelArea) return [categoriesPanelArea];
         return leftCategories ? [leftCategories] : [];
       }
@@ -512,10 +623,10 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
     },
     [
       blockagePhase,
-      blockageToolRequested,
       categoriesCount,
       cellsCount,
       dismissedCreatedHighlights,
+      availabilityRuleCreatedInStep,
       participantsCount,
       timeRangeBaseline,
       timeRangeSavedInStep,
@@ -541,6 +652,9 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
         window.localStorage.setItem(stepKey, String(nextStep));
       }
       setStep(nextStep);
+      if (nextStep >= 2 && pathname.includes("/participants/")) {
+        router.push(`/grid/${encodeURIComponent(gridCode)}?onboarding=1`);
+      }
       if (nextStep < 5 && pathname.endsWith("/cells")) {
         router.push(`/grid/${encodeURIComponent(gridCode)}?onboarding=1`);
       }
@@ -585,6 +699,7 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
     let cancelled = false;
     setActive(true);
     setStep(savedStep ?? 0);
+    setEngagedSteps(readGuideEngagement(engagementKey));
 
     (async () => {
       const [pCount, catCount, unitCount, trCount, cCount] = await Promise.all([
@@ -609,7 +724,7 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
     return () => {
       cancelled = true;
     };
-  }, [doneKey, gridId, show, stepKey, stripOnboardingParam]);
+  }, [doneKey, engagementKey, gridId, show, stepKey, stripOnboardingParam]);
 
   useEffect(() => {
     if (!active) return;
@@ -637,13 +752,28 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
 
   useEffect(() => {
     if (!active) return;
+    const unitTabsHighlighted = spotlights.some(
+      (spotlight) => !spotlight.passive && (spotlight.id === "unit-tabs" || spotlight.id === "global-blockage-tab"),
+    );
+    if (step === 2 && unitTabsHighlighted) {
+      categoryUnitTabsHintSeenRef.current = true;
+      return;
+    }
+    if (step !== 2 && categoryUnitTabsHintSeenRef.current && !dismissedCreatedHighlights.categoryUnitTabs) {
+      setDismissedCreatedHighlights((prev) => ({ ...prev, categoryUnitTabs: true }));
+    }
+  }, [active, dismissedCreatedHighlights.categoryUnitTabs, spotlights, step]);
+
+  useEffect(() => {
+    if (!active) return;
     if (step !== 4) {
       setBlockagePhase("tool");
       setBlockageToolRequested(false);
       return;
     }
+    const blockageSelectorVisible = isElementInteractive(SELECTORS.rightBlockage);
     if (!isBlockageToolActive()) {
-      setBlockagePhase("tool");
+      setBlockagePhase((prev) => (prev !== "tool" && blockageSelectorVisible ? "tabs" : "tool"));
       return;
     }
     setBlockageToolRequested(false);
@@ -652,23 +782,56 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
 
   useEffect(() => {
     if (!active) return;
+    const categoryUnitTabsVisible =
+      step === 2 &&
+      spotlights.some(
+        (spotlight) => !spotlight.passive && (spotlight.id === "unit-tabs" || spotlight.id === "global-blockage-tab"),
+      );
     if (step === 1) {
-      requestLeftPanel("participants");
+      if (document.querySelector(SELECTORS.participantDetailPage)) {
+        requestLeftPanel(null);
+      } else if (engagedSteps.participantsOpened) {
+        requestLeftPanel("participants");
+      } else if (leftPanelState.open) {
+        requestLeftPanel(null);
+      }
       requestRightFan(false);
       return;
     }
     if (step === 2) {
-      if (leftPanelState.open && leftPanelState.tab !== "categories") {
+      if (categoryUnitTabsVisible) {
+        if (leftPanelState.open) requestLeftPanel(null);
+      } else if (engagedSteps.categoriesOpened) {
+        if (!leftPanelState.open || leftPanelState.tab !== "categories") {
+          requestLeftPanel("categories");
+        }
+      } else if (leftPanelState.open) {
         requestLeftPanel(null);
       }
       requestRightFan(false);
       return;
     }
     if (step === 3) {
-      if (leftPanelState.open && leftPanelState.tab !== "time-ranges") {
+      if (engagedSteps.timeRangesOpened) {
+        if (!leftPanelState.open || leftPanelState.tab !== "time-ranges") {
+          requestLeftPanel("time-ranges");
+        }
+      } else if (leftPanelState.open) {
         requestLeftPanel(null);
       }
       requestRightFan(false);
+      return;
+    }
+    if (step === 4) {
+      requestLeftPanel(null);
+      if (isBlockageToolActive()) {
+        requestRightFan(false);
+      } else {
+        requestRightFan(engagedSteps.blockageFanOpened);
+      }
+      if (blockagePhase !== "tool" && !isBlockageToolActive()) {
+        requestRightTool("blockage");
+      }
       return;
     }
     if (step === 5) {
@@ -682,7 +845,21 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
     if (step !== 4) {
       requestRightFan(false);
     }
-  }, [active, blockagePhase, leftPanelState.open, leftPanelState.tab, requestLeftPanel, requestRightFan, step]);
+  }, [
+    active,
+    blockagePhase,
+    engagedSteps.blockageFanOpened,
+    engagedSteps.categoriesOpened,
+    engagedSteps.participantsOpened,
+    engagedSteps.timeRangesOpened,
+    leftPanelState.open,
+    leftPanelState.tab,
+    requestLeftPanel,
+    requestRightFan,
+    requestRightTool,
+    spotlights,
+    step,
+  ]);
 
   useEffect(() => {
     if (!active) return;
@@ -728,6 +905,13 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
     const onSaved = () => setTimeRangeSavedInStep(true);
     window.addEventListener(TIME_RANGE_SAVED_EVENT, onSaved);
     return () => window.removeEventListener(TIME_RANGE_SAVED_EVENT, onSaved);
+  }, [active]);
+
+  useEffect(() => {
+    if (!active) return;
+    const onAvailabilityRuleCreated = () => setAvailabilityRuleCreatedInStep(true);
+    window.addEventListener(AVAILABILITY_RULE_CREATED_EVENT, onAvailabilityRuleCreated);
+    return () => window.removeEventListener(AVAILABILITY_RULE_CREATED_EVENT, onAvailabilityRuleCreated);
   }, [active]);
 
   const forwardInteraction = useCallback((event: React.PointerEvent<HTMLDivElement>, allowedSelectors?: string[]) => {
@@ -836,6 +1020,22 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
       }
 
       if (step === 1 && participantsCount > 0) {
+        const participantDetailMode = Boolean(document.querySelector(SELECTORS.participantDetailPage));
+        if (participantDetailMode) {
+          event.preventDefault();
+          event.stopPropagation();
+          const participantDetailAllowedTargets = [
+            SELECTORS.availabilityAddRuleButton,
+            SELECTORS.availabilityRuleDialog,
+            SELECTORS.availabilityRuleLatest,
+            SELECTORS.participantRulesTimetable,
+          ];
+          if (participantDetailAllowedTargets.some((selector) => isInsideSelector(selector))) {
+            forwardInteraction(event, participantDetailAllowedTargets);
+            return;
+          }
+          return;
+        }
         event.preventDefault();
         event.stopPropagation();
         if (
@@ -893,16 +1093,32 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
 
       event.preventDefault();
       event.stopPropagation();
+      if (step === 4 && isInsideSelector(SELECTORS.rightFanToggle) && !engagedSteps.blockageFanOpened) {
+        markEngaged({ blockageFanOpened: true });
+      }
       if (
         step === 4 &&
         blockagePhase === "tabs" &&
-        spotlights.some((rect) => (rect.id === "global-blockage-tab" || rect.id === "unit-tabs") && pointInside(rect, event.clientX, event.clientY))
+        (isInsideSelector(SELECTORS.globalBlockageTab) || isInsideSelector(SELECTORS.unitTabs))
       ) {
+        if (!engagedSteps.blockageFanOpened) {
+          markEngaged({ blockageFanOpened: true });
+        }
         forwardInteraction(event, [SELECTORS.globalBlockageTab, SELECTORS.unitTabs]);
-        setBlockagePhase("schedule");
+        window.setTimeout(() => {
+          if (isBlockageToolActive()) {
+            setBlockagePhase("schedule");
+            return;
+          }
+          requestRightTool("blockage");
+          setBlockageToolRequested(true);
+        }, 0);
         return;
       }
       if (step === 4 && spotlights.some((rect) => rect.id === "right-blockage" && pointInside(rect, event.clientX, event.clientY))) {
+        if (!engagedSteps.blockageFanOpened) {
+          markEngaged({ blockageFanOpened: true });
+        }
         requestRightTool("blockage");
         setBlockageToolRequested(true);
         setBlockagePhase("tool");
@@ -914,7 +1130,14 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
       }
       const allowedSelectors =
         step === 1
-          ? [SELECTORS.leftParticipants, SELECTORS.participantsPanel, SELECTORS.participantsAddButton, SELECTORS.participantDialog]
+          ? document.querySelector(SELECTORS.participantDetailPage)
+            ? [
+                SELECTORS.availabilityAddRuleButton,
+                SELECTORS.availabilityRuleDialog,
+                SELECTORS.availabilityRuleLatest,
+                SELECTORS.participantRulesTimetable,
+              ]
+            : [SELECTORS.leftParticipants, SELECTORS.participantsPanel, SELECTORS.participantsAddButton, SELECTORS.participantDialog]
         : step === 2
           ? leftPanelState.open && leftPanelState.tab === "categories"
             ? [
@@ -925,6 +1148,10 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
                 SELECTORS.categoryValueLatestRow,
                 SELECTORS.unitTabs,
               ]
+            : spotlights.some(
+                (spotlight) => spotlight.id === "unit-tabs" || spotlight.id === "global-blockage-tab",
+              )
+            ? [SELECTORS.unitTabs, SELECTORS.globalBlockageTab]
             : [SELECTORS.leftCategories]
           : step === 3
           ? leftPanelState.open && leftPanelState.tab === "time-ranges"
@@ -943,11 +1170,13 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
       blockagePhase,
       categoryBaseline,
       cellsCount,
+      engagedSteps.blockageFanOpened,
       forwardInteraction,
       forwardPointerDownOnly,
       goToStep,
       leftPanelState.open,
       leftPanelState.tab,
+      markEngaged,
       requestRightTool,
       participantsCount,
       spotlights,
@@ -964,6 +1193,15 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
     const uiSelectors = ['[data-onboarding-ui="true"]'];
 
     if (step === 1) {
+      if (document.querySelector(SELECTORS.participantDetailPage)) {
+        return [
+          ...uiSelectors,
+          SELECTORS.availabilityAddRuleButton,
+          SELECTORS.availabilityRuleDialog,
+          SELECTORS.availabilityRuleLatest,
+          SELECTORS.participantRulesTimetable,
+        ];
+      }
       return [
         ...uiSelectors,
         SELECTORS.leftParticipants,
@@ -974,6 +1212,9 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
     }
     if (step === 2) {
       if (!leftPanelState.open || leftPanelState.tab !== "categories") {
+        if (spotlights.some((spotlight) => spotlight.id === "unit-tabs" || spotlight.id === "global-blockage-tab")) {
+          return [...uiSelectors, SELECTORS.unitTabs, SELECTORS.globalBlockageTab];
+        }
         return [...uiSelectors, SELECTORS.leftCategories];
       }
       return [
@@ -1074,8 +1315,11 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
   const rightDockSpotlight = spotlights.find((spotlight) => spotlight.id === "right-dock") ?? null;
   const stepZeroTooltips = resolveStepZeroTooltipStyles(leftDockSpotlight, rightDockSpotlight, viewport);
   const participantsPanelOpen = leftPanelState.open && leftPanelState.tab === "participants";
+  const participantDetailPageVisible = Boolean(document.querySelector(SELECTORS.participantDetailPage));
   const participantDialogVisible = primarySpotlight?.id === "participant-dialog";
-  const participantCreatedInStep = step === 1 && participantsCount > 0;
+  const availabilityAddRuleButtonVisible = primarySpotlight?.id === "availability-add-rule-button";
+  const availabilityRuleLatestVisible = primarySpotlight?.id === "availability-rule-latest";
+  const participantCreatedInStep = step === 1 && participantsCount > 0 && !participantDetailPageVisible;
   const categoriesPanelOpen = leftPanelState.open && leftPanelState.tab === "categories";
   const categoryDialogVisible = primarySpotlight?.id === "category-dialog";
   const categoryValueAddVisible = primarySpotlight?.id === "category-value-add-row";
@@ -1091,7 +1335,11 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
       : "onboarding.category_step_unit_hint_default";
   const timeRangeHasPendingSave =
     step === 3 && timeRangeBaseline != null && timeRangesCount > timeRangeBaseline && !timeRangeSavedInStep;
-  const canMoveForward = step === 6 ? true : (step !== 1 || participantsCount > 0) && !timeRangeHasPendingSave;
+  const participantRuleReady = availabilityRuleCreatedInStep || availabilityRuleLatestVisible;
+  const canMoveForward =
+    step === 6
+      ? true
+      : (step !== 1 || participantsCount > 0) && !timeRangeHasPendingSave;
   const optionalStepEngaged =
     (step === 2 &&
       (categoriesPanelOpen ||
@@ -1107,7 +1355,8 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
         blockageToolRequested ||
         isBlockageToolActive())) ||
     (step === 5 && primarySpotlight?.id !== "left-cells");
-  const canSkipCurrentStep = step >= 2 && step <= 5 && !optionalStepEngaged;
+  const optionalStep = (step === 1 && participantDetailPageVisible) || (step >= 2 && step <= 5);
+  const canSkipCurrentStep = optionalStep && !optionalStepEngaged;
 
   const moveBackward = () => {
     if (step <= 0) return;
@@ -1144,8 +1393,10 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
   const stepCard = (() => {
     if (!primarySpotlight) return null;
     if (step === 3 && timeRangeCreatedInStep) return null;
+    if (step === 1 && participantDetailPageVisible && participantRuleReady) return null;
     if (
       primarySpotlight.id === "participant-dialog" ||
+      primarySpotlight.id === "availability-rule-dialog" ||
       primarySpotlight.id === "category-dialog" ||
       primarySpotlight.id === "category-value-add-row" ||
       primarySpotlight.id === "category-value-latest-row" ||
@@ -1156,6 +1407,9 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
     if (step === 5) {
       return tooltipStyle(primarySpotlight, viewport, cellCreateButtonVisible && viewport.width >= 640 ? "left" : "bottom");
     }
+    if (step === 1 && participantDetailPageVisible) {
+      return tooltipStyle(primarySpotlight, viewport, availabilityAddRuleButtonVisible && viewport.width >= 640 ? "left" : "bottom");
+    }
     if (step === 4) return tooltipStyle(primarySpotlight, viewport, "left");
     if (step === 1 || step === 2 || step === 3) return tooltipStyle(primarySpotlight, viewport, "right");
     return tooltipStyle(primarySpotlight, viewport, "bottom");
@@ -1165,6 +1419,7 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
     <>
       <div
         ref={overlayRef}
+        data-onboarding-overlay="true"
         className="fixed inset-0 isolate pointer-events-auto"
         style={{ zIndex: 1700 }}
         onPointerDown={onOverlayPointerDown}
@@ -1280,7 +1535,13 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
               <>
                 <h3 className="text-base font-semibold text-gray-900">{t("onboarding.participant_step_title")}</h3>
                 <p className="mt-1 text-sm text-gray-700">
-                  {participantsPanelOpen
+                  {participantDetailPageVisible
+                    ? availabilityRuleLatestVisible
+                      ? t("onboarding.participant_rule_step_move_tip")
+                      : availabilityAddRuleButtonVisible
+                      ? t("onboarding.participant_rule_step_click_add")
+                      : t("onboarding.participant_rule_step_open")
+                    : participantsPanelOpen
                     ? participantDialogVisible
                       ? t("onboarding.participant_step_complete_dialog")
                       : t("onboarding.participant_step_click_add")

@@ -2,7 +2,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { MoreVertical, Trash2, FileDown, Settings } from "lucide-react";
+import { MoreVertical, FileDown, Settings } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -14,30 +14,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useI18n } from "@/lib/use-i18n";
 
-type Props = { gridId: number | string; gridCode?: string | null; canDelete?: boolean; canConfigureSolve?: boolean };
+type Props = { gridId: number | string; gridCode?: string | null; canConfigureSolve?: boolean };
 
-export default function GridActions({ gridId, gridCode, canDelete = false, canConfigureSolve = false }: Props) {
+export default function GridActions({ gridId, gridCode, canConfigureSolve = false }: Props) {
   const { t } = useI18n();
   const router = useRouter();
-
-  async function onDelete() {
-    const id = String(gridId);
-    if (!id || id === "undefined") {
-      console.error("[GridActions] Missing gridId prop:", gridId);
-      alert(t("grid_actions.missing_grid_id_delete"));
-      return;
-    }
-    if (!window.confirm(t("grid_actions.delete_grid_confirm"))) return;
-
-    const res = await fetch(`/api/grids/${encodeURIComponent(id)}`, { method: "DELETE" });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      alert(t("grid_actions.delete_failed", { status: res.status, details: txt || "" }));
-      return;
-    }
-    router.replace("/dashboard");
-    router.refresh();
-  }
 
   const goSettings = () => {
     const codeOrId = gridCode || String(gridId);
@@ -81,8 +62,6 @@ export default function GridActions({ gridId, gridCode, canDelete = false, canCo
     window.URL.revokeObjectURL(url);
   };
 
-  if (!canDelete && !canConfigureSolve) return null;
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -111,12 +90,6 @@ export default function GridActions({ gridId, gridCode, canDelete = false, canCo
             </DropdownMenuItem>
           </DropdownMenuSubContent>
         </DropdownMenuSub>
-        {canDelete && (
-        <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-700">
-          <Trash2 className="w-4 h-4 mr-2" />
-          {t("grid_actions.delete_grid")}
-        </DropdownMenuItem>
-        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

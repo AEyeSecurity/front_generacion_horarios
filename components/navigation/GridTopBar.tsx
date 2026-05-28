@@ -46,8 +46,8 @@ export default async function GridTopBar({
             />
           )}
           {me && <UserMenu me={me} />}
-          {(hasSolution || canConfigureSolve) && (
-            <GridActions gridId={id} gridCode={gridCode} canDelete={canDelete} canConfigureSolve={canConfigureSolve} />
+          {(hasSolution || canConfigureSolve || canDelete) && (
+            <GridActions gridId={id} gridCode={gridCode} canConfigureSolve={canConfigureSolve} />
           )}
         </div>
       </div>
