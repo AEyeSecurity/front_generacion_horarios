@@ -1,13 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, PanelLeft } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarClock,
+  LayoutGrid,
+  Menu,
+  ShieldAlert,
+  SlidersHorizontal,
+  Users2,
+  type LucideIcon,
+} from "lucide-react";
 import { OBJECTIVE_WEIGHT_DEFAULTS, TIER_KEYS } from "@/lib/grid-solver-settings";
 import { useI18n } from "@/lib/use-i18n";
 import { readGridTierEnabled } from "@/lib/grid-tier";
+import GridSolverSettingsForm from "@/components/grid/GridSolverSettingsForm";
 import {
   Dialog,
   DialogContent,
@@ -23,7 +33,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 
-type TabId = "principal" | "solver" | "participants";
+type SectionId = "main" | "schedule" | "solver" | "units" | "danger";
 type TierKey = (typeof TIER_KEYS)[number];
 type OrganizationType = "school" | "work" | "gym" | "private_tutor" | "event" | "other" | "";
 type UnitNature = "audience" | "internal" | "none" | "space" | "";
@@ -68,6 +78,13 @@ type PriorityState = {
   p11: number;
   nonPreferred: number;
   impossible: number;
+};
+
+type SectionOption = {
+  id: SectionId;
+  label: string;
+  description: string;
+  icon: LucideIcon;
 };
 
 const DAY_KEYS: DayHeatmapKey[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -525,6 +542,126 @@ function PrioritySlider({
   );
 }
 
+function SettingsSectionCard({
+  title,
+  description,
+  children,
+  tone = "default",
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+  tone?: "default" | "danger";
+}) {
+  const toneClass =
+    tone === "danger"
+      ? "border-red-200 bg-red-50/60 dark:border-red-900/50 dark:bg-red-950/30"
+      : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900";
+  return (
+    <section className={`rounded-lg border p-5 shadow-sm ${toneClass}`}>
+      <div className="mb-4">
+        <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
+        {description ? <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{description}</p> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function SettingsSidebar({
+  backHref,
+  backLabel,
+  contextPrefix,
+  gridName,
+  gridId,
+  notAvailableLabel,
+  searchValue,
+  searchPlaceholder,
+  onSearchChange,
+  sections,
+  activeSection,
+  noSectionsMatchLabel,
+  onSectionSelect,
+}: {
+  backHref: string;
+  backLabel: string;
+  contextPrefix: string;
+  gridName: string;
+  gridId: number;
+  notAvailableLabel: string;
+  searchValue: string;
+  searchPlaceholder: string;
+  onSearchChange: (value: string) => void;
+  sections: SectionOption[];
+  activeSection: SectionId;
+  noSectionsMatchLabel: string;
+  onSectionSelect: (id: SectionId) => void;
+}) {
+  return (
+    <div className="flex h-full flex-col">
+      <div className="border-b border-slate-200 px-5 py-5 dark:border-slate-800">
+        <Link
+          href={backHref}
+          className="inline-flex items-center gap-2 text-sm text-slate-700 transition-colors hover:text-slate-950 dark:text-slate-300 dark:hover:text-slate-100"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span>{backLabel}</span>
+        </Link>
+        <div className="mt-5">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            {contextPrefix}
+          </p>
+          <p className="mt-1 truncate text-base font-semibold text-slate-900 dark:text-slate-100">
+            {gridName || notAvailableLabel}
+          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">#{gridId}</p>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        <input
+          type="search"
+          value={searchValue}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder={searchPlaceholder}
+          className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-xs outline-none ring-0 transition focus:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+        />
+        <nav className="mt-4 space-y-1">
+          {sections.length > 0 ? (
+            sections.map((section) => {
+              const Icon = section.icon;
+              const active = section.id === activeSection;
+              return (
+                <button
+                  key={`settings-section-${section.id}`}
+                  type="button"
+                  onClick={() => onSectionSelect(section.id)}
+                  className={[
+                    "flex w-full items-start gap-3 rounded-md border px-3 py-2.5 text-left transition-colors",
+                    active
+                      ? "border-slate-300 bg-slate-100 text-slate-950 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                      : "border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50 dark:text-slate-300 dark:hover:border-slate-700 dark:hover:bg-slate-800/60",
+                  ].join(" ")}
+                >
+                  <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">{section.label}</span>
+                    <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">{section.description}</span>
+                  </span>
+                </button>
+              );
+            })
+          ) : (
+            <div className="rounded-md border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+              {noSectionsMatchLabel}
+            </div>
+          )}
+        </nav>
+      </div>
+    </div>
+  );
+}
+
 export default function GridSettingsTabs({ gridId, backHref }: { gridId: number; backHref: string }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -536,13 +673,9 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
     [t],
   );
 
-  const [activeTab, setActiveTab] = useState<TabId>("principal");
+  const [activeSection, setActiveSection] = useState<SectionId>("main");
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.innerWidth <= 767;
-  });
   const [loading, setLoading] = useState(true);
   const [loadingError, setLoadingError] = useState<string | null>(null);
 
@@ -658,50 +791,60 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
     [t],
   );
 
-  const tabOptions = useMemo<Array<{ id: TabId; label: string }>>(
+  const sectionOptions = useMemo<SectionOption[]>(
     () => [
-      { id: "principal", label: tt("grid_settings.principal_tab", "Principal") },
-      { id: "solver", label: tt("grid_settings.solver_tab", "Solver") },
-      { id: "participants", label: tt("grid_settings.participants_tab", "Participants") },
+      {
+        id: "main",
+        label: tt("grid_settings.main_tab", "Main"),
+        description: tt("grid_settings.main_tab_desc", "Basic grid identity and context."),
+        icon: LayoutGrid,
+      },
+      {
+        id: "schedule",
+        label: tt("grid_settings.schedule_tab", "Schedule"),
+        description: tt("grid_settings.schedule_tab_desc", "Schedule boundaries, days, and time resolution."),
+        icon: CalendarClock,
+      },
+      {
+        id: "solver",
+        label: tt("grid_settings.solver_tab", "Solver"),
+        description: tt("grid_settings.solver_tab_desc", "Optimization priorities and solver constraints."),
+        icon: SlidersHorizontal,
+      },
+      {
+        id: "units",
+        label: tt("grid_settings.units_tab", "Units"),
+        description: tt("grid_settings.units_tab_desc", "Unit and participant constraint configuration."),
+        icon: Users2,
+      },
+      {
+        id: "danger",
+        label: tt("grid_settings.danger_tab", "Danger Zone"),
+        description: tt("grid_settings.danger_tab_desc", "Destructive actions that permanently affect this grid."),
+        icon: ShieldAlert,
+      },
     ],
     [tt],
   );
 
-  const filteredTabOptions = useMemo(() => {
+  const filteredSectionOptions = useMemo(() => {
     const query = sidebarSearch.trim().toLowerCase();
-    if (!query) return tabOptions;
-    return tabOptions.filter((tab) => tab.label.toLowerCase().includes(query));
-  }, [sidebarSearch, tabOptions]);
+    if (!query) return sectionOptions;
+    return sectionOptions.filter((section) =>
+      `${section.label} ${section.description}`.toLowerCase().includes(query),
+    );
+  }, [sectionOptions, sidebarSearch]);
 
-  const activeTabMeta = useMemo(
-    () => tabOptions.find((tab) => tab.id === activeTab) ?? tabOptions[0],
-    [activeTab, tabOptions],
+  const activeSectionMeta = useMemo(
+    () => sectionOptions.find((section) => section.id === activeSection) ?? sectionOptions[0],
+    [activeSection, sectionOptions],
   );
 
-  const selectTab = useCallback((tab: TabId) => {
-    setActiveTab(tab);
+  const selectSection = useCallback((section: SectionId) => {
+    setActiveSection(section);
     setTabError(null);
     setTabSaved(null);
     setMobileSidebarOpen(false);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const media = window.matchMedia("(max-width: 767px)");
-    const sync = () => {
-      const nextIsMobile = window.innerWidth <= 767 || media.matches;
-      setIsMobile(nextIsMobile);
-      if (!nextIsMobile) setMobileSidebarOpen(false);
-    };
-    sync();
-    const onChange = () => sync();
-    const onResize = () => sync();
-    media.addEventListener("change", onChange);
-    window.addEventListener("resize", onResize);
-    return () => {
-      media.removeEventListener("change", onChange);
-      window.removeEventListener("resize", onResize);
-    };
   }, []);
 
   const enabledDayKeys = useMemo<DayHeatmapKey[]>(
@@ -1234,626 +1377,486 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
     }
   };
 
-  const renderSidebarBody = () => (
-    <>
-      <div>
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-          {tt("grid_settings.sections_label", "Sections")}
-        </div>
-        <input
-          type="search"
-          value={sidebarSearch}
-          onChange={(event) => setSidebarSearch(event.target.value)}
-          placeholder={tt("grid_settings.search_settings", "Search settings...")}
-          className="w-full rounded-md border bg-white px-3 py-2 text-sm"
-        />
-      </div>
-      <div className="space-y-2">
-        {filteredTabOptions.length > 0 ? (
-          filteredTabOptions.map((tab) => (
-            <button
-              key={`sidebar-tab-${tab.id}`}
-              type="button"
-              onClick={() => selectTab(tab.id)}
-              className={[
-                "w-full rounded-md border px-3 py-2 text-left text-sm transition-colors",
-                activeTab === tab.id
-                  ? "border-gray-300 bg-white text-black shadow-sm"
-                  : "border-transparent bg-gray-100 text-gray-700 hover:bg-white",
-              ].join(" ")}
-              title={tab.label}
-            >
-              {tab.label}
-            </button>
-          ))
-        ) : (
-          <div className="rounded-md border border-dashed px-3 py-2 text-sm text-gray-500">
-            {tt("grid_settings.no_sections_match", "No sections match your search.")}
-          </div>
-        )}
-      </div>
-    </>
-  );
+  const sidebarProps = {
+    backHref,
+    backLabel: tt("grid_settings.back_to_app", "Back to app"),
+    contextPrefix: tt("grid_settings.context_prefix", "Grid"),
+    gridName: name.trim() || persistedGridNameRef.current,
+    gridId,
+    notAvailableLabel: tt("grid_settings.not_available", "Not available"),
+    searchValue: sidebarSearch,
+    searchPlaceholder: tt("grid_settings.search_settings", "Search settings..."),
+    onSearchChange: setSidebarSearch,
+    sections: filteredSectionOptions,
+    activeSection,
+    noSectionsMatchLabel: tt("grid_settings.no_sections_match", "No sections match your search."),
+    onSectionSelect: selectSection,
+  };
 
-  const renderDesktopSidebarContent = () => (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Link href={backHref} className="inline-flex items-center gap-2 text-sm text-gray-700 hover:text-black">
-          <ArrowLeft className="h-4 w-4" />
-          <span>{tt("common.back", "Back")}</span>
-        </Link>
-      </div>
-      {renderSidebarBody()}
-    </div>
-  );
-
-  const renderMobileSidebarContent = () => (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Link href={backHref} className="inline-flex items-center gap-2 text-sm text-gray-700 hover:text-black">
-          <ArrowLeft className="h-4 w-4" />
-          <span>{tt("common.back", "Back")}</span>
-        </Link>
-      </div>
-      {renderSidebarBody()}
-    </div>
-  );
+  const headerTitle = tt("grid_settings.page_heading", "Grid Configuration");
+  const sectionCardInputClass =
+    "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100";
+  const solverDayHeatmap = useMemo<Partial<Record<string, number>>>(() => {
+    const mapped: Partial<Record<string, number>> = {};
+    for (const dayKey of DAY_KEYS) {
+      mapped[String(DAY_KEY_TO_INDEX[dayKey])] = dayHeatmapValues[dayKey];
+    }
+    return mapped;
+  }, [dayHeatmapValues]);
 
   if (loading) {
     return (
-      <div className="w-full rounded-lg border bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-semibold">{tt("grid_settings.title", "Grid Settings")}</h1>
-        <p className="mt-4 text-sm text-gray-600">{tt("grid_settings.loading", "Loading settings...")}</p>
+      <div className="min-h-dvh bg-slate-50 dark:bg-slate-950">
+        <div className="mx-auto grid min-h-dvh max-w-[1600px] grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="hidden md:block border-r bg-white dark:border-slate-800 dark:bg-slate-900">
+            <div className="sticky top-0 h-dvh overflow-y-auto p-4">
+              <SettingsSidebar {...sidebarProps} />
+            </div>
+          </aside>
+          <main className="min-w-0">
+            <div className="px-4 py-6 md:px-8 md:py-8">
+              <div className="mx-auto max-w-5xl rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{headerTitle}</h1>
+                <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
+                  {tt("grid_settings.loading", "Loading settings...")}
+                </p>
+              </div>
+            </div>
+          </main>
+        </div>
       </div>
     );
   }
 
   if (loadingError) {
     return (
-      <div className="w-full rounded-lg border bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-semibold">{tt("grid_settings.title", "Grid Settings")}</h1>
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{loadingError}</div>
+      <div className="min-h-dvh bg-slate-50 dark:bg-slate-950">
+        <div className="mx-auto grid min-h-dvh max-w-[1600px] grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="hidden md:block border-r bg-white dark:border-slate-800 dark:bg-slate-900">
+            <div className="sticky top-0 h-dvh overflow-y-auto p-4">
+              <SettingsSidebar {...sidebarProps} />
+            </div>
+          </aside>
+          <main className="min-w-0">
+            <div className="px-4 py-6 md:px-8 md:py-8">
+              <div className="mx-auto max-w-5xl rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{headerTitle}</h1>
+                <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
+                  {loadingError}
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
       </div>
     );
   }
 
   return (
     <>
-      {!isMobile ? (
-        <aside className="fixed left-0 top-0 z-[20] h-full w-[300px] border-r bg-white shadow-sm">
-          <div className="h-full overflow-y-auto p-4">{renderDesktopSidebarContent()}</div>
-        </aside>
-      ) : null}
-
-      {isMobile ? (
-        <div className="pointer-events-none fixed left-5 top-[84px] z-[140]">
-          <button
-            type="button"
-            title={tt("grid_settings.open_sections", "Sections")}
-            aria-label={tt("grid_settings.open_sections", "Sections")}
-            onClick={() => setMobileSidebarOpen(true)}
-            className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-md transition-all duration-200 hover:text-black"
-          >
-            <PanelLeft className="h-5 w-5" />
-          </button>
-        </div>
-      ) : null}
-
-      <div
-        className={
-          isMobile
-            ? "relative z-[30] px-4 py-4"
-            : "relative z-[30] ml-[320px] w-[calc(100%-336px)] px-4 py-4"
-        }
-      >
-        <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
-          <section className="min-w-0 p-6">
-              <div className="flex items-start justify-between gap-4">
-                <h1 className="text-2xl font-semibold">{tt("grid_settings.title", "Grid Settings")}</h1>
-                <div className="pt-1 text-sm text-gray-600">{activeTabMeta?.label || ""}</div>
-              </div>
-
-              {tabError ? (
-                <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{tabError}</div>
-              ) : null}
-              {tabSaved ? (
-                <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{tabSaved}</div>
-              ) : null}
-
-              <div className="mt-6 space-y-4">
-        {activeTab === "principal" ? (
-          <>
-            <div className="rounded-md border p-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <label className="mb-1 block text-sm font-medium">{tt("grid_settings.name", "Name")}</label>
-                  <input
-                    type="text"
-                    maxLength={200}
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="mb-1 block text-sm font-medium">{tt("grid_settings.description", "Description")}</label>
-                  <textarea
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    className="h-24 w-full rounded-md border px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">{tt("grid_settings.organization_type", "Organization Type")}</label>
-                  <select
-                    value={organizationType}
-                    onChange={(event) => setOrganizationType(event.target.value as OrganizationType)}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                  >
-                    <option value="">{tt("grid_settings.select_option", "Select...")}</option>
-                    {orgOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">{tt("grid_settings.unit_nature", "Unit Nature")}</label>
-                  <select
-                    value={unitNature}
-                    onChange={(event) => setUnitNature(event.target.value as UnitNature)}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                  >
-                    <option value="">{tt("grid_settings.select_option", "Select...")}</option>
-                    {unitNatureOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {organizationType === "other" ? (
-                  <div className="sm:col-span-2">
-                    <label className="mb-1 block text-sm font-medium">
-                      {tt("grid_settings.other_context_description", "Other Context Description")}
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={500}
-                      value={otherContextDescription}
-                      onChange={(event) => setOtherContextDescription(event.target.value)}
-                      className="w-full rounded-md border px-3 py-2 text-sm"
-                    />
-                  </div>
-                ) : null}
-                <div className="sm:col-span-2">
-                  <div className="mb-2 text-sm font-medium">{tt("grid_settings.days_enabled", "Days Enabled")}</div>
-                  <div className="flex flex-wrap gap-3">
-                    {dayOptions.map((day) => (
-                      <label key={day.value} className="inline-flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={daysEnabled.includes(day.value)}
-                          onChange={(event) => {
-                            setDaysEnabled((prev) => {
-                              if (event.target.checked) {
-                                return Array.from(new Set([...prev, day.value])).sort((a, b) => a - b);
-                              }
-                              return prev.filter((v) => v !== day.value);
-                            });
-                          }}
-                        />
-                        <span>{day.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">{tt("grid_settings.day_start", "Day Start")}</label>
-                  <input
-                    type="time"
-                    value={dayStart}
-                    onChange={(event) => setDayStart(event.target.value)}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">{tt("grid_settings.day_end", "Day End")}</label>
-                  <input
-                    type="time"
-                    value={dayEnd}
-                    onChange={(event) => setDayEnd(event.target.value)}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">{tt("grid_settings.cell_size", "Cell Size")}</label>
-                  <select
-                    value={String(cellSizeMin)}
-                    onChange={(event) => setCellSizeMin(Number(event.target.value) || 60)}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                  >
-                    {[5, 10, 15, 20, 30, 40, 45, 60].map((minutes) => (
-                      <option key={minutes} value={minutes}>
-                        {minutes} min
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">{tt("grid_settings.timezone", "Timezone")}</label>
-                  <div className="rounded-md border bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                    {timezone || tt("grid_settings.not_available", "Not available")}
-                  </div>
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="inline-flex items-center gap-2 text-sm font-medium">
-                    <input
-                      type="checkbox"
-                      checked={allowOverstaffing}
-                      onChange={(event) => setAllowOverstaffing(event.target.checked)}
-                    />
-                    <span>{tt("grid_settings.allow_overstaffing", "Allow Overstaffing")}</span>
-                  </label>
-                </div>
-              </div>
+      <div className="min-h-dvh bg-slate-50 dark:bg-slate-950">
+        <div className="mx-auto grid min-h-dvh max-w-[1600px] grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="hidden md:block border-r bg-white dark:border-slate-800 dark:bg-slate-900">
+            <div className="sticky top-0 h-dvh overflow-y-auto p-4">
+              <SettingsSidebar {...sidebarProps} />
             </div>
+          </aside>
 
-            {showRegenerationWarning ? (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                {tt(
-                  "grid_settings.regeneration_warning",
-                  "Changing organization type or unit nature will regenerate solver_profile and objective_weights on backend.",
-                )}
-              </div>
-            ) : null}
-
-            <div className="rounded-md border border-red-200 bg-red-50/60 p-4">
-              <div className="text-sm font-medium text-red-800">
-                {tt("grid_settings.delete_grid_section_title", "Delete grid")}
-              </div>
-              <p className="mt-1 text-xs text-red-700">
-                {tt(
-                  "grid_settings.delete_grid_section_help",
-                  "Delete this grid permanently. You will be asked to type the grid name to confirm.",
-                )}
-              </p>
-              <div className="mt-3">
+          <div className="min-w-0">
+            <div className="md:hidden border-b border-slate-200 bg-slate-50/90 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
+              <div className="mx-auto flex w-full max-w-[1040px] items-center gap-3 px-4 py-3 sm:px-6">
                 <button
                   type="button"
-                  onClick={() => setDeleteDialogOpen(true)}
-                  className="rounded bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700"
+                  title={tt("grid_settings.open_sections", "Sections")}
+                  aria-label={tt("grid_settings.open_sections", "Sections")}
+                  onClick={() => setMobileSidebarOpen(true)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
-                  {tt("grid_settings.delete_grid_button", "Delete grid")}
+                  <Menu className="h-4 w-4" />
                 </button>
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{tt("grid_settings.sections_label", "Navigation")}</p>
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{activeSectionMeta?.label || ""}</p>
+                </div>
               </div>
             </div>
 
-            <div className="text-right">
-              <button
-                type="button"
-                onClick={() => void savePrincipal()}
-                disabled={principalSaving}
-                className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
-              >
-                {principalSaving ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
-              </button>
-            </div>
-          </>
-        ) : null}
+            <main className="px-4 py-6 md:px-8 md:py-8">
+              <div className="mx-auto max-w-5xl space-y-6">
+                <header>
+                  <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{headerTitle}</h1>
+                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                    {tt("grid_settings.subtitle", "Configure schedule, solver behavior, units, and participants.")}
+                  </p>
+                </header>
 
-        {activeTab === "solver" ? (
-          <>
-            <div className="rounded-md border p-4">
-              <div className="text-sm font-medium">{tt("grid_settings.priorities_section", "Priorities")}</div>
-              <p className="mt-1 text-xs text-gray-600">
-                {tt("grid_settings.priorities_help", "Tune solver priorities from low (1) to high (10).")}
-              </p>
-              <div className="mt-4 space-y-3">
-                <PrioritySlider
-                  title={`P1 - ${tt("solver_wizard.priority_availability", "Respect participant availability")}`}
-                  help={tt("grid_settings.p1_help", "Maps to weight_availability (30-150).")}
-                  value={priorities.p1}
-                  onChange={(value) => setPriorities((prev) => ({ ...prev, p1: value }))}
-                />
-                <PrioritySlider
-                  title={`P2 - ${tt("solver_wizard.priority_participant_gap", "Minimize participant gaps")}`}
-                  help={tt("grid_settings.p2_help", "Maps to weight_participant_gap (1-20).")}
-                  value={priorities.p2}
-                  onChange={(value) => setPriorities((prev) => ({ ...prev, p2: value }))}
-                />
-                <PrioritySlider
-                  title={`P3 - ${tt("solver_wizard.priority_participant_days", "Concentrate participant activities")}`}
-                  help={tt("grid_settings.p3_help", "Maps to weight_participant_days (0.5-10).")}
-                  value={priorities.p3}
-                  onChange={(value) => setPriorities((prev) => ({ ...prev, p3: value }))}
-                />
-                {unitNature === "audience" ? (
+                {tabError ? (
+                  <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
+                    {tabError}
+                  </div>
+                ) : null}
+                {tabSaved ? (
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+                    {tabSaved}
+                  </div>
+                ) : null}
+
+                <div className="space-y-4">
+                {activeSection === "main" ? (
+                  <SettingsSectionCard
+                    title={tt("grid_settings.main_tab", "Main")}
+                    description={tt("grid_settings.main_tab_desc", "Basic grid identity and context.")}
+                  >
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="sm:col-span-2">
+                        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                          {tt("grid_settings.name", "Name")}
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={200}
+                          value={name}
+                          onChange={(event) => setName(event.target.value)}
+                          className={sectionCardInputClass}
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                          {tt("grid_settings.description", "Description")}
+                        </label>
+                        <textarea
+                          value={description}
+                          onChange={(event) => setDescription(event.target.value)}
+                          className={`${sectionCardInputClass} h-24`}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                          {tt("grid_settings.organization_type", "Organization Type")}
+                        </label>
+                        <select
+                          value={organizationType}
+                          onChange={(event) => setOrganizationType(event.target.value as OrganizationType)}
+                          className={sectionCardInputClass}
+                        >
+                          <option value="">{tt("grid_settings.select_option", "Select...")}</option>
+                          {orgOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                          {tt("grid_settings.unit_nature", "Unit Nature")}
+                        </label>
+                        <select
+                          value={unitNature}
+                          onChange={(event) => setUnitNature(event.target.value as UnitNature)}
+                          className={sectionCardInputClass}
+                        >
+                          <option value="">{tt("grid_settings.select_option", "Select...")}</option>
+                          {unitNatureOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {organizationType === "other" ? (
+                        <div className="sm:col-span-2">
+                          <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                            {tt("grid_settings.other_context_description", "Other Context Description")}
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={500}
+                            value={otherContextDescription}
+                            onChange={(event) => setOtherContextDescription(event.target.value)}
+                            className={sectionCardInputClass}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {showRegenerationWarning ? (
+                      <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-300">
+                        {tt(
+                          "grid_settings.regeneration_warning",
+                          "Changing organization type or unit nature will regenerate solver_profile and objective_weights on backend.",
+                        )}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-5 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void savePrincipal()}
+                        disabled={principalSaving}
+                        className="rounded-md bg-black px-4 py-2 text-sm text-white transition-colors hover:bg-slate-800 disabled:opacity-60"
+                      >
+                        {principalSaving ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
+                      </button>
+                    </div>
+                  </SettingsSectionCard>
+                ) : null}
+
+                {activeSection === "schedule" ? (
+                  <SettingsSectionCard
+                    title={tt("grid_settings.schedule_tab", "Schedule")}
+                    description={tt("grid_settings.schedule_tab_desc", "Schedule boundaries, days, and time resolution.")}
+                  >
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="sm:col-span-2">
+                        <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                          {tt("grid_settings.days_enabled", "Days Enabled")}
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                          {dayOptions.map((day) => (
+                            <label key={day.value} className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                              <input
+                                type="checkbox"
+                                checked={daysEnabled.includes(day.value)}
+                                onChange={(event) => {
+                                  setDaysEnabled((prev) => {
+                                    if (event.target.checked) {
+                                      return Array.from(new Set([...prev, day.value])).sort((a, b) => a - b);
+                                    }
+                                    return prev.filter((v) => v !== day.value);
+                                  });
+                                }}
+                              />
+                              <span>{day.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                          {tt("grid_settings.day_start", "Day Start")}
+                        </label>
+                        <input
+                          type="time"
+                          value={dayStart}
+                          onChange={(event) => setDayStart(event.target.value)}
+                          className={sectionCardInputClass}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                          {tt("grid_settings.day_end", "Day End")}
+                        </label>
+                        <input
+                          type="time"
+                          value={dayEnd}
+                          onChange={(event) => setDayEnd(event.target.value)}
+                          className={sectionCardInputClass}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                          {tt("grid_settings.cell_size", "Cell Size")}
+                        </label>
+                        <select
+                          value={String(cellSizeMin)}
+                          onChange={(event) => setCellSizeMin(Number(event.target.value) || 60)}
+                          className={sectionCardInputClass}
+                        >
+                          {[5, 10, 15, 20, 30, 40, 45, 60].map((minutes) => (
+                            <option key={minutes} value={minutes}>
+                              {minutes} min
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                          {tt("grid_settings.timezone", "Timezone")}
+                        </label>
+                        <div className={`${sectionCardInputClass} bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-200`}>
+                          {timezone || tt("grid_settings.not_available", "Not available")}
+                        </div>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={allowOverstaffing}
+                            onChange={(event) => setAllowOverstaffing(event.target.checked)}
+                          />
+                          <span>{tt("grid_settings.allow_overstaffing", "Allow Overstaffing")}</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void savePrincipal()}
+                        disabled={principalSaving}
+                        className="rounded-md bg-black px-4 py-2 text-sm text-white transition-colors hover:bg-slate-800 disabled:opacity-60"
+                      >
+                        {principalSaving ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
+                      </button>
+                    </div>
+                  </SettingsSectionCard>
+                ) : null}
+
+                {activeSection === "solver" ? (
+                  <SettingsSectionCard
+                    title={tt("grid_settings.solver_tab", "Solver")}
+                    description={tt("grid_settings.solver_tab_desc", "Optimization priorities and solver constraints.")}
+                  >
+                    <GridSolverSettingsForm
+                      gridId={gridId}
+                      daysEnabled={daysEnabled}
+                      horizonStart={dayStart}
+                      horizonEnd={dayEnd}
+                      initialDayHeatmap={solverDayHeatmap}
+                      cellSizeMin={cellSizeMin}
+                    />
+                  </SettingsSectionCard>
+                ) : null}
+
+                {activeSection === "units" ? (
                   <>
-                    <PrioritySlider
-                      title={`P4 - ${tt("solver_wizard.priority_unit_gap", "Minimize unit gaps")}`}
-                      help={tt("grid_settings.p4_help", "Maps to weight_unit_gap (1-15).")}
-                      value={priorities.p4}
-                      onChange={(value) => setPriorities((prev) => ({ ...prev, p4: value }))}
-                    />
-                    <PrioritySlider
-                      title={`P5 - ${tt("solver_wizard.priority_unit_days", "Concentrate unit activities")}`}
-                      help={tt("grid_settings.p5_help", "Maps to weight_unit_days (0.5-8).")}
-                      value={priorities.p5}
-                      onChange={(value) => setPriorities((prev) => ({ ...prev, p5: value }))}
-                    />
+                    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                      <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                        {tt("grid_settings.tiers_configuration", "Tiers Configuration")}
+                      </div>
+                      <label className="mt-3 inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                        <input type="checkbox" checked={tiersEnabled} onChange={(event) => setTiersEnabled(event.target.checked)} />
+                        <span>{tt("grid_settings.tiers_enabled", "Tiers enabled")}</span>
+                      </label>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                      <div className="mb-3 text-sm font-medium text-slate-900 dark:text-slate-100">
+                        {tt("grid_settings.hour_limits_by_tier", "Hour Limits by Tier")}
+                      </div>
+                      <div className="space-y-3">
+                        <TierInputs
+                          title={tt("grid_settings.max_hours_day_by_tier", "Max hours per day by tier")}
+                          help={tt("grid_solver_settings.max_hours_day_help", "Hard cap per day by participant tier.")}
+                          enabled={maxHoursDayByTierEnabled}
+                          onEnabledChange={setMaxHoursDayByTierEnabled}
+                          values={maxHoursDayByTier}
+                          onValuesChange={setMaxHoursDayByTier}
+                        />
+                        <TierInputs
+                          title={tt("grid_settings.max_hours_week_by_tier", "Max hours per week by tier")}
+                          help={tt("grid_solver_settings.max_hours_week_help", "Hard weekly cap by participant tier.")}
+                          enabled={maxHoursWeekByTierEnabled}
+                          onEnabledChange={setMaxHoursWeekByTierEnabled}
+                          values={maxHoursWeekByTier}
+                          onValuesChange={setMaxHoursWeekByTier}
+                        />
+                        <TierInputs
+                          title={tt("grid_settings.min_hours_week_by_tier", "Min hours per week by tier")}
+                          help={tt("grid_solver_settings.min_hours_week_help", "Weekly minimum target by participant tier.")}
+                          enabled={minHoursWeekByTierEnabled}
+                          onEnabledChange={setMinHoursWeekByTierEnabled}
+                          values={minHoursWeekByTier}
+                          onValuesChange={setMinHoursWeekByTier}
+                        />
+                        <TierInputs
+                          title={tt("grid_settings.min_cells_week_by_tier", "Min cells per week by tier")}
+                          help={tt("grid_settings.min_cells_week_by_tier_help", "Weekly minimum cell assignments by tier.")}
+                          enabled={minCellsWeekByTierEnabled}
+                          onEnabledChange={setMinCellsWeekByTierEnabled}
+                          values={minCellsWeekByTier}
+                          onValuesChange={setMinCellsWeekByTier}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                      <div className="mb-3 text-sm font-medium text-slate-900 dark:text-slate-100">
+                        {tt("grid_settings.additional_participant_constraints", "Additional Participant Constraints")}
+                      </div>
+                      <div className="space-y-3">
+                        <NumberOption
+                          title={tt("grid_settings.min_rest_hours", "Minimum rest hours")}
+                          help={tt("grid_solver_settings.min_rest_hours_help", "Hard minimum rest between two assigned shifts.")}
+                          enabled={minRestHoursEnabled}
+                          onEnabledChange={setMinRestHoursEnabled}
+                          value={minRestHours}
+                          onValueChange={setMinRestHours}
+                          min={0}
+                          step={0.5}
+                        />
+                        <BooleanOption
+                          title={tt("grid_settings.min_hours_week_hard", "Minimum weekly hours are hard")}
+                          help={tt("grid_solver_settings.min_hours_week_hard_help", "If disabled, weekly minimum is soft and uses penalty weight.")}
+                          value={minHoursWeekHard}
+                          onChange={setMinHoursWeekHard}
+                        />
+                        <NumberOption
+                          title={tt("grid_settings.min_hours_week_weight", "Min weekly shortfall penalty weight")}
+                          help={tt("grid_solver_settings.min_hours_shortfall_weight_help", "Penalty multiplier used when minimum weekly hours are soft.")}
+                          enabled={minHoursWeekWeightEnabled}
+                          onEnabledChange={setMinHoursWeekWeightEnabled}
+                          value={minHoursWeekWeight}
+                          onValueChange={setMinHoursWeekWeight}
+                          min={0}
+                          step={0.1}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void saveParticipants()}
+                        disabled={participantsSaving}
+                        className="rounded-md bg-black px-4 py-2 text-sm text-white transition-colors hover:bg-slate-800 disabled:opacity-60"
+                      >
+                        {participantsSaving ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
+                      </button>
+                    </div>
                   </>
                 ) : null}
-                <PrioritySlider
-                  title={`P6 - ${tt("solver_wizard.priority_soft_window", "Respect preferred time windows")}`}
-                  help={tt("grid_settings.p6_help", "Maps to weight_soft_window (0.2-5).")}
-                  value={priorities.p6}
-                  onChange={(value) => setPriorities((prev) => ({ ...prev, p6: value }))}
-                />
-                <PrioritySlider
-                  title={`P9 - ${tt("solver_wizard.priority_daily_load_balance", "Daily load balance")}`}
-                  help={tt("grid_settings.p9_help", "Maps to weight_participant_daily_load_balance (0.5-8).")}
-                  value={priorities.p9}
-                  onChange={(value) => setPriorities((prev) => ({ ...prev, p9: value }))}
-                />
-                <PrioritySlider
-                  title={`P10 - ${tt("solver_wizard.priority_day_spread", "Separate vs cluster days")}`}
-                  help={tt("grid_settings.p10_help", "Adjusts weight_participant_day_spread and weight_participant_days.")}
-                  value={priorities.p10}
-                  min={1}
-                  max={5}
-                  onChange={(value) => setPriorities((prev) => ({ ...prev, p10: value }))}
-                  hint={`${tt("solver_wizard.day_spread_cluster", "Cluster")} <-> ${tt("solver_wizard.day_spread_separate", "Separate")}`}
-                />
-                <PrioritySlider
-                  title={`P11 - ${tt("solver_wizard.priority_participant_workload_equity", "Participant workload equity")}`}
-                  help={tt("grid_settings.p11_help", "Maps to weight_participant_workload_equity (0-10).")}
-                  value={priorities.p11}
-                  onChange={(value) => setPriorities((prev) => ({ ...prev, p11: value }))}
-                />
-              </div>
-            </div>
 
-            <div className="rounded-md border p-4">
-              <div className="text-sm font-medium">{tt("grid_settings.constraints_section", "Constraints")}</div>
-              <div className="mt-4 space-y-3">
-                <BooleanOption
-                  title={tt("grid_settings.prevent_overlap", "Prevent overlap for same unit")}
-                  help={tt("grid_settings.prevent_overlap_help", "Maps to unit_nooverlap_enabled.")}
-                  value={unitNoOverlapEnabled}
-                  onChange={setUnitNoOverlapEnabled}
-                />
-                <NumberOption
-                  title={tt("grid_settings.unit_max_hours_day", "Unit max hours per day")}
-                  help={tt("grid_settings.unit_max_hours_day_help", "Maps to unit_max_hours_day.")}
-                  enabled={unitMaxHoursDayEnabled}
-                  onEnabledChange={setUnitMaxHoursDayEnabled}
-                  value={unitMaxHoursDay}
-                  onValueChange={setUnitMaxHoursDay}
-                  min={0}
-                  step={0.5}
-                />
-                <BooleanOption
-                  title={tt("grid_settings.soft_window_enabled", "Soft window enabled")}
-                  help={tt("grid_settings.soft_window_enabled_help", "Maps to soft_window_enabled.")}
-                  value={softWindowEnabled}
-                  onChange={setSoftWindowEnabled}
-                />
-                <NumberOption
-                  title={tt("grid_settings.soft_window_base_cost", "Soft window base cost")}
-                  help={tt("grid_settings.soft_window_base_cost_help", "Maps to soft_window_base_cost (default 500).")}
-                  enabled={softWindowBaseCostEnabled}
-                  onEnabledChange={setSoftWindowBaseCostEnabled}
-                  value={softWindowBaseCost}
-                  onValueChange={setSoftWindowBaseCost}
-                  min={0}
-                  step={1}
-                  placeholder="500"
-                />
-                <BooleanOption
-                  title={tt("grid_settings.lexicographic_availability", "Lexicographic availability")}
-                  help={tt("grid_settings.lexicographic_availability_help", "Maps to lexicographic_availability.")}
-                  value={lexicographicAvailability}
-                  onChange={setLexicographicAvailability}
-                />
-                <NumberOption
-                  title={tt("grid_settings.stability_weight", "Stability weight")}
-                  help={tt("grid_settings.stability_weight_help", "Maps to stability_weight (0-100).")}
-                  enabled={stabilityWeightEnabled}
-                  onEnabledChange={setStabilityWeightEnabled}
-                  value={stabilityWeight}
-                  onValueChange={setStabilityWeight}
-                  min={0}
-                  max={100}
-                  step={0.5}
-                />
+                {activeSection === "danger" ? (
+                  <SettingsSectionCard
+                    tone="danger"
+                    title={tt("grid_settings.delete_grid_section_title", "Delete grid")}
+                    description={tt(
+                      "grid_settings.delete_grid_section_help",
+                      "Delete this grid permanently. You will be asked to type the grid name to confirm.",
+                    )}
+                  >
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setDeleteDialogOpen(true)}
+                        className="rounded-md bg-red-600 px-4 py-2 text-sm text-white transition-colors hover:bg-red-700"
+                      >
+                        {tt("grid_settings.delete_grid_button", "Delete grid")}
+                      </button>
+                    </div>
+                  </SettingsSectionCard>
+                ) : null}
               </div>
-            </div>
-
-            <div className="rounded-md border p-4">
-              <div className="text-sm font-medium">{tt("grid_settings.availability_costs_section", "Availability Cost Prioritization")}</div>
-              <p className="mt-1 text-xs text-gray-600">
-                {tt("grid_settings.availability_costs_help", "Prioritize penalties for non-preferred and impossible slots.")}
-              </p>
-              <div className="mt-4 space-y-3">
-                <PrioritySlider
-                  title={tt("grid_settings.non_preferred_priority", "Non-preferred slots priority")}
-                  help={tt("grid_settings.non_preferred_priority_help", "Maps to non_preferred_cost (default 100).")}
-                  value={priorities.nonPreferred}
-                  onChange={(value) => setPriorities((prev) => ({ ...prev, nonPreferred: value }))}
-                />
-                <PrioritySlider
-                  title={tt("grid_settings.impossible_priority", "Impossible slots priority")}
-                  help={tt("grid_settings.impossible_priority_help", "Maps to impossible_cost (default 10000).")}
-                  value={priorities.impossible}
-                  onChange={(value) => setPriorities((prev) => ({ ...prev, impossible: value }))}
-                />
               </div>
-            </div>
-
-            <div className="rounded-md border p-4">
-              <div className="text-sm font-medium">{tt("grid_settings.day_heatmap", "Day Heatmap")}</div>
-              <p className="mt-1 text-xs text-gray-600">{tt("grid_solver_settings.day_heatmap_help", "Set your day intensity preferences.")}</p>
-              <div className="mt-4">
-                {enabledDayKeys.length > 0 ? (
-                  <DayHeatmapChart
-                    dayKeys={enabledDayKeys}
-                    values={dayHeatmapValues}
-                    getDayLabel={(dayKey) => {
-                      const dayIndex = DAY_KEY_TO_INDEX[dayKey];
-                      const fallback = dayKey;
-                      const option = dayOptions.find((entry) => entry.value === dayIndex);
-                      return option?.label || fallback;
-                    }}
-                    onChange={(dayKey, nextValue) => {
-                      setDayHeatmapValues((prev) => ({ ...prev, [dayKey]: nextValue }));
-                    }}
-                  />
-                ) : (
-                  <div className="rounded border border-dashed px-3 py-2 text-sm text-gray-500">
-                    {tt("grid_solver_settings.no_enabled_days", "No enabled days.")}
-                  </div>
-                )}
-              </div>
-              <div className="mt-4 rounded border bg-gray-50 p-3">
-                <div className="mb-2 flex items-center justify-between text-xs text-gray-600">
-                  <span>{tt("grid_solver_settings.budget_meter", "Budget meter")}</span>
-                  <span>
-                    {heatmapUpgradeSum}/{heatmapBudget}
-                  </span>
-                </div>
-                <div className="h-2 overflow-hidden rounded bg-gray-200">
-                  <div
-                    className={`${heatmapBudgetExceeded ? "bg-red-500" : "bg-black"} h-2 transition-all`}
-                    style={{ width: `${Math.round(heatmapBudgetRatio * 100)}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="text-right">
-              <button
-                type="button"
-                onClick={() => void saveSolver()}
-                disabled={solverSaving}
-                className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
-              >
-                {solverSaving ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
-              </button>
-            </div>
-          </>
-        ) : null}
-
-        {activeTab === "participants" ? (
-          <>
-            <div className="rounded-md border p-4">
-              <div className="text-sm font-medium">{tt("grid_settings.tiers_configuration", "Tiers Configuration")}</div>
-              <label className="mt-3 inline-flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={tiersEnabled} onChange={(event) => setTiersEnabled(event.target.checked)} />
-                <span>{tt("grid_settings.tiers_enabled", "Tiers enabled")}</span>
-              </label>
-            </div>
-
-            <div className="rounded-md border p-4">
-              <div className="mb-3 text-sm font-medium">{tt("grid_settings.hour_limits_by_tier", "Hour Limits by Tier")}</div>
-              <div className="space-y-3">
-                <TierInputs
-                  title={tt("grid_settings.max_hours_day_by_tier", "Max hours per day by tier")}
-                  help={tt("grid_solver_settings.max_hours_day_help", "Hard cap per day by participant tier.")}
-                  enabled={maxHoursDayByTierEnabled}
-                  onEnabledChange={setMaxHoursDayByTierEnabled}
-                  values={maxHoursDayByTier}
-                  onValuesChange={setMaxHoursDayByTier}
-                />
-                <TierInputs
-                  title={tt("grid_settings.max_hours_week_by_tier", "Max hours per week by tier")}
-                  help={tt("grid_solver_settings.max_hours_week_help", "Hard weekly cap by participant tier.")}
-                  enabled={maxHoursWeekByTierEnabled}
-                  onEnabledChange={setMaxHoursWeekByTierEnabled}
-                  values={maxHoursWeekByTier}
-                  onValuesChange={setMaxHoursWeekByTier}
-                />
-                <TierInputs
-                  title={tt("grid_settings.min_hours_week_by_tier", "Min hours per week by tier")}
-                  help={tt("grid_solver_settings.min_hours_week_help", "Weekly minimum target by participant tier.")}
-                  enabled={minHoursWeekByTierEnabled}
-                  onEnabledChange={setMinHoursWeekByTierEnabled}
-                  values={minHoursWeekByTier}
-                  onValuesChange={setMinHoursWeekByTier}
-                />
-                <TierInputs
-                  title={tt("grid_settings.min_cells_week_by_tier", "Min cells per week by tier")}
-                  help={tt("grid_settings.min_cells_week_by_tier_help", "Weekly minimum cell assignments by tier.")}
-                  enabled={minCellsWeekByTierEnabled}
-                  onEnabledChange={setMinCellsWeekByTierEnabled}
-                  values={minCellsWeekByTier}
-                  onValuesChange={setMinCellsWeekByTier}
-                />
-              </div>
-            </div>
-
-            <div className="rounded-md border p-4">
-              <div className="mb-3 text-sm font-medium">{tt("grid_settings.additional_participant_constraints", "Additional Participant Constraints")}</div>
-              <div className="space-y-3">
-                <NumberOption
-                  title={tt("grid_settings.min_rest_hours", "Minimum rest hours")}
-                  help={tt("grid_solver_settings.min_rest_hours_help", "Hard minimum rest between two assigned shifts.")}
-                  enabled={minRestHoursEnabled}
-                  onEnabledChange={setMinRestHoursEnabled}
-                  value={minRestHours}
-                  onValueChange={setMinRestHours}
-                  min={0}
-                  step={0.5}
-                />
-                <BooleanOption
-                  title={tt("grid_settings.min_hours_week_hard", "Minimum weekly hours are hard")}
-                  help={tt("grid_solver_settings.min_hours_week_hard_help", "If disabled, weekly minimum is soft and uses penalty weight.")}
-                  value={minHoursWeekHard}
-                  onChange={setMinHoursWeekHard}
-                />
-                <NumberOption
-                  title={tt("grid_settings.min_hours_week_weight", "Min weekly shortfall penalty weight")}
-                  help={tt("grid_solver_settings.min_hours_shortfall_weight_help", "Penalty multiplier used when minimum weekly hours are soft.")}
-                  enabled={minHoursWeekWeightEnabled}
-                  onEnabledChange={setMinHoursWeekWeightEnabled}
-                  value={minHoursWeekWeight}
-                  onValueChange={setMinHoursWeekWeight}
-                  min={0}
-                  step={0.1}
-                />
-              </div>
-            </div>
-
-            <div className="text-right">
-              <button
-                type="button"
-                onClick={() => void saveParticipants()}
-                disabled={participantsSaving}
-                className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
-              >
-                {participantsSaving ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
-              </button>
-            </div>
-          </>
-        ) : null}
-              </div>
-            </section>
+            </main>
           </div>
+        </div>
       </div>
 
-      <Sheet open={isMobile && mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
-        <SheetContent
-          side="left"
-          offsetTop={56}
-          className="z-[130] w-[380px] p-0 data-[state=closed]:duration-[220ms] data-[state=open]:duration-[240ms] sm:w-[440px]"
-        >
-          <SheetHeader className="sr-only">
-            <SheetTitle>{tt("grid_settings.sections_label", "Sections")}</SheetTitle>
-          </SheetHeader>
-          <div className="h-full overflow-y-auto p-4">{renderMobileSidebarContent()}</div>
-        </SheetContent>
-      </Sheet>
+      <div className="md:hidden">
+        <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
+          <SheetContent side="left" className="w-[320px] p-0 sm:w-[360px]">
+            <SheetHeader className="sr-only">
+              <SheetTitle>{tt("grid_settings.sections_label", "Navigation")}</SheetTitle>
+            </SheetHeader>
+            <div className="h-full overflow-y-auto p-4">
+              <SettingsSidebar {...sidebarProps} />
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
 
       <Dialog
         open={deleteDialogOpen}

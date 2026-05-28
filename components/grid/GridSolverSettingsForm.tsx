@@ -1010,18 +1010,14 @@ export default function GridSolverSettingsForm({
 
   if (settingsLoading) {
     return (
-      <div className="max-w-3xl rounded-lg border bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-semibold">{tt("grid_solver_settings.title", "Solver Settings")}</h1>
-        <p className="mt-4 text-sm text-gray-600">{tt("grid_solver_settings.loading", "Loading...")}</p>
+      <div className="rounded-md border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+        {tt("grid_solver_settings.loading", "Loading settings...")}
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl rounded-lg border bg-white p-6 shadow-sm">
-      <h1 className="text-2xl font-semibold">{tt("grid_solver_settings.title", "Solver Settings")}</h1>
-
-      <div className="mt-6 space-y-6">
+    <div className="space-y-6">
         <section className="rounded-xl border border-gray-200 p-5">
           <h2 className="text-base font-semibold text-gray-900">{tt("grid_solver_settings.constraints", "Constraints")}</h2>
           <p className="mt-1 text-sm text-gray-500">
@@ -1250,8 +1246,6 @@ export default function GridSolverSettingsForm({
             </div>
           ) : null}
         </section>
-
       </div>
-    </div>
   );
 }

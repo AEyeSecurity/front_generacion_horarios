@@ -61,16 +61,14 @@ export default async function GridSettingsPage({
   }
 
   return (
-    <div className="p-4" data-grid-settings-view>
+    <div data-grid-settings-view>
       <style>{`
         body:has([data-grid-settings-view]) [data-grid-topbar] { display: none; }
       `}</style>
-      <div className="w-full">
-        <GridSettingsTabs
-          gridId={Number(grid.id)}
-          backHref={`/grid/${encodeURIComponent(grid.grid_code || code)}`}
-        />
-      </div>
+      <GridSettingsTabs
+        gridId={Number(grid.id)}
+        backHref={`/grid/${encodeURIComponent(grid.grid_code || code)}`}
+      />
     </div>
   );
 }
