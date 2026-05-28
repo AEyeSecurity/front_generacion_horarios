@@ -842,9 +842,7 @@ export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: 
       return;
     }
     requestLeftPanel(null);
-    if (step !== 4) {
-      requestRightFan(false);
-    }
+    requestRightFan(false);
   }, [
     active,
     blockagePhase,
