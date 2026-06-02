@@ -806,7 +806,7 @@ export default function GridSchedulePanel({
         const bundleNameMap: Record<string, string> = {};
         const bundleUnitsMap: Record<string, string[]> = {};
         const unitNameToIdMap: Record<string, string> = {};
-        for (const unit of unitListApi) {
+        for (const unit of unitList) {
           if (unit?.id == null) continue;
           const uid = String(unit.id);
           const uname = String(unit.name || "").trim();
@@ -830,7 +830,7 @@ export default function GridSchedulePanel({
         }
         // Fallback for deployments where placements carry bundle_id but bundle records are absent:
         // treat bundle_id as direct unit id mapping.
-        for (const unit of unitListApi) {
+        for (const unit of unitList) {
           if (unit?.id == null) continue;
           const key = String(unit.id);
           if (!bundleUnitsMap[key]) bundleUnitsMap[key] = [key];

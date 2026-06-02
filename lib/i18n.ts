@@ -908,6 +908,7 @@ const EN_US = {
   "category_dialog.failed_add_value": "Failed to add value",
   "category_dialog.confirm_delete_value": "Delete this value?",
   "category_dialog.failed_delete_value": "Failed to delete value ({status}). {details}",
+  "category_dialog.failed_update_value": "Failed to update value",
   "category_dialog.confirm_delete_category": "Delete this category and all its values?",
   "category_dialog.failed_delete_category": "Failed to delete category ({status}). {details}",
 
