@@ -6,8 +6,7 @@ const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Allow static assets from /public (any file with an extension)
-  // and Next.js internal assets
+  // Allow static assets from /public (any file with an extension) and Next.js internal assets
   if (pathname.startsWith("/_next") || /\.[a-zA-Z0-9]+$/.test(pathname)) {
     return NextResponse.next();
   }
@@ -34,6 +33,7 @@ export function proxy(req: NextRequest) {
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
+  
   return NextResponse.next();
 }
 
