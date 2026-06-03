@@ -1831,8 +1831,7 @@ export default function GridSchedulePanel({
         >
           <div style={scheduleContentStyle}>
             <div className="grid select-none" style={{ gridTemplateColumns: scheduleGridTemplateColumns }}>
-              <div className="sticky left-0 z-[410] bg-gray-50 border-b h-12 flex items-center justify-center px-1.5 relative">
-                <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-gray-50" />
+              <div className="sticky left-0 z-[30] bg-gray-50 border-b h-12 flex items-center justify-center px-1.5 relative">
                 {canUseDraftHistory && (
                   <div className="inline-flex items-center gap-0.5">
                     <button
@@ -1903,10 +1902,9 @@ export default function GridSchedulePanel({
             {rows.map((time, rowIndex) => (
               <div key={time} className="grid" style={{ gridTemplateColumns: scheduleGridTemplateColumns }}>
                 <div
-                  className="sticky left-0 z-[400] border-r bg-white relative"
+                  className="sticky left-0 z-[20] border-r bg-white relative"
                   style={{ height: effectiveRowPx }}
                 >
-                  <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-white" />
                   <div
                     className={`absolute inset-x-0 text-center text-xs text-gray-500 ${
                       rowIndex === 0 ? "top-1" : "-top-2 -translate-y-1/2"

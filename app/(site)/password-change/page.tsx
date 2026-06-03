@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { getPasswordPolicyState, PasswordPolicyChecklist } from "@/components/forms/PasswordPolicyChecklist";
 import { canChangePassword } from "@/lib/account";
+import { getGuidedAuthErrorMessage } from "@/lib/auth-error-messages";
 import type { User } from "@/lib/types";
 import { useI18n } from "@/lib/use-i18n";
 
@@ -16,6 +18,10 @@ export default function PasswordChangePage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const passwordPolicy = getPasswordPolicyState(newPassword);
+  const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
+  const newPasswordDiffers = currentPassword.length > 0 && currentPassword !== newPassword;
+  const canSubmit = allowed && passwordPolicy.valid && passwordsMatch && newPasswordDiffers && !loading;
 
   useEffect(() => {
     let active = true;
@@ -47,6 +53,10 @@ export default function PasswordChangePage() {
       return;
     }
 
+    if (!passwordPolicy.valid) {
+      setError(t("auth.error.password_policy_unmet"));
+      return;
+    }
     if (newPassword !== confirmPassword) {
       setError(t("password_change.new_passwords_do_not_match"));
       return;
@@ -64,23 +74,20 @@ export default function PasswordChangePage() {
         body: JSON.stringify({
           old_password: currentPassword,
           new_password: newPassword,
+          new_password_confirm: confirmPassword,
         }),
       });
       if (!r.ok) {
-        let msg = t("password_change.could_not_change_password");
-        try {
-          const j = await r.json();
-          msg = j?.error || j?.detail || msg;
-        } catch {}
-        setError(msg);
+        const payload = await r.json().catch(() => null);
+        setError(getGuidedAuthErrorMessage(payload, r.status, t, "password_change"));
         return;
       }
       setMessage(t("password_change.password_updated"));
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t("password_change.could_not_change_password"));
+    } catch {
+      setError(t("password_change.could_not_change_password"));
     } finally {
       setLoading(false);
     }
@@ -116,6 +123,7 @@ export default function PasswordChangePage() {
               onChange={(e) => setNewPassword(e.target.value)}
               required
             />
+            <PasswordPolicyChecklist password={newPassword} t={t} />
           </div>
           <div>
             <label className="block text-sm">{t("password_change.confirm_new_password")}</label>
@@ -126,10 +134,13 @@ export default function PasswordChangePage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
             />
+            {confirmPassword && !passwordsMatch && (
+              <div className="mt-1 text-xs text-red-600">{t("password_change.new_passwords_do_not_match")}</div>
+            )}
           </div>
           <button
             type="submit"
-            disabled={loading}
+            disabled={!canSubmit}
             className="px-4 py-2 rounded bg-black text-white text-sm disabled:opacity-60"
           >
             {loading ? t("password_change.updating") : t("password_change.update_password")}

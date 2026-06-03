@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { getGuidedAuthErrorMessage } from "@/lib/auth-error-messages";
 import { detectPreferredLanguageFromNavigator } from "@/lib/language";
 import { useI18n } from "@/lib/use-i18n";
 
@@ -24,8 +25,8 @@ export default function LoginForm() {
       body: JSON.stringify({ email, password, preferred_language: preferredLanguage }),
     });
     if (!res.ok) {
-      const { error: apiError } = await res.json().catch(() => ({ error: t("auth.login_failed") }));
-      setError(apiError || t("auth.login_failed"));
+      const payload = await res.json().catch(() => null);
+      setError(getGuidedAuthErrorMessage(payload, res.status, t, "login"));
       return;
     }
     const nextFromQuery = sp.get("next") || "";

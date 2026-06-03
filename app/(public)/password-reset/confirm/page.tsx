@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
+import { getPasswordPolicyState, PasswordPolicyChecklist } from "@/components/forms/PasswordPolicyChecklist";
+import { getGuidedAuthErrorMessage } from "@/lib/auth-error-messages";
 import { useI18n } from "@/lib/use-i18n";
 
 export default function PasswordResetConfirmPage() {
@@ -15,6 +17,9 @@ export default function PasswordResetConfirmPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const passwordPolicy = getPasswordPolicyState(password);
+  const passwordsMatch = password.length > 0 && password === confirm;
+  const canSubmit = Boolean(uid && token) && passwordPolicy.valid && passwordsMatch && !loading;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -23,6 +28,10 @@ export default function PasswordResetConfirmPage() {
 
     if (!uid || !token) {
       setError(t("auth.invalid_reset_link"));
+      return;
+    }
+    if (!passwordPolicy.valid) {
+      setError(t("auth.error.password_policy_unmet"));
       return;
     }
     if (password !== confirm) {
@@ -35,24 +44,18 @@ export default function PasswordResetConfirmPage() {
       const r = await fetch("/api/auth/password-reset/confirm", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ uid, token, new_password: password }),
+        body: JSON.stringify({ uid, token, new_password: password, new_password_confirm: confirm }),
       });
       if (!r.ok) {
-        let msg = t("auth.could_not_reset_password");
-        try {
-          const j = await r.json();
-          msg = j?.error || j?.detail || msg;
-        } catch {
-          // ignore parse failures
-        }
-        setError(msg);
+        const payload = await r.json().catch(() => null);
+        setError(getGuidedAuthErrorMessage(payload, r.status, t, "password_reset"));
         return;
       }
       setMessage(t("auth.password_updated_login_now"));
       setPassword("");
       setConfirm("");
-    } catch (submitError: unknown) {
-      setError(submitError instanceof Error ? submitError.message : t("auth.could_not_reset_password"));
+    } catch {
+      setError(t("auth.could_not_reset_password"));
     } finally {
       setLoading(false);
     }
@@ -71,6 +74,7 @@ export default function PasswordResetConfirmPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
+          <PasswordPolicyChecklist password={password} t={t} />
         </div>
         <div>
           <label className="block text-sm">{t("auth.confirm_password")}</label>
@@ -81,10 +85,13 @@ export default function PasswordResetConfirmPage() {
             onChange={(e) => setConfirm(e.target.value)}
             required
           />
+          {confirm && !passwordsMatch && (
+            <div className="mt-1 text-xs text-red-600">{t("auth.passwords_do_not_match")}</div>
+          )}
         </div>
         <button
           type="submit"
-          disabled={loading}
+          disabled={!canSubmit}
           className="px-4 py-2 rounded bg-black text-white text-sm disabled:opacity-60"
         >
           {loading ? t("auth.updating") : t("auth.update_password")}

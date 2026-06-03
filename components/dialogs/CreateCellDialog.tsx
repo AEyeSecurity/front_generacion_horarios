@@ -376,6 +376,11 @@ export default function CreateCellDialog({
     [units]
   );
   const usedUnitIds = React.useMemo(() => new Set(bundleUnitSets.flat()), [bundleUnitSets]);
+  const effectiveUnitMode: "AND" | "OR" = unitModeOverride
+    ? globalUnitMode === "AND"
+      ? "OR"
+      : "AND"
+    : globalUnitMode;
   const activeBundleSets = React.useMemo(() => {
     if (bundleUnitSets.length > 0) return bundleUnitSets;
     if (unitIds.length === 0) return [];
@@ -1044,31 +1049,6 @@ export default function CreateCellDialog({
                       </select>
                     </div>
                   )}
-                  <div className="sm:col-span-4">
-                    <label className="block text-sm mb-1">{t("create_cell.unit_mode_global_label")}</label>
-                    <div className="text-xs text-gray-600 mb-1.5">
-                      {t("create_cell.unit_mode_global_label")}:{" "}
-                      <span className="font-medium text-gray-800">
-                        {globalUnitMode === "OR"
-                          ? t("create_cell.unit_mode_global_value_or")
-                          : t("create_cell.unit_mode_global_value_and")}
-                      </span>
-                    </div>
-                    <label className="inline-flex items-center gap-2 text-sm select-none">
-                      <input
-                        type="checkbox"
-                        checked={unitModeOverride}
-                        onChange={(e) => setUnitModeOverride(e.target.checked)}
-                        className="h-4 w-4"
-                      />
-                      {t("create_cell.unit_mode_override")}
-                    </label>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {globalUnitMode === "OR"
-                        ? t("create_cell.unit_mode_override_help_or")
-                        : t("create_cell.unit_mode_override_help_and")}
-                    </div>
-                  </div>
                   <div className="sm:col-span-1 ml-auto">
                     <label className="block text-sm mb-1">{t("create_cell.color")}</label>
                     <div className="relative">
@@ -1116,7 +1096,21 @@ export default function CreateCellDialog({
             ) : currentStepKey === "units" ? (
               <>
                 <div className="rounded border p-3 space-y-4">
-                  <div className="text-sm font-medium">{t("create_cell.units_required")}</div>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium">{t("create_cell.units_required")}</div>
+                      <div className="text-xs text-gray-500 mt-1">{t("create_cell.unit_mode_toggle_help")}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUnitModeOverride((prev) => !prev)}
+                      className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 shadow-sm transition hover:border-gray-900 hover:bg-gray-50"
+                      aria-label={t("create_cell.unit_mode_toggle_label")}
+                    >
+                      <span className="text-xs font-medium text-gray-500">{t("create_cell.unit_mode_toggle_label")}</span>
+                      <span>{effectiveUnitMode}</span>
+                    </button>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     {units.map((u) => {
                       const id = String(u.id);

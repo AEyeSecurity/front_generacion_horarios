@@ -707,6 +707,7 @@ export default function SolveOverlay({
   const [historyPanelError, setHistoryPanelError] = useState<string | null>(null);
   const [restoringHistoryVersion, setRestoringHistoryVersion] = useState(false);
   const [exportingHistoryVersion, setExportingHistoryVersion] = useState(false);
+  const [blockagesBusyAnchor, setBlockagesBusyAnchor] = useState<{ left: number; top: number } | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const participantDropGhostTimersRef = useRef<number[]>([]);
   const participantDropGhostTokenRef = useRef(0);
@@ -2876,6 +2877,57 @@ export default function SolveOverlay({
     const scrollEl = overlay.closest("[data-schedule-scroll]") as HTMLElement | null;
     mainScheduleScrollRef.current = scrollEl;
   }, [filteredSchedule.length, hideScheduleOverlay, historyMode]);
+
+  useEffect(() => {
+    if (!blockagesBusy || typeof window === "undefined") {
+      setBlockagesBusyAnchor(null);
+      return;
+    }
+
+    let rafId: number | null = null;
+    let observedEl: HTMLElement | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+
+    const resolveScrollEl = () =>
+      mainScheduleScrollRef.current ??
+      ((overlayRef.current?.closest("[data-schedule-scroll]") as HTMLElement | null) ?? null);
+
+    const updateAnchor = () => {
+      const scrollEl = resolveScrollEl();
+      if (!scrollEl) {
+        setBlockagesBusyAnchor(null);
+        return;
+      }
+      if (observedEl !== scrollEl) {
+        resizeObserver?.disconnect();
+        observedEl = scrollEl;
+        resizeObserver = new ResizeObserver(requestUpdate);
+        resizeObserver.observe(scrollEl);
+      }
+      const rect = scrollEl.getBoundingClientRect();
+      const left = Math.max(rect.left + 8, Math.min(rect.right - 8, rect.left + timeColPx + 12));
+      const top = Math.max(rect.top + 8, Math.min(rect.bottom - 8, rect.top + 12));
+      setBlockagesBusyAnchor({ left, top });
+    };
+
+    const requestUpdate = () => {
+      if (rafId != null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        updateAnchor();
+      });
+    };
+
+    updateAnchor();
+    window.addEventListener("resize", requestUpdate);
+    window.addEventListener("scroll", requestUpdate, true);
+    return () => {
+      window.removeEventListener("resize", requestUpdate);
+      window.removeEventListener("scroll", requestUpdate, true);
+      resizeObserver?.disconnect();
+      if (rafId != null) window.cancelAnimationFrame(rafId);
+    };
+  }, [blockagesBusy, timeColPx, filteredSchedule.length, hideScheduleOverlay, historyMode]);
 
   useEffect(() => {
     const overlay = overlayRef.current;
@@ -6050,6 +6102,18 @@ export default function SolveOverlay({
           }}
         />
       )}
+      {isClientReady &&
+        blockagesBusy &&
+        blockagesBusyAnchor &&
+        createPortal(
+          <div
+            className="pointer-events-none fixed z-[160] rounded border border-gray-200 bg-white/95 px-2.5 py-1 text-xs text-gray-600 shadow-sm backdrop-blur-sm"
+            style={{ left: blockagesBusyAnchor.left, top: blockagesBusyAnchor.top }}
+          >
+            {t("solve_overlay.loading_blockages")}
+          </div>,
+          document.body,
+        )}
 
       {/* Schedule overlay */}
       {(!shouldHideScheduleOverlay || isBlockageToolActive || isUnassignedToolActive) &&
@@ -6084,11 +6148,6 @@ export default function SolveOverlay({
             });
           }}
         >
-          {blockagesBusy && (
-            <div className="absolute left-3 top-12 z-[120] rounded border border-gray-200 bg-white/90 px-2.5 py-1 text-xs text-gray-600">
-              Loading blockages...
-            </div>
-          )}
           {dragCollisionCards.map((item, idx) => {
             const top = item.startSlot * rowPx + 4;
             const height = Math.max(10, (item.endSlot - item.startSlot) * rowPx - 8);
