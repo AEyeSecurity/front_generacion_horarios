@@ -9,11 +9,13 @@ export default function EditorInviteInline({
   gridId,
   participantId,
   allowLinkSelf = false,
+  disabled = false,
   onLinked,
 }: {
   gridId: number | string;
   participantId: number | string;
   allowLinkSelf?: boolean;
+  disabled?: boolean;
   onLinked?: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -22,7 +24,8 @@ export default function EditorInviteInline({
       <button
         type="button"
         title="Link participant to a user"
-        className="inline-flex items-center justify-center w-9 h-9 rounded-md hover:bg-gray-100"
+        className="inline-flex items-center justify-center w-9 h-9 rounded-md hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
+        disabled={disabled}
         onClick={() => setOpen(true)}
       >
         <LinkIcon className="w-5 h-5 text-gray-700" />

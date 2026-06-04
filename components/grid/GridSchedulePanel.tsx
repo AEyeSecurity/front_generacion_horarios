@@ -1862,20 +1862,22 @@ export default function GridSchedulePanel({
                     >
                       <Redo2 className="h-5 w-5" />
                     </button>
-                    <button
-                      type="button"
-                      title={t("grid_schedule.restore_draft_title")}
-                      onClick={() => {
-                        if (!canRestoreDraft) return;
-                        promptRestorePublished();
-                      }}
-                      aria-disabled={!canRestoreDraft}
-                      className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
-                        canRestoreDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
-                      }`}
-                    >
-                      <RotateCcw className="h-5 w-5" />
-                    </button>
+                    {false && (
+                      <button
+                        type="button"
+                        title={t("grid_schedule.restore_draft_title")}
+                        onClick={() => {
+                          if (!canRestoreDraft) return;
+                          promptRestorePublished();
+                        }}
+                        aria-disabled={!canRestoreDraft}
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
+                          canRestoreDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
+                        }`}
+                      >
+                        <RotateCcw className="h-5 w-5" />
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

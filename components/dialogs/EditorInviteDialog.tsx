@@ -46,8 +46,11 @@ export default function EditorInviteDialog({
 
   React.useEffect(() => {
     let active = true;
+    const setCanShowLinkSelfIfChanged = (next: boolean) => {
+      setCanShowLinkSelf((prev) => (prev === next ? prev : next));
+    };
     if (!open || !allowLinkSelf) {
-      setCanShowLinkSelf(false);
+      setCanShowLinkSelfIfChanged(false);
       return;
     }
     (async () => {
@@ -58,13 +61,13 @@ export default function EditorInviteDialog({
         ]);
         if (!active) return;
         if (!whoRes.ok) {
-          setCanShowLinkSelf(false);
+          setCanShowLinkSelfIfChanged(false);
           return;
         }
         const me = await whoRes.json().catch(() => ({} as { id?: number | string }));
         const meId = me?.id;
         if (meId == null || meId === "") {
-          setCanShowLinkSelf(false);
+          setCanShowLinkSelfIfChanged(false);
           return;
         }
         const linkedToAnyOther = participants.some((p: any) => {
@@ -77,9 +80,9 @@ export default function EditorInviteDialog({
           const linkedUserId = p?.user_id ?? (typeof p?.user === "number" ? p.user : p?.user?.id);
           return pid === String(participantId) && linkedUserId != null && String(linkedUserId) === String(meId);
         });
-        setCanShowLinkSelf(!linkedToAnyOther && !alreadyLinkedToThis);
+        setCanShowLinkSelfIfChanged(!linkedToAnyOther && !alreadyLinkedToThis);
       } catch {
-        if (active) setCanShowLinkSelf(false);
+        if (active) setCanShowLinkSelfIfChanged(false);
       }
     })();
     return () => {

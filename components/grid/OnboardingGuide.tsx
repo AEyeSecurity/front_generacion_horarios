@@ -56,6 +56,7 @@ const GRID_ONBOARDING_RIGHT_FAN_REQUEST_EVENT = "shift:onboarding-right-fan-requ
 const GRID_ONBOARDING_RIGHT_TOOL_REQUEST_EVENT = "shift:onboarding-right-tool-request";
 const TIME_RANGE_SAVED_EVENT = "shift:onboarding-time-range-saved";
 const AVAILABILITY_RULE_CREATED_EVENT = "shift:onboarding-availability-rule-created";
+const ONBOARDING_GUIDE_DISABLED = true;
 
 const SELECTORS = {
   leftDock: "#sidedock",
@@ -344,7 +345,13 @@ function resolveStepZeroTooltipStyles(
   };
 }
 
-export default function OnboardingGuide({ gridId, gridCode, show, unitNature }: OnboardingGuideProps) {
+export default function OnboardingGuide(props: OnboardingGuideProps) {
+  if (ONBOARDING_GUIDE_DISABLED) return null;
+
+  return <OnboardingGuideInner {...props} />;
+}
+
+function OnboardingGuideInner({ gridId, gridCode, show, unitNature }: OnboardingGuideProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();

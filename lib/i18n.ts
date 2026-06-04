@@ -179,7 +179,7 @@ const EN_US = {
   "grid_schedule.could_not_remove_participant": "Could not remove participant from placement.",
 
   "solve_overlay.comments": "Comments",
-  "solve_overlay.loading_blockages": "Loading blockages...",
+  "solve_overlay.loading_blockages": "Loading...",
   "solve_overlay.history": "Version history",
   "solve_overlay.restore_draft_selected": "Restore draft from selected version",
   "solve_overlay.restore_draft_selected_help":
@@ -195,6 +195,10 @@ const EN_US = {
   "solve_overlay.add_comment": "Add comment",
   "solve_overlay.saving": "Saving...",
   "solve_overlay.placement": "Placement",
+  "solve_overlay.previous_placement": "Previous placement",
+  "solve_overlay.next_placement": "Next placement",
+  "solve_overlay.comment_you": "You",
+  "solve_overlay.comment_just_now": "just now",
   "solve_overlay.comments_unavailable": "Comments are unavailable until a schedule is loaded.",
   "solve_overlay.choose_candidate_title": "Choose a Solver Candidate",
   "solve_overlay.choose_candidate_description":
@@ -215,6 +219,7 @@ const EN_US = {
   "solve_overlay.no_participants_match_search": "No participants match this search.",
   "solve_overlay.staff_option": "Staff option",
   "solve_overlay.tier_pools_option": "Tier pools option",
+  "solve_overlay.participant_option": "Participant option",
   "solve_overlay.publish": "Publish",
   "solve_overlay.publishing": "Publishing...",
   "solve_overlay.all_candidates_failed_edit_and_run_again":
@@ -308,6 +313,8 @@ const EN_US = {
   "solve_overlay.tier_pools": "Tier pools",
   "solve_overlay.tier_pools_assignment_label": "Tier pools: {names}",
   "solve_overlay.tier_pools_recommended": "Tier pools (recommended from previous assignment)",
+  "solve_overlay.open_assignment_first_available": "First available participant",
+  "solve_overlay.open_assignment_recommended": "Recommended from previous assignment",
   "solve_overlay.unknown_status": "UNKNOWN",
   "solve_overlay.unlock_placement": "Unlock placement",
   "solve_overlay.version_with_number": "Version {version}",
@@ -950,6 +957,7 @@ const EN_US = {
   "edit_rule.delete_rule": "Delete rule",
   "participant_detail.danger_zone": "Danger zone",
   "participant_detail.delete_participant_with_rules": "Delete this participant and all their availability rules.",
+  "participant_detail.no_schedule_placements": "No scheduled cells for this participant.",
   "cells_card_swap.bundles": "Bundles:",
   "cells_card_swap.staffs": "Staffs:",
   "landing.manage_your": "Manage your",
@@ -1069,6 +1077,7 @@ const ES_AR: Dictionary = {
   "common.settings": "Configuracion",
   "common.create": "Crear",
   "common.back": "Volver",
+  "participant_detail.no_schedule_placements": "No hay celdas programadas para este participante.",
 
   "entity.unit": "Unidad",
   "entity.bundle": "Conjunto",
@@ -1705,7 +1714,7 @@ const ES_AR: Dictionary = {
   "grid_solver_settings.time_ranges_delete_failed": "No se pudo eliminar el rango horario.",
 
   "solve_overlay.comments": "Comentarios",
-  "solve_overlay.loading_blockages": "Cargando bloqueos...",
+  "solve_overlay.loading_blockages": "Cargando...",
   "solve_overlay.history": "Historial de versiones",
   "solve_overlay.restore_draft_selected": "Restaurar borrador desde la version seleccionada",
   "solve_overlay.restore_draft_selected_help":
@@ -1721,6 +1730,10 @@ const ES_AR: Dictionary = {
   "solve_overlay.add_comment": "Agregar comentario",
   "solve_overlay.saving": "Guardando...",
   "solve_overlay.placement": "Asignacion",
+  "solve_overlay.previous_placement": "Asignacion anterior",
+  "solve_overlay.next_placement": "Asignacion siguiente",
+  "solve_overlay.comment_you": "Tu",
+  "solve_overlay.comment_just_now": "recien",
   "solve_overlay.comments_unavailable": "Los comentarios no estan disponibles hasta que se cargue un horario.",
   "solve_overlay.choose_candidate_title": "Elegir una candidatura del solver",
   "solve_overlay.choose_candidate_description":
@@ -1754,6 +1767,9 @@ const ES_AR: Dictionary = {
     "Resolve las candidaturas pendientes antes de resolver o editar",
   "solve_overlay.staff_option": "Opcion de staff",
   "solve_overlay.tier_pools_option": "Opcion por categoria",
+  "solve_overlay.participant_option": "Opcion de participante",
+  "solve_overlay.open_assignment_first_available": "Primer participante disponible",
+  "solve_overlay.open_assignment_recommended": "Recomendado desde la asignacion anterior",
   "solve_overlay.publish": "Publicar",
   "solve_overlay.publishing": "Publicando...",
   "solve_overlay.precheck_running": "Ejecutando precheck...",

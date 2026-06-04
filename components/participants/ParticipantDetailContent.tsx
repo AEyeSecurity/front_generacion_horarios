@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, BadgeCheck } from "lucide-react";
+import { ArrowLeft, BadgeCheck, MessageSquare } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 import type { Role } from "@/lib/types";
@@ -66,6 +66,9 @@ const BASE_TIMETABLE_ROW_PX = 64;
 const MIN_TIMETABLE_BODY_HEIGHT_PX = 260;
 const MAX_TIMETABLE_ROW_PX = 96;
 const PARTICIPANT_TAB_FADE_DISTANCE_PX = 420;
+const COMMENTS_OPEN_SHELL_WIDTH_PERCENT = 82;
+const COMMENTS_OPEN_SHELL_LEFT_SHIFT_PX = 50;
+const COMMENTS_OPEN_HEADER_LEFT_SHIFT_PX = 78;
 
 const formatParticipantName = (participant: { name?: string | null; surname?: string | null }, fallback: string) => {
   const fullName = `${participant.name ?? ""}${participant.surname ? ` ${participant.surname}` : ""}`.trim();
@@ -205,6 +208,7 @@ export default function ParticipantDetailContent({
   const [ruleMoveHoverHandleById, setRuleMoveHoverHandleById] = useState<Record<number, boolean>>({});
   const [ruleResizeHoverEdgeById, setRuleResizeHoverEdgeById] = useState<Record<number, "top" | "bottom" | null>>({});
   const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
+  const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [ruleResizeBusy, setRuleResizeBusy] = useState(false);
   const [autoMergeBusy, setAutoMergeBusy] = useState(false);
   const [compactHorizontal, setCompactHorizontal] = useState(false);
@@ -216,11 +220,20 @@ export default function ParticipantDetailContent({
   const [effectiveRowPx, setEffectiveRowPx] = useState(BASE_TIMETABLE_ROW_PX);
   const dangerZoneRef = useRef<HTMLDivElement | null>(null);
   const participantTabsFadeStartRef = useRef<number | null>(null);
+  const participantTabsOpacityRef = useRef(1);
+  const dangerZoneVisibleRef = useRef(false);
   const timetableViewportKeyRef = useRef<string | null>(null);
   const rulesHeaderScrollRef = useRef<HTMLDivElement | null>(null);
   const rulesScrollRef = useRef<HTMLDivElement | null>(null);
   const rulesOverlayRef = useRef<HTMLDivElement | null>(null);
   const rulesSyncingHorizontalRef = useRef<"header" | "body" | null>(null);
+  const scheduleShellRef = useRef<HTMLDivElement | null>(null);
+  const scheduleShellBaseStyleRef = useRef<{
+    maxWidth: string;
+    marginLeft: string;
+    marginRight: string;
+    transition: string;
+  } | null>(null);
   const scheduleHeaderScrollRef = useRef<HTMLDivElement | null>(null);
   const scheduleScrollRef = useRef<HTMLDivElement | null>(null);
   const scheduleSyncingHorizontalRef = useRef<"header" | "body" | null>(null);
@@ -235,20 +248,85 @@ export default function ParticipantDetailContent({
     pointerId: number;
   } | null>(null);
 
-  const canOpenScheduleTab = hasParticipantPlacement;
+  const canViewRules = canManageRules;
+  const canCommentSchedule = role === "editor" || role === "supervisor";
+  const participantActionsDisabled = commentsPanelOpen;
+  const canOpenScheduleTab = true;
 
   useEffect(() => {
-    if (!canOpenScheduleTab && view === "schedule") {
-      setView("rules");
+    const nextView =
+      commentsPanelOpen || !canViewRules
+        ? "schedule"
+        : !canOpenScheduleTab && view === "schedule"
+        ? "rules"
+        : view;
+    if (nextView !== view) setView(nextView);
+  }, [canOpenScheduleTab, canViewRules, commentsPanelOpen, view]);
+
+  useEffect(() => {
+    if (!commentsPanelOpen || typeof document === "undefined") return;
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlOverflow = html.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    return () => {
+      html.style.overflow = previousHtmlOverflow;
+      body.style.overflow = previousBodyOverflow;
+    };
+  }, [commentsPanelOpen]);
+
+  useEffect(() => {
+    const shell = scheduleShellRef.current;
+    if (!shell) return;
+
+    if (!scheduleShellBaseStyleRef.current) {
+      scheduleShellBaseStyleRef.current = {
+        maxWidth: shell.style.maxWidth,
+        marginLeft: shell.style.marginLeft,
+        marginRight: shell.style.marginRight,
+        transition: shell.style.transition,
+      };
     }
-  }, [canOpenScheduleTab, view]);
+
+    const base = scheduleShellBaseStyleRef.current;
+
+    shell.style.transition =
+      "max-width 220ms cubic-bezier(0.22,1,0.36,1), margin-left 220ms cubic-bezier(0.22,1,0.36,1), margin-right 220ms cubic-bezier(0.22,1,0.36,1)";
+    shell.style.transform = "";
+
+    if (commentsPanelOpen) {
+      shell.style.maxWidth = `${COMMENTS_OPEN_SHELL_WIDTH_PERCENT}%`;
+      shell.style.marginLeft = `-${COMMENTS_OPEN_SHELL_LEFT_SHIFT_PX}px`;
+      shell.style.marginRight = "auto";
+      return;
+    }
+
+    shell.style.maxWidth = base.maxWidth;
+    shell.style.marginLeft = base.marginLeft;
+    shell.style.marginRight = base.marginRight;
+  }, [commentsPanelOpen, view]);
 
   useEffect(() => {
-    setDisplayParticipantName(participantName);
+    return () => {
+      const shell = scheduleShellRef.current;
+      const base = scheduleShellBaseStyleRef.current;
+      if (!shell || !base) return;
+      shell.style.maxWidth = base.maxWidth;
+      shell.style.marginLeft = base.marginLeft;
+      shell.style.marginRight = base.marginRight;
+      shell.style.transition = base.transition;
+      shell.style.transform = "";
+    };
+  }, []);
+
+  useEffect(() => {
+    setDisplayParticipantName((prev) => (prev === participantName ? prev : participantName));
   }, [participantName]);
 
   useEffect(() => {
-    setParticipantLinkedState(participantLinked);
+    setParticipantLinkedState((prev) => (prev === participantLinked ? prev : participantLinked));
   }, [participantLinked]);
 
   const loadParticipantForEdit = useCallback(async () => {
@@ -308,7 +386,7 @@ export default function ParticipantDetailContent({
           }
         }
         if (found) {
-          if (active) setHasParticipantPlacement(true);
+          if (active) setHasParticipantPlacement((prev) => (prev === true ? prev : true));
           return;
         }
 
@@ -328,9 +406,9 @@ export default function ParticipantDetailContent({
             break;
           }
         }
-        if (active) setHasParticipantPlacement(fallbackFound);
+        if (active) setHasParticipantPlacement((prev) => (prev === fallbackFound ? prev : fallbackFound));
       } catch {
-        if (active) setHasParticipantPlacement(false);
+        if (active) setHasParticipantPlacement((prev) => (prev === false ? prev : false));
       }
     })();
 
@@ -341,12 +419,12 @@ export default function ParticipantDetailContent({
 
   useEffect(() => {
     if (role !== "supervisor") {
-      setLinkedPlacementsCount(0);
-      setLinkedPlacementsLoading(false);
+      setLinkedPlacementsCount((prev) => (prev === 0 ? prev : 0));
+      setLinkedPlacementsLoading((prev) => (prev === false ? prev : false));
       return;
     }
     let active = true;
-    setLinkedPlacementsLoading(true);
+    setLinkedPlacementsLoading((prev) => (prev === true ? prev : true));
     const countInPayload = (raw: unknown) => {
       const source = (raw ?? {}) as Record<string, unknown>;
       const scheduleCandidate =
@@ -378,11 +456,11 @@ export default function ParticipantDetailContent({
           const payload = await res.json().catch(() => null);
           total += countInPayload(payload);
         }
-        if (active) setLinkedPlacementsCount(total);
+        if (active) setLinkedPlacementsCount((prev) => (prev === total ? prev : total));
       } catch {
-        if (active) setLinkedPlacementsCount(0);
+        if (active) setLinkedPlacementsCount((prev) => (prev === 0 ? prev : 0));
       } finally {
-        if (active) setLinkedPlacementsLoading(false);
+        if (active) setLinkedPlacementsLoading((prev) => (prev === false ? prev : false));
       }
     })();
 
@@ -393,12 +471,12 @@ export default function ParticipantDetailContent({
 
   useEffect(() => {
     if (typeof daysIdx[0] === "number") {
-      setInlineAddDay(daysIdx[0]);
+      setInlineAddDay((prev) => (prev === daysIdx[0] ? prev : daysIdx[0]));
     }
   }, [daysIdx]);
 
   useEffect(() => {
-    setRulesState(rules);
+    setRulesState((prev) => (prev === rules ? prev : rules));
   }, [rules]);
 
   const fetchParticipantRules = useCallback(async (): Promise<Rule[]> => {
@@ -462,15 +540,16 @@ export default function ParticipantDetailContent({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const mediaQuery = window.matchMedia("(max-width: 1024px)");
-    const apply = () => setCompactHorizontal(mediaQuery.matches);
+    const apply = () => setCompactHorizontal((prev) => (prev === mediaQuery.matches ? prev : mediaQuery.matches));
     apply();
     mediaQuery.addEventListener("change", apply);
     return () => mediaQuery.removeEventListener("change", apply);
   }, []);
 
   useEffect(() => {
-    setEffectiveRowPx(BASE_TIMETABLE_ROW_PX);
-    setTimetableViewportHeight(rows.length * BASE_TIMETABLE_ROW_PX);
+    setEffectiveRowPx((prev) => (prev === BASE_TIMETABLE_ROW_PX ? prev : BASE_TIMETABLE_ROW_PX));
+    const nextHeight = rows.length * BASE_TIMETABLE_ROW_PX;
+    setTimetableViewportHeight((prev) => (prev === nextHeight ? prev : nextHeight));
   }, [rows.length]);
 
   useEffect(() => {
@@ -535,15 +614,10 @@ export default function ParticipantDetailContent({
     window.addEventListener("orientationchange", requestRecalc);
     const vv = window.visualViewport;
     vv?.addEventListener("resize", requestRecalc);
-    const observer = new ResizeObserver(requestRecalc);
-    const tabsEl = document.querySelector("[data-participant-tabs]") as HTMLElement | null;
-    if (tabsEl) observer.observe(tabsEl);
-
     return () => {
       window.removeEventListener("resize", requestRecalc);
       window.removeEventListener("orientationchange", requestRecalc);
       vv?.removeEventListener("resize", requestRecalc);
-      observer.disconnect();
       if (rafId != null) window.cancelAnimationFrame(rafId);
     };
   }, [view, rows.length]);
@@ -580,9 +654,15 @@ export default function ParticipantDetailContent({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!canViewRules) {
+      participantTabsFadeStartRef.current = null;
+      participantTabsOpacityRef.current = 1;
+      dangerZoneVisibleRef.current = false;
+      setParticipantTabsOpacity((prev) => (prev === 1 ? prev : 1));
+      setDangerZoneVisible((prev) => (prev === false ? prev : false));
+      return;
+    }
     let rafId: number | null = null;
-    let lastOpacity = 1;
-    let lastDangerVisible = false;
     const getScrollY = () =>
       window.scrollY ||
       document.scrollingElement?.scrollTop ||
@@ -601,13 +681,13 @@ export default function ParticipantDetailContent({
       const fadeDistance = Math.min(PARTICIPANT_TAB_FADE_DISTANCE_PX, availableFadeDistance);
       const nextOpacity = Math.max(0, Math.min(1, 1 - delta / fadeDistance));
       const nextDangerVisible = delta > 2;
-      if (Math.abs(nextOpacity - lastOpacity) >= 0.01) {
-        lastOpacity = nextOpacity;
-        setParticipantTabsOpacity(nextOpacity);
+      if (Math.abs(nextOpacity - participantTabsOpacityRef.current) >= 0.01) {
+        participantTabsOpacityRef.current = nextOpacity;
+        setParticipantTabsOpacity((prev) => (Math.abs(prev - nextOpacity) >= 0.01 ? nextOpacity : prev));
       }
-      if (nextDangerVisible !== lastDangerVisible) {
-        lastDangerVisible = nextDangerVisible;
-        setDangerZoneVisible(nextDangerVisible);
+      if (nextDangerVisible !== dangerZoneVisibleRef.current) {
+        dangerZoneVisibleRef.current = nextDangerVisible;
+        setDangerZoneVisible((prev) => (prev === nextDangerVisible ? prev : nextDangerVisible));
       }
     };
     const requestApply = () => {
@@ -623,7 +703,7 @@ export default function ParticipantDetailContent({
       window.removeEventListener("resize", requestApply);
       if (rafId != null) window.cancelAnimationFrame(rafId);
     };
-  }, []);
+  }, [canViewRules]);
 
   useEffect(() => () => clearMoveHoldTimer(), [clearMoveHoldTimer]);
 
@@ -1258,10 +1338,17 @@ export default function ParticipantDetailContent({
           zIndex: 1291,
         }}
       >
-        <div className="relative mx-auto w-[80%] min-h-[96px] py-4 flex items-center select-none">
+        <div
+          className="relative mx-auto w-[80%] min-h-[96px] py-4 flex items-center select-none transition-transform duration-200 ease-out"
+          style={{
+            transform: commentsPanelOpen ? `translateX(-${COMMENTS_OPEN_HEADER_LEFT_SHIFT_PX}px)` : undefined,
+          }}
+        >
           <Link
             href={gridBase}
-            className="absolute left-0 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-gray-100 transition-colors"
+            className={`absolute top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-gray-100 transition-[left,background-color] duration-200 z-10 ${
+              commentsPanelOpen ? "-left-4" : "left-0"
+            }`}
             title="Back to grid"
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
@@ -1270,10 +1357,10 @@ export default function ParticipantDetailContent({
           <div className="mx-auto text-center">
             <div className="flex items-center justify-center gap-2">
               <h1
-                className={`text-xl md:text-2xl font-semibold ${canManageRules ? "cursor-pointer" : ""}`}
-                title={canManageRules ? "Double click to edit participant" : undefined}
+                className={`text-xl md:text-2xl font-semibold ${canManageRules && !participantActionsDisabled ? "cursor-pointer" : ""}`}
+                title={canManageRules && !participantActionsDisabled ? "Double click to edit participant" : undefined}
                 onDoubleClick={async () => {
-                  if (!canManageRules) return;
+                  if (!canManageRules || participantActionsDisabled) return;
                   try {
                     await loadParticipantForEdit();
                   } catch {
@@ -1296,11 +1383,12 @@ export default function ParticipantDetailContent({
                 <span title="Linked participant">
                   <BadgeCheck className="w-5 h-5 text-emerald-600" />
                 </span>
-              ) : (
+              ) : participantActionsDisabled ? null : (
                 <EditorInviteInline
                   gridId={String(gridId)}
                   participantId={String(participantId)}
                   allowLinkSelf={role === "supervisor"}
+                  disabled={role !== "supervisor"}
                   onLinked={() => setParticipantLinkedState(true)}
                 />
               )}
@@ -1309,20 +1397,21 @@ export default function ParticipantDetailContent({
             <div className="mt-1 text-sm text-gray-500 flex items-center justify-center gap-2">
               <button
                 type="button"
-                onClick={() => setView("rules")}
-                className={view === "rules" ? "font-semibold text-gray-800" : "hover:text-gray-700"}
+                onClick={() => setView("schedule")}
+                className={view === "schedule" ? "font-semibold text-gray-800" : "hover:text-gray-700"}
               >
-                Availability Rules
+                Schedule
               </button>
-              {canOpenScheduleTab && (
+              {canViewRules && (
                 <>
                   <span className="text-gray-400">|</span>
                   <button
                     type="button"
-                    onClick={() => setView("schedule")}
-                    className={view === "schedule" ? "font-semibold text-gray-800" : "hover:text-gray-700"}
+                    onClick={() => setView("rules")}
+                    disabled={participantActionsDisabled}
+                    className={view === "rules" ? "font-semibold text-gray-800" : "hover:text-gray-700"}
                   >
-                    Schedule
+                    Availability Rules
                   </button>
                 </>
               )}
@@ -1337,7 +1426,7 @@ export default function ParticipantDetailContent({
                 gridEnd={dayEndHHMM}
                 allowedDays={daysIdx}
                 minMinutes={cellSizeMin}
-                disabled={!canManageRules}
+                disabled={!canManageRules || participantActionsDisabled}
                 onCreated={async () => {
                   await mergeAdjacentSameTypeRules();
                   await reloadParticipantRules();
@@ -1350,7 +1439,28 @@ export default function ParticipantDetailContent({
 
       <div style={{ height: PARTICIPANT_BAR_HEIGHT_PX }} aria-hidden="true" />
 
-      {view === "rules" && (
+      {canCommentSchedule && !commentsPanelOpen && (
+        <div className="fixed right-4 top-1/2 z-[160] -translate-y-1/2 pointer-events-none">
+          <button
+            type="button"
+            title="Comments"
+            onClick={() => {
+              setView("schedule");
+              setInlineAddOpen(false);
+              setEditingRuleId(null);
+              setEditParticipantOpen(false);
+              setRuleMove(null);
+              setRuleResize(null);
+              setCommentsPanelOpen(true);
+            }}
+            className="pointer-events-auto inline-flex h-14 w-14 scale-75 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-lg transition hover:bg-gray-50 hover:text-black"
+          >
+            <MessageSquare className="h-5 w-5" />
+          </button>
+        </div>
+      )}
+
+      {canViewRules && view === "rules" && (
         <div
           className="relative z-0 mt-4 mb-8 border rounded-lg bg-white overflow-hidden shadow-sm"
           data-onboarding-target="participant-rules-workspace"
@@ -1366,7 +1476,6 @@ export default function ParticipantDetailContent({
             <div style={timetableContentStyle}>
               <div className="grid" style={{ gridTemplateColumns: timetableTemplateColumns }}>
                   <div className="bg-gray-50 border-b h-12 sticky left-0 z-[30] relative">
-                  <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-gray-50" />
                 </div>
                 {days.map((d) => (
                   <div key={d} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
@@ -1391,14 +1500,13 @@ export default function ParticipantDetailContent({
               height: scrollBodyHeight,
               maxHeight: scrollBodyHeight,
               minHeight: scrollBodyHeight,
-              overflowY: "auto",
+              overflowY: commentsPanelOpen ? "hidden" : "auto",
             }}
           >
             <div className="relative" style={timetableContentStyle}>
               {rows.map((t, rowIndex) => (
                 <div key={t} className="grid" style={{ gridTemplateColumns: timetableTemplateColumns }}>
                       <div className="sticky left-0 z-[20] border-r bg-white relative" style={{ height: ROW_PX }}>
-                    <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-white" />
                     <div
                       className={`absolute inset-x-0 text-center text-xs text-gray-500 ${
                         rowIndex === 0 ? "top-1" : "-top-2 -translate-y-1/2"
@@ -1641,7 +1749,7 @@ export default function ParticipantDetailContent({
                 gridCode={gridCode}
                 participantId={participantId}
                 participantTabsOverride={initialParticipantTabs}
-                targetView="rules"
+                targetView="schedule"
                 showPlacements={false}
                 hideSideStack={Boolean(ruleMove)}
                 daysCount={days.length}
@@ -1695,7 +1803,7 @@ export default function ParticipantDetailContent({
       )}
 
       {view === "schedule" && (
-        <div className="relative z-0 mt-4 mb-8 border rounded-lg bg-white overflow-hidden shadow-sm">
+        <div ref={scheduleShellRef} className="relative z-0 mt-4 mb-8 border rounded-lg bg-white overflow-hidden shadow-sm">
           <div
             ref={scheduleHeaderScrollRef}
             className={`${compactHorizontal ? "overflow-x-auto" : "overflow-x-hidden"} overflow-y-hidden hide-scrollbar`}
@@ -1707,7 +1815,6 @@ export default function ParticipantDetailContent({
             <div style={timetableContentStyle}>
               <div className="grid" style={{ gridTemplateColumns: timetableTemplateColumns }}>
                   <div className="bg-gray-50 border-b h-12 sticky left-0 z-[30] relative">
-                  <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-gray-50" />
                 </div>
                 {days.map((d) => (
                   <div key={d} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
@@ -1738,7 +1845,6 @@ export default function ParticipantDetailContent({
               {rows.map((t, rowIndex) => (
                 <div key={t} className="grid" style={{ gridTemplateColumns: timetableTemplateColumns }}>
                       <div className="sticky left-0 z-[20] border-r bg-white relative" style={{ height: ROW_PX }}>
-                    <div className="pointer-events-none absolute -right-2 top-0 h-full w-2 bg-white" />
                     <div
                       className={`absolute inset-x-0 text-center text-xs text-gray-500 ${
                         rowIndex === 0 ? "top-1" : "-top-2 -translate-y-1/2"
@@ -1776,6 +1882,10 @@ export default function ParticipantDetailContent({
                 dayStartMin={dayStartMin}
                 slotMin={cellSizeMin}
                 participantTabsOpacity={participantTabsOpacity}
+                canComment={canCommentSchedule}
+                commentsPanelOpen={commentsPanelOpen}
+                onCommentsPanelOpenChange={setCommentsPanelOpen}
+                commentsPanelTopPx={GRID_TOP_BAR_HEIGHT_PX}
               />
             </div>
           </div>
@@ -1837,7 +1947,7 @@ export default function ParticipantDetailContent({
         }}
       />
 
-      {role === "supervisor" && (
+      {role === "supervisor" && !participantActionsDisabled && (
         <div className="pt-1">
           <div ref={dangerZoneRef} className="h-1" aria-hidden="true" />
           <motion.div
@@ -1868,7 +1978,7 @@ export default function ParticipantDetailContent({
           </motion.div>
         </div>
       )}
-      <div className="h-[45vh] min-h-80" aria-hidden="true" />
+      {role === "supervisor" && !participantActionsDisabled && <div className="h-[45vh] min-h-80" aria-hidden="true" />}
       <EditParticipantDialog
         gridId={gridId}
         role={role}

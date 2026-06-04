@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { createPortal } from "react-dom";
+import { ChevronLeft, ChevronRight, MessageSquare, X } from "lucide-react";
 import { formatSlotRange } from "@/lib/schedule";
 import {
   getGridScheduleViewModeKey,
@@ -10,6 +12,9 @@ import {
   type ScheduleViewMode,
 } from "@/lib/schedule-view";
 import { CELL_COLOR_OPTIONS, CELL_TEXT_DARK, CELL_TEXT_LIGHT } from "@/lib/cell-colors";
+import { authFetch } from "@/lib/client-auth";
+import { useI18n } from "@/lib/use-i18n";
+import PlacementCommentBubble from "@/components/grid/PlacementCommentBubble";
 
 const shadeHex = (hex: string, amt: number) => {
   if (!/^#([0-9a-f]{6})$/i.test(hex)) return hex;
@@ -25,6 +30,11 @@ const shadeHex = (hex: string, amt: number) => {
 
 type SchedulePlacement = {
   id: number | string;
+  placement_id?: string | number | null;
+  placementId?: string | number | null;
+  schedule_placement?: string | number | null;
+  schedule_placement_id?: string | number | null;
+  schedulePlacementId?: string | number | null;
   source_cell?: string | number | null;
   source_cell_id?: string | number | null;
   bundle?: string | number | null;
@@ -33,6 +43,33 @@ type SchedulePlacement = {
   start_slot: number;
   end_slot: number;
   assigned_participants?: Array<string | number>;
+};
+
+type PlacementComment = {
+  id: number | string;
+  schedule: number | string;
+  schedule_placement?: number | string | null;
+  source_cell_id: number | string;
+  bundle: number | string | null;
+  day_index: number;
+  start_slot: number;
+  end_slot?: number | null;
+  text: string;
+  created_at?: string;
+  author_id?: number | string;
+  author_name?: string;
+};
+
+type CommentAnchor = {
+  placementId?: number | string | null;
+  scheduleId: number;
+  sourceCellId: string;
+  bundleId: number | string | null;
+  dayIndex: number;
+  startSlot: number;
+  endSlot: number;
+  cellName: string;
+  timeLabel: string;
 };
 
 type ParticipantTier = "PRIMARY" | "SECONDARY" | "TERTIARY" | null;
@@ -67,6 +104,52 @@ type Props = {
   slotMin: number;
   topOffset?: number;
   participantTabsOpacity?: number;
+  canComment?: boolean;
+  commentsPanelOpen?: boolean;
+  onCommentsPanelOpenChange?: (open: boolean) => void;
+  commentsPanelTopPx?: number;
+};
+
+const readEntityId = (value: unknown): string | number | null => {
+  if (value == null) return null;
+  if (typeof value === "string" || typeof value === "number") return value;
+  if (typeof value === "object") {
+    const source = value as Record<string, unknown>;
+    return readEntityId(source.id ?? source.pk ?? source.value);
+  }
+  return null;
+};
+
+function buildPlacementKey(
+  scheduleId: number | string,
+  sourceCellId: number | string,
+  bundleId: number | string | null,
+  dayIndex: number,
+  startSlot: number,
+  placementId?: number | string | null,
+) {
+  if (placementId != null && String(placementId).trim()) return `placement|${placementId}`;
+  return `${scheduleId}|${sourceCellId}|${bundleId == null ? "__no_bundle__" : bundleId}|${dayIndex}|${startSlot}`;
+}
+
+const extractAuthorName = (raw: any): string | undefined => {
+  const direct = raw?.author_name ?? raw?.created_by_name ?? raw?.user_name;
+  if (direct) return String(direct);
+  const author = raw?.author ?? raw?.created_by ?? raw?.user;
+  if (author && typeof author === "object") {
+    const full = `${author.name ?? author.first_name ?? ""}${author.surname || author.last_name ? ` ${author.surname ?? author.last_name}` : ""}`.trim();
+    return full || author.email || author.username;
+  }
+  return undefined;
+};
+
+const extractAuthorId = (raw: any): string | number | undefined => {
+  const direct = raw?.author_id ?? raw?.created_by_id ?? raw?.user_id;
+  if (direct != null) return direct;
+  const author = raw?.author ?? raw?.created_by ?? raw?.user;
+  if (author && typeof author === "object" && author.id != null) return author.id;
+  if (typeof author === "string" || typeof author === "number") return author;
+  return undefined;
 };
 
 export default function ParticipantScheduleOverlay({
@@ -85,19 +168,56 @@ export default function ParticipantScheduleOverlay({
   slotMin,
   topOffset = 0,
   participantTabsOpacity = 1,
+  canComment = false,
+  commentsPanelOpen = false,
+  onCommentsPanelOpenChange,
+  commentsPanelTopPx = 56,
 }: Props) {
-  const router = useRouter();
+  const { t, locale } = useI18n();
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [schedulePlacements, setSchedulePlacements] = useState<SchedulePlacement[]>([]);
+  const [scheduleId, setScheduleId] = useState<number | null>(null);
   const [cellNameById, setCellNameById] = useState<Record<string, string>>({});
   const [cellColorById, setCellColorById] = useState<Record<string, string>>({});
   const [bundleNameById, setBundleNameById] = useState<Record<string, string>>({});
   const [participants, setParticipants] = useState<ParticipantLite[]>([]);
   const [scheduleViewMode, setScheduleViewMode] = useState<ScheduleViewMode>("draft");
+  const [placementComments, setPlacementComments] = useState<PlacementComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentAnchor, setCommentAnchor] = useState<CommentAnchor | null>(null);
+  const [hoveredCommentPlacementKey, setHoveredCommentPlacementKey] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [commentBusy, setCommentBusy] = useState(false);
+  const [commentError, setCommentError] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isClientReady, setIsClientReady] = useState(false);
+
+  useEffect(() => {
+    setIsClientReady(true);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const response = await authFetch("/api/whoami", { cache: "no-store" });
+        if (!response.ok) return;
+        const me = await response.json().catch(() => null);
+        const id = me?.id;
+        if (active && id != null) setCurrentUserId(String(id));
+      } catch {
+        if (active) setCurrentUserId(null);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const syncFromStorage = () => {
-      setScheduleViewMode(readGridScheduleViewMode(gridId));
+      const nextMode = readGridScheduleViewMode(gridId);
+      setScheduleViewMode((prev) => (prev === nextMode ? prev : nextMode));
     };
 
     const onStorage = (event: StorageEvent) => {
@@ -108,7 +228,8 @@ export default function ParticipantScheduleOverlay({
     const onModeChanged = (event: Event) => {
       const customEvent = event as CustomEvent<{ gridId?: string; mode?: ScheduleViewMode }>;
       if (customEvent.detail?.gridId !== String(gridId)) return;
-      setScheduleViewMode(customEvent.detail?.mode === "published" ? "published" : "draft");
+      const nextMode = customEvent.detail?.mode === "published" ? "published" : "draft";
+      setScheduleViewMode((prev) => (prev === nextMode ? prev : nextMode));
     };
 
     syncFromStorage();
@@ -139,7 +260,17 @@ export default function ParticipantScheduleOverlay({
             : Array.isArray(scheduleCandidate?.schedule)
             ? scheduleCandidate.schedule
             : [];
-          if (active) setSchedulePlacements(placements);
+          const resolvedScheduleId = Number(
+            readEntityId(scheduleCandidate?.schedule_id) ??
+              readEntityId(scheduleCandidate?.schedule) ??
+              readEntityId(scheduleCandidate?.id) ??
+              0,
+          );
+          if (active) {
+            setSchedulePlacements((prev) => (prev === placements ? prev : placements));
+            const nextScheduleId = Number.isFinite(resolvedScheduleId) && resolvedScheduleId > 0 ? resolvedScheduleId : null;
+            setScheduleId((prev) => (prev === nextScheduleId ? prev : nextScheduleId));
+          }
           return;
         }
 
@@ -149,7 +280,7 @@ export default function ParticipantScheduleOverlay({
             : `/api/grids/${gridId}/schedule/`;
         const r = await fetch(scheduleEndpoint, { cache: "no-store" }).catch(() => null);
         if (!r || !r.ok) {
-          if (active) setSchedulePlacements([]);
+          if (active) setSchedulePlacements((prev) => (prev.length === 0 ? prev : []));
           return;
         }
         const data = await r.json().catch(() => ({}));
@@ -159,7 +290,17 @@ export default function ParticipantScheduleOverlay({
           : Array.isArray(scheduleCandidate?.schedule)
           ? scheduleCandidate.schedule
           : [];
-        if (active) setSchedulePlacements(placements);
+        const resolvedScheduleId = Number(
+          readEntityId(scheduleCandidate?.schedule_id) ??
+            readEntityId(scheduleCandidate?.schedule) ??
+            readEntityId(scheduleCandidate?.id) ??
+            0,
+        );
+        if (active) {
+          setSchedulePlacements((prev) => (prev === placements ? prev : placements));
+          const nextScheduleId = Number.isFinite(resolvedScheduleId) && resolvedScheduleId > 0 ? resolvedScheduleId : null;
+          setScheduleId((prev) => (prev === nextScheduleId ? prev : nextScheduleId));
+        }
       } catch {}
     })();
     return () => {
@@ -230,7 +371,17 @@ export default function ParticipantScheduleOverlay({
           setCellNameById(cmap);
           setCellColorById(ccolors);
           setBundleNameById(bmap);
-          setParticipants(pitems);
+          setParticipants((prev) => {
+            const same =
+              prev.length === pitems.length &&
+              prev.every((item, index) =>
+                item.id === pitems[index]?.id &&
+                item.routeId === pitems[index]?.routeId &&
+                item.name === pitems[index]?.name &&
+                item.tier === pitems[index]?.tier,
+              );
+            return same ? prev : pitems;
+          });
         }
       } catch {}
     })();
@@ -239,10 +390,303 @@ export default function ParticipantScheduleOverlay({
     };
   }, [gridId]);
 
-  const filteredSchedule = schedulePlacements.filter((s) => {
+  const filteredSchedule = useMemo(() => schedulePlacements.filter((s) => {
     const assigned = Array.isArray(s.assigned_participants) ? s.assigned_participants : [];
     return assigned.map(String).includes(String(participantId));
-  });
+  }), [participantId, schedulePlacements]);
+
+  const getPlacementId = useCallback((placement: SchedulePlacement) =>
+    readEntityId(
+      placement.placement_id ??
+        placement.placementId ??
+        placement.schedule_placement_id ??
+        placement.schedulePlacementId ??
+        placement.schedule_placement ??
+        placement.id,
+    ), []);
+
+  useEffect(() => {
+    if (!canComment || !scheduleId) {
+      setPlacementComments([]);
+      setCommentsLoading(false);
+      return;
+    }
+    let active = true;
+    (async () => {
+      setCommentsLoading(true);
+      try {
+        const res = await authFetch(
+          `/api/placement-comments/?schedule=${encodeURIComponent(String(scheduleId))}&grid=${encodeURIComponent(String(gridId))}`,
+          { cache: "no-store" },
+        );
+        if (!res.ok) throw new Error(`Failed to load comments (${res.status})`);
+        const data = await res.json().catch(() => ([]));
+        const list = Array.isArray(data) ? data : data.results ?? [];
+        const normalized = list
+          .map((raw: any) => {
+            const bundleRaw =
+              typeof raw?.bundle === "object" && raw.bundle?.id != null ? raw.bundle.id : raw?.bundle;
+            const message = raw?.message ?? raw?.text ?? raw?.comment ?? "";
+            if (
+              raw?.id == null ||
+              raw?.schedule == null ||
+              raw?.source_cell_id == null ||
+              raw?.day_index == null ||
+              raw?.start_slot == null
+            ) {
+              return null;
+            }
+            return {
+              id: raw.id,
+              schedule: raw.schedule,
+              schedule_placement:
+                raw.schedule_placement ??
+                raw.schedule_placement_id ??
+                raw.placement_id ??
+                raw.placementId ??
+                null,
+              source_cell_id: raw.source_cell_id,
+              bundle: bundleRaw ?? null,
+              day_index: Number(raw.day_index),
+              start_slot: Number(raw.start_slot),
+              end_slot: raw.end_slot == null ? null : Number(raw.end_slot),
+              text: String(message),
+              created_at: raw.created_at,
+              author_id: extractAuthorId(raw),
+              author_name: extractAuthorName(raw),
+            } as PlacementComment;
+          })
+          .filter(Boolean) as PlacementComment[];
+        if (active) setPlacementComments(normalized);
+      } catch {
+        if (active) setPlacementComments([]);
+      } finally {
+        if (active) setCommentsLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [canComment, gridId, scheduleId]);
+
+  const commentCountByPlacement = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const comment of placementComments) {
+      const anchorKey = buildPlacementKey(
+        comment.schedule,
+        comment.source_cell_id,
+        comment.bundle,
+        Number(comment.day_index),
+        Number(comment.start_slot),
+      );
+      map[anchorKey] = (map[anchorKey] || 0) + 1;
+      if (comment.schedule_placement != null) {
+        const placementKey = buildPlacementKey(
+          comment.schedule,
+          comment.source_cell_id,
+          comment.bundle,
+          Number(comment.day_index),
+          Number(comment.start_slot),
+          comment.schedule_placement,
+        );
+        if (placementKey !== anchorKey) map[placementKey] = (map[placementKey] || 0) + 1;
+      }
+    }
+    return map;
+  }, [placementComments]);
+
+  const commentPlacementOptions = useMemo(() => {
+    if (!canComment || scheduleId == null) return [];
+    const deduped = new Map<string, { key: string; anchor: CommentAnchor; label: string; count: number }>();
+    for (const placement of filteredSchedule) {
+      const sourceCellId = String(placement.source_cell_id ?? placement.source_cell ?? placement.id);
+      const placementId = getPlacementId(placement);
+      const bundleId = placement.bundle_id ?? placement.bundle ?? null;
+      const cellName = cellNameById[sourceCellId] || `Cell ${sourceCellId}`;
+      const timeLabel = formatSlotRange(dayStartMin, slotMin, placement.start_slot, placement.end_slot);
+      const key = buildPlacementKey(
+        scheduleId,
+        sourceCellId,
+        bundleId,
+        placement.day_index,
+        placement.start_slot,
+        placementId,
+      );
+      if (deduped.has(key)) continue;
+      deduped.set(key, {
+        key,
+        label: `${cellName} - ${timeLabel}`,
+        count: commentCountByPlacement[key] || 0,
+        anchor: {
+          placementId,
+          scheduleId,
+          sourceCellId,
+          bundleId,
+          dayIndex: placement.day_index,
+          startSlot: placement.start_slot,
+          endSlot: placement.end_slot,
+          cellName,
+          timeLabel,
+        },
+      });
+    }
+    return Array.from(deduped.values()).sort(
+      (a, b) =>
+        a.anchor.dayIndex - b.anchor.dayIndex ||
+        a.anchor.startSlot - b.anchor.startSlot ||
+        a.anchor.cellName.localeCompare(b.anchor.cellName),
+    );
+  }, [canComment, cellNameById, commentCountByPlacement, dayStartMin, filteredSchedule, getPlacementId, scheduleId, slotMin]);
+
+  const selectedCommentPlacementKey = commentAnchor
+    ? buildPlacementKey(
+        commentAnchor.scheduleId,
+        commentAnchor.sourceCellId,
+        commentAnchor.bundleId,
+        commentAnchor.dayIndex,
+        commentAnchor.startSlot,
+        commentAnchor.placementId,
+      )
+    : "";
+
+  const selectedCommentPlacementIndex = useMemo(
+    () => commentPlacementOptions.findIndex((option) => option.key === selectedCommentPlacementKey),
+    [commentPlacementOptions, selectedCommentPlacementKey],
+  );
+
+  const moveCommentPlacementSelection = useCallback(
+    (direction: -1 | 1) => {
+      if (commentPlacementOptions.length === 0) return;
+      const currentIndex = selectedCommentPlacementIndex >= 0 ? selectedCommentPlacementIndex : 0;
+      const nextIndex =
+        (currentIndex + direction + commentPlacementOptions.length) % commentPlacementOptions.length;
+      const next = commentPlacementOptions[nextIndex];
+      if (!next) return;
+      setCommentAnchor(next.anchor);
+      setCommentError(null);
+    },
+    [commentPlacementOptions, selectedCommentPlacementIndex],
+  );
+
+  useEffect(() => {
+    if (!commentsPanelOpen) {
+      setCommentError((prev) => (prev == null ? prev : null));
+      setCommentBusy((prev) => (prev === false ? prev : false));
+      setHoveredCommentPlacementKey((prev) => (prev == null ? prev : null));
+      return;
+    }
+    if (commentPlacementOptions.length === 0) {
+      setCommentAnchor((prev) => (prev == null ? prev : null));
+      return;
+    }
+    if (!selectedCommentPlacementKey) {
+      setCommentAnchor((prev) => (prev ? prev : commentPlacementOptions[0].anchor));
+      return;
+    }
+    const hasCurrent = commentPlacementOptions.some((option) => option.key === selectedCommentPlacementKey);
+    if (!hasCurrent) {
+      setCommentAnchor((prev) => {
+        if (!prev) return commentPlacementOptions[0].anchor;
+        const prevKey = buildPlacementKey(
+          prev.scheduleId,
+          prev.sourceCellId,
+          prev.bundleId,
+          prev.dayIndex,
+          prev.startSlot,
+          prev.placementId,
+        );
+        return prevKey === commentPlacementOptions[0].key ? prev : commentPlacementOptions[0].anchor;
+      });
+    }
+  }, [commentPlacementOptions, commentsPanelOpen, selectedCommentPlacementKey]);
+
+  const activePlacementComments = useMemo(() => {
+    if (!commentAnchor) return [];
+    return placementComments.filter((comment) => {
+      const placementMatches =
+        commentAnchor.placementId != null &&
+        comment.schedule_placement != null &&
+        String(comment.schedule_placement) === String(commentAnchor.placementId);
+      const anchorMatches =
+        Number(comment.schedule) === Number(commentAnchor.scheduleId) &&
+        String(comment.source_cell_id) === String(commentAnchor.sourceCellId) &&
+        String(comment.bundle) === String(commentAnchor.bundleId) &&
+        Number(comment.day_index) === Number(commentAnchor.dayIndex) &&
+        Number(comment.start_slot) === Number(commentAnchor.startSlot);
+      return placementMatches || anchorMatches;
+    });
+  }, [commentAnchor, placementComments]);
+
+  const shouldDimScheduleForCommentFocus =
+    commentsPanelOpen && Boolean(selectedCommentPlacementKey);
+
+  const orderedActivePlacementComments = useMemo(
+    () =>
+      [...activePlacementComments].sort((a, b) => {
+        const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return bTime - aTime;
+      }),
+    [activePlacementComments],
+  );
+
+  const submitPlacementComment = async () => {
+    if (!commentAnchor || !commentDraft.trim()) return;
+    setCommentBusy(true);
+    setCommentError(null);
+    try {
+      const payload =
+        commentAnchor.placementId != null && String(commentAnchor.placementId).trim()
+          ? { placement_id: commentAnchor.placementId, text: commentDraft.trim() }
+          : {
+              schedule: commentAnchor.scheduleId,
+              source_cell_id: commentAnchor.sourceCellId,
+              bundle: commentAnchor.bundleId,
+              day_index: commentAnchor.dayIndex,
+              start_slot: commentAnchor.startSlot,
+              end_slot: commentAnchor.endSlot,
+              text: commentDraft.trim(),
+            };
+      const res = await authFetch("/api/placement-comments/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || t("solve_overlay.could_not_add_comment"));
+      }
+      const raw = await res.json().catch(() => ({}));
+      const bundleRaw =
+        typeof raw?.bundle === "object" && raw.bundle?.id != null ? raw.bundle.id : raw?.bundle;
+      const next: PlacementComment = {
+        id: raw.id,
+        schedule: raw.schedule ?? commentAnchor.scheduleId,
+        schedule_placement:
+          raw.schedule_placement ??
+          raw.schedule_placement_id ??
+          raw.placement_id ??
+          raw.placementId ??
+          commentAnchor.placementId ??
+          null,
+        source_cell_id: raw.source_cell_id ?? commentAnchor.sourceCellId,
+        bundle: bundleRaw ?? commentAnchor.bundleId,
+        day_index: Number(raw.day_index ?? commentAnchor.dayIndex),
+        start_slot: Number(raw.start_slot ?? commentAnchor.startSlot),
+        end_slot: raw.end_slot == null ? commentAnchor.endSlot : Number(raw.end_slot),
+        text: String(raw.text ?? raw.message ?? commentDraft.trim()),
+        created_at: raw.created_at,
+        author_id: extractAuthorId(raw) ?? currentUserId ?? undefined,
+        author_name: extractAuthorName(raw),
+      };
+      setPlacementComments((prev) => [next, ...prev]);
+      setCommentDraft("");
+    } catch (error: unknown) {
+      setCommentError(error instanceof Error ? error.message : t("solve_overlay.could_not_add_comment"));
+    } finally {
+      setCommentBusy(false);
+    }
+  };
 
   const participantTabs = useMemo(() => {
     const source =
@@ -308,10 +752,21 @@ export default function ParticipantScheduleOverlay({
           className="pointer-events-none absolute inset-x-0 z-[5]"
           style={{ top: topOffset, height: bodyHeight }}
         >
+          {filteredSchedule.length === 0 && (
+            <div
+              className="sticky z-[6] flex justify-center"
+              style={{ top: "calc(50% - 1rem)", marginLeft: timeColPx, width: `calc(100% - ${timeColPx}px)` }}
+            >
+              <span className="rounded-full border border-gray-200 bg-white/85 px-3 py-1 text-xs font-medium text-gray-500 shadow-sm backdrop-blur">
+                {t("participant_detail.no_schedule_placements")}
+              </span>
+            </div>
+          )}
           {filteredSchedule.map((s, idx) => {
             const col = s.day_index;
             if (col < 0 || col >= daysCount) return null;
-            const sourceCellId = String(s.source_cell ?? s.source_cell_id ?? s.id);
+            const sourceCellId = String(s.source_cell_id ?? s.source_cell ?? s.id);
+            const placementId = getPlacementId(s);
             const top = s.start_slot * rowPx;
             const height = Math.max(6, (s.end_slot - s.start_slot) * rowPx);
             const left = `calc(${timeColPx}px + ${col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
@@ -328,12 +783,81 @@ export default function ParticipantScheduleOverlay({
             const textDark = useColor ? CELL_TEXT_DARK[colorIdx] : "#1f2937";
             const textLight = useColor ? CELL_TEXT_LIGHT[colorIdx] : "#111827";
             const border = useColor ? shadeHex(bg, -0.35) : "#e5e7eb";
+            const commentKey =
+              scheduleId != null
+                ? buildPlacementKey(scheduleId, sourceCellId, bundleId, s.day_index, s.start_slot, placementId)
+                : null;
+            const isCommentFocused =
+              commentsPanelOpen && Boolean(commentKey) && commentKey === selectedCommentPlacementKey;
+            const isCommentHovered =
+              commentsPanelOpen && Boolean(commentKey) && hoveredCommentPlacementKey === commentKey;
+            const isCommentMuted =
+              shouldDimScheduleForCommentFocus && !isCommentFocused && !isCommentHovered;
+            const commentAnchorForCard =
+              canComment && scheduleId != null
+                ? {
+                    placementId,
+                    scheduleId,
+                    sourceCellId,
+                    bundleId,
+                    dayIndex: s.day_index,
+                    startSlot: s.start_slot,
+                    endSlot: s.end_slot,
+                    cellName,
+                    timeLabel,
+                  }
+                : null;
             return (
-              <div key={`${s.id}-${idx}`} className="absolute" style={{ top, left, width, height }}>
+              <div
+                key={`${s.id}-${idx}`}
+                data-placement-card
+                data-placement-id={placementId == null ? undefined : String(placementId)}
+                className={`absolute ${commentsPanelOpen && commentAnchorForCard ? "pointer-events-auto cursor-pointer transition-transform duration-150 ease-out" : ""}`}
+                style={{
+                  top,
+                  left,
+                  width,
+                  height,
+                  transform: isCommentFocused ? "scale(1.08)" : undefined,
+                  zIndex: isCommentFocused ? 60 : isCommentHovered ? 52 : undefined,
+                  transformOrigin: "center",
+                }}
+                onClick={() => {
+                  if (!commentsPanelOpen || !commentAnchorForCard) return;
+                  setCommentAnchor(commentAnchorForCard);
+                  setCommentError(null);
+                }}
+                onPointerEnter={() => {
+                  if (!commentsPanelOpen || !commentKey) return;
+                  setHoveredCommentPlacementKey(commentKey);
+                }}
+                onPointerLeave={() => {
+                  if (!commentKey) return;
+                  setHoveredCommentPlacementKey((prev) => (prev === commentKey ? null : prev));
+                }}
+              >
                 <div
-                  className="w-full h-full rounded-md border px-2 py-2 text-[11px]"
-                  style={{ backgroundColor: bg || "#f3f4f6", borderColor: border, color: textDark }}
+                  className="relative w-full h-full rounded-md border px-2 py-2 text-[11px] transition-[filter,opacity] duration-150 ease-out"
+                  style={{
+                    backgroundColor: bg || "#f3f4f6",
+                    borderColor: border,
+                    color: textDark,
+                    opacity: isCommentMuted ? 0.38 : 1,
+                    filter: isCommentMuted ? "grayscale(0.85)" : "none",
+                  }}
                 >
+                  {isCommentFocused && (
+                    <>
+                      <span
+                        className="pointer-events-none absolute inset-0 rounded-md border-2 schedule-comment-ring"
+                        style={{ borderColor: bg || border }}
+                      />
+                      <span
+                        className="pointer-events-none absolute inset-0 rounded-md border-2 schedule-comment-ring schedule-comment-ring-delay"
+                        style={{ borderColor: bg || border }}
+                      />
+                    </>
+                  )}
                   <div className="flex h-full flex-col items-center justify-center text-center leading-tight">
                     <div className="font-semibold" style={{ color: textLight }}>{cellName}</div>
                     {bundlesLabel && <div className="px-1">{bundlesLabel}</div>}
@@ -347,6 +871,139 @@ export default function ParticipantScheduleOverlay({
         </div>
       )}
 
+      {canComment &&
+        commentsPanelOpen &&
+        isClientReady &&
+        createPortal(
+          <aside
+            className="fixed right-0 z-[1302] w-[340px] max-w-full border-l border-gray-200 bg-gray-50"
+            style={{
+              top: `${commentsPanelTopPx}px`,
+              height: `calc(100dvh - ${commentsPanelTopPx}px)`,
+            }}
+          >
+            <div className="flex h-full flex-col">
+              <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-gray-700" />
+                  <h2 className="text-xl font-semibold text-gray-900">{t("solve_overlay.comments")}</h2>
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded text-gray-600 transition-colors hover:bg-gray-200 hover:text-black"
+                  title={t("solve_overlay.close_comments_panel")}
+                  onClick={() => {
+                    onCommentsPanelOpenChange?.(false);
+                    setCommentError(null);
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {scheduleId != null && (
+                <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                  <label className="mb-1 block text-xs font-medium text-gray-600">{t("solve_overlay.placement")}</label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-gray-300 bg-white text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                      title={t("solve_overlay.previous_placement")}
+                      onClick={() => moveCommentPlacementSelection(-1)}
+                      disabled={commentPlacementOptions.length <= 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <select
+                      className="h-9 min-w-0 flex-1 rounded border border-gray-300 bg-white px-2 text-sm"
+                      value={selectedCommentPlacementKey}
+                      onChange={(event) => {
+                        const selected = commentPlacementOptions.find((option) => option.key === event.target.value);
+                        if (!selected) return;
+                        setCommentAnchor(selected.anchor);
+                        setCommentError(null);
+                      }}
+                      disabled={commentPlacementOptions.length === 0}
+                    >
+                      {commentPlacementOptions.map((option) => (
+                        <option key={option.key} value={option.key}>
+                          {option.label}
+                          {option.count > 0 ? ` (${option.count})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-gray-300 bg-white text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                      title={t("solve_overlay.next_placement")}
+                      onClick={() => moveCommentPlacementSelection(1)}
+                      disabled={commentPlacementOptions.length <= 1}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+                {scheduleId == null ? (
+                  <div className="text-sm text-gray-500">{t("solve_overlay.comments_unavailable")}</div>
+                ) : (
+                  <>
+                    {commentsLoading ? (
+                      <div className="text-sm text-gray-500">{t("solve_overlay.loading_comments")}</div>
+                    ) : orderedActivePlacementComments.length === 0 ? (
+                      <div className="rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500">
+                        {t("solve_overlay.no_comments_for_placement")}
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {orderedActivePlacementComments.map((comment) => (
+                          <PlacementCommentBubble
+                            key={String(comment.id)}
+                            text={comment.text}
+                            createdAt={comment.created_at}
+                            authorId={comment.author_id}
+                            authorName={comment.author_name}
+                            currentUserId={currentUserId}
+                            locale={locale}
+                            youLabel={t("solve_overlay.comment_you")}
+                            justNowLabel={t("solve_overlay.comment_just_now")}
+                            fallbackAuthorLabel={t("solve_overlay.default_comment_author")}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                  </>
+                )}
+              </div>
+
+              {scheduleId != null && (
+                <div className="border-t border-gray-200 px-4 py-3">
+                  <textarea
+                    className="min-h-[100px] w-full rounded border bg-white px-3 py-2 text-sm"
+                    placeholder={t("solve_overlay.write_comment_selected")}
+                    value={commentDraft}
+                    onChange={(event) => setCommentDraft(event.target.value)}
+                    disabled={commentBusy}
+                  />
+                  {commentError && <div className="mt-2 text-xs text-red-600">{commentError}</div>}
+                  <button
+                    type="button"
+                    className="mt-2 h-9 w-full rounded bg-black px-3 text-sm text-white disabled:opacity-60"
+                    onClick={() => void submitPlacementComment()}
+                    disabled={commentBusy || !commentDraft.trim() || !commentAnchor}
+                  >
+                    {commentBusy ? t("solve_overlay.saving") : t("solve_overlay.add_comment")}
+                  </button>
+                </div>
+              )}
+            </div>
+          </aside>,
+          document.body,
+        )}
+
       {!hideSideStack && participantTabs.length > 1 && (
         <div
           data-participant-tabs
@@ -357,18 +1014,19 @@ export default function ParticipantScheduleOverlay({
             pointerEvents: participantTabsOpacity > 0.05 ? undefined : "none",
           }}
         >
-          <div className="max-w-5xl mx-auto flex items-end gap-2 px-4 pt-2 pb-3 overflow-x-auto overflow-y-hidden pointer-events-auto hide-scrollbar">
+          <div className="max-w-5xl mx-auto flex items-end gap-2 px-4 pt-2 pb-0 overflow-x-auto overflow-y-hidden pointer-events-auto hide-scrollbar">
             {participantTabs.map((participant) => {
               const isActive = String(participant.id) === String(participantId);
               return (
-                <button
+                <Link
                   key={`participant-tab-${participant.id}`}
-                  type="button"
-                  onClick={() => {
-                    if (isActive) return;
-                    router.push(
-                      `/grid/${encodeURIComponent(gridCode)}/participants/${encodeURIComponent(participant.routeId)}?view=${targetView}`,
-                    );
+                  href={
+                    isActive
+                      ? `/grid/${encodeURIComponent(gridCode)}/participants/${encodeURIComponent(participant.routeId)}?view=${targetView}`
+                      : `/grid/${encodeURIComponent(gridCode)}/participants/${encodeURIComponent(participant.routeId)}?view=schedule`
+                  }
+                  onClick={(event) => {
+                    if (isActive) event.preventDefault();
                   }}
                   className={[
                     "px-4 py-2 text-sm border rounded-t-xl rounded-b-none origin-bottom",
@@ -380,7 +1038,7 @@ export default function ParticipantScheduleOverlay({
                   title={participant.name}
                 >
                   {participant.name}
-                </button>
+                </Link>
               );
             })}
           </div>

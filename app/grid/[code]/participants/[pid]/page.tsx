@@ -1,9 +1,11 @@
 import { backendFetchJSON } from "@/lib/backend";
-import { requireUserOrRedirect } from "@/lib/auth";
-import type { Role } from "@/lib/types";
+import { isAuthApiError, requireUserOrRedirect } from "@/lib/auth";
+import type { Grid, Role } from "@/lib/types";
 import OnboardingGuide from "@/components/grid/OnboardingGuide";
 import ParticipantDetailContent from "@/components/participants/ParticipantDetailContent";
 import { resolveGridByCode } from "../../_helpers";
+import { t as translate } from "@/lib/i18n";
+import { redirect } from "next/navigation";
 
 type Rule = {
   id: number;
@@ -36,7 +38,25 @@ export default async function ParticipantAvailabilityPage({
   searchParams?: Promise<{ view?: string | string[]; onboarding?: string | string[] }>;
 }) {
   const { code, pid } = await params;
-  const grid = await resolveGridByCode(code);
+  const nextPath = `/grid/${encodeURIComponent(code)}/participants/${encodeURIComponent(pid)}`;
+  let grid: Grid;
+  try {
+    grid = await resolveGridByCode(code);
+  } catch (error: any) {
+    if (isAuthApiError(error)) {
+      redirect(`/login?next=${encodeURIComponent(nextPath)}`);
+    }
+    return (
+      <div className="px-4 py-6">
+        <div className="mx-auto max-w-xl space-y-3 rounded-lg border border-red-100 bg-red-50 p-4 text-red-800">
+          <h1 className="text-lg font-semibold">{translate("en-US", "grid_overview.not_found")}</h1>
+          <p className="text-sm text-red-700">
+            {translate("en-US", "grid_overview.not_found_help", { code })}
+          </p>
+        </div>
+      </div>
+    );
+  }
   const id = String(grid.id);
   const sp = await searchParams;
   const onboardingParam = Array.isArray(sp?.onboarding) ? sp?.onboarding[0] : sp?.onboarding;
@@ -131,7 +151,6 @@ export default async function ParticipantAvailabilityPage({
 
   const participant = await fetchParticipant(pid);
   const resolvedParticipantId = String((participant as any)?.id ?? pid);
-  const rules = await fetchRules(resolvedParticipantId);
   const participantTabs = await fetchParticipantTabs();
   const participantName = `${(participant as any).name}${(participant as any).surname ? " " + (participant as any).surname : ""}`;
   const participantLinked = Boolean((participant as any).user_id ?? (participant as any).user);
@@ -151,6 +170,8 @@ export default async function ParticipantAvailabilityPage({
     (participant as any).user_id ??
     (typeof (participant as any).user === "number" ? (participant as any).user : (participant as any).user?.id);
   const canManageRules = role === "supervisor" || (meId != null && participantUserId === meId);
+  const rules = canManageRules ? await fetchRules(resolvedParticipantId) : [];
+  const effectiveInitialView = canManageRules ? initialView : "schedule";
 
   const toMin = (hhmm: string) => {
     const [h, m] = hhmm.split(":").map(Number);
@@ -166,6 +187,7 @@ export default async function ParticipantAvailabilityPage({
     <div className="px-4 pb-4">
       <OnboardingGuide gridId={Number(grid.id)} gridCode={String(grid.grid_code || code)} show={showOnboarding} />
       <ParticipantDetailContent
+        key={resolvedParticipantId}
         gridId={Number(grid.id)}
         gridCode={String(grid.grid_code || code)}
         participantId={Number(resolvedParticipantId)}
@@ -181,7 +203,7 @@ export default async function ParticipantAvailabilityPage({
         dayStartHHMM={norm(grid.day_start)}
         dayEndHHMM={norm(grid.day_end)}
         rules={rules}
-        initialView={initialView}
+        initialView={effectiveInitialView}
         initialParticipantTabs={participantTabs}
       />
     </div>

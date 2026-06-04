@@ -41,6 +41,7 @@ import RightSideDock from "@/components/layout/RightSideDock";
 import GlassSurface from "@/components/ui/GlassSurface";
 import ScheduleErrorCard from "@/components/grid/ScheduleErrorCard";
 import BreakDialog from "@/components/grid/BreakDialog";
+import PlacementCommentBubble from "@/components/grid/PlacementCommentBubble";
 import type { ScheduleViewMode } from "@/lib/schedule-view";
 import { useI18n } from "@/lib/use-i18n";
 import { authFetch } from "@/lib/client-auth";
@@ -190,8 +191,10 @@ type CellPinMeta = {
 type PlacementComment = {
   id: number | string;
   schedule: number | string;
+  schedule_placement?: number | string | null;
   source_cell_id: number | string;
-  bundle: number | string;
+  bundle: number | string | null;
+  end_slot?: number | null;
   day_index: number;
   start_slot: number;
   text: string;
@@ -201,11 +204,13 @@ type PlacementComment = {
 };
 
 type CommentAnchor = {
+  placementId?: number | string | null;
   scheduleId: number;
   sourceCellId: string;
-  bundleId: number | string;
+  bundleId: number | string | null;
   dayIndex: number;
   startSlot: number;
+  endSlot: number;
   cellName: string;
   timeLabel: string;
 };
@@ -234,11 +239,13 @@ type PinErrorCardState = { message: string };
 function buildPlacementKey(
   scheduleId: number | string,
   sourceCellId: number | string,
-  bundleId: number | string,
+  bundleId: number | string | null,
   dayIndex: number,
   startSlot: number,
+  placementId?: number | string | null,
 ) {
-  return `${scheduleId}|${sourceCellId}|${bundleId}|${dayIndex}|${startSlot}`;
+  if (placementId != null && String(placementId).trim()) return `placement|${placementId}`;
+  return `${scheduleId}|${sourceCellId}|${bundleId == null ? "__no_bundle__" : bundleId}|${dayIndex}|${startSlot}`;
 }
 
 const DAY_LABEL_TO_INDEX: Record<string, number> = {
@@ -489,7 +496,7 @@ type TierKey = "PRIMARY" | "SECONDARY" | "TERTIARY";
 
 type PlacementAssignmentOption = {
   id: string;
-  source: "staff" | "pool";
+  source: "staff" | "pool" | "open";
   participantIds: string[];
   label: string;
   recommended: boolean;
@@ -567,7 +574,7 @@ export default function SolveOverlay({
   historyMode = false,
   historyGridCode = null,
 }: Props) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
   const [hasCells, setHasCells] = useState(false);
@@ -617,6 +624,7 @@ export default function SolveOverlay({
   const [commentDraft, setCommentDraft] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [leftPanelOpen, setLeftPanelOpen] = useState(false);
   const [isNarrowMobile, setIsNarrowMobile] = useState(false);
   const [inputSignature, setInputSignature] = useState<string | null>(null);
@@ -745,6 +753,24 @@ export default function SolveOverlay({
     const onChange = () => sync();
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const response = await authFetch("/api/whoami", { cache: "no-store" });
+        if (!response.ok) return;
+        const me = await response.json().catch(() => null);
+        const id = me?.id;
+        if (active && id != null) setCurrentUserId(String(id));
+      } catch {
+        if (active) setCurrentUserId(null);
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -990,8 +1016,12 @@ export default function SolveOverlay({
     if (endSlot <= startSlot) return null;
 
     const placementId =
-      readEntityId(source.id) ??
       readEntityId(source.placement_id) ??
+      readEntityId(source.placementId) ??
+      readEntityId(source.schedule_placement_id) ??
+      readEntityId(source.schedulePlacementId) ??
+      readEntityId(source.schedule_placement) ??
+      readEntityId(source.id) ??
       readEntityId(source.cell_id) ??
       fallbackId;
     const sourceCellId =
@@ -1260,7 +1290,7 @@ export default function SolveOverlay({
         ? (candidate as any).snapshot_placements
         : [];
       const scheduleId =
-        Number((candidate as any).id ?? (candidate as any).schedule_id ?? (candidate as any).schedule) || 0;
+        Number((candidate as any).schedule_id ?? (candidate as any).schedule ?? (candidate as any).id) || 0;
       if (!scheduleId && placementsRaw.length === 0) return null;
       return {
         ...(candidate as Record<string, unknown>),
@@ -1524,7 +1554,6 @@ export default function SolveOverlay({
               raw?.id == null ||
               raw?.schedule == null ||
               raw?.source_cell_id == null ||
-              bundleRaw == null ||
               raw?.day_index == null ||
               raw?.start_slot == null
             ) {
@@ -1533,10 +1562,17 @@ export default function SolveOverlay({
             return {
               id: raw.id,
               schedule: raw.schedule,
+              schedule_placement:
+                raw.schedule_placement ??
+                raw.schedule_placement_id ??
+                raw.placement_id ??
+                raw.placementId ??
+                null,
               source_cell_id: raw.source_cell_id,
               bundle: bundleRaw,
               day_index: Number(raw.day_index),
               start_slot: Number(raw.start_slot),
+              end_slot: raw.end_slot == null ? null : Number(raw.end_slot),
               text: String(message),
               created_at: raw.created_at,
               author_id: raw.author_id ?? extractAuthorId(raw.author),
@@ -3948,14 +3984,27 @@ export default function SolveOverlay({
   const commentCountByPlacement = useMemo(() => {
     const map: Record<string, number> = {};
     for (const c of placementComments) {
-      const key = buildPlacementKey(
+      const anchorKey = buildPlacementKey(
         c.schedule,
         c.source_cell_id,
         c.bundle,
         Number(c.day_index),
         Number(c.start_slot),
       );
-      map[key] = (map[key] || 0) + 1;
+      map[anchorKey] = (map[anchorKey] || 0) + 1;
+      if (c.schedule_placement != null) {
+        const placementKey = buildPlacementKey(
+          c.schedule,
+          c.source_cell_id,
+          c.bundle,
+          Number(c.day_index),
+          Number(c.start_slot),
+          c.schedule_placement,
+        );
+        if (placementKey !== anchorKey) {
+          map[placementKey] = (map[placementKey] || 0) + 1;
+        }
+      }
     }
     return map;
   }, [placementComments]);
@@ -3965,22 +4014,31 @@ export default function SolveOverlay({
     const deduped = new Map<string, CommentPlacementOption>();
     for (const s of filteredSchedule) {
       const sourceCellId = String(s.source_cell_id ?? s.cell_id);
+      const placementId = String(s.cell_id ?? "");
       const resolvedBundleId = resolveBundleIdForCard(s);
-      if (resolvedBundleId == null) continue;
       const cellName = cellNameById[sourceCellId] || `Cell ${sourceCellId}`;
       const timeLabel = formatSlotRange(dayStartMin, slotMin, s.start_slot, s.end_slot);
-      const key = buildPlacementKey(currentSchedule.id, sourceCellId, resolvedBundleId, s.day_index, s.start_slot);
+      const key = buildPlacementKey(
+        currentSchedule.id,
+        sourceCellId,
+        resolvedBundleId,
+        s.day_index,
+        s.start_slot,
+        placementId || null,
+      );
       if (deduped.has(key)) continue;
       deduped.set(key, {
         key,
         label: `${cellName} - ${timeLabel}`,
         count: commentCountByPlacement[key] || 0,
         anchor: {
+          placementId: placementId || null,
           scheduleId: currentSchedule.id,
           sourceCellId,
           bundleId: resolvedBundleId,
           dayIndex: s.day_index,
           startSlot: s.start_slot,
+          endSlot: s.end_slot,
           cellName,
           timeLabel,
         },
@@ -4019,10 +4077,12 @@ export default function SolveOverlay({
     const hasCurrent = commentPlacementOptions.some(
       (option) =>
         Number(option.anchor.scheduleId) === Number(commentAnchor.scheduleId) &&
+        String(option.anchor.placementId ?? "") === String(commentAnchor.placementId ?? "") &&
         String(option.anchor.sourceCellId) === String(commentAnchor.sourceCellId) &&
         String(option.anchor.bundleId) === String(commentAnchor.bundleId) &&
         Number(option.anchor.dayIndex) === Number(commentAnchor.dayIndex) &&
-        Number(option.anchor.startSlot) === Number(commentAnchor.startSlot),
+        Number(option.anchor.startSlot) === Number(commentAnchor.startSlot) &&
+        Number(option.anchor.endSlot) === Number(commentAnchor.endSlot),
     );
     if (!hasCurrent) {
       commentManuallyDeselectedRef.current = false;
@@ -4060,13 +4120,17 @@ export default function SolveOverlay({
   const activePlacementComments = useMemo(() => {
     if (!commentAnchor) return [];
     return placementComments.filter((c) => {
-      return (
+      const placementMatches =
+        commentAnchor.placementId != null &&
+        c.schedule_placement != null &&
+        String(c.schedule_placement) === String(commentAnchor.placementId);
+      const anchorMatches =
         Number(c.schedule) === Number(commentAnchor.scheduleId) &&
         String(c.source_cell_id) === String(commentAnchor.sourceCellId) &&
         String(c.bundle) === String(commentAnchor.bundleId) &&
         Number(c.day_index) === Number(commentAnchor.dayIndex) &&
-        Number(c.start_slot) === Number(commentAnchor.startSlot)
-      );
+        Number(c.start_slot) === Number(commentAnchor.startSlot);
+      return placementMatches || anchorMatches;
     });
   }, [commentAnchor, placementComments]);
 
@@ -4077,8 +4141,29 @@ export default function SolveOverlay({
         commentAnchor.bundleId,
         commentAnchor.dayIndex,
         commentAnchor.startSlot,
+        commentAnchor.placementId,
       )
     : "";
+
+  const selectedCommentPlacementIndex = useMemo(
+    () => commentPlacementOptions.findIndex((option) => option.key === selectedCommentPlacementKey),
+    [commentPlacementOptions, selectedCommentPlacementKey],
+  );
+
+  const moveCommentPlacementSelection = useCallback(
+    (direction: -1 | 1) => {
+      if (commentPlacementOptions.length === 0) return;
+      const currentIndex = selectedCommentPlacementIndex >= 0 ? selectedCommentPlacementIndex : 0;
+      const nextIndex =
+        (currentIndex + direction + commentPlacementOptions.length) % commentPlacementOptions.length;
+      const next = commentPlacementOptions[nextIndex];
+      if (!next) return;
+      commentManuallyDeselectedRef.current = false;
+      setCommentAnchor(next.anchor);
+      setCommentError(null);
+    },
+    [commentPlacementOptions, selectedCommentPlacementIndex],
+  );
   const shouldDimScheduleForCommentFocus =
     commentsPanelOpen && Boolean(selectedCommentPlacementKey);
 
@@ -4095,14 +4180,21 @@ export default function SolveOverlay({
     setCommentBusy(true);
     setCommentError(null);
     try {
-      const payload = {
-        schedule: commentAnchor.scheduleId,
-        source_cell_id: commentAnchor.sourceCellId,
-        bundle: commentAnchor.bundleId,
-        day_index: commentAnchor.dayIndex,
-        start_slot: commentAnchor.startSlot,
-        text: commentDraft.trim(),
-      };
+      const payload =
+        commentAnchor.placementId != null && String(commentAnchor.placementId).trim()
+          ? {
+              placement_id: commentAnchor.placementId,
+              text: commentDraft.trim(),
+            }
+          : {
+              schedule: commentAnchor.scheduleId,
+              source_cell_id: commentAnchor.sourceCellId,
+              bundle: commentAnchor.bundleId,
+              day_index: commentAnchor.dayIndex,
+              start_slot: commentAnchor.startSlot,
+              end_slot: commentAnchor.endSlot,
+              text: commentDraft.trim(),
+            };
       const res = await authFetch("/api/placement-comments/", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -4118,13 +4210,21 @@ export default function SolveOverlay({
       const next: PlacementComment = {
         id: raw.id,
         schedule: raw.schedule ?? commentAnchor.scheduleId,
+        schedule_placement:
+          raw.schedule_placement ??
+          raw.schedule_placement_id ??
+          raw.placement_id ??
+          raw.placementId ??
+          commentAnchor.placementId ??
+          null,
         source_cell_id: raw.source_cell_id ?? commentAnchor.sourceCellId,
         bundle: bundleRaw ?? commentAnchor.bundleId,
         day_index: Number(raw.day_index ?? commentAnchor.dayIndex),
         start_slot: Number(raw.start_slot ?? commentAnchor.startSlot),
+        end_slot: raw.end_slot == null ? commentAnchor.endSlot : Number(raw.end_slot),
         text: String(raw.text ?? raw.message ?? commentDraft.trim()),
         created_at: raw.created_at,
-        author_id: raw.author_id ?? extractAuthorId(raw.author),
+        author_id: raw.author_id ?? extractAuthorId(raw.author) ?? currentUserId ?? undefined,
         author_name: extractAuthorName(raw),
       };
       setPlacementComments((prev) => [next, ...prev]);
@@ -4682,6 +4782,42 @@ export default function SolveOverlay({
             participantIds: selectedFromPools,
             label: t("solve_overlay.tier_pools"),
             recommended: isRecommendedSet(selectedFromPools),
+          });
+        }
+      }
+
+      if (options.length === 0 && headcount === 0 && staffIds.length === 0) {
+        const availableParticipants = Object.entries(participantNameById)
+          .map(([participantId]) => String(participantId))
+          .filter((participantId) => {
+            const conflict = getParticipantPlacementConflictMessage(
+              participantId,
+              dayIndex,
+              startSlot,
+              endSlot,
+            );
+            if (conflict) {
+              conflictMessages.push(conflict);
+              return false;
+            }
+            return true;
+          })
+          .sort((a, b) => (participantNameById[a] || a).localeCompare(participantNameById[b] || b));
+
+        const previousStillValid =
+          previousAssigned.length > 0 &&
+          previousAssigned.every((participantId) => availableParticipants.includes(String(participantId)));
+
+        const participantIds = previousStillValid ? previousAssigned.map(String) : availableParticipants.slice(0, 1);
+        if (participantIds.length > 0) {
+          addOption({
+            id: previousStillValid ? "open:recommended" : "open:first-available",
+            source: "open",
+            participantIds,
+            label: previousStillValid
+              ? t("solve_overlay.open_assignment_recommended")
+              : t("solve_overlay.open_assignment_first_available"),
+            recommended: previousStillValid,
           });
         }
       }
@@ -6447,13 +6583,15 @@ export default function SolveOverlay({
             const pinKnobTranslatePx = isPinnedVisual ? 16 : 0;
             const resolvedBundleId = resolveBundleIdForCard(s);
             const commentAnchorForCard =
-              canCommentCards && currentSchedule?.id != null && resolvedBundleId != null
+              canCommentCards && currentSchedule?.id != null
                 ? {
+                    placementId: placementId || null,
                     scheduleId: currentSchedule.id,
                     sourceCellId,
                     bundleId: resolvedBundleId,
                     dayIndex: s.day_index,
                     startSlot: s.start_slot,
+                    endSlot: s.end_slot,
                     cellName,
                     timeLabel,
                   }
@@ -6465,6 +6603,7 @@ export default function SolveOverlay({
                   commentAnchorForCard.bundleId,
                   commentAnchorForCard.dayIndex,
                   commentAnchorForCard.startSlot,
+                  commentAnchorForCard.placementId,
                 )
               : null;
             const isCommentFocusedCard =
@@ -6598,6 +6737,7 @@ export default function SolveOverlay({
                     commentAnchorForCard.bundleId,
                     commentAnchorForCard.dayIndex,
                     commentAnchorForCard.startSlot,
+                    commentAnchorForCard.placementId,
                   );
                   if (clickedKey === selectedCommentPlacementKey) {
                     commentManuallyDeselectedRef.current = true;
@@ -6909,7 +7049,11 @@ export default function SolveOverlay({
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-gray-900">
-                      {option.source === "staff" ? t("solve_overlay.staff_option") : t("solve_overlay.tier_pools_option")}
+                      {option.source === "staff"
+                        ? t("solve_overlay.staff_option")
+                        : option.source === "open"
+                        ? t("solve_overlay.participant_option")
+                        : t("solve_overlay.tier_pools_option")}
                     </span>
                     {option.recommended && (
                       <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
@@ -7112,6 +7256,7 @@ export default function SolveOverlay({
                 )}
               </div>
 
+              {false && (
               <div className="border-t border-gray-200 px-4 py-3">
                 <button
                   type="button"
@@ -7127,6 +7272,7 @@ export default function SolveOverlay({
                   {t("solve_overlay.restore_draft_selected_help")}
                 </div>
               </div>
+              )}
             </div>
           </aside>,
           document.body,
@@ -7159,34 +7305,56 @@ export default function SolveOverlay({
               </button>
             </div>
 
+            {canCommentCards && (
+              <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                <label className="mb-1 block text-xs font-medium text-gray-600">{t("solve_overlay.placement")}</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-gray-300 bg-white text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    title={t("solve_overlay.previous_placement")}
+                    onClick={() => moveCommentPlacementSelection(-1)}
+                    disabled={commentPlacementOptions.length <= 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <select
+                    className="h-9 min-w-0 flex-1 rounded border border-gray-300 bg-white px-2 text-sm"
+                    value={selectedCommentPlacementKey}
+                    onChange={(event) => {
+                      const selected = commentPlacementOptions.find((option) => option.key === event.target.value);
+                      if (!selected) return;
+                      commentManuallyDeselectedRef.current = false;
+                      setCommentAnchor(selected.anchor);
+                      setCommentError(null);
+                    }}
+                    disabled={commentPlacementOptions.length === 0}
+                  >
+                    {commentPlacementOptions.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                        {option.count > 0 ? ` (${option.count})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-gray-300 bg-white text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    title={t("solve_overlay.next_placement")}
+                    onClick={() => moveCommentPlacementSelection(1)}
+                    disabled={commentPlacementOptions.length <= 1}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
               {!canCommentCards ? (
                 <div className="text-sm text-gray-500">{t("solve_overlay.comments_unavailable")}</div>
               ) : (
                 <>
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-600">{t("solve_overlay.placement")}</label>
-                    <select
-                      className="h-9 w-full rounded border border-gray-300 bg-white px-2 text-sm"
-                      value={selectedCommentPlacementKey}
-                      onChange={(event) => {
-                        const selected = commentPlacementOptions.find((option) => option.key === event.target.value);
-                        if (!selected) return;
-                        commentManuallyDeselectedRef.current = false;
-                        setCommentAnchor(selected.anchor);
-                        setCommentError(null);
-                      }}
-                      disabled={commentPlacementOptions.length === 0}
-                    >
-                      {commentPlacementOptions.map((option) => (
-                        <option key={option.key} value={option.key}>
-                          {option.label}
-                          {option.count > 0 ? ` (${option.count})` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
                   {commentsLoading ? (
                     <div className="text-sm text-gray-500">{t("solve_overlay.loading_comments")}</div>
                   ) : orderedActivePlacementComments.length === 0 ? (
@@ -7194,44 +7362,48 @@ export default function SolveOverlay({
                       {t("solve_overlay.no_comments_for_placement")}
                     </div>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       {orderedActivePlacementComments.map((c) => (
-                        <div key={String(c.id)} className="rounded border border-gray-200 bg-white p-2">
-                          <div className="mb-1 text-xs text-gray-500">
-                            {c.author_name || t("solve_overlay.default_comment_author")}
-                            {c.created_at ? ` - ${new Date(c.created_at).toLocaleString()}` : ""}
-                          </div>
-                          <div className="whitespace-pre-wrap text-sm text-gray-900">{c.text}</div>
-                        </div>
+                        <PlacementCommentBubble
+                          key={String(c.id)}
+                          text={c.text}
+                          createdAt={c.created_at}
+                          authorId={c.author_id}
+                          authorName={c.author_name}
+                          currentUserId={currentUserId}
+                          locale={locale}
+                          youLabel={t("solve_overlay.comment_you")}
+                          justNowLabel={t("solve_overlay.comment_just_now")}
+                          fallbackAuthorLabel={t("solve_overlay.default_comment_author")}
+                        />
                       ))}
                     </div>
                   )}
 
-                  {role === "supervisor" && (
-                    <div className="space-y-2 border-t border-gray-200 pt-3">
-                      <textarea
-                        className="min-h-[100px] w-full rounded border bg-white px-3 py-2 text-sm"
-                        placeholder={t("solve_overlay.write_comment_selected")}
-                        value={commentDraft}
-                        onChange={(event) => setCommentDraft(event.target.value)}
-                        disabled={commentBusy}
-                      />
-                      {commentError && <div className="text-xs text-red-600">{commentError}</div>}
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          className="h-9 rounded bg-black px-3 text-sm text-white disabled:opacity-60"
-                          onClick={() => void submitPlacementComment()}
-                          disabled={commentBusy || !commentDraft.trim() || !commentAnchor}
-                        >
-                          {commentBusy ? t("solve_overlay.saving") : t("solve_overlay.add_comment")}
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </>
               )}
             </div>
+
+            {canCommentCards && role === "supervisor" && (
+              <div className="border-t border-gray-200 px-4 py-3">
+                <textarea
+                  className="min-h-[100px] w-full rounded border bg-white px-3 py-2 text-sm"
+                  placeholder={t("solve_overlay.write_comment_selected")}
+                  value={commentDraft}
+                  onChange={(event) => setCommentDraft(event.target.value)}
+                  disabled={commentBusy}
+                />
+                {commentError && <div className="mt-2 text-xs text-red-600">{commentError}</div>}
+                <button
+                  type="button"
+                  className="mt-2 h-9 w-full rounded bg-black px-3 text-sm text-white disabled:opacity-60"
+                  onClick={() => void submitPlacementComment()}
+                  disabled={commentBusy || !commentDraft.trim() || !commentAnchor}
+                >
+                  {commentBusy ? t("solve_overlay.saving") : t("solve_overlay.add_comment")}
+                </button>
+              </div>
+            )}
           </div>
         </aside>,
         document.body,
