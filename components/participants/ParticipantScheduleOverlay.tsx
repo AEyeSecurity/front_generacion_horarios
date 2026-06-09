@@ -1020,11 +1020,9 @@ export default function ParticipantScheduleOverlay({
               return (
                 <Link
                   key={`participant-tab-${participant.id}`}
-                  href={
-                    isActive
-                      ? `/grid/${encodeURIComponent(gridCode)}/participants/${encodeURIComponent(participant.routeId)}?view=${targetView}`
-                      : `/grid/${encodeURIComponent(gridCode)}/participants/${encodeURIComponent(participant.routeId)}?view=schedule`
-                  }
+                  href={`/grid/${encodeURIComponent(gridCode)}/participants?pid=${encodeURIComponent(
+                    String(participant.routeId),
+                  )}&view=${isActive ? targetView : "schedule"}`}
                   onClick={(event) => {
                     if (isActive) event.preventDefault();
                   }}

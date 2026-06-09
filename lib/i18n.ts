@@ -230,6 +230,9 @@ const EN_US = {
   "solve_overlay.candidate_with_index": "Candidate {index}",
   "solve_overlay.candidates_rejected_adjust_and_run_again":
     "Candidates rejected. Adjust constraints/settings and run solve again.",
+  "solve_overlay.assignment_preview_counts": "Assignable: {assignable}/{headcount}",
+  "solve_overlay.assignment_preview_summary": "Backend assignment preview",
+  "solve_overlay.backend_recommended_assignment": "Backend recommended participants",
   "solve_overlay.cannot_place_cell_bundle_unit_occupied":
     "Cannot place this cell there: one of its bundle units is already occupied.",
   "solve_overlay.checking_changes": "Checking if changes were made...",
@@ -273,7 +276,29 @@ const EN_US = {
   "solve_overlay.objective_value": "Objective: {value}",
   "solve_overlay.only_selectable_can_be_chosen": "Only selectable candidates can be chosen.",
   "solve_overlay.optional_note": "Optional note",
+  "solve_overlay.no_backend_recommendation_use_auto":
+    "Backend did not return a participant recommendation. Use auto-selection to let the backend choose.",
   "solve_overlay.place_cell": "Place cell",
+  "solve_overlay.delete_blockage_title": "Delete blockage",
+  "solve_overlay.delete_global_blockage_from_unit_message":
+    "This blockage is global and appears in all units. Do you want to delete it globally or remove it only from the current unit?",
+  "solve_overlay.delete_blockage_globally": "Delete globally",
+  "solve_overlay.remove_blockage_from_unit": "Remove from this unit",
+  "solve_overlay.placement_preview_distance_warning": "Outside preferred range by {distance} slots.",
+  "solve_overlay.placement_endpoint_not_reached": "Placement endpoint was not reached. Check API base URL/proxy.",
+  "solve_overlay.placement_preview_endpoint_not_reached":
+    "Placement preview endpoint was not reached. Check API base URL/proxy.",
+  "solve_overlay.placement_preview_failed": "Could not preview this placement.",
+  "solve_overlay.placement_preview_validating_positions": "Validating positions...",
+  "solve_overlay.placement_preview_loading": "Checking...",
+  "solve_overlay.placement_preview_missing_or_blocked":
+    "This target was not validated by the backend preview. Try dragging again.",
+  "solve_overlay.placement_preview_wait": "Placement preview is still loading.",
+  "solve_overlay.placement_status_blocked": "Blocked",
+  "solve_overlay.placement_status_invalid": "Invalid",
+  "solve_overlay.placement_status_neutral": "Valid",
+  "solve_overlay.placement_status_recommended": "Recommended",
+  "solve_overlay.placement_status_warning": "Warning",
   "solve_overlay.publish_draft_schedule": "Publish draft schedule",
   "solve_overlay.published_snapshot_with_index": "Published snapshot {index}",
   "solve_overlay.recommended": "Recommended",
@@ -284,6 +309,7 @@ const EN_US = {
   "solve_overlay.select_matching_unit_tab_before_placing": "Select the matching unit tab before placing this cell.",
   "solve_overlay.select_one_assignment_option": "Select one assignment option",
   "solve_overlay.select_reject_reason": "Select a reject reason.",
+  "solve_overlay.use_backend_auto_selection": "Use auto-selection",
   "solve_overlay.selected_bundle_has_no_units": "Selected bundle has no units.",
   "solve_overlay.solve": "Solve",
   "solve_overlay.review_pending_candidates": "Review pending solver candidates",
@@ -1748,10 +1774,15 @@ const ES_AR: Dictionary = {
   "solve_overlay.previous_candidate": "Candidatura anterior",
   "solve_overlay.next_candidate": "Siguiente candidatura",
   "solve_overlay.back_to_candidate": "Volver a candidatura",
+  "solve_overlay.assignment_preview_counts": "Asignables: {assignable}/{headcount}",
+  "solve_overlay.assignment_preview_summary": "Vista previa de asignacion del backend",
+  "solve_overlay.backend_recommended_assignment": "Participantes recomendados por backend",
   "solve_overlay.participants": "Participantes",
   "solve_overlay.participants_panel_help": "Selecciona uno para abrir la vista de horario de candidatura.",
   "solve_overlay.no_assigned_participants_candidate": "No hay participantes asignados en esta candidatura.",
   "solve_overlay.no_participants_match_search": "Ningun participante coincide con la busqueda.",
+  "solve_overlay.no_backend_recommendation_use_auto":
+    "El backend no devolvio una recomendacion de participantes. Usa seleccion automatica para que el backend elija.",
   "solve_overlay.no_valid_participants_for_slot":
     "No hay participantes/staff validos disponibles en este bloque (disponibilidad, solapamiento o restricciones de categoria).",
   "solve_overlay.participant_unavailable_in_placement":
@@ -1770,6 +1801,27 @@ const ES_AR: Dictionary = {
   "solve_overlay.participant_option": "Opcion de participante",
   "solve_overlay.open_assignment_first_available": "Primer participante disponible",
   "solve_overlay.open_assignment_recommended": "Recomendado desde la asignacion anterior",
+  "solve_overlay.delete_blockage_title": "Eliminar bloqueo",
+  "solve_overlay.delete_global_blockage_from_unit_message":
+    "Este bloqueo es global y aparece en todas las unidades. Queres eliminarlo globalmente o quitarlo solo de la unidad actual?",
+  "solve_overlay.delete_blockage_globally": "Eliminar globalmente",
+  "solve_overlay.remove_blockage_from_unit": "Quitar de esta unidad",
+  "solve_overlay.placement_preview_distance_warning": "Fuera del rango preferido por {distance} slots.",
+  "solve_overlay.placement_endpoint_not_reached":
+    "No se pudo llegar al endpoint de asignacion. Revisa la URL base/proxy de la API.",
+  "solve_overlay.placement_preview_endpoint_not_reached":
+    "No se pudo llegar al endpoint de previsualizacion de asignacion. Revisa la URL base/proxy de la API.",
+  "solve_overlay.placement_preview_failed": "No se pudo previsualizar esta asignacion.",
+  "solve_overlay.placement_preview_validating_positions": "Validando posiciones...",
+  "solve_overlay.placement_preview_loading": "Validando...",
+  "solve_overlay.placement_preview_missing_or_blocked":
+    "Este destino no fue validado por la vista previa del backend. Intenta arrastrar de nuevo.",
+  "solve_overlay.placement_preview_wait": "La vista previa de asignacion sigue cargando.",
+  "solve_overlay.placement_status_blocked": "Bloqueado",
+  "solve_overlay.placement_status_invalid": "Invalido",
+  "solve_overlay.placement_status_neutral": "Valido",
+  "solve_overlay.placement_status_recommended": "Recomendado",
+  "solve_overlay.placement_status_warning": "Advertencia",
   "solve_overlay.publish": "Publicar",
   "solve_overlay.publishing": "Publicando...",
   "solve_overlay.precheck_running": "Ejecutando precheck...",
@@ -1784,6 +1836,7 @@ const ES_AR: Dictionary = {
   "solve_overlay.precheck_dialog_alert_title": "Problemas bloqueantes de precheck",
   "solve_overlay.precheck_dialog_alert_description":
     "Estos problemas bloquean el solve. Corregilos antes de ejecutar el solver.",
+  "solve_overlay.use_backend_auto_selection": "Usar seleccion automatica",
   "solve_overlay.precheck_dialog_warning_title": "Advertencias de precheck",
   "solve_overlay.precheck_dialog_warning_description":
     "Se encontraron advertencias. Igual podes continuar y ejecutar el solver.",
