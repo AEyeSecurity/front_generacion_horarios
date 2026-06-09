@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import {
@@ -61,6 +61,8 @@ const shadeHex = (hex: string, amt: number) => {
 
 type ScheduleResource = {
   id: number;
+  schedule_id?: number | string | null;
+  published_schedule_id?: number | string | null;
   status?: string;
   source_run?: number | null;
   source_candidate_index?: number | null;
@@ -69,20 +71,31 @@ type ScheduleResource = {
   updated_at?: string;
   placements?: Array<{
     id: number | string;
+    placement_id?: number | string;
+    schedule_placement_id?: number | string;
+    snapshot_placement_id?: number | string | null;
     source_cell?: string | number | null;
     source_cell_id?: string | number | null;
     bundle?: string | number | null;
     bundle_id?: string | number | null;
+    unit_ids?: Array<string | number>;
+    units?: Array<string | number>;
     day_index: number;
     start_slot: number;
     end_slot: number;
     assigned_participants?: Array<string | number>;
+    participants?: Array<string | number>;
+    breaks?: Array<{ offset_min: number; duration_min: number }>;
     locked?: boolean;
+    status?: string;
+    reasons?: unknown[];
   }>;
 };
 
 type ScheduleRow = {
   cell_id: string;
+  placement_id?: string | number;
+  schedule_placement_id?: string | number;
   source_cell_id?: string | number;
   bundle_id?: string | number;
   bundle?: string | number;
@@ -299,12 +312,27 @@ const parseApiErrorMessage = (raw: string, fallback: string) => {
   return fallback;
 };
 
-const formatClockLabel = (value: string) => {
-  const raw = String(value ?? "").trim();
-  if (!raw) return "";
-  if (/^\d{2}:\d{2}$/.test(raw)) return raw;
-  if (/^\d{2}:\d{2}:\d{2}$/.test(raw)) return raw.slice(0, 5);
-  return raw;
+const isLikelyHtmlResponse = (raw: string, contentType: string) => {
+  const normalizedContentType = contentType.toLowerCase();
+  const trimmed = raw.trim().slice(0, 120).toLowerCase();
+  return (
+    normalizedContentType.includes("text/html") ||
+    trimmed.startsWith("<!doctype") ||
+    trimmed.startsWith("<html")
+  );
+};
+
+const parseJsonObjectResponse = (raw: string, contentType: string, endpointFallback: string, parseFallback: string) => {
+  const text = raw.trim();
+  if (!text) return {} as Record<string, unknown>;
+  if (isLikelyHtmlResponse(text, contentType)) {
+    throw new Error(endpointFallback);
+  }
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    throw new Error(contentType.toLowerCase().includes("json") ? parseFallback : endpointFallback);
+  }
 };
 
 const stripNonFieldPrefix = (message: string) =>
@@ -508,6 +536,203 @@ type PendingPlacementRequest = {
   dayIndex: number;
   startSlot: number;
   durationSlots: number;
+  previewItem?: PlacementPreviewItem | null;
+};
+
+type PendingDropWhilePreviewLoading = {
+  dragType: "placement" | "unassigned";
+  placementId?: string;
+  sourceCellId: string;
+  sourceBundleId?: string | number | null;
+  originalDayIndex: number | null;
+  originalStartSlot: number | null;
+  dayIndex: number;
+  startSlot: number;
+  durationSlots: number;
+};
+
+type PlacementMode = "MOVE_ASSIGNED_CELL" | "PLACE_UNASSIGNED_CELL";
+
+type PlacementStatus = "VALID" | "WARNING" | "INVALID";
+type PlacementQuality = "RECOMMENDED" | "NEUTRAL";
+type PlacementVisualKind = "BLOCKED" | "DEFAULT";
+type PlacementTimeRangeKind = "INSIDE" | "SOFT_OUTSIDE" | "HARD_OUTSIDE";
+
+type PlacementReasonType =
+  | "BLOCKED_RANGE"
+  | "UNIT_OVERLAP"
+  | "PARTICIPANT_OVERLAP"
+  | "STAFF_GROUP_MEMBER_OVERLAP"
+  | "PARTICIPANT_UNAVAILABLE"
+  | "STAFF_GROUP_MEMBER_UNAVAILABLE"
+  | "HEADCOUNT_NOT_REACHABLE"
+  | "OUTSIDE_HARD_TIME_RANGE"
+  | "OUTSIDE_SOFT_TIME_RANGE"
+  | "NON_PREFERRED_AVAILABILITY"
+  | "PREFERRED_AVAILABILITY"
+  | "OUT_OF_BOUNDS";
+
+type CandidatePlacementRequest = {
+  day_index: number;
+  start_slot: number;
+};
+
+type PlacementPreviewRequest = {
+  mode: PlacementMode;
+  schedule_id?: number | string;
+  placement_id?: number | string;
+  bundle_id?: number | string;
+  candidate_placements?: CandidatePlacementRequest[];
+};
+
+type PlacementReason = {
+  type?: PlacementReasonType | string;
+  message?: string;
+  detail?: string;
+  participant_id?: number | string;
+  staff_group_id?: number | string;
+  unit_id?: number | string;
+  required_headcount?: number;
+  assignable_count?: number;
+  distance_slots?: number;
+  [key: string]: unknown;
+};
+
+type PlacementClassification = {
+  preferred_count?: number;
+  non_preferred_count?: number;
+  time_range_distance_slots?: number | null;
+  has_hard_conflict?: boolean;
+};
+
+type AssignmentPreview = {
+  headcount: number;
+  assignable_count: number;
+  preferred_count: number;
+  non_preferred_count: number;
+  requires_user_selection: boolean;
+  recommended_participant_ids: Array<number | string>;
+  available_staff_group_ids: Array<number | string>;
+  blocked_staff_groups: unknown[];
+  reason?: string;
+};
+
+type PlacementPreviewItem = {
+  day_index: number;
+  slot: number;
+  start_slot?: number;
+  end_slot?: number;
+  status: PlacementStatus;
+  drop_allowed: boolean;
+  quality: PlacementQuality;
+  visual_kind: PlacementVisualKind;
+  time_range: {
+    kind: PlacementTimeRangeKind;
+    distance_slots: number | null;
+  };
+  hard_conflict?: boolean;
+  reasons: PlacementReason[];
+  classification: PlacementClassification;
+  assignment_preview: AssignmentPreview | null;
+};
+
+type PlacementPreviewResponse = {
+  cell_id: number | string;
+  mode: PlacementMode;
+  schedule_id?: number | string;
+  schedule_revision: string;
+  context_cache_hit?: boolean;
+  context_cache_key?: string;
+  placement_id?: number | string | null;
+  bundle_id?: number | string | null;
+  duration_slots: number;
+  slot_map: PlacementPreviewItem[];
+  placements?: PlacementPreviewItem[];
+};
+
+type ConfirmPlacementRequest = {
+  mode: PlacementMode;
+  schedule_id: number | string;
+  placement_id?: number | string;
+  bundle_id?: number | string;
+  day_index: number;
+  start_slot: number;
+  selected_participant_ids?: Array<number | string>;
+  auto_select_participants?: boolean;
+};
+
+type ConfirmPlacementResponse = {
+  cell_id?: number | string;
+  mode?: PlacementMode;
+  schedule_id?: number | string;
+  schedule_revision: string;
+  placement: NonNullable<ScheduleResource["placements"]>[number];
+};
+
+type PlacementPreviewRegion = {
+  day_index: number;
+  start_slot: number;
+  end_slot: number;
+  status: PlacementStatus;
+  quality: PlacementQuality;
+  visual_kind: PlacementVisualKind;
+  time_range_kind: PlacementTimeRangeKind;
+  placements: PlacementPreviewItem[];
+};
+
+type BlockageDeleteScope = "GLOBAL" | "CURRENT_UNIT_ONLY";
+
+type PreviewCacheKey = string;
+
+const placementPreviewCache = new Map<PreviewCacheKey, PlacementPreviewResponse>();
+const lastKnownScheduleRevisionBySchedule = new Map<string, string>();
+
+const getScheduleRevisionCacheId = (gridId: number | string, scheduleId: number | string) =>
+  `${String(gridId)}:${String(scheduleId)}`;
+
+const normalizePreviewCachePart = (value: string | number | null | undefined) => {
+  if (value == null) return "none";
+  const text = String(value).trim();
+  return text || "none";
+};
+
+const getVisibleCandidateHash = (candidatePlacements: CandidatePlacementRequest[]) =>
+  candidatePlacements
+    .map((candidate) => `${candidate.day_index}-${candidate.start_slot}`)
+    .sort()
+    .join("|");
+
+const buildPlacementPreviewCacheKey = (args: {
+  gridId: number | string;
+  scheduleId: number | string;
+  scheduleRevision?: string | null;
+  cellId: number | string;
+  mode: PlacementMode;
+  placementId?: number | string | null;
+  bundleId?: number | string | null;
+  candidatePlacements: CandidatePlacementRequest[];
+}): PreviewCacheKey =>
+  [
+    "placement-preview",
+    args.gridId,
+    args.scheduleId,
+    args.scheduleRevision || "unknown",
+    args.cellId,
+    args.mode,
+    normalizePreviewCachePart(args.placementId),
+    normalizePreviewCachePart(args.bundleId),
+    getVisibleCandidateHash(args.candidatePlacements),
+  ].join(":");
+
+const invalidatePlacementPreviewCacheForSchedule = (
+  gridId: number | string,
+  scheduleId: number | string | null | undefined,
+) => {
+  if (scheduleId == null) return;
+  const prefix = `placement-preview:${String(gridId)}:${String(scheduleId)}:`;
+  for (const key of Array.from(placementPreviewCache.keys())) {
+    if (key.startsWith(prefix)) placementPreviewCache.delete(key);
+  }
 };
 
 type BlockageDraft = {
@@ -608,9 +833,6 @@ export default function SolveOverlay({
   const [timeRangeMetaById, setTimeRangeMetaById] = useState<
     Record<string, { name: string; startSlot: number; endSlot: number }>
   >({});
-  const [availabilityRulesByParticipant, setAvailabilityRulesByParticipant] = useState<
-    Record<string, AvailabilityRule[]>
-  >({});
   const [previewParticipantRules, setPreviewParticipantRules] = useState<AvailabilityRule[]>([]);
   const [pinBusyKey, setPinBusyKey] = useState<string | null>(null);
   const [pinError, setPinError] = useState<string | null>(null);
@@ -680,6 +902,11 @@ export default function SolveOverlay({
   const [blockagesRefreshTick, setBlockagesRefreshTick] = useState(0);
   const [blockageDraft, setBlockageDraft] = useState<BlockageDraft | null>(null);
   const [blockageDragState, setBlockageDragState] = useState<BlockageDragState | null>(null);
+  const [pendingBlockageDelete, setPendingBlockageDelete] = useState<{
+    blockage: ScheduleBlockage;
+    unitId: string;
+  } | null>(null);
+  const [blockageDeleteBusy, setBlockageDeleteBusy] = useState(false);
   const [cellAllowOverstaffById, setCellAllowOverstaffById] = useState<Record<string, boolean>>({});
   const [gridAllowsOverstaffing, setGridAllowsOverstaffing] = useState(false);
   const [gridTierEnabled, setGridTierEnabled] = useState(true);
@@ -699,7 +926,20 @@ export default function SolveOverlay({
   const [assignmentOptions, setAssignmentOptions] = useState<PlacementAssignmentOption[]>([]);
   const [selectedAssignmentOptionId, setSelectedAssignmentOptionId] = useState<string | null>(null);
   const [pendingPlacementRequest, setPendingPlacementRequest] = useState<PendingPlacementRequest | null>(null);
-  const [lastAssignedParticipantsByCellBundle, setLastAssignedParticipantsByCellBundle] = useState<Record<string, string[]>>({});
+  const [placementPreviewBySlot, setPlacementPreviewBySlot] = useState<Record<string, PlacementPreviewItem>>({});
+  const [placementPreviewDurationSlots, setPlacementPreviewDurationSlots] = useState<number | null>(null);
+  const [backendPreviewActive, setBackendPreviewActive] = useState(false);
+  const [placementPreviewBusy, setPlacementPreviewBusy] = useState(false);
+  const [pendingDropWhilePreviewLoading, setPendingDropWhilePreviewLoading] =
+    useState<PendingDropWhilePreviewLoading | null>(null);
+  const [placementPreviewMaskRect, setPlacementPreviewMaskRect] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [, setPlacementPreviewError] = useState<string | null>(null);
+  const [, setLastAssignedParticipantsByCellBundle] = useState<Record<string, string[]>>({});
   const [isClientReady, setIsClientReady] = useState(false);
   const [publishedHistorySchedules, setPublishedHistorySchedules] = useState<
     Array<{
@@ -719,6 +959,9 @@ export default function SolveOverlay({
   const longPressTimerRef = useRef<number | null>(null);
   const participantDropGhostTimersRef = useRef<number[]>([]);
   const participantDropGhostTokenRef = useRef(0);
+  const placementPreviewRequestRef = useRef(0);
+  const placementPreviewVisibleRequestRef = useRef<number | null>(null);
+  const optimisticPlacementCounterRef = useRef(0);
   const hasAttemptedDraftBootstrapRef = useRef(false);
   const commentManuallyDeselectedRef = useRef(false);
   const lastHandledPinErrorRef = useRef<string | null>(null);
@@ -742,8 +985,10 @@ export default function SolveOverlay({
 
   const canSolve = role === "supervisor" && !historyMode;
   const notifyDraftMutation = useCallback(() => {
+    if (scheduleViewMode !== "draft") return;
+    invalidatePlacementPreviewCacheForSchedule(gridId, currentSchedule?.id);
     onDraftMutated?.();
-  }, [onDraftMutated]);
+  }, [currentSchedule?.id, gridId, onDraftMutated, scheduleViewMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -914,6 +1159,207 @@ export default function SolveOverlay({
       .map((id) => String(id));
   };
 
+  const toApiEntityId = (value: string | number | null | undefined): string | number | undefined => {
+    if (value == null) return undefined;
+    const text = String(value).trim();
+    if (!text) return undefined;
+    return /^\d+$/.test(text) ? Number(text) : text;
+  };
+
+  const getPlacementPreviewSlotKey = (dayIndex: number, startSlot: number) =>
+    `${Math.max(0, Math.round(dayIndex))}:${Math.max(0, Math.round(startSlot))}`;
+
+  const getPlacementIdentity = (placement: unknown): string | null => {
+    if (!placement || typeof placement !== "object") return null;
+    const source = placement as Record<string, unknown>;
+    const id =
+      readEntityId(source.placement_id) ??
+      readEntityId(source.placementId) ??
+      readEntityId(source.schedule_placement_id) ??
+      readEntityId(source.schedulePlacementId) ??
+      readEntityId(source.schedule_placement) ??
+      readEntityId(source.id);
+    return id == null ? null : String(id);
+  };
+
+  const getDropValidation = (
+    dayIndex: number,
+    startSlot: number,
+    durationSlots: number,
+    slotStatusMap: Record<string, PlacementPreviewItem>,
+  ):
+    | { canDrop: true; occupied: PlacementPreviewItem[]; startItem: PlacementPreviewItem | null }
+    | { canDrop: false; reasonItem: PlacementPreviewItem | null } => {
+    const normalizedDuration = Math.max(1, Math.round(durationSlots) || 1);
+    const occupied: PlacementPreviewItem[] = [];
+    for (let slot = startSlot; slot < startSlot + normalizedDuration; slot += 1) {
+      const item = slotStatusMap[getPlacementPreviewSlotKey(dayIndex, slot)] ?? null;
+      if (!item) return { canDrop: false, reasonItem: null };
+      occupied.push(item);
+      if (!item.drop_allowed) {
+        return { canDrop: false, reasonItem: item };
+      }
+    }
+    return {
+      canDrop: true,
+      occupied,
+      startItem: occupied[0] ?? null,
+    };
+  };
+
+  const normalizePlacementStatus = (value: unknown): PlacementStatus => {
+    const status = String(value ?? "").trim().toUpperCase();
+    if (status === "INVALID" || status === "WARNING" || status === "VALID") {
+      return status;
+    }
+    return "VALID";
+  };
+
+  const normalizePlacementQuality = (value: unknown, rawStatus: string): PlacementQuality => {
+    const quality = String(value ?? "").trim().toUpperCase();
+    if (quality === "RECOMMENDED") return "RECOMMENDED";
+    if (rawStatus === "RECOMMENDED") return "RECOMMENDED";
+    return "NEUTRAL";
+  };
+
+  const normalizePlacementVisualKind = (value: unknown): PlacementVisualKind => {
+    const visualKind = String(value ?? "").trim().toUpperCase();
+    return visualKind === "BLOCKED" ? "BLOCKED" : "DEFAULT";
+  };
+
+  const normalizePlacementTimeRangeKind = (value: unknown, status: PlacementStatus): PlacementTimeRangeKind => {
+    const kind = String(value ?? "").trim().toUpperCase();
+    if (kind === "SOFT_OUTSIDE" || kind === "HARD_OUTSIDE" || kind === "INSIDE") return kind;
+    return status === "WARNING" ? "SOFT_OUTSIDE" : "INSIDE";
+  };
+
+  const normalizePlacementReason = (value: unknown): PlacementReason => {
+    if (typeof value === "string") {
+      return { message: value };
+    }
+    if (value && typeof value === "object") {
+      return value as PlacementReason;
+    }
+    return { message: String(value ?? "") };
+  };
+
+  const normalizeAssignmentPreview = (value: unknown): AssignmentPreview | null => {
+    if (!value || typeof value !== "object") return null;
+    const source = value as Record<string, unknown>;
+    return {
+      headcount: Math.max(0, Number(source.headcount) || 0),
+      assignable_count: Math.max(0, Number(source.assignable_count) || 0),
+      preferred_count: Math.max(0, Number(source.preferred_count) || 0),
+      non_preferred_count: Math.max(0, Number(source.non_preferred_count) || 0),
+      requires_user_selection: Boolean(source.requires_user_selection),
+      recommended_participant_ids: normalizeIdArray(source.recommended_participant_ids),
+      available_staff_group_ids: normalizeIdArray(source.available_staff_group_ids),
+      blocked_staff_groups: Array.isArray(source.blocked_staff_groups) ? source.blocked_staff_groups : [],
+      reason: typeof source.reason === "string" ? source.reason : undefined,
+    };
+  };
+
+  const normalizePlacementPreviewItem = (value: unknown): PlacementPreviewItem | null => {
+    if (!value || typeof value !== "object") return null;
+    const source = value as Record<string, unknown>;
+    const dayIndex = Number(source.day_index);
+    const slot = Number(source.slot ?? source.start_slot);
+    const endSlot = Number(source.end_slot);
+    if (!Number.isFinite(dayIndex) || !Number.isFinite(slot)) return null;
+    const normalizedSlot = Math.max(0, Math.round(slot));
+    const normalizedEnd = Number.isFinite(endSlot)
+      ? Math.max(normalizedSlot + 1, Math.round(endSlot))
+      : normalizedSlot + 1;
+    const classificationSource =
+      source.classification && typeof source.classification === "object"
+        ? (source.classification as Record<string, unknown>)
+        : {};
+    const distance = Number(classificationSource.time_range_distance_slots);
+    const normalizedReasons = Array.isArray(source.reasons) ? source.reasons.map(normalizePlacementReason) : [];
+    const rawStatus = String(source.status ?? "").trim().toUpperCase();
+    const hasBlockedReason = normalizedReasons.some(
+      (reason) => String(reason.type ?? "").trim().toUpperCase() === "BLOCKED_RANGE",
+    );
+    const inferredVisualKind =
+      source.visual_kind ?? (rawStatus === "BLOCKED" || hasBlockedReason ? "BLOCKED" : "DEFAULT");
+    const normalizedStatus =
+      rawStatus === "BLOCKED"
+        ? "INVALID"
+        : rawStatus === "RECOMMENDED" || rawStatus === "NEUTRAL"
+        ? "VALID"
+        : normalizePlacementStatus(source.status);
+    const timeRangeSource =
+      source.time_range && typeof source.time_range === "object"
+        ? (source.time_range as Record<string, unknown>)
+        : {};
+    const timeRangeDistance = Number(timeRangeSource.distance_slots);
+    const fallbackDistance = Number(classificationSource.time_range_distance_slots);
+    const dropAllowed =
+      typeof source.drop_allowed === "boolean" ? source.drop_allowed : normalizedStatus !== "INVALID";
+    return {
+      day_index: Math.max(0, Math.round(dayIndex)),
+      slot: normalizedSlot,
+      start_slot: normalizedSlot,
+      end_slot: normalizedEnd,
+      status: normalizedStatus,
+      drop_allowed: dropAllowed,
+      quality: normalizePlacementQuality(source.quality, rawStatus),
+      visual_kind: normalizePlacementVisualKind(inferredVisualKind),
+      time_range: {
+        kind: normalizePlacementTimeRangeKind(timeRangeSource.kind, normalizedStatus),
+        distance_slots: Number.isFinite(timeRangeDistance)
+          ? timeRangeDistance
+          : Number.isFinite(fallbackDistance)
+          ? fallbackDistance
+          : null,
+      },
+      hard_conflict: Boolean(source.hard_conflict),
+      reasons: normalizedReasons,
+      classification: {
+        preferred_count: Math.max(0, Number(classificationSource.preferred_count) || 0),
+        non_preferred_count: Math.max(0, Number(classificationSource.non_preferred_count) || 0),
+        time_range_distance_slots: Number.isFinite(distance) ? distance : null,
+        has_hard_conflict: Boolean(classificationSource.has_hard_conflict),
+      },
+      assignment_preview: normalizeAssignmentPreview(source.assignment_preview),
+    };
+  };
+
+  const formatPlacementReasonMessage = (reason: PlacementReason) => {
+    const explicit = typeof reason.message === "string" && reason.message.trim()
+      ? reason.message.trim()
+      : typeof reason.detail === "string" && reason.detail.trim()
+      ? reason.detail.trim()
+      : "";
+    if (explicit) return explicit;
+    const typeText = typeof reason.type === "string" ? reason.type.replace(/_/g, " ").toLowerCase() : "";
+    const required = Number(reason.required_headcount);
+    const assignable = Number(reason.assignable_count);
+    if (Number.isFinite(required) && Number.isFinite(assignable)) {
+      return `${typeText || "headcount"}: ${assignable}/${required}`;
+    }
+    const distance = Number(reason.distance_slots);
+    if (Number.isFinite(distance) && typeText) {
+      return `${typeText}: ${distance} slots`;
+    }
+    return typeText || t("solve_overlay.no_reasons_available");
+  };
+
+  const formatPlacementPreviewMessage = (item: PlacementPreviewItem | null | undefined, fallback: string) => {
+    if (!item) return fallback;
+    const reasonMessages = item.reasons
+      .map(formatPlacementReasonMessage)
+      .filter((message) => message.trim().length > 0);
+    if (reasonMessages.length > 0) return reasonMessages.join(" ");
+    const assignmentReason = item.assignment_preview?.reason;
+    if (assignmentReason && assignmentReason.trim()) return assignmentReason.trim();
+    const distance = item.classification.time_range_distance_slots;
+    if (typeof distance === "number" && distance > 0) {
+      return t("solve_overlay.placement_preview_distance_warning", { distance });
+    }
+    return fallback;
+  };
+
   const getBundleUnitIds = (bundle: unknown): string[] => {
     if (!bundle || typeof bundle !== "object") return [];
     const source = bundle as Record<string, unknown>;
@@ -936,9 +1382,6 @@ export default function SolveOverlay({
     normalizeIdArray(value).filter((id, idx, arr) => arr.indexOf(id) === idx);
 
   const toApiId = (value: string) => (/^\d+$/.test(value) ? Number(value) : value);
-
-  const rangesOverlap = (startA: number, endA: number, startB: number, endB: number) =>
-    startA < endB && endA > startB;
 
   const slotCount = useMemo(() => Math.max(0, Math.round(bodyHeight / rowPx)), [bodyHeight, rowPx]);
 
@@ -1052,6 +1495,8 @@ export default function SolveOverlay({
 
     return {
       cell_id: String(placementId),
+      placement_id: placementId,
+      schedule_placement_id: placementId,
       source_cell_id: sourceCellId,
       bundle_id: bundleId,
       bundle: bundleId,
@@ -1282,24 +1727,372 @@ export default function SolveOverlay({
             root.latest ??
             root) as Record<string, unknown>);
       if (!candidate || typeof candidate !== "object") return null;
-      const placementsRaw = Array.isArray((candidate as any).placements)
-        ? (candidate as any).placements
-        : Array.isArray((candidate as any).schedule)
-        ? (candidate as any).schedule
-        : Array.isArray((candidate as any).snapshot_placements)
-        ? (candidate as any).snapshot_placements
+      const candidateRecord = candidate as Record<string, unknown>;
+      const placementsRaw = Array.isArray(candidateRecord.placements)
+        ? candidateRecord.placements
+        : Array.isArray(candidateRecord.schedule)
+        ? candidateRecord.schedule
+        : Array.isArray(candidateRecord.snapshot_placements)
+        ? candidateRecord.snapshot_placements
         : [];
+      const candidateScheduleId =
+        readEntityId(candidateRecord.schedule_id) ??
+        readEntityId(candidateRecord.source_schedule) ??
+        readEntityId(candidateRecord.schedule) ??
+        readEntityId(candidateRecord.id);
       const scheduleId =
-        Number((candidate as any).schedule_id ?? (candidate as any).schedule ?? (candidate as any).id) || 0;
+        Number(candidateScheduleId) || 0;
       if (!scheduleId && placementsRaw.length === 0) return null;
+      const normalizedPlacements = placementsRaw.map((placement) => {
+        if (!placement || typeof placement !== "object") return placement;
+        const placementRecord = placement as Record<string, unknown>;
+        const realPlacementId =
+          readEntityId(placementRecord.placement_id) ??
+          readEntityId(placementRecord.placementId) ??
+          readEntityId(placementRecord.schedule_placement_id) ??
+          readEntityId(placementRecord.schedulePlacementId) ??
+          readEntityId(placementRecord.schedule_placement) ??
+          readEntityId(placementRecord.id);
+        if (realPlacementId == null) return { ...placementRecord };
+        const snapshotPlacementId = readEntityId(placementRecord.id);
+        return {
+          ...placementRecord,
+          snapshot_placement_id:
+            snapshotPlacementId != null && String(snapshotPlacementId) !== String(realPlacementId)
+              ? snapshotPlacementId
+              : readEntityId(placementRecord.snapshot_placement_id) ?? null,
+          id: realPlacementId,
+          placement_id: realPlacementId,
+          schedule_placement_id: realPlacementId,
+        };
+      });
       return {
-        ...(candidate as Record<string, unknown>),
+        ...candidateRecord,
+        schedule_id: scheduleId || candidateRecord.schedule_id,
+        published_schedule_id:
+          candidateRecord.schedule_id != null || candidateRecord.source_schedule != null
+            ? (readEntityId(candidateRecord.id) ?? null)
+            : readEntityId(candidateRecord.published_schedule_id),
         id: scheduleId || Number(gridId),
-        placements: placementsRaw,
+        placements: normalizedPlacements,
       } as ScheduleResource;
     },
     [gridId],
   );
+
+  const buildPlacementCandidateRequests = useCallback(
+    (_durationSlots: number): CandidatePlacementRequest[] => {
+      const slotCount = Math.max(0, Math.round(bodyHeight / rowPx));
+      const candidates: CandidatePlacementRequest[] = [];
+      for (let dayIndex = 0; dayIndex < daysCount; dayIndex += 1) {
+        for (let startSlot = 0; startSlot < slotCount; startSlot += 1) {
+          candidates.push({ day_index: dayIndex, start_slot: startSlot });
+        }
+      }
+      return candidates;
+    },
+    [bodyHeight, daysCount, rowPx],
+  );
+
+  const clearPlacementPreviewState = useCallback(() => {
+    placementPreviewVisibleRequestRef.current = null;
+    setPendingDropWhilePreviewLoading(null);
+    setPlacementPreviewBySlot({});
+    setPlacementPreviewDurationSlots(null);
+    setBackendPreviewActive(false);
+    setPlacementPreviewBusy(false);
+    setPlacementPreviewError(null);
+  }, []);
+
+  const applyPlacementPreviewResponse = useCallback((response: PlacementPreviewResponse) => {
+    const nextMap: Record<string, PlacementPreviewItem> = {};
+    for (const item of response.slot_map) {
+      nextMap[getPlacementPreviewSlotKey(item.day_index, item.slot)] = item;
+    }
+    setPlacementPreviewBySlot(nextMap);
+    setPlacementPreviewDurationSlots(Math.max(1, Math.round(response.duration_slots) || 1));
+    setBackendPreviewActive(true);
+    setPlacementPreviewError(null);
+  }, []);
+
+  const previewCellPlacement = useCallback(
+    async (sourceCellId: string, payload: PlacementPreviewRequest): Promise<PlacementPreviewResponse> => {
+      const res = await authFetch(
+        `/api/grids/${gridId}/cells/${encodeURIComponent(String(sourceCellId))}/placement-preview/`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      const rawText = await res.text().catch(() => "");
+      const contentType = res.headers.get("content-type") || "";
+      if (!res.ok) {
+        if (isLikelyHtmlResponse(rawText, contentType)) {
+          throw new Error(t("solve_overlay.placement_preview_endpoint_not_reached"));
+        }
+        throw new Error(parseApiErrorMessage(rawText, t("solve_overlay.placement_preview_failed")));
+      }
+      const raw = parseJsonObjectResponse(
+        rawText,
+        contentType,
+        t("solve_overlay.placement_preview_endpoint_not_reached"),
+        t("solve_overlay.placement_preview_failed"),
+      );
+      const rawSlotMap = Array.isArray(raw.slot_map)
+        ? raw.slot_map
+        : Array.isArray(raw.placements)
+        ? raw.placements
+        : [];
+      const normalizedSlotMap = rawSlotMap
+        .map(normalizePlacementPreviewItem)
+        .filter((item): item is PlacementPreviewItem => Boolean(item));
+      return {
+        cell_id: readEntityId(raw.cell_id) ?? sourceCellId,
+        mode: payload.mode,
+        schedule_id: readEntityId(raw.schedule_id) ?? payload.schedule_id,
+        schedule_revision: String(raw.schedule_revision ?? "unknown"),
+        context_cache_hit: Boolean(raw.context_cache_hit),
+        context_cache_key: typeof raw.context_cache_key === "string" ? raw.context_cache_key : undefined,
+        placement_id: readEntityId(raw.placement_id) ?? payload.placement_id ?? null,
+        bundle_id: readEntityId(raw.bundle_id) ?? payload.bundle_id ?? null,
+        duration_slots: Math.max(1, Number(raw.duration_slots) || 1),
+        slot_map: normalizedSlotMap,
+        placements: normalizedSlotMap,
+      };
+    },
+    [gridId, t],
+  );
+
+  const normalizeConfirmedPlacement = useCallback(
+    (rawPlacement: unknown, fallback: ConfirmPlacementRequest & { sourceCellId: string }) => {
+      const fallbackId =
+        fallback.placement_id != null
+          ? String(fallback.placement_id)
+          : `confirmed-${fallback.sourceCellId}-${fallback.day_index}-${fallback.start_slot}`;
+      const normalized = normalizeScheduleRowFromAny(rawPlacement, fallbackId);
+      const source =
+        rawPlacement && typeof rawPlacement === "object" ? (rawPlacement as Record<string, unknown>) : {};
+      const placementId =
+        readEntityId(source.placement_id) ??
+        readEntityId(source.schedule_placement_id) ??
+        readEntityId(source.id) ??
+        normalized?.cell_id ??
+        fallbackId;
+      const sourceCellId =
+        normalized?.source_cell_id ??
+        readEntityId(source.source_cell_id) ??
+        readEntityId(source.source_cell) ??
+        fallback.sourceCellId;
+      const bundleId =
+        normalized?.bundle_id ??
+        readEntityId(source.bundle_id) ??
+        readEntityId(source.bundle) ??
+        fallback.bundle_id ??
+        null;
+      const startSlot = normalized?.start_slot ?? Math.max(0, Math.round(fallback.start_slot));
+      const rawEndSlot = Number(source.end_slot);
+      const endSlot =
+        normalized?.end_slot ??
+        Math.max(startSlot + 1, Number.isFinite(rawEndSlot) ? rawEndSlot : startSlot + 1);
+      const assignedParticipants =
+        normalized?.assigned_participants ??
+        normalizeIdArray((source as { assigned_participants?: unknown }).assigned_participants);
+      const units =
+        normalized?.units ??
+        normalizeIdArray((source as { unit_ids?: unknown; units?: unknown }).unit_ids ?? source.units);
+      const breaks =
+        normalized?.breaks ??
+        (Array.isArray((source as { breaks?: unknown }).breaks)
+          ? ((source as { breaks?: unknown }).breaks as Array<{ offset_min: number; duration_min: number }>)
+          : []);
+      return {
+        ...(source as Record<string, unknown>),
+        id: placementId,
+        placement_id: placementId,
+        schedule_placement_id: placementId,
+        schedule: fallback.schedule_id,
+        schedule_id: fallback.schedule_id,
+        source_cell: sourceCellId,
+        source_cell_id: sourceCellId,
+        bundle: bundleId,
+        bundle_id: bundleId,
+        unit_ids: units,
+        units,
+        day_index: normalized?.day_index ?? Math.max(0, Math.round(fallback.day_index)),
+        start_slot: startSlot,
+        end_slot: endSlot,
+        assigned_participants: assignedParticipants,
+        participants: assignedParticipants,
+        breaks,
+        locked: Boolean((source as { locked?: unknown }).locked),
+        status:
+          typeof (source as { status?: unknown }).status === "string"
+            ? ((source as { status?: string }).status)
+            : undefined,
+        reasons: Array.isArray((source as { reasons?: unknown }).reasons)
+          ? ((source as { reasons?: unknown[] }).reasons ?? [])
+          : [],
+      };
+    },
+    [normalizeIdArray, normalizeScheduleRowFromAny],
+  );
+
+  const confirmCellPlacement = useCallback(
+    async (
+      sourceCellId: string,
+      payload: ConfirmPlacementRequest,
+    ): Promise<ConfirmPlacementResponse> => {
+      const res = await authFetch(`/api/grids/${gridId}/cells/${encodeURIComponent(String(sourceCellId))}/place/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const rawText = await res.text().catch(() => "");
+      const contentType = res.headers.get("content-type") || "";
+      if (!res.ok) {
+        if (isLikelyHtmlResponse(rawText, contentType)) {
+          throw new Error(t("solve_overlay.placement_endpoint_not_reached"));
+        }
+        throw new Error(parseApiErrorMessage(rawText, t("grid_schedule.could_not_place_cell")));
+      }
+      const raw = parseJsonObjectResponse(
+        rawText,
+        contentType,
+        t("solve_overlay.placement_endpoint_not_reached"),
+        t("grid_schedule.could_not_place_cell"),
+      );
+      const rawPlacement = raw.placement ?? raw;
+      return {
+        cell_id: readEntityId(raw.cell_id) ?? sourceCellId,
+        mode: payload.mode,
+        schedule_id: readEntityId(raw.schedule_id) ?? payload.schedule_id,
+        schedule_revision: String(raw.schedule_revision ?? "unknown"),
+        placement: normalizeConfirmedPlacement(rawPlacement, {
+          ...payload,
+          sourceCellId,
+        }),
+      };
+    },
+    [gridId, normalizeConfirmedPlacement, t],
+  );
+
+  const applyConfirmedPlacement = useCallback(
+    (
+      confirmedPlacement: NonNullable<ScheduleResource["placements"]>[number],
+      options: { replacementPlacementId?: string | number | null } = {},
+    ) => {
+      const confirmedId = getPlacementIdentity(confirmedPlacement);
+      const replacementId = options.replacementPlacementId == null ? null : String(options.replacementPlacementId);
+      setCurrentSchedule((prev) => {
+        if (!prev) return prev;
+        const placements = Array.isArray(prev.placements) ? prev.placements : [];
+        let replaced = false;
+        const nextPlacements = placements.map((placement) => {
+          const placementId = getPlacementIdentity(placement);
+          const matchesReplacement = replacementId != null && placementId === replacementId;
+          const matchesConfirmed = confirmedId != null && placementId === confirmedId;
+          if (matchesReplacement || matchesConfirmed) {
+            replaced = true;
+            return confirmedPlacement;
+          }
+          return placement;
+        });
+        return {
+          ...prev,
+          placements: replaced ? nextPlacements : [...nextPlacements, confirmedPlacement],
+        };
+      });
+      const normalizedSourceCellId =
+        readEntityId((confirmedPlacement as { source_cell_id?: unknown }).source_cell_id) ??
+        readEntityId((confirmedPlacement as { source_cell?: unknown }).source_cell);
+      const normalizedBundleId =
+        readEntityId((confirmedPlacement as { bundle_id?: unknown }).bundle_id) ??
+        readEntityId((confirmedPlacement as { bundle?: unknown }).bundle);
+      const assigned = normalizeIdArray(
+        (confirmedPlacement as { assigned_participants?: unknown }).assigned_participants,
+      );
+      if (normalizedSourceCellId != null && assigned.length > 0) {
+        setLastAssignedParticipantsByCellBundle((prev) => ({
+          ...prev,
+          [`${String(normalizedSourceCellId)}|${String(normalizedBundleId ?? "__no_bundle__")}`]: assigned,
+        }));
+      }
+    },
+    [normalizeIdArray],
+  );
+
+  const applyConfirmedPlacementResponse = useCallback(
+    (
+      result: ConfirmPlacementResponse,
+      scheduleId: number | string,
+      options: { replacementPlacementId?: string | number | null } = {},
+    ) => {
+      applyConfirmedPlacement(result.placement, options);
+      if (result.schedule_revision && result.schedule_revision !== "unknown") {
+        lastKnownScheduleRevisionBySchedule.set(
+          getScheduleRevisionCacheId(gridId, scheduleId),
+          result.schedule_revision,
+        );
+      }
+      invalidatePlacementPreviewCacheForSchedule(gridId, scheduleId);
+    },
+    [applyConfirmedPlacement, gridId],
+  );
+
+  const buildOptimisticPlacement = useCallback(
+    (args: {
+      sourceCellId: string;
+      bundleId?: string | number | null;
+      dayIndex: number;
+      startSlot: number;
+      durationSlots: number;
+      assignedParticipants?: Array<string | number>;
+      replacement?: NonNullable<ScheduleResource["placements"]>[number] | null;
+    }): NonNullable<ScheduleResource["placements"]>[number] => {
+      const optimisticId = `optimistic-${args.sourceCellId}-${Date.now()}-${optimisticPlacementCounterRef.current++}`;
+      return {
+        ...(args.replacement ?? {}),
+        id: optimisticId,
+        placement_id: optimisticId,
+        source_cell_id:
+          readEntityId((args.replacement as { source_cell_id?: unknown } | null | undefined)?.source_cell_id) ??
+          readEntityId((args.replacement as { source_cell?: unknown } | null | undefined)?.source_cell) ??
+          args.sourceCellId,
+        bundle_id:
+          readEntityId((args.replacement as { bundle_id?: unknown } | null | undefined)?.bundle_id) ??
+          readEntityId((args.replacement as { bundle?: unknown } | null | undefined)?.bundle) ??
+          args.bundleId ??
+          null,
+        day_index: args.dayIndex,
+        start_slot: args.startSlot,
+        end_slot: args.startSlot + Math.max(1, Math.round(args.durationSlots) || 1),
+        assigned_participants:
+          args.assignedParticipants ??
+          normalizeIdArray(
+            (args.replacement as { assigned_participants?: unknown } | null | undefined)?.assigned_participants,
+          ),
+        breaks: Array.isArray((args.replacement as { breaks?: unknown } | null | undefined)?.breaks)
+          ? ((args.replacement as { breaks?: Array<{ offset_min: number; duration_min: number }> }).breaks ?? [])
+          : [],
+        locked: Boolean((args.replacement as { locked?: unknown } | null | undefined)?.locked),
+        status: "optimistic",
+      };
+    },
+    [normalizeIdArray],
+  );
+
+  useEffect(() => {
+    placementPreviewRequestRef.current += 1;
+    placementPreviewVisibleRequestRef.current = null;
+    placementPreviewCache.clear();
+    clearPlacementPreviewState();
+    if (!historyMode) {
+      setCurrentSchedule(null);
+      setScheduleBlockages([]);
+      setPlacementComments([]);
+    }
+  }, [clearPlacementPreviewState, gridId, historyMode, scheduleViewMode]);
 
   const fetchCurrentSchedule = useCallback(async (): Promise<ScheduleResource | null> => {
     const endpoint =
@@ -1382,6 +2175,116 @@ export default function SolveOverlay({
     }
     return null;
   }, [currentSchedule, fetchCurrentSchedule, gridId, normalizeScheduleResource, scheduleViewMode]);
+
+  const loadPlacementPreviewForDrag = useCallback(
+    async (args: {
+      mode: PlacementMode;
+      sourceCellId: string;
+      durationSlots: number;
+      placementId?: string | number | null;
+      bundleId?: string | number | null;
+    }) => {
+      const requestId = placementPreviewRequestRef.current + 1;
+      placementPreviewRequestRef.current = requestId;
+      placementPreviewVisibleRequestRef.current = requestId;
+      try {
+        const scheduleForPreview =
+          currentSchedule?.id || scheduleViewMode !== "draft"
+            ? currentSchedule
+            : await ensureDraftSchedule();
+        const scheduleId = scheduleForPreview?.id ?? currentSchedule?.id;
+        if (!scheduleId) {
+          throw new Error(t("grid_schedule.no_draft_schedule_error"));
+        }
+        const candidatePlacements = buildPlacementCandidateRequests(args.durationSlots);
+        const scheduleRevisionCacheId = getScheduleRevisionCacheId(gridId, scheduleId);
+        const lastKnownScheduleRevision = lastKnownScheduleRevisionBySchedule.get(scheduleRevisionCacheId);
+        const cacheKey = buildPlacementPreviewCacheKey({
+          gridId,
+          scheduleId,
+          scheduleRevision: lastKnownScheduleRevision,
+          cellId: args.sourceCellId,
+          mode: args.mode,
+          placementId: args.placementId ?? null,
+          bundleId: args.bundleId ?? null,
+          candidatePlacements,
+        });
+        const cachedPreview = placementPreviewCache.get(cacheKey);
+        if (cachedPreview) {
+          placementPreviewVisibleRequestRef.current = null;
+          setPlacementPreviewBusy(false);
+          applyPlacementPreviewResponse(cachedPreview);
+          return;
+        }
+
+        setPlacementPreviewBusy(true);
+        setPlacementPreviewError(null);
+        setPlacementPreviewBySlot({});
+        setPlacementPreviewDurationSlots(null);
+        setBackendPreviewActive(false);
+        const bundleApiId = toApiEntityId(args.bundleId ?? null);
+        const placementApiId = toApiEntityId(args.placementId ?? null);
+        const payload: PlacementPreviewRequest = {
+          mode: args.mode,
+          schedule_id: scheduleId,
+          candidate_placements: candidatePlacements,
+        };
+        if (args.mode === "MOVE_ASSIGNED_CELL" && placementApiId != null) {
+          payload.placement_id = placementApiId;
+        }
+        if (bundleApiId != null) {
+          payload.bundle_id = bundleApiId;
+        }
+        const preview = await previewCellPlacement(args.sourceCellId, payload);
+        if (placementPreviewRequestRef.current !== requestId) return;
+        if (preview.schedule_revision && preview.schedule_revision !== "unknown") {
+          lastKnownScheduleRevisionBySchedule.set(scheduleRevisionCacheId, preview.schedule_revision);
+        }
+        const finalCacheKey = buildPlacementPreviewCacheKey({
+          gridId,
+          scheduleId,
+          scheduleRevision: preview.schedule_revision,
+          cellId: args.sourceCellId,
+          mode: args.mode,
+          placementId: args.placementId ?? null,
+          bundleId: args.bundleId ?? null,
+          candidatePlacements,
+        });
+        placementPreviewCache.set(finalCacheKey, preview);
+        if (placementPreviewVisibleRequestRef.current === requestId) {
+          applyPlacementPreviewResponse(preview);
+        }
+      } catch (error: unknown) {
+        if (placementPreviewRequestRef.current !== requestId) return;
+        const message = error instanceof Error ? error.message : t("solve_overlay.placement_preview_failed");
+        if (placementPreviewVisibleRequestRef.current === requestId) {
+          setPendingDropWhilePreviewLoading(null);
+          setPlacementPreviewBySlot({});
+          setBackendPreviewActive(false);
+          setPlacementPreviewError(message);
+          setPinError(message);
+        }
+      } finally {
+        if (
+          placementPreviewRequestRef.current === requestId &&
+          placementPreviewVisibleRequestRef.current === requestId
+        ) {
+          setPlacementPreviewBusy(false);
+          placementPreviewVisibleRequestRef.current = null;
+        }
+      }
+    },
+    [
+      applyPlacementPreviewResponse,
+      buildPlacementCandidateRequests,
+      currentSchedule,
+      ensureDraftSchedule,
+      gridId,
+      previewCellPlacement,
+      scheduleViewMode,
+      t,
+    ],
+  );
 
   useEffect(() => {
     hasAttemptedDraftBootstrapRef.current = false;
@@ -1516,8 +2419,8 @@ export default function SolveOverlay({
     if (selected.key !== selectedHistoryKey) {
       setSelectedHistoryKey(selected.key);
     }
-    setCurrentSchedule(selected.schedule);
-  }, [historyMode, publishedHistorySchedules, selectedHistoryKey]);
+    setCurrentSchedule(normalizeScheduleResource(selected.schedule));
+  }, [historyMode, normalizeScheduleResource, publishedHistorySchedules, selectedHistoryKey]);
 
   useEffect(() => {
     if (historyMode) {
@@ -1550,9 +2453,10 @@ export default function SolveOverlay({
               raw.text ??
               raw.comment ??
               "";
+            const commentScheduleId = readEntityId(raw.schedule ?? raw.schedule_id);
             if (
               raw?.id == null ||
-              raw?.schedule == null ||
+              commentScheduleId == null ||
               raw?.source_cell_id == null ||
               raw?.day_index == null ||
               raw?.start_slot == null
@@ -1561,7 +2465,7 @@ export default function SolveOverlay({
             }
             return {
               id: raw.id,
-              schedule: raw.schedule,
+              schedule: commentScheduleId,
               schedule_placement:
                 raw.schedule_placement ??
                 raw.schedule_placement_id ??
@@ -1655,7 +2559,6 @@ export default function SolveOverlay({
         let plist: any[] = [];
         let ulist: any[] = [];
         let trlist: any[] = [];
-        let arlist: any[] = [];
 
         const context = await fetchGridScreenContext(gridId, scheduleViewMode, {
           force: externalRefreshTick > 0,
@@ -1666,7 +2569,6 @@ export default function SolveOverlay({
         plist = getContextList(context?.participants);
         ulist = getContextList(context?.units);
         trlist = getContextList(context?.time_ranges);
-        arlist = getContextList(context?.availability_rules);
 
         if (blist.length === 0) {
           const bundleEndpoints = [`/api/bundles?grid=${gridId}`, `/api/bundles/?grid=${gridId}`];
@@ -1822,24 +2724,8 @@ export default function SolveOverlay({
         const scheduleCandidate =
           context?.schedule ?? context?.published_schedule ?? context?.latest ?? null;
         if (!historyMode && active && scheduleCandidate && typeof scheduleCandidate === "object") {
-          const placementsRaw = Array.isArray((scheduleCandidate as any).placements)
-            ? (scheduleCandidate as any).placements
-            : Array.isArray((scheduleCandidate as any).schedule)
-            ? (scheduleCandidate as any).schedule
-            : [];
-          const scheduleId =
-            Number(
-              (scheduleCandidate as any).id ??
-                (scheduleCandidate as any).schedule_id ??
-                (scheduleCandidate as any).schedule,
-            ) || 0;
-          if (scheduleId || placementsRaw.length > 0) {
-            setCurrentSchedule({
-              ...(scheduleCandidate as Record<string, unknown>),
-              id: scheduleId || Number(gridId),
-              placements: placementsRaw,
-            } as ScheduleResource);
-          }
+          const normalizedSchedule = normalizeScheduleResource(scheduleCandidate);
+          if (normalizedSchedule) setCurrentSchedule(normalizedSchedule);
         }
 
         const cmap: Record<string, string> = {};
@@ -1956,25 +2842,6 @@ export default function SolveOverlay({
           };
         }
 
-        const rulesByParticipant: Record<string, AvailabilityRule[]> = {};
-        for (const rule of arlist) {
-          const participantRaw =
-            typeof rule?.participant === "object" && rule?.participant?.id != null
-              ? rule.participant.id
-              : rule?.participant;
-          if (participantRaw == null) continue;
-          const pid = String(participantRaw);
-          if (!rulesByParticipant[pid]) rulesByParticipant[pid] = [];
-          rulesByParticipant[pid].push({
-            id: rule?.id ?? `${pid}-${rule?.day_of_week}-${rule?.start_time}-${rule?.end_time}`,
-            participant: participantRaw,
-            day_of_week: Number(rule?.day_of_week ?? 0),
-            start_time: String(rule?.start_time ?? ""),
-            end_time: String(rule?.end_time ?? ""),
-            preference: String(rule?.preference ?? "flexible"),
-          });
-        }
-
         const bundleUnitsMap: Record<string, string[]> = {};
         const bundleNamesMap: Record<string, string> = {};
         const unitNameToIdMap: Record<string, string> = {};
@@ -2052,7 +2919,6 @@ export default function SolveOverlay({
           setBundleNameById(bundleNamesMap);
           setUnitNameById(umap);
           setTimeRangeMetaById(trmap);
-          setAvailabilityRulesByParticipant(rulesByParticipant);
           setStaffMembersByStaffId(smm);
           setStaffNameById(snames);
           setParticipantNameById(pmap);
@@ -2061,7 +2927,7 @@ export default function SolveOverlay({
       } catch {}
     })();
     return () => { active = false; };
-  }, [dayStartMin, externalRefreshTick, gridId, historyMode, scheduleViewMode, slotMin]);
+  }, [dayStartMin, externalRefreshTick, gridId, historyMode, normalizeScheduleResource, scheduleViewMode, slotMin]);
 
   useEffect(() => {
     if (!isSolving) return;
@@ -2320,20 +3186,24 @@ export default function SolveOverlay({
     }
   }
 
-  const refreshGridView = useCallback(() => {
-    invalidateGridScreenContext(gridId);
+  const refreshGridView = useCallback((scope: ScheduleViewMode | "all" = "all") => {
+    if (scope === "all") {
+      invalidateGridScreenContext(gridId);
+    } else {
+      invalidateGridScreenContext(gridId, scope);
+    }
     if (pathname?.startsWith("/grid/")) {
       router.replace(pathname);
     }
     router.refresh();
   }, [gridId, pathname, router]);
 
-  const hardReloadGridView = useCallback(() => {
+  const hardReloadGridView = useCallback((scope: ScheduleViewMode | "all" = "all") => {
     if (typeof window !== "undefined") {
       window.location.reload();
       return;
     }
-    refreshGridView();
+    refreshGridView(scope);
   }, [refreshGridView]);
 
   const chooseCandidate = async (candidateIndex: number) => {
@@ -2376,7 +3246,7 @@ export default function SolveOverlay({
         setInputSignature(pendingSolveSignature);
       }
       persistPendingCandidateRun(null);
-      hardReloadGridView();
+      hardReloadGridView("draft");
     } catch (e: any) {
       setCandidateError(e?.message || t("solve_overlay.could_not_choose_candidate"));
     } finally {
@@ -2415,7 +3285,7 @@ export default function SolveOverlay({
       setCandidateDialogOpen(false);
       setError(t("solve_overlay.candidates_rejected_adjust_and_run_again"));
       persistPendingCandidateRun(null);
-      hardReloadGridView();
+      hardReloadGridView("draft");
     } catch (e: any) {
       setCandidateError(e?.message || t("solve_overlay.could_not_reject_candidates"));
     } finally {
@@ -2431,6 +3301,14 @@ export default function SolveOverlay({
   const schedule = useMemo<ScheduleRow[]>(() => {
     const placements = Array.isArray(currentSchedule?.placements) ? currentSchedule.placements : [];
     return placements.map((placement) => {
+      const placementIdentityRaw =
+        readEntityId((placement as { placement_id?: unknown }).placement_id) ??
+        readEntityId((placement as { placementId?: unknown }).placementId) ??
+        readEntityId((placement as { schedule_placement_id?: unknown }).schedule_placement_id) ??
+        readEntityId((placement as { schedulePlacementId?: unknown }).schedulePlacementId) ??
+        readEntityId((placement as { schedule_placement?: unknown }).schedule_placement) ??
+        readEntityId(placement.id);
+      const placementIdentity = placementIdentityRaw == null ? String(placement.id) : String(placementIdentityRaw);
       const bundleId =
         readEntityId((placement as { bundle_id?: unknown }).bundle_id) ??
         readEntityId((placement as { bundle?: unknown }).bundle) ??
@@ -2469,7 +3347,9 @@ export default function SolveOverlay({
             .filter((entry): entry is BreakEntry => Boolean(entry))
         : [];
       return {
-        cell_id: String(placement.id),
+        cell_id: placementIdentity,
+        placement_id: placementIdentity,
+        schedule_placement_id: placementIdentity,
         source_cell_id: sourceCellId,
         bundle_id: bundleId,
         bundle: bundleId,
@@ -3362,7 +4242,8 @@ export default function SolveOverlay({
     closeRightDockFan();
     clearLongPressTimer();
     setDragState(null);
-  }, [closeRightDockFan]);
+    clearPlacementPreviewState();
+  }, [clearPlacementPreviewState, closeRightDockFan]);
 
   const activateEditTool = useCallback(
     (tool: EditToolMode) => {
@@ -3420,8 +4301,14 @@ export default function SolveOverlay({
         grabOffsetX: payload.grabOffsetX,
         grabOffsetY: payload.grabOffsetY,
       });
+      void loadPlacementPreviewForDrag({
+        mode: "PLACE_UNASSIGNED_CELL",
+        sourceCellId: payload.sourceCellId,
+        bundleId: payload.sourceBundleId,
+        durationSlots: Math.max(1, Number(payload.durationSlots) || 1),
+      });
     },
-    [canManualEditCards, clearLongPressTimer, isJiggleMode],
+    [canManualEditCards, clearLongPressTimer, isJiggleMode, loadPlacementPreviewForDrag],
   );
 
   const handleParticipantScrollerGrabStart = useCallback(
@@ -3659,7 +4546,7 @@ export default function SolveOverlay({
         throw new Error(txt || `${t("solve_overlay.could_not_restore_draft")} (${res.status})`);
       }
       writeGridScheduleViewMode(gridId, "draft");
-      invalidateGridScreenContext(gridId);
+      invalidateGridScreenContext(gridId, "draft");
       closeHistoryView();
       router.refresh();
     } catch (error: unknown) {
@@ -3710,250 +4597,246 @@ export default function SolveOverlay({
     };
   }, [bodyHeight, daysCount, dragState, rowPx, timeColPx]);
 
+  const activeDragPreviewItem = useMemo(() => {
+    if (!dragPreview) return null;
+    if (!dragState || dragState.dragType === "participant-tool") return null;
+    const validation = getDropValidation(
+      dragPreview.dayIndex,
+      dragPreview.startSlot,
+      placementPreviewDurationSlots ?? dragState.durationSlots,
+      placementPreviewBySlot,
+    );
+    return validation.canDrop ? validation.startItem : validation.reasonItem;
+  }, [dragPreview, dragState, placementPreviewBySlot, placementPreviewDurationSlots]);
+
+  const backendPreviewRegions = useMemo(() => {
+    const byDay = new Map<number, PlacementPreviewItem[]>();
+    for (const item of Object.values(placementPreviewBySlot)) {
+      if (item.day_index < 0 || item.day_index >= daysCount) continue;
+      const normalized = {
+        ...item,
+        slot: Math.max(0, Math.round(item.slot)),
+      };
+      const list = byDay.get(normalized.day_index) ?? [];
+      list.push(normalized);
+      byDay.set(normalized.day_index, list);
+    }
+
+    const regions: PlacementPreviewRegion[] = [];
+    for (const [dayIndex, items] of byDay.entries()) {
+      const sorted = items.sort((a, b) => a.slot - b.slot);
+      let current: PlacementPreviewRegion | null = null;
+      for (const item of sorted) {
+        const itemVisualEnd = item.slot + 1;
+        if (
+          current &&
+          current.status === item.status &&
+          current.quality === item.quality &&
+          current.visual_kind === item.visual_kind &&
+          current.time_range_kind === item.time_range.kind &&
+          current.end_slot === item.slot
+        ) {
+          current.end_slot = itemVisualEnd;
+          current.placements.push(item);
+          continue;
+        }
+        if (current) regions.push(current);
+        current = {
+          day_index: dayIndex,
+          start_slot: item.slot,
+          end_slot: itemVisualEnd,
+          status: item.status,
+          quality: item.quality,
+          visual_kind: item.visual_kind,
+          time_range_kind: item.time_range.kind,
+          placements: [item],
+        };
+      }
+      if (current) regions.push(current);
+    }
+
+    return regions.sort(
+      (a, b) => a.day_index - b.day_index || a.start_slot - b.start_slot || a.end_slot - b.end_slot,
+    );
+  }, [daysCount, placementPreviewBySlot]);
+
+  const getWarningDistance = (item: PlacementPreviewItem) => {
+    const reasonDistance = item.reasons
+      .map((reason) => Number(reason.distance_slots))
+      .find((value) => Number.isFinite(value) && value > 0);
+    return Math.max(
+      0,
+      Number(item.time_range.distance_slots ?? item.classification.time_range_distance_slots ?? reasonDistance ?? 1) || 1,
+    );
+  };
+
+  const warningDistanceColor = (distance: number) => {
+    const intensity = Math.max(0, Math.min(1, distance / 6));
+    return `rgba(${254 - Math.round(intensity * 3)}, ${240 - Math.round(intensity * 94)}, ${138 - Math.round(intensity * 78)}, ${0.36 + intensity * 0.32})`;
+  };
+
+  const getPlacementRegionStyle = (region: PlacementPreviewRegion) => {
+    if (region.status === "INVALID" && region.visual_kind === "BLOCKED") {
+      return {
+        outer:
+          "border-red-600/80 shadow-[0_10px_28px_rgba(220,38,38,0.28)] ring-1 ring-red-300/70",
+        style: {
+          background:
+            "linear-gradient(to bottom, rgba(248,113,113,0.48), rgba(244,63,94,0.58))",
+        } as CSSProperties,
+      };
+    }
+    if (region.status === "WARNING") {
+      const placements = region.placements.length > 0 ? region.placements : [];
+      const stops = placements.map((placement, index) => {
+        const pct =
+          placements.length <= 1
+            ? 50
+            : Math.round((index / Math.max(1, placements.length - 1)) * 100);
+        return `${warningDistanceColor(getWarningDistance(placement))} ${pct}%`;
+      });
+      const isRecommended = region.quality === "RECOMMENDED";
+      return {
+        outer: isRecommended
+          ? "border-emerald-500/90 shadow-[0_8px_22px_rgba(16,185,129,0.18)] ring-1 ring-amber-300/70"
+          : "border-amber-500/80 shadow-[0_8px_20px_rgba(245,158,11,0.18)]",
+        style: {
+          background:
+            stops.length > 1
+              ? isRecommended
+                ? `linear-gradient(to bottom, ${stops.join(", ")}), linear-gradient(to bottom, rgba(16,185,129,0.20), rgba(16,185,129,0.10))`
+                : `linear-gradient(to bottom, ${stops.join(", ")})`
+              : `linear-gradient(to bottom, ${warningDistanceColor(
+                  placements[0] ? getWarningDistance(placements[0]) : 1,
+                )}, rgba(251, 146, 60, 0.34))${isRecommended ? ", linear-gradient(to bottom, rgba(16,185,129,0.22), rgba(16,185,129,0.08))" : ""}`,
+        } as CSSProperties,
+      };
+    }
+    if (region.status === "INVALID") {
+      return {
+        outer: "border-red-600/95 shadow-[0_8px_24px_rgba(220,38,38,0.30)]",
+        style: {
+          background:
+            "linear-gradient(to bottom, rgba(248,113,113,0.58), rgba(244,63,94,0.66))",
+        } as CSSProperties,
+      };
+    }
+    if (region.quality === "RECOMMENDED") {
+      return {
+        outer:
+          "border-emerald-600/95 shadow-[0_10px_28px_rgba(16,185,129,0.34)] ring-1 ring-emerald-400/70",
+        style: {
+          background:
+            "linear-gradient(to bottom, rgba(52,211,153,0.62), rgba(16,185,129,0.46))",
+        } as CSSProperties,
+      };
+    }
+    return {
+      outer: "border-gray-300/80 bg-white/45 shadow-[0_6px_16px_rgba(15,23,42,0.08)]",
+      style: undefined as CSSProperties | undefined,
+    };
+  };
+
+  const activeDragPreviewStyle = useMemo(() => {
+    if (placementPreviewBusy || !activeDragPreviewItem) {
+      return {
+        outer: "border-gray-400/90 bg-gray-100/30",
+        text: "text-gray-700",
+      };
+    }
+    if (!activeDragPreviewItem.drop_allowed) {
+      return {
+        outer: "border-red-500/95 bg-red-100/45 shadow-[0_8px_24px_rgba(239,68,68,0.22)]",
+        text: "text-red-950",
+      };
+    }
+    if (activeDragPreviewItem.status === "WARNING" && activeDragPreviewItem.quality === "RECOMMENDED") {
+      return {
+        outer: "border-emerald-500/90 bg-amber-100/45 shadow-[0_8px_24px_rgba(16,185,129,0.18)] ring-1 ring-amber-300/70",
+        text: "text-amber-950",
+      };
+    }
+    if (activeDragPreviewItem.status === "WARNING") {
+      return {
+        outer: "border-amber-500/90 bg-amber-100/45 shadow-[0_8px_24px_rgba(245,158,11,0.22)]",
+        text: "text-amber-950",
+      };
+    }
+    if (activeDragPreviewItem.quality === "RECOMMENDED") {
+      return {
+        outer:
+          "border-emerald-600/95 bg-emerald-200/65 shadow-[0_10px_28px_rgba(16,185,129,0.34)] ring-1 ring-emerald-400/70",
+        text: "text-emerald-950",
+      };
+    }
+    if (activeDragPreviewItem.status === "VALID") {
+      return {
+        outer: "border-sky-400/90 bg-sky-100/35 shadow-[0_8px_24px_rgba(14,165,233,0.18)]",
+        text: "text-sky-950",
+      };
+    }
+    return {
+      outer: "border-red-500/95 bg-red-100/45 shadow-[0_8px_24px_rgba(239,68,68,0.22)]",
+      text: "text-red-950",
+    };
+  }, [activeDragPreviewItem, placementPreviewBusy]);
+
+  const hasUsablePlacementPreviewMap = Object.keys(placementPreviewBySlot).length > 0;
+  const placementPreviewLoadingWithoutCache =
+    placementPreviewBusy &&
+    !hasUsablePlacementPreviewMap &&
+    (pendingDropWhilePreviewLoading != null || dragState?.dragType !== "participant-tool");
+
+  useEffect(() => {
+    if (!placementPreviewLoadingWithoutCache) {
+      setPlacementPreviewMaskRect(null);
+      return;
+    }
+    const syncMaskRect = () => {
+      const source =
+        mainScheduleScrollRef.current ??
+        ((overlayRef.current?.closest("[data-schedule-scroll]") as HTMLElement | null) ?? null) ??
+        overlayRef.current;
+      if (!source) {
+        setPlacementPreviewMaskRect(null);
+        return;
+      }
+      const rect = source.getBoundingClientRect();
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+      const left = Math.max(0, rect.left);
+      const top = Math.max(0, rect.top);
+      const right = Math.min(viewportWidth, rect.right);
+      const bottom = Math.min(viewportHeight, rect.bottom);
+      const next = {
+        left,
+        top,
+        width: Math.max(0, right - left),
+        height: Math.max(0, bottom - top),
+      };
+      setPlacementPreviewMaskRect((prev) =>
+        prev &&
+        Math.abs(prev.left - next.left) < 0.5 &&
+        Math.abs(prev.top - next.top) < 0.5 &&
+        Math.abs(prev.width - next.width) < 0.5 &&
+        Math.abs(prev.height - next.height) < 0.5
+          ? prev
+          : next,
+      );
+    };
+    syncMaskRect();
+    window.addEventListener("resize", syncMaskRect);
+    window.addEventListener("scroll", syncMaskRect, true);
+    return () => {
+      window.removeEventListener("resize", syncMaskRect);
+      window.removeEventListener("scroll", syncMaskRect, true);
+    };
+  }, [placementPreviewLoadingWithoutCache]);
+
   useEffect(() => {
     if (dragState?.dragType === "participant-tool") return;
     setParticipantDragHoverPlacementId(null);
   }, [dragState]);
-
-  const dragTimeRangeGuide = useMemo(() => {
-    if (!dragPreview) return null;
-    const trId = cellTimeRangeById[dragPreview.sourceCellId];
-    if (!trId) return null;
-    const meta = timeRangeMetaById[trId];
-    if (!meta) return null;
-    const slotCount = Math.max(0, Math.round(bodyHeight / rowPx));
-    const startSlot = Math.max(0, Math.min(slotCount, meta.startSlot));
-    const endSlot = Math.max(0, Math.min(slotCount, meta.endSlot));
-    if (endSlot <= startSlot) return null;
-    return {
-      startTop: startSlot * rowPx,
-      endTop: endSlot * rowPx,
-      name: meta.name,
-    };
-  }, [bodyHeight, cellTimeRangeById, dragPreview, rowPx, timeRangeMetaById]);
-
-  const dragConstraintContext = useMemo(() => {
-    if (!dragState || !dragPreview || dragState.dragType !== "placement" || !dragState.placementId) return null;
-    const draggedRow = schedule.find((row) => String(row.cell_id) === dragState.placementId);
-    if (!draggedRow) return null;
-    const participantIds = Array.isArray(draggedRow.assigned_participants)
-      ? draggedRow.assigned_participants.map(String)
-      : Array.isArray(draggedRow.participants)
-      ? draggedRow.participants.map(String)
-      : [];
-    const sourceCellId = String(draggedRow.source_cell_id ?? draggedRow.cell_id);
-    const bundleId = (draggedRow as { bundle_id?: string | number; bundle?: string | number }).bundle_id
-      ?? (draggedRow as { bundle_id?: string | number; bundle?: string | number }).bundle;
-    const bundleUnitIds = Array.isArray(draggedRow.units) && draggedRow.units.length > 0
-      ? draggedRow.units.map(String)
-      : bundleId != null
-      ? (bundleUnitsById[String(bundleId)] || []).map(String)
-      : [];
-    return {
-      draggedRow,
-      sourceCellId,
-      participantIds,
-      bundleUnitIds,
-      targetDayIndex: dragPreview.dayIndex,
-      targetStartSlot: dragPreview.startSlot,
-      targetEndSlot: dragPreview.startSlot + dragState.durationSlots,
-    };
-  }, [bundleUnitsById, dragPreview, dragState, schedule]);
-
-  const dragAvailabilityZones = useMemo(() => {
-    if (!dragConstraintContext) return [];
-    const slotCount = Math.max(1, Math.round(bodyHeight / rowPx));
-    const normalizedRules = dragConstraintContext.participantIds.flatMap((pid) =>
-      (availabilityRulesByParticipant[pid] || [])
-        .map((rule) => {
-          const startMin = parseClockToMin(rule.start_time);
-          const endMin = parseClockToMin(rule.end_time);
-          const startSlot = Math.round((startMin - dayStartMin) / slotMin);
-          const endSlot = Math.round((endMin - dayStartMin) / slotMin);
-          return {
-            day: Number(rule.day_of_week),
-            startSlot,
-            endSlot,
-            preference: String(rule.preference || "").toLowerCase(),
-          };
-        })
-        .filter((rule) => rule.endSlot > rule.startSlot),
-    );
-
-    if (normalizedRules.length === 0) return [];
-
-    type ZoneKind = "impossible" | "flexible" | "preferred" | "preferred-strong";
-    const zones: Array<{ col: number; startSlot: number; endSlot: number; kind: ZoneKind }> = [];
-
-    for (let col = 0; col < daysCount; col += 1) {
-      const day = dayIndexByColumn[col];
-      const statuses: Array<ZoneKind | "none"> = Array.from({ length: slotCount }, () => "none");
-
-      for (let slot = 0; slot < slotCount; slot += 1) {
-        const nextSlot = slot + 1;
-        const matches = normalizedRules.filter(
-          (rule) => rule.day === day && rule.startSlot < nextSlot && rule.endSlot > slot,
-        );
-        if (matches.length === 0) continue;
-        const hasImpossible = matches.some((rule) => rule.preference === "impossible");
-        if (hasImpossible) {
-          statuses[slot] = "impossible";
-          continue;
-        }
-        const preferredCount = matches.filter((rule) => rule.preference === "preferred").length;
-        const flexibleCount = matches.filter((rule) => rule.preference === "flexible").length;
-        const allPreferred = preferredCount > 0 && preferredCount === matches.length && flexibleCount === 0;
-        if (allPreferred) {
-          statuses[slot] = preferredCount > 1 ? "preferred-strong" : "preferred";
-          continue;
-        }
-        statuses[slot] = "flexible";
-      }
-
-      let start = 0;
-      while (start < slotCount) {
-        const kind = statuses[start];
-        if (kind === "none") {
-          start += 1;
-          continue;
-        }
-        let end = start + 1;
-        while (end < slotCount && statuses[end] === kind) end += 1;
-        zones.push({ col, startSlot: start, endSlot: end, kind });
-        start = end;
-      }
-    }
-
-    return zones;
-  }, [availabilityRulesByParticipant, bodyHeight, dayIndexByColumn, dayStartMin, daysCount, dragConstraintContext, rowPx, slotMin]);
-
-  const dragCollisionCards = useMemo(() => {
-    if (!dragConstraintContext) return [];
-    const overlap = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
-      aStart < bEnd && bStart < aEnd;
-
-    type CollisionCategory = "active-unit" | "bundle-unit" | "participants";
-    type CollisionCard = {
-      key: string;
-      category: CollisionCategory;
-      col: number;
-      cellName: string;
-      unitName?: string;
-      participantName?: string;
-      startSlot: number;
-      endSlot: number;
-      timeLabel: string;
-    };
-
-    const selectedUnit = scopedUnitId;
-    const targetDay = dragConstraintContext.targetDayIndex;
-    const targetStart = dragConstraintContext.targetStartSlot;
-    const targetEnd = dragConstraintContext.targetEndSlot;
-    const bundleUnits = dragConstraintContext.bundleUnitIds;
-    const participantIds = new Set(dragConstraintContext.participantIds);
-    const draggedCellAllowsOverstaff = Boolean(
-      cellAllowOverstaffById[dragConstraintContext.sourceCellId] || gridAllowsOverstaffing,
-    );
-
-    const byCategory: Record<CollisionCategory, CollisionCard[]> = {
-      "active-unit": [],
-      "bundle-unit": [],
-      participants: [],
-    };
-
-    for (const row of schedule) {
-      if (String(row.cell_id) === String(dragConstraintContext.draggedRow.cell_id)) continue;
-      const rowDay = Number(row.day_index);
-      if (rowDay !== Number(targetDay)) continue;
-      if (!overlap(Number(row.start_slot), Number(row.end_slot), targetStart, targetEnd)) continue;
-
-      const rowCol = dayIndexByColumn.indexOf(rowDay);
-      if (rowCol < 0 || rowCol >= daysCount) continue;
-
-      const rowSourceCellId = String(row.source_cell_id ?? row.cell_id);
-      const rowCellAllowsOverstaff = Boolean(
-        cellAllowOverstaffById[rowSourceCellId] || gridAllowsOverstaffing,
-      );
-      const rowCellName = cellNameById[rowSourceCellId] || `Cell ${rowSourceCellId}`;
-      const rowBundleId = (row as { bundle_id?: string | number; bundle?: string | number }).bundle_id
-        ?? (row as { bundle_id?: string | number; bundle?: string | number }).bundle;
-      const rowUnits = Array.isArray(row.units) && row.units.length > 0
-        ? row.units.map(String)
-        : rowBundleId != null
-        ? (bundleUnitsById[String(rowBundleId)] || []).map(String)
-        : [];
-      const rowParticipants = Array.isArray(row.assigned_participants)
-        ? row.assigned_participants.map(String)
-        : Array.isArray(row.participants)
-        ? row.participants.map(String)
-        : [];
-      const startSlot = Number(row.start_slot);
-      const endSlot = Number(row.end_slot);
-      const base = {
-        key: `${row.cell_id}-${rowDay}-${startSlot}-${endSlot}`,
-        col: rowCol,
-        cellName: rowCellName,
-        startSlot,
-        endSlot,
-        timeLabel: formatSlotRange(dayStartMin, slotMin, startSlot, endSlot),
-      };
-
-      if (selectedUnit && rowUnits.includes(selectedUnit)) {
-        if (!draggedCellAllowsOverstaff || !rowCellAllowsOverstaff) {
-          byCategory["active-unit"].push({
-            ...base,
-            category: "active-unit",
-            unitName: unitNameById[selectedUnit] || `Unit ${selectedUnit}`,
-          });
-          continue;
-        }
-      }
-
-      const bundleMatch = rowUnits.find(
-        (unitId) => bundleUnits.includes(unitId) && (!selectedUnit || unitId !== selectedUnit),
-      );
-      if (bundleMatch) {
-        if (!draggedCellAllowsOverstaff || !rowCellAllowsOverstaff) {
-          byCategory["bundle-unit"].push({
-            ...base,
-            category: "bundle-unit",
-            unitName: unitNameById[bundleMatch] || `Unit ${bundleMatch}`,
-          });
-          continue;
-        }
-      }
-
-      const participantMatch = rowParticipants.find((pid) => participantIds.has(pid));
-      if (participantMatch) {
-        byCategory.participants.push({
-          ...base,
-          category: "participants",
-          participantName: participantNameById[participantMatch] || `#${participantMatch}`,
-        });
-      }
-    }
-
-    const categoryOrder: CollisionCategory[] = ["active-unit", "bundle-unit", "participants"];
-    const activeCategory = categoryOrder.find((category) => byCategory[category].length > 0);
-    if (!activeCategory) return [];
-    return byCategory[activeCategory].sort(
-      (a, b) => a.startSlot - b.startSlot || a.endSlot - b.endSlot || a.cellName.localeCompare(b.cellName),
-    );
-  }, [
-    bundleUnitsById,
-    cellAllowOverstaffById,
-    cellNameById,
-    dayIndexByColumn,
-    dayStartMin,
-    daysCount,
-    dragConstraintContext,
-    participantNameById,
-    gridAllowsOverstaffing,
-    schedule,
-    scopedUnitId,
-    slotMin,
-    unitNameById,
-  ]);
 
   const arraysEqual = (a: string[], b: string[]) =>
     a.length === b.length && a.every((x, i) => x === b[i]);
@@ -4426,17 +5309,43 @@ export default function SolveOverlay({
     [clampSlotRange, currentSchedule, ensureDraftSchedule, notifyDraftMutation, selectedBlockageUnitScopeIds, t],
   );
 
-  const deleteBlockage = useCallback(
-    async (id: string) => {
+  const executeDeleteBlockage = useCallback(
+    async (blockage: ScheduleBlockage, deleteScope: BlockageDeleteScope, unitId: string | null) => {
       const previous = scheduleBlockages;
-      setScheduleBlockages((prev) => prev.filter((entry) => entry.id !== id));
+      setScheduleBlockages((prev) => prev.filter((entry) => entry.id !== blockage.id));
       try {
-        const res = await authFetch(`/api/schedule-blockages/${encodeURIComponent(id)}`, {
+        const payload: Record<string, unknown> = { delete_scope: deleteScope };
+        const apiUnitId = toApiEntityId(unitId);
+        if (apiUnitId != null) payload.unit_id = apiUnitId;
+        const params = new URLSearchParams({ delete_scope: deleteScope });
+        if (apiUnitId != null) params.set("unit_id", String(apiUnitId));
+        const res = await authFetch(`/api/schedule-blockages/${encodeURIComponent(blockage.id)}/?${params.toString()}`, {
           method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
         });
-        if (res.status !== 204) {
+        if (!res.ok && res.status !== 204) {
           const txt = await res.text().catch(() => "");
           throw new Error(parseApiErrorMessage(txt, `Failed to delete blockage (${res.status})`));
+        }
+        const rawText = await res.text().catch(() => "");
+        if (rawText.trim() && currentSchedule?.id != null) {
+          let data: Record<string, unknown> = {};
+          try {
+            data = JSON.parse(rawText) as Record<string, unknown>;
+          } catch {
+            data = {};
+          }
+          const revision = typeof data.schedule_revision === "string" ? data.schedule_revision : "";
+          if (revision) {
+            lastKnownScheduleRevisionBySchedule.set(
+              getScheduleRevisionCacheId(gridId, currentSchedule.id),
+              revision,
+            );
+          }
+          invalidatePlacementPreviewCacheForSchedule(gridId, currentSchedule.id);
+        } else if (currentSchedule?.id != null) {
+          invalidatePlacementPreviewCacheForSchedule(gridId, currentSchedule.id);
         }
         notifyDraftMutation();
         setBlockagesRefreshTick((prev) => prev + 1);
@@ -4446,7 +5355,29 @@ export default function SolveOverlay({
         throw error;
       }
     },
-    [notifyDraftMutation, scheduleBlockages],
+    [currentSchedule?.id, gridId, notifyDraftMutation, scheduleBlockages],
+  );
+
+  const deleteBlockage = useCallback(
+    async (input: string | ScheduleBlockage) => {
+      const blockage =
+        typeof input === "string"
+          ? scheduleBlockages.find((entry) => entry.id === input) ?? null
+          : input;
+      if (!blockage) return;
+      const scopeIds = Array.isArray(blockage.unit_ids) ? blockage.unit_ids.map(String) : [];
+      const isGlobalBlockage = scopeIds.length === 0;
+      if (isGlobalBlockage && scopedUnitId) {
+        setPendingBlockageDelete({ blockage, unitId: scopedUnitId });
+        return;
+      }
+      await executeDeleteBlockage(
+        blockage,
+        scopedUnitId ? "CURRENT_UNIT_ONLY" : "GLOBAL",
+        scopedUnitId,
+      );
+    },
+    [executeDeleteBlockage, scheduleBlockages, scopedUnitId],
   );
 
   const isInsideDeleteDropTarget = useCallback((clientX: number, clientY: number) => {
@@ -4566,437 +5497,6 @@ export default function SolveOverlay({
     [currentSchedule, normalizeIdArray, notifyDraftMutation, previewMode, previewParticipantId],
   );
 
-  const getParticipantPlacementConflictMessage = useCallback(
-    (
-      participantId: string,
-      dayIndex: number,
-      startSlot: number,
-      endSlot: number,
-      excludePlacementId?: string,
-    ): string | null => {
-      const dayOfWeek = dayIndexByColumn[dayIndex] ?? dayIndex;
-      const participantRules = availabilityRulesByParticipant[participantId] || [];
-      const participantLabel =
-        participantNameById[participantId] || t("format.participant_with_id", { id: participantId });
-      const dayLabel = dayLabels?.[dayIndex] || t("solve_overlay.day_with_index", { index: dayIndex + 1 });
-      for (const rule of participantRules) {
-        if (Number(rule.day_of_week) !== dayOfWeek) continue;
-        const preference = String(rule.preference ?? "").toLowerCase();
-        if (preference !== "impossible") continue;
-        const ruleStartSlot = Math.round((parseClockToMin(String(rule.start_time)) - dayStartMin) / slotMin);
-        const ruleEndSlot = Math.round((parseClockToMin(String(rule.end_time)) - dayStartMin) / slotMin);
-        if (rangesOverlap(startSlot, endSlot, ruleStartSlot, ruleEndSlot)) {
-          const ruleTime = `${formatClockLabel(String(rule.start_time))} - ${formatClockLabel(String(rule.end_time))}`;
-          return t("solve_overlay.participant_unavailable_in_placement", {
-            participant: participantLabel,
-            day: dayLabel,
-            time: ruleTime,
-          });
-        }
-      }
-
-      for (const row of schedule) {
-        if (excludePlacementId && String(row.cell_id) === String(excludePlacementId)) continue;
-        if (Number(row.day_index) !== dayIndex) continue;
-        if (!rangesOverlap(startSlot, endSlot, Number(row.start_slot), Number(row.end_slot))) continue;
-        const assigned = normalizeIdArray(row.assigned_participants);
-        if (assigned.includes(participantId)) {
-          const rowSourceCellId = String(row.source_cell_id ?? row.cell_id ?? "");
-          const cellLabel =
-            cellNameById[rowSourceCellId] || t("format.cell_with_id", { id: rowSourceCellId || row.cell_id });
-          const rowTime = formatSlotRange(
-            dayStartMin,
-            slotMin,
-            Number(row.start_slot),
-            Number(row.end_slot),
-          );
-          return t("solve_overlay.participant_has_cell_in_placement", {
-            participant: participantLabel,
-            cell: cellLabel,
-            day: dayLabel,
-            time: rowTime,
-          });
-        }
-      }
-
-      return null;
-    },
-    [
-      availabilityRulesByParticipant,
-      cellNameById,
-      dayIndexByColumn,
-      dayLabels,
-      dayStartMin,
-      normalizeIdArray,
-      participantNameById,
-      schedule,
-      slotMin,
-      t,
-    ],
-  );
-
-  const getPlacementAssignmentOptions = useCallback(
-    (
-      sourceCellId: string,
-      bundleId: string | number | null,
-      dayIndex: number,
-      startSlot: number,
-      endSlot: number,
-    ): { options: PlacementAssignmentOption[]; error?: string } => {
-      const normalizedBundleId = bundleId == null ? "__no_bundle__" : String(bundleId);
-      const bundleUnitIds = (bundleUnitsById[normalizedBundleId] || []).map(String);
-      const isNoUnitBundle = bundleUnitIds.length === 0;
-
-      if (!isNoUnitBundle) {
-        const unitOverlap = schedule.some((row) => {
-          if (Number(row.day_index) !== dayIndex) return false;
-          if (!rangesOverlap(startSlot, endSlot, Number(row.start_slot), Number(row.end_slot))) return false;
-          const rowUnits = Array.isArray(row.units) ? row.units.map(String) : [];
-          return rowUnits.some((unitId) => bundleUnitIds.includes(unitId));
-        });
-        if (unitOverlap) {
-          return { options: [], error: t("solve_overlay.cannot_place_cell_bundle_unit_occupied") };
-        }
-      }
-
-      const tierCounts = cellTierCountsById[sourceCellId] || {
-        PRIMARY: 0,
-        SECONDARY: 0,
-        TERTIARY: 0,
-      };
-      const tierPools = cellTierPoolsById[sourceCellId] || {
-        PRIMARY: [],
-        SECONDARY: [],
-        TERTIARY: [],
-      };
-      const headcount = TIERS.reduce((sum, tier) => sum + Math.max(0, Number(tierCounts[tier] || 0)), 0);
-      const previousAssigned =
-        lastAssignedParticipantsByCellBundle[`${sourceCellId}|${normalizedBundleId}`] || [];
-      const conflictMessages: string[] = [];
-
-      const options: PlacementAssignmentOption[] = [];
-      const seen = new Set<string>();
-      const addOption = (option: PlacementAssignmentOption) => {
-        const key = option.participantIds.slice().sort().join("|");
-        if (seen.has(key)) return;
-        seen.add(key);
-        options.push(option);
-      };
-
-      const isRecommendedSet = (participantIds: string[]) =>
-        previousAssigned.length > 0 &&
-        previousAssigned.length === participantIds.length &&
-        previousAssigned.every((pid) => participantIds.includes(String(pid)));
-
-      const staffIds = (cellStaffsById[sourceCellId] || []).map(String);
-      for (const staffId of staffIds) {
-        const members = Array.from(new Set((staffMembersByStaffId[staffId] || []).map(String)));
-        if (members.length === 0) continue;
-        if (headcount > 0 && members.length !== headcount) continue;
-        const allAvailable = members.every((participantId) => {
-          const conflict = getParticipantPlacementConflictMessage(participantId, dayIndex, startSlot, endSlot);
-          if (conflict) {
-            conflictMessages.push(conflict);
-            return false;
-          }
-          return true;
-        });
-        if (!allAvailable) continue;
-        const memberNames = members
-          .map((participantId) => participantNameById[participantId] || `#${participantId}`)
-          .join(", ");
-        addOption({
-          id: `staff:${staffId}`,
-          source: "staff",
-          participantIds: members,
-          label: t("solve_overlay.staff_assignment_label", { name: staffNameById[staffId] || memberNames }),
-          recommended: isRecommendedSet(members),
-        });
-      }
-
-      if (headcount > 0) {
-        const selectedFromPools: string[] = [];
-        let poolShortage = false;
-        for (const tier of TIERS) {
-          const required = Math.max(0, Number(tierCounts[tier] || 0));
-          if (required === 0) continue;
-          const poolCandidates = Array.from(new Set((tierPools[tier] || []).map(String)))
-            .filter((participantId) => participantTierById[participantId] === tier)
-            .filter((participantId) => {
-              const conflict = getParticipantPlacementConflictMessage(
-                participantId,
-                dayIndex,
-                startSlot,
-                endSlot,
-              );
-              if (conflict) {
-                conflictMessages.push(conflict);
-                return false;
-              }
-              return true;
-            })
-            .sort((a, b) => (participantNameById[a] || a).localeCompare(participantNameById[b] || b));
-          if (poolCandidates.length < required) {
-            poolShortage = true;
-            break;
-          }
-          selectedFromPools.push(...poolCandidates.slice(0, required));
-        }
-
-        const previousIsValid =
-          previousAssigned.length === headcount &&
-          previousAssigned.every((participantId) => {
-            const conflict = getParticipantPlacementConflictMessage(
-              String(participantId),
-              dayIndex,
-              startSlot,
-              endSlot,
-            );
-            if (conflict) {
-              conflictMessages.push(conflict);
-              return false;
-            }
-            return true;
-          }) &&
-          TIERS.every((tier) => {
-            const required = Math.max(0, Number(tierCounts[tier] || 0));
-            const actual = previousAssigned.filter(
-              (participantId) => participantTierById[String(participantId)] === tier,
-            ).length;
-            return actual === required;
-          });
-        if (previousIsValid) {
-          addOption({
-            id: "pool:recommended",
-            source: "pool",
-            participantIds: previousAssigned.map(String),
-            label: t("solve_overlay.tier_pools_recommended"),
-            recommended: true,
-          });
-        }
-
-        if (!poolShortage && selectedFromPools.length === headcount) {
-          addOption({
-            id: "pool:auto",
-            source: "pool",
-            participantIds: selectedFromPools,
-            label: t("solve_overlay.tier_pools"),
-            recommended: isRecommendedSet(selectedFromPools),
-          });
-        }
-      }
-
-      if (options.length === 0 && headcount === 0 && staffIds.length === 0) {
-        const availableParticipants = Object.entries(participantNameById)
-          .map(([participantId]) => String(participantId))
-          .filter((participantId) => {
-            const conflict = getParticipantPlacementConflictMessage(
-              participantId,
-              dayIndex,
-              startSlot,
-              endSlot,
-            );
-            if (conflict) {
-              conflictMessages.push(conflict);
-              return false;
-            }
-            return true;
-          })
-          .sort((a, b) => (participantNameById[a] || a).localeCompare(participantNameById[b] || b));
-
-        const previousStillValid =
-          previousAssigned.length > 0 &&
-          previousAssigned.every((participantId) => availableParticipants.includes(String(participantId)));
-
-        const participantIds = previousStillValid ? previousAssigned.map(String) : availableParticipants.slice(0, 1);
-        if (participantIds.length > 0) {
-          addOption({
-            id: previousStillValid ? "open:recommended" : "open:first-available",
-            source: "open",
-            participantIds,
-            label: previousStillValid
-              ? t("solve_overlay.open_assignment_recommended")
-              : t("solve_overlay.open_assignment_first_available"),
-            recommended: previousStillValid,
-          });
-        }
-      }
-
-      if (options.length === 0) {
-        const firstConflict = conflictMessages.find((message) => message.trim().length > 0);
-        return {
-          options: [],
-          error: firstConflict || t("solve_overlay.no_valid_participants_for_slot"),
-        };
-      }
-
-      options.sort((a, b) => Number(b.recommended) - Number(a.recommended));
-      return { options };
-    },
-    [
-      bundleUnitsById,
-      cellStaffsById,
-      cellTierCountsById,
-      cellTierPoolsById,
-      getParticipantPlacementConflictMessage,
-      lastAssignedParticipantsByCellBundle,
-      participantNameById,
-      participantTierById,
-      schedule,
-      staffMembersByStaffId,
-      staffNameById,
-    ],
-  );
-
-  const createSchedulePlacement = useCallback(
-    async (
-      sourceCellId: string,
-      bundleId: string | number | null,
-      nextDayIndex: number,
-      nextStartSlot: number,
-      durationSlots: number,
-      assignedParticipantIds: string[] = [],
-    ) => {
-      if (hasPendingCandidateResolution) {
-        setPinError(t("solve_overlay.resolve_pending_candidates"));
-        return;
-      }
-      const scheduleForPlacement = await ensureDraftSchedule();
-      if (!scheduleForPlacement?.id) {
-        let hasStoredPendingCandidate = false;
-        if (typeof window !== "undefined") {
-          try {
-            const raw = window.localStorage.getItem(pendingCandidateStorageKey);
-            const parsed = raw ? (JSON.parse(raw) as Partial<PendingCandidateRunSnapshot>) : null;
-            hasStoredPendingCandidate = Boolean(parsed && typeof parsed.run_id === "string" && parsed.run_id.trim());
-          } catch {
-            hasStoredPendingCandidate = false;
-          }
-        }
-        setPinError(
-          hasStoredPendingCandidate
-            ? t("solve_overlay.resolve_pending_candidates")
-            : t("grid_schedule.no_draft_schedule_error"),
-        );
-        return;
-      }
-      const scheduleId = Number(scheduleForPlacement.id);
-      const nextEndSlot = nextStartSlot + durationSlots;
-      const normalizedSourceCell =
-        /^\d+$/.test(String(sourceCellId)) ? Number(sourceCellId) : sourceCellId;
-      const normalizedBundle =
-        bundleId == null ? null : /^\d+$/.test(String(bundleId)) ? Number(bundleId) : bundleId;
-      const normalizedAssignedParticipants = assignedParticipantIds
-        .map((id) => (/^\d+$/.test(String(id)) ? Number(id) : id))
-        .filter((id) => id != null);
-
-      const tempId = `temp-${sourceCellId}-${Date.now()}`;
-      const previousPlacements = Array.isArray(scheduleForPlacement.placements)
-        ? scheduleForPlacement.placements
-        : [];
-      const tempPlacement = {
-        id: tempId,
-        source_cell: normalizedSourceCell,
-        source_cell_id: normalizedSourceCell,
-        bundle: normalizedBundle,
-        bundle_id: normalizedBundle,
-        day_index: nextDayIndex,
-        start_slot: nextStartSlot,
-        end_slot: nextEndSlot,
-        assigned_participants: normalizedAssignedParticipants,
-        locked: false,
-      };
-
-      setCurrentSchedule((prev) =>
-        prev
-          ? {
-              ...prev,
-              placements: [...(Array.isArray(prev.placements) ? prev.placements : []), tempPlacement],
-            }
-          : prev,
-      );
-
-      try {
-        const res = await authFetch(`/api/schedule-placements/`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            schedule: scheduleId,
-            source_cell: normalizedSourceCell,
-            bundle: normalizedBundle,
-            day_index: nextDayIndex,
-            start_slot: nextStartSlot,
-            end_slot: nextEndSlot,
-            assigned_participants: normalizedAssignedParticipants,
-          }),
-        });
-        if (!res.ok) {
-          const txt = await res.text().catch(() => "");
-          throw new Error(txt || `${t("grid_schedule.could_not_place_cell")} (${res.status})`);
-        }
-        const raw = await res.json().catch(() => ({} as Record<string, unknown>));
-        const rawSourceCellId =
-          readEntityId((raw as any).source_cell_id) ??
-          readEntityId((raw as any).source_cell) ??
-          normalizedSourceCell;
-        const rawBundleId =
-          readEntityId((raw as any).bundle_id) ??
-          readEntityId((raw as any).bundle) ??
-          normalizedBundle;
-        const createdPlacement = {
-          id: (raw as any).id ?? tempId,
-          source_cell: rawSourceCellId,
-          source_cell_id: rawSourceCellId,
-          bundle: rawBundleId,
-          bundle_id: rawBundleId,
-          day_index: Number((raw as any).day_index ?? nextDayIndex),
-          start_slot: Number((raw as any).start_slot ?? nextStartSlot),
-          end_slot: Number((raw as any).end_slot ?? nextEndSlot),
-          assigned_participants: normalizeIdArray((raw as any).assigned_participants),
-          locked: Boolean((raw as any).locked),
-        };
-
-        const assignedKey = `${String(normalizedSourceCell)}|${String(normalizedBundle ?? "__no_bundle__")}`;
-        if (createdPlacement.assigned_participants.length > 0) {
-          setLastAssignedParticipantsByCellBundle((prev) => ({
-            ...prev,
-            [assignedKey]: createdPlacement.assigned_participants.map(String),
-          }));
-        }
-
-        setCurrentSchedule((prev) =>
-          prev
-            ? {
-                ...prev,
-                placements: (Array.isArray(prev.placements) ? prev.placements : []).map((placement) =>
-                  String((placement as any).id) === tempId ? createdPlacement : placement,
-                ),
-              }
-            : prev,
-        );
-        notifyDraftMutation();
-      } catch (error: unknown) {
-        setCurrentSchedule((prev) =>
-          prev
-            ? {
-                ...prev,
-                placements: previousPlacements,
-              }
-            : prev,
-        );
-        setPinError(error instanceof Error ? error.message : t("grid_schedule.could_not_place_cell"));
-      }
-    },
-    [
-      ensureDraftSchedule,
-      hasPendingCandidateResolution,
-      normalizeIdArray,
-      notifyDraftMutation,
-      pendingCandidateStorageKey,
-      t,
-    ],
-  );
-
   const requestUnassignedPlacement = useCallback(
     async (
       sourceCellId: string,
@@ -5005,7 +5505,6 @@ export default function SolveOverlay({
       startSlot: number,
       durationSlots: number,
     ) => {
-      const normalizedBundleId = bundleId == null ? null : String(bundleId);
       const endSlot = startSlot + durationSlots;
       lastPlacementAttemptRef.current = {
         sourceCellId,
@@ -5019,159 +5518,127 @@ export default function SolveOverlay({
         return;
       }
 
-      const scheduleForPlacement = await ensureDraftSchedule();
-
-      if (scheduleForPlacement?.id) {
-        try {
-          const res = await authFetch(`/api/grids/${gridId}/schedule/placement-options/`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              schedule_id: scheduleForPlacement.id,
-              source_cell_id: sourceCellId,
-              bundle_id:
-                normalizedBundleId == null
-                  ? null
-                  : /^\d+$/.test(normalizedBundleId)
-                  ? Number(normalizedBundleId)
-                  : normalizedBundleId,
-              day_index: dayIndex,
-              start_slot: startSlot,
-              end_slot: endSlot,
-            }),
-          });
-          if (res.ok) {
-            const data = await res.json().catch(() => ({} as Record<string, unknown>));
-            const rawOptions = ((data as any)?.options ?? {}) as Record<string, unknown>;
-            const rawValidAssignments = Array.isArray((rawOptions as any).valid_assignments)
-              ? (rawOptions as any).valid_assignments
-              : [];
-            const backendOptions: PlacementAssignmentOption[] = rawValidAssignments
-              .map((assignment: any, index: number) => {
-                const participantIds = Array.from(
-                  new Set(
-                    normalizeIdArray(
-                      assignment?.participant_ids ??
-                        assignment?.assigned_participants ??
-                        assignment?.members ??
-                        assignment?.participants ??
-                        [],
-                    ),
-                  ),
-                );
-                if (participantIds.length === 0) return null;
-                const staffId = readEntityId(assignment?.staff_id ?? assignment?.staff);
-                const isStaff = staffId != null;
-                const participantLabel = participantIds
-                  .map((participantId) => participantNameById[participantId] || `#${participantId}`)
-                  .join(", ");
-                const label =
-                  typeof assignment?.label === "string" && assignment.label.trim()
-                    ? assignment.label
-                    : isStaff
-                    ? t("solve_overlay.staff_assignment_label", { name: staffNameById[String(staffId)] || participantLabel })
-                    : t("solve_overlay.tier_pools_assignment_label", { names: participantLabel });
-                const recommendedByBackend = Boolean(assignment?.recommended);
-                const previousAssigned =
-                  lastAssignedParticipantsByCellBundle[`${sourceCellId}|${normalizedBundleId ?? "__no_bundle__"}`] || [];
-                const recommendedByPrevious =
-                  !recommendedByBackend &&
-                  previousAssigned.length === participantIds.length &&
-                  previousAssigned.every((pid) => participantIds.includes(String(pid)));
-                return {
-                  id: `${isStaff ? "staff" : "pool"}:${String(staffId ?? index)}`,
-                  source: isStaff ? "staff" : "pool",
-                  participantIds,
-                  label,
-                  recommended: recommendedByBackend || recommendedByPrevious,
-                } as PlacementAssignmentOption;
-              })
-              .filter(Boolean) as PlacementAssignmentOption[];
-
-            if (backendOptions.length > 0) {
-              backendOptions.sort((a, b) => Number(b.recommended) - Number(a.recommended));
-              if (backendOptions.length === 1) {
-                void createSchedulePlacement(
-                  sourceCellId,
-                  bundleId,
-                  dayIndex,
-                  startSlot,
-                  durationSlots,
-                  backendOptions[0].participantIds,
-                );
-                return;
-              }
-              setAssignmentOptions(backendOptions);
-              setSelectedAssignmentOptionId(
-                backendOptions.find((option) => option.recommended)?.id ?? backendOptions[0].id,
-              );
-              setPendingPlacementRequest({
-                sourceCellId,
-                bundleId,
-                dayIndex,
-                startSlot,
-                durationSlots,
-              });
-              setAssignmentDialogOpen(true);
-              return;
-            }
-
-            const backendErrors = Array.isArray((data as any)?.errors)
-              ? (data as any).errors.map((item: unknown) => String(item)).filter(Boolean)
-              : [];
-            if (backendErrors.length > 0) {
-              setPinError(backendErrors[0]);
-              return;
-            }
-          }
-        } catch {
-          // fallback below
-        }
-      }
-
-      const { options, error: assignmentError } = getPlacementAssignmentOptions(
-        sourceCellId,
-        bundleId,
-        dayIndex,
-        startSlot,
-        endSlot,
-      );
-      if (assignmentError) {
-        setPinError(assignmentError);
+      const dropValidation = getDropValidation(dayIndex, startSlot, durationSlots, placementPreviewBySlot);
+      const previewItem = dropValidation.canDrop ? dropValidation.startItem : dropValidation.reasonItem;
+      const hasUsableSlotMap = Object.keys(placementPreviewBySlot).length > 0;
+      if (!dropValidation.canDrop) {
+        setPinError(
+          formatPlacementPreviewMessage(
+            previewItem,
+            placementPreviewBusy && !hasUsableSlotMap
+              ? t("solve_overlay.placement_preview_wait")
+              : t("solve_overlay.placement_preview_missing_or_blocked"),
+          ),
+        );
+        clearPlacementPreviewState();
         return;
       }
-      if (options.length === 1) {
-        void createSchedulePlacement(
+
+      let rollbackPlacements: NonNullable<ScheduleResource["placements"]> | null = null;
+      try {
+        const scheduleForPlacement = await ensureDraftSchedule();
+        if (!scheduleForPlacement?.id) {
+          setPinError(t("grid_schedule.no_draft_schedule_error"));
+          clearPlacementPreviewState();
+          return;
+        }
+        const assignmentPreview = previewItem?.assignment_preview;
+        const recommendedParticipantIds = (assignmentPreview?.recommended_participant_ids || []).map(String);
+        if (assignmentPreview?.requires_user_selection) {
+          const recommendedOptions: PlacementAssignmentOption[] =
+            recommendedParticipantIds.length > 0
+              ? [
+                  {
+                    id: "backend:recommended",
+                    source: "pool",
+                    participantIds: recommendedParticipantIds,
+                    label: t("solve_overlay.backend_recommended_assignment"),
+                    recommended: true,
+                  },
+                ]
+              : [];
+          setAssignmentOptions(recommendedOptions);
+          setSelectedAssignmentOptionId(recommendedOptions[0]?.id ?? null);
+          setPendingPlacementRequest({
+            sourceCellId,
+            bundleId,
+            dayIndex,
+            startSlot,
+            durationSlots,
+            previewItem,
+          });
+          setAssignmentDialogOpen(true);
+          clearPlacementPreviewState();
+          return;
+        }
+
+        const payload: ConfirmPlacementRequest = {
+          mode: "PLACE_UNASSIGNED_CELL",
+          schedule_id: scheduleForPlacement.id,
+          day_index: dayIndex,
+          start_slot: startSlot,
+        };
+        const bundleApiId = toApiEntityId(bundleId);
+        if (bundleApiId != null) payload.bundle_id = bundleApiId;
+        if (recommendedParticipantIds.length > 0) {
+          payload.selected_participant_ids = recommendedParticipantIds.map((id) => toApiEntityId(id) ?? id);
+        } else {
+          payload.auto_select_participants = true;
+        }
+        const previousPlacements = Array.isArray(scheduleForPlacement.placements) ? scheduleForPlacement.placements : [];
+        rollbackPlacements = previousPlacements;
+        const optimisticPlacement = buildOptimisticPlacement({
           sourceCellId,
           bundleId,
           dayIndex,
           startSlot,
           durationSlots,
-          options[0].participantIds,
+          assignedParticipants: recommendedParticipantIds,
+        });
+        setCurrentSchedule((prev) =>
+          prev
+            ? {
+                ...prev,
+                placements: [...(Array.isArray(prev.placements) ? prev.placements : previousPlacements), optimisticPlacement],
+              }
+            : {
+                ...scheduleForPlacement,
+                placements: [...previousPlacements, optimisticPlacement],
+              },
         );
-        return;
+        clearPlacementPreviewState();
+        const result = await confirmCellPlacement(sourceCellId, payload);
+        applyConfirmedPlacementResponse(result, scheduleForPlacement.id, {
+          replacementPlacementId: optimisticPlacement.id,
+        });
+        notifyDraftMutation();
+      } catch (error: unknown) {
+        clearPlacementPreviewState();
+        if (rollbackPlacements) {
+          const rollback = rollbackPlacements;
+          setCurrentSchedule((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  placements: rollback,
+                }
+              : prev,
+          );
+        }
+        setPinError(error instanceof Error ? error.message : t("grid_schedule.could_not_place_cell"));
       }
-      setAssignmentOptions(options);
-      setSelectedAssignmentOptionId(options.find((option) => option.recommended)?.id ?? options[0].id);
-      setPendingPlacementRequest({
-        sourceCellId,
-        bundleId,
-        dayIndex,
-        startSlot,
-        durationSlots,
-      });
-      setAssignmentDialogOpen(true);
     },
     [
-      createSchedulePlacement,
+      applyConfirmedPlacementResponse,
+      buildOptimisticPlacement,
+      clearPlacementPreviewState,
+      confirmCellPlacement,
       ensureDraftSchedule,
-      getPlacementAssignmentOptions,
-      gridId,
+      formatPlacementPreviewMessage,
       hasPendingCandidateResolution,
-      lastAssignedParticipantsByCellBundle,
-      normalizeIdArray,
-      participantNameById,
-      staffNameById,
+      notifyDraftMutation,
+      placementPreviewBusy,
+      placementPreviewBySlot,
       t,
     ],
   );
@@ -5184,20 +5651,78 @@ export default function SolveOverlay({
     setPendingPlacementRequest(null);
     setAssignmentOptions([]);
     setSelectedAssignmentOptionId(null);
-    void createSchedulePlacement(
-      pendingPlacementRequest.sourceCellId,
-      pendingPlacementRequest.bundleId,
-      pendingPlacementRequest.dayIndex,
-      pendingPlacementRequest.startSlot,
-      pendingPlacementRequest.durationSlots,
-      chosenOption.participantIds,
-    );
-  }, [assignmentOptions, createSchedulePlacement, pendingPlacementRequest, selectedAssignmentOptionId]);
+    void (async () => {
+      try {
+        const scheduleForPlacement = await ensureDraftSchedule();
+        if (!scheduleForPlacement?.id) {
+          setPinError(t("grid_schedule.no_draft_schedule_error"));
+          return;
+        }
+        const payload: ConfirmPlacementRequest = {
+          mode: "PLACE_UNASSIGNED_CELL",
+          schedule_id: scheduleForPlacement.id,
+          day_index: pendingPlacementRequest.dayIndex,
+          start_slot: pendingPlacementRequest.startSlot,
+          selected_participant_ids: chosenOption.participantIds.map((id) => toApiEntityId(id) ?? id),
+        };
+        const bundleApiId = toApiEntityId(pendingPlacementRequest.bundleId);
+        if (bundleApiId != null) payload.bundle_id = bundleApiId;
+        const result = await confirmCellPlacement(pendingPlacementRequest.sourceCellId, payload);
+        applyConfirmedPlacementResponse(result, scheduleForPlacement.id);
+        notifyDraftMutation();
+      } catch (error: unknown) {
+        setPinError(error instanceof Error ? error.message : t("grid_schedule.could_not_place_cell"));
+      }
+    })();
+  }, [
+    applyConfirmedPlacementResponse,
+    assignmentOptions,
+    confirmCellPlacement,
+    ensureDraftSchedule,
+    notifyDraftMutation,
+    pendingPlacementRequest,
+    selectedAssignmentOptionId,
+    t,
+  ]);
+
+  const confirmPendingPlacementWithAutoSelection = useCallback(() => {
+    if (!pendingPlacementRequest) return;
+    const request = pendingPlacementRequest;
+    setAssignmentDialogOpen(false);
+    setPendingPlacementRequest(null);
+    setAssignmentOptions([]);
+    setSelectedAssignmentOptionId(null);
+    void (async () => {
+      try {
+        const scheduleForPlacement = await ensureDraftSchedule();
+        if (!scheduleForPlacement?.id) {
+          setPinError(t("grid_schedule.no_draft_schedule_error"));
+          return;
+        }
+        const payload: ConfirmPlacementRequest = {
+          mode: "PLACE_UNASSIGNED_CELL",
+          schedule_id: scheduleForPlacement.id,
+          day_index: request.dayIndex,
+          start_slot: request.startSlot,
+          auto_select_participants: true,
+        };
+        const bundleApiId = toApiEntityId(request.bundleId);
+        if (bundleApiId != null) payload.bundle_id = bundleApiId;
+        const result = await confirmCellPlacement(request.sourceCellId, payload);
+        applyConfirmedPlacementResponse(result, scheduleForPlacement.id);
+        notifyDraftMutation();
+      } catch (error: unknown) {
+        setPinError(error instanceof Error ? error.message : t("grid_schedule.could_not_place_cell"));
+      }
+    })();
+  }, [applyConfirmedPlacementResponse, confirmCellPlacement, ensureDraftSchedule, notifyDraftMutation, pendingPlacementRequest, t]);
 
   const patchPlacementPosition = useCallback(
     async (placementId: string, nextDayIndex: number, nextStartSlot: number, durationSlots: number) => {
       if (!currentSchedule?.placements) return;
-      const targetPlacement = currentSchedule.placements.find((placement) => String(placement.id) === placementId);
+      const targetPlacement = currentSchedule.placements.find(
+        (placement) => getPlacementIdentity(placement) === String(placementId),
+      );
       if (!targetPlacement) return;
       if (targetPlacement.locked) {
         setPinError(t("solve_overlay.locked_placements_cannot_be_moved"));
@@ -5219,41 +5744,62 @@ export default function SolveOverlay({
         endSlot: nextEndSlot,
         participantIds: targetParticipants,
       };
+
+      const dropValidation = getDropValidation(nextDayIndex, nextStartSlot, durationSlots, placementPreviewBySlot);
+      const previewItem = dropValidation.canDrop ? dropValidation.startItem : dropValidation.reasonItem;
+      const hasUsableSlotMap = Object.keys(placementPreviewBySlot).length > 0;
+      if (!dropValidation.canDrop) {
+        setPinError(
+          formatPlacementPreviewMessage(
+            previewItem,
+            placementPreviewBusy && !hasUsableSlotMap
+              ? t("solve_overlay.placement_preview_wait")
+              : t("solve_overlay.placement_preview_missing_or_blocked"),
+          ),
+        );
+        clearPlacementPreviewState();
+        return;
+      }
+
+      const normalizedBundleId =
+        readEntityId((targetPlacement as { bundle_id?: unknown }).bundle_id) ??
+        readEntityId((targetPlacement as { bundle?: unknown }).bundle);
+      const scheduleId = currentSchedule.id;
       const previousPlacements = currentSchedule.placements;
-      const updatedPlacements = previousPlacements.map((placement) =>
-        String(placement.id) === placementId
-          ? {
-              ...placement,
-              day_index: nextDayIndex,
-              start_slot: nextStartSlot,
-              end_slot: nextEndSlot,
-            }
-          : placement,
-      );
+      const optimisticPlacement = buildOptimisticPlacement({
+        sourceCellId: targetSourceCellId,
+        bundleId: normalizedBundleId,
+        dayIndex: nextDayIndex,
+        startSlot: nextStartSlot,
+        durationSlots,
+        replacement: targetPlacement,
+      });
       setCurrentSchedule((prev) =>
         prev
           ? {
               ...prev,
-              placements: updatedPlacements,
+              placements: (Array.isArray(prev.placements) ? prev.placements : previousPlacements).map((placement) =>
+                getPlacementIdentity(placement) === String(placementId) ? optimisticPlacement : placement,
+              ),
             }
           : prev,
       );
+      clearPlacementPreviewState();
       try {
-        const res = await authFetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            day_index: nextDayIndex,
-            start_slot: nextStartSlot,
-            end_slot: nextEndSlot,
-          }),
-        });
-        if (!res.ok) {
-          const txt = await res.text().catch(() => "");
-          throw new Error(txt || `${t("grid_schedule.could_not_move_placement")} (${res.status})`);
-        }
+        const payload: ConfirmPlacementRequest = {
+          mode: "MOVE_ASSIGNED_CELL",
+          schedule_id: scheduleId,
+          placement_id: toApiEntityId(placementId) ?? placementId,
+          day_index: nextDayIndex,
+          start_slot: nextStartSlot,
+        };
+        const bundleApiId = toApiEntityId(normalizedBundleId);
+        if (bundleApiId != null) payload.bundle_id = bundleApiId;
+        const result = await confirmCellPlacement(targetSourceCellId, payload);
+        applyConfirmedPlacementResponse(result, scheduleId, { replacementPlacementId: optimisticPlacement.id });
         notifyDraftMutation();
       } catch (error: unknown) {
+        clearPlacementPreviewState();
         setCurrentSchedule((prev) =>
           prev
             ? {
@@ -5262,11 +5808,67 @@ export default function SolveOverlay({
               }
             : prev,
         );
-        setPinError(error instanceof Error ? error.message : t("grid_schedule.could_not_move_placement"));
+        setPinError(
+          error instanceof Error
+            ? error.message
+            : formatPlacementPreviewMessage(previewItem, t("grid_schedule.could_not_move_placement")),
+        );
       }
     },
-    [currentSchedule, notifyDraftMutation, t],
+    [
+      applyConfirmedPlacementResponse,
+      buildOptimisticPlacement,
+      clearPlacementPreviewState,
+      confirmCellPlacement,
+      currentSchedule,
+      formatPlacementPreviewMessage,
+      normalizeIdArray,
+      notifyDraftMutation,
+      placementPreviewBusy,
+      placementPreviewBySlot,
+      t,
+    ],
   );
+
+  useEffect(() => {
+    if (!pendingDropWhilePreviewLoading) return;
+    if (placementPreviewBusy || !hasUsablePlacementPreviewMap) return;
+    const pending = pendingDropWhilePreviewLoading;
+    setPendingDropWhilePreviewLoading(null);
+
+    if (pending.dragType === "placement" && pending.placementId) {
+      if (pending.dayIndex === pending.originalDayIndex && pending.startSlot === pending.originalStartSlot) {
+        clearPlacementPreviewState();
+        return;
+      }
+      void patchPlacementPosition(pending.placementId, pending.dayIndex, pending.startSlot, pending.durationSlots);
+      return;
+    }
+
+    if (pending.dragType === "unassigned") {
+      if (pending.sourceBundleId == null && !isNoUnitScopeSelected) {
+        clearPlacementPreviewState();
+        setPinError(t("solve_overlay.select_matching_unit_tab_before_placing"));
+        return;
+      }
+      void requestUnassignedPlacement(
+        pending.sourceCellId,
+        pending.sourceBundleId ?? null,
+        pending.dayIndex,
+        pending.startSlot,
+        pending.durationSlots,
+      );
+    }
+  }, [
+    clearPlacementPreviewState,
+    hasUsablePlacementPreviewMap,
+    isNoUnitScopeSelected,
+    patchPlacementPosition,
+    pendingDropWhilePreviewLoading,
+    placementPreviewBusy,
+    requestUnassignedPlacement,
+    t,
+  ]);
 
   useEffect(() => {
     if (!blockageDraft) return;
@@ -5408,6 +6010,7 @@ export default function SolveOverlay({
     if (!dragState) return;
     const onPointerMove = (event: PointerEvent) => {
       if (event.pointerId !== dragState.pointerId) return;
+      if (placementPreviewLoadingWithoutCache) return;
       const isInsideDelete = isInsideDeleteDropTarget(event.clientX, event.clientY);
       setIsDeleteDropActive((prev) => (prev === isInsideDelete ? prev : isInsideDelete));
       if (dragState.dragType === "participant-tool") {
@@ -5435,6 +6038,7 @@ export default function SolveOverlay({
       const droppedOnDelete = isInsideDeleteDropTarget(event.clientX, event.clientY);
       setIsDeleteDropActive(false);
       if (droppedOnDelete && activeDrag.dragType === "placement" && activeDrag.placementId) {
+        clearPlacementPreviewState();
         void deleteSchedulePlacement(activeDrag.placementId);
         return;
       }
@@ -5525,7 +6129,10 @@ export default function SolveOverlay({
       }
 
       const overlay = overlayRef.current;
-      if (!overlay) return;
+      if (!overlay) {
+        clearPlacementPreviewState();
+        return;
+      }
 
       const rect = overlay.getBoundingClientRect();
       const dayWidth = (rect.width - timeColPx) / daysCount;
@@ -5539,23 +6146,41 @@ export default function SolveOverlay({
         cardCenterX < 0 ||
         cardCenterX >= dayWidth * daysCount
       ) {
+        clearPlacementPreviewState();
         return;
       }
 
       const droppedDay = Math.max(0, Math.min(daysCount - 1, Math.floor(cardCenterX / dayWidth)));
       const slotCount = Math.max(0, Math.round(bodyHeight / rowPx));
       const rawStartSlot = Math.round(cardTop / rowPx);
-      const maxStartSlot = Math.max(0, slotCount - activeDrag.durationSlots);
+      const effectiveDurationSlots = Math.max(1, placementPreviewDurationSlots ?? activeDrag.durationSlots);
+      const maxStartSlot = Math.max(0, slotCount - effectiveDurationSlots);
       const droppedStart = Math.max(0, Math.min(maxStartSlot, rawStartSlot));
+      if (placementPreviewLoadingWithoutCache) {
+        setPendingDropWhilePreviewLoading({
+          dragType: activeDrag.dragType,
+          placementId: activeDrag.dragType === "placement" ? activeDrag.placementId : undefined,
+          sourceCellId: activeDrag.sourceCellId,
+          sourceBundleId: activeDrag.sourceBundleId ?? null,
+          originalDayIndex: activeDrag.originalDayIndex,
+          originalStartSlot: activeDrag.originalStartSlot,
+          dayIndex: droppedDay,
+          startSlot: droppedStart,
+          durationSlots: effectiveDurationSlots,
+        });
+        return;
+      }
       if (activeDrag.dragType === "placement" && activeDrag.placementId) {
         if (droppedDay === activeDrag.originalDayIndex && droppedStart === activeDrag.originalStartSlot) {
+          clearPlacementPreviewState();
           return;
         }
-        void patchPlacementPosition(activeDrag.placementId, droppedDay, droppedStart, activeDrag.durationSlots);
+        void patchPlacementPosition(activeDrag.placementId, droppedDay, droppedStart, effectiveDurationSlots);
         return;
       }
       if (activeDrag.dragType === "unassigned") {
         if (activeDrag.sourceBundleId == null && !isNoUnitScopeSelected) {
+          clearPlacementPreviewState();
           setPinError(t("solve_overlay.select_matching_unit_tab_before_placing"));
           return;
         }
@@ -5564,7 +6189,7 @@ export default function SolveOverlay({
           activeDrag.sourceBundleId ?? null,
           droppedDay,
           droppedStart,
-          activeDrag.durationSlots,
+          effectiveDurationSlots,
         );
       }
     };
@@ -5574,6 +6199,7 @@ export default function SolveOverlay({
       setDragState(null);
       setParticipantDragHoverPlacementId(null);
       setIsDeleteDropActive(false);
+      clearPlacementPreviewState();
     };
 
     window.addEventListener("pointermove", onPointerMove, { passive: true });
@@ -5586,6 +6212,7 @@ export default function SolveOverlay({
     };
   }, [
     bodyHeight,
+    clearPlacementPreviewState,
     currentSchedule,
     daysCount,
     deleteSchedulePlacement,
@@ -5593,6 +6220,8 @@ export default function SolveOverlay({
     evaluateParticipantDropTarget,
     isInsideDeleteDropTarget,
     notifyDraftMutation,
+    placementPreviewDurationSlots,
+    placementPreviewLoadingWithoutCache,
     patchPlacementPosition,
     requestUnassignedPlacement,
     rowPx,
@@ -6209,8 +6838,9 @@ export default function SolveOverlay({
         cache: "no-store",
       });
       if (latestPublished.ok) {
-        const raw = (await latestPublished.json().catch(() => ({}))) as ScheduleResource;
-        if (raw?.id != null) setCurrentSchedule(raw);
+        const raw = await latestPublished.json().catch(() => ({}));
+        const normalizedPublished = normalizeScheduleResource(raw);
+        if (normalizedPublished?.id != null) setCurrentSchedule(normalizedPublished);
       }
 
       refreshGridView();
@@ -6250,6 +6880,39 @@ export default function SolveOverlay({
           </div>,
           document.body,
         )}
+      {isClientReady &&
+        placementPreviewLoadingWithoutCache &&
+        placementPreviewMaskRect &&
+        placementPreviewMaskRect.width > 0 &&
+        placementPreviewMaskRect.height > 0 &&
+        createPortal(
+          <div
+            className="pointer-events-auto fixed z-[170] flex cursor-wait items-center justify-center bg-white/45 backdrop-blur-[1px]"
+            style={{
+              left: placementPreviewMaskRect.left,
+              top: placementPreviewMaskRect.top,
+              width: placementPreviewMaskRect.width,
+              height: placementPreviewMaskRect.height,
+            }}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onPointerMove={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          >
+            <div className="rounded-md border border-gray-200 bg-white/95 px-4 py-2 text-xs font-medium text-gray-700 shadow-sm">
+              {t("solve_overlay.placement_preview_validating_positions")}
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {/* Schedule overlay */}
       {(!shouldHideScheduleOverlay || isBlockageToolActive || isUnassignedToolActive) &&
@@ -6262,7 +6925,9 @@ export default function SolveOverlay({
         <div
           ref={overlayRef}
           className={`absolute inset-x-0 z-[5] ${
-            canManualEditCards && isBlockageToolActive ? "pointer-events-auto" : "pointer-events-none"
+            (canManualEditCards && isBlockageToolActive) || placementPreviewLoadingWithoutCache
+              ? "pointer-events-auto"
+              : "pointer-events-none"
           }`}
           style={{ top: topOffset, height: bodyHeight }}
           onPointerDown={(event) => {
@@ -6284,119 +6949,46 @@ export default function SolveOverlay({
             });
           }}
         >
-          {dragCollisionCards.map((item, idx) => {
-            const top = item.startSlot * rowPx + 4;
-            const height = Math.max(10, (item.endSlot - item.startSlot) * rowPx - 8);
-            const left = `calc(${timeColPx}px + ${item.col} * ((100% - ${timeColPx}px) / ${daysCount}) + 8px)`;
-            const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 16px)`;
-            const borderColor = item.category === "active-unit"
-              ? "rgba(71, 85, 105, 0.8)"
-              : item.category === "bundle-unit"
-              ? "rgba(79, 70, 229, 0.75)"
-              : "rgba(14, 116, 144, 0.75)";
-            const bgColor = item.category === "active-unit"
-              ? "rgba(241, 245, 249, 0.96)"
-              : item.category === "bundle-unit"
-              ? "rgba(238, 242, 255, 0.94)"
-              : "rgba(236, 254, 255, 0.94)";
-            return (
-              <div
-                key={`${item.key}-${item.category}-${idx}`}
-                className="absolute pointer-events-none z-[44] rounded-md border shadow-sm"
-                style={{
-                  top,
-                  left,
-                  width,
-                  height,
-                  borderColor,
-                  backgroundColor: bgColor,
-                }}
-              >
-                <div className="flex h-full w-full flex-col items-center justify-center px-2 text-center leading-tight">
-                  <div className="max-w-full truncate text-[10px] font-semibold text-gray-800">{item.cellName}</div>
-                  {item.participantName && (
-                    <div className="max-w-full truncate text-[10px] text-gray-700">Participant: {item.participantName}</div>
+          {backendPreviewActive &&
+            dragState?.dragType !== "participant-tool" &&
+            backendPreviewRegions.map((region) => {
+              const top = region.start_slot * rowPx + 3;
+              const height = Math.max(8, (region.end_slot - region.start_slot) * rowPx - 6);
+              const left = `calc(${timeColPx}px + ${region.day_index} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
+              const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`;
+              const visual = getPlacementRegionStyle(region);
+              const isBlocked = region.status === "INVALID" && region.visual_kind === "BLOCKED";
+              return (
+                <div
+                  key={`backend-preview-${region.day_index}-${region.start_slot}-${region.end_slot}-${region.status}-${region.quality}-${region.visual_kind}-${region.time_range_kind}`}
+                  className={[
+                    "absolute pointer-events-none z-[8] overflow-hidden rounded-md border border-dashed transition-colors",
+                    visual.outer,
+                  ].join(" ")}
+                  style={{ top, left, width, height, ...visual.style }}
+                >
+                  {isBlocked && (
+                    <>
+                      <GlassSurface
+                        width="100%"
+                        height="100%"
+                        borderRadius={6}
+                        backgroundOpacity={0.14}
+                        brightness={50}
+                        opacity={0.95}
+                        blur={11}
+                        displace={0.5}
+                        distortionScale={-180}
+                        saturation={1.35}
+                        className="h-full w-full"
+                        style={{ background: "rgba(255, 255, 255, 0.18)" }}
+                      />
+                      <div className="pointer-events-none absolute inset-0 rounded-md border border-red-200/75 bg-red-500/10" />
+                    </>
                   )}
-                  <div className="mt-1 text-[10px] font-medium text-gray-800">{item.timeLabel}</div>
                 </div>
-              </div>
-            );
-          })}
-          {dragAvailabilityZones.map((zone, index) => {
-            const top = zone.startSlot * rowPx + 3;
-            const height = Math.max(6, (zone.endSlot - zone.startSlot) * rowPx - 6);
-            const left = `calc(${timeColPx}px + ${zone.col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
-            const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`;
-            const isPreferredStrong = zone.kind === "preferred-strong";
-            const isPreferred = zone.kind === "preferred" || isPreferredStrong;
-            const isImpossible = zone.kind === "impossible";
-            const borderColor = isPreferredStrong
-              ? "rgba(21, 128, 61, 0.62)"
-              : isPreferred
-              ? "rgba(22, 163, 74, 0.45)"
-              : isImpossible
-              ? "rgba(220, 38, 38, 0.45)"
-              : "rgba(217, 119, 6, 0.45)";
-            const bgColor = isPreferredStrong
-              ? "rgba(21, 128, 61, 0.12)"
-              : isPreferred
-              ? "rgba(34, 197, 94, 0.06)"
-              : isImpossible
-              ? "rgba(239, 68, 68, 0.06)"
-              : "rgba(245, 158, 11, 0.06)";
-
-            return (
-              <div
-                key={`drag-rule-zone-${zone.col}-${zone.startSlot}-${zone.endSlot}-${zone.kind}-${index}`}
-                className="absolute pointer-events-none z-[43] rounded-md border-2"
-                style={{
-                  top,
-                  left,
-                  width,
-                  height,
-                  borderColor,
-                  backgroundColor: bgColor,
-                  borderStyle: "dotted",
-                }}
-              />
-            );
-          })}
-          {dragTimeRangeGuide && (
-            <>
-              <div
-                className="absolute pointer-events-none z-[44]"
-                style={{
-                  top: dragTimeRangeGuide.startTop,
-                  left: timeColPx,
-                  width: `calc(100% - ${timeColPx}px)`,
-                }}
-              >
-                <div className="flex items-center">
-                  <span className="h-px flex-1 bg-gray-500/75" />
-                  <span className="px-2 text-[10px] font-medium text-gray-600 whitespace-nowrap">
-                    {dragTimeRangeGuide.name}
-                  </span>
-                  <span className="h-px flex-1 bg-gray-500/75" />
-                </div>
-              </div>
-              <div
-                className="absolute pointer-events-none z-[44]"
-                style={{
-                  top: dragTimeRangeGuide.endTop,
-                  left: timeColPx,
-                  width: `calc(100% - ${timeColPx}px)`,
-                }}
-              >
-                <div className="flex items-center">
-                  <span className="h-px flex-1 bg-gray-500/75" />
-                  <span className="px-2 text-[10px] font-medium text-gray-600 whitespace-nowrap">
-                    {dragTimeRangeGuide.name}
-                  </span>
-                  <span className="h-px flex-1 bg-gray-500/75" />
-                </div>
-              </div>
-            </>
-          )}
+              );
+            })}
           {dragPreview && (
             <div
               className="absolute pointer-events-none z-[45]"
@@ -6407,10 +6999,22 @@ export default function SolveOverlay({
                 height: dragPreview.height,
               }}
             >
-              <div className="relative h-full w-full rounded-md border border-dashed border-gray-400/90 bg-gray-100/20 shadow-[0_6px_18px_rgba(0,0,0,0.12)]">
+              <div
+                className={[
+                  "relative h-full w-full rounded-md border border-dashed transition-colors",
+                  activeDragPreviewStyle.outer,
+                ].join(" ")}
+              >
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="px-2 text-[10px] font-semibold text-gray-700 whitespace-nowrap">
-                    {dragPreview.cellName}
+                  <span
+                    className={[
+                      "max-w-full truncate px-2 text-center text-[10px] font-semibold whitespace-nowrap",
+                      activeDragPreviewStyle.text,
+                    ].join(" ")}
+                  >
+                    {placementPreviewBusy
+                      ? t("solve_overlay.placement_preview_loading")
+                      : dragPreview.cellName}
                   </span>
                 </div>
               </div>
@@ -6706,7 +7310,7 @@ export default function SolveOverlay({
                   width,
                   height,
                   transform: composedTransform,
-                  zIndex: cardZIndex,
+                  zIndex: cardZIndex ?? 30,
                   transformOrigin: "center",
                 }}
                 onClick={(event) => {
@@ -6754,7 +7358,7 @@ export default function SolveOverlay({
                   if (!canManualEditCards || isCardBusy || isPlacementLocked || !placementId) return;
                   clearLongPressTimer();
                   const cardRect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
-                    const startDrag = () => {
+                  const startDrag = () => {
                       setPinError(null);
                       setDragState({
                         dragType: "placement",
@@ -6773,6 +7377,13 @@ export default function SolveOverlay({
                       offsetY: event.clientY,
                       grabOffsetX: event.clientX - cardRect.left,
                       grabOffsetY: event.clientY - cardRect.top,
+                    });
+                    void loadPlacementPreviewForDrag({
+                      mode: "MOVE_ASSIGNED_CELL",
+                      sourceCellId,
+                      bundleId: resolvedBundleId ?? null,
+                      placementId,
+                      durationSlots,
                     });
                   };
                   if (!isJiggleMode) {
@@ -7005,6 +7616,68 @@ export default function SolveOverlay({
       />
 
       <Dialog
+        open={Boolean(pendingBlockageDelete)}
+        onOpenChange={(open) => {
+          if (!open && !blockageDeleteBusy) setPendingBlockageDelete(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[520px] z-[170]">
+          <DialogHeader>
+            <DialogTitle>{t("solve_overlay.delete_blockage_title")}</DialogTitle>
+            <DialogDescription>
+              {t("solve_overlay.delete_global_blockage_from_unit_message")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              disabled={blockageDeleteBusy}
+              onClick={() => setPendingBlockageDelete(null)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+              disabled={blockageDeleteBusy || !pendingBlockageDelete}
+              onClick={() => {
+                if (!pendingBlockageDelete) return;
+                const pending = pendingBlockageDelete;
+                setBlockageDeleteBusy(true);
+                void executeDeleteBlockage(pending.blockage, "CURRENT_UNIT_ONLY", pending.unitId)
+                  .then(() => setPendingBlockageDelete(null))
+                  .catch((error: unknown) => {
+                    setPinError(error instanceof Error ? error.message : "Could not delete blockage.");
+                  })
+                  .finally(() => setBlockageDeleteBusy(false));
+              }}
+            >
+              {t("solve_overlay.remove_blockage_from_unit")}
+            </button>
+            <button
+              type="button"
+              className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+              disabled={blockageDeleteBusy || !pendingBlockageDelete}
+              onClick={() => {
+                if (!pendingBlockageDelete) return;
+                const pending = pendingBlockageDelete;
+                setBlockageDeleteBusy(true);
+                void executeDeleteBlockage(pending.blockage, "GLOBAL", pending.unitId)
+                  .then(() => setPendingBlockageDelete(null))
+                  .catch((error: unknown) => {
+                    setPinError(error instanceof Error ? error.message : "Could not delete blockage.");
+                  })
+                  .finally(() => setBlockageDeleteBusy(false));
+              }}
+            >
+              {t("solve_overlay.delete_blockage_globally")}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={assignmentDialogOpen}
         onOpenChange={(open) => {
           setAssignmentDialogOpen(open);
@@ -7030,7 +7703,27 @@ export default function SolveOverlay({
             </DialogDescription>
           </DialogHeader>
 
+          {pendingPlacementRequest?.previewItem?.assignment_preview && (
+            <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+              <div className="font-medium text-gray-900">{t("solve_overlay.assignment_preview_summary")}</div>
+              <div className="mt-1">
+                {t("solve_overlay.assignment_preview_counts", {
+                  assignable: pendingPlacementRequest.previewItem.assignment_preview.assignable_count,
+                  headcount: pendingPlacementRequest.previewItem.assignment_preview.headcount,
+                })}
+              </div>
+              {pendingPlacementRequest.previewItem.assignment_preview.reason && (
+                <div className="mt-1">{pendingPlacementRequest.previewItem.assignment_preview.reason}</div>
+              )}
+            </div>
+          )}
+
           <div className="space-y-2 max-h-[44vh] overflow-y-auto pr-1">
+            {assignmentOptions.length === 0 && (
+              <div className="rounded border border-gray-200 bg-white px-3 py-3 text-sm text-gray-600">
+                {t("solve_overlay.no_backend_recommendation_use_auto")}
+              </div>
+            )}
             {assignmentOptions.map((option) => {
               const selected = selectedAssignmentOptionId === option.id;
               const participantLabel = option.participantIds
@@ -7081,14 +7774,24 @@ export default function SolveOverlay({
             >
               {t("common.cancel")}
             </button>
-            <button
-              type="button"
-              className="h-9 px-3 rounded bg-black text-white text-sm disabled:opacity-60"
-              onClick={confirmSelectedAssignmentAndPlace}
-              disabled={!selectedAssignmentOptionId}
-            >
-              {t("solve_overlay.place_cell")}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="h-9 px-3 rounded border text-sm text-gray-700 hover:bg-gray-50"
+                onClick={confirmPendingPlacementWithAutoSelection}
+                disabled={!pendingPlacementRequest}
+              >
+                {t("solve_overlay.use_backend_auto_selection")}
+              </button>
+              <button
+                type="button"
+                className="h-9 px-3 rounded bg-black text-white text-sm disabled:opacity-60"
+                onClick={confirmSelectedAssignmentAndPlace}
+                disabled={!selectedAssignmentOptionId}
+              >
+                {t("solve_overlay.place_cell")}
+              </button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -7234,7 +7937,7 @@ export default function SolveOverlay({
                           }`}
                           onClick={() => {
                             setSelectedHistoryKey(entry.key);
-                            setCurrentSchedule(entry.schedule);
+                            setCurrentSchedule(normalizeScheduleResource(entry.schedule));
                             setHistoryPanelError(null);
                           }}
                         >

@@ -258,7 +258,11 @@ export default function AddCategoryDialog({
           data-onboarding-target="category-dialog"
         >
           <DialogHeader>
-            <DialogTitle>{createdId ? t("add_category.add_category_values") : t("add_category.add_category")}</DialogTitle>
+            <DialogTitle>
+              {createdId
+                ? t("add_category.add_category_values", { name })
+                : t("add_category.add_category")}
+            </DialogTitle>
           </DialogHeader>
 
           {!createdId ? (

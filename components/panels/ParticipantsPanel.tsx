@@ -168,7 +168,9 @@ export default function ParticipantsPanel({
                       window.localStorage.getItem(`onboarding-step-grid-${gridId}`) != null &&
                       window.localStorage.getItem(`onboarding-done-grid-${gridId}`) !== "1";
                     router.push(
-                      `${gridBase}/participants/${encodeURIComponent(String(routeId))}${onboardingActive ? "?onboarding=1" : ""}`,
+                      `${gridBase}/participants?pid=${encodeURIComponent(String(routeId))}&view=schedule${
+                        onboardingActive ? "&onboarding=1" : ""
+                      }`,
                     );
                     rowClickTimerRef.current = null;
                   }, 180);

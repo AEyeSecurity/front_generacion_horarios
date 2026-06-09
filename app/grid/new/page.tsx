@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Stepper, { Step } from "@/components/Stepper";
+import Stepper, { Step } from "@/components/ui/Stepper";
 import { useI18n } from "@/lib/use-i18n";
 
 type Grid = {

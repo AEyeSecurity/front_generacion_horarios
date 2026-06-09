@@ -48,6 +48,7 @@ type Props = {
     name?: string | null;
     tier?: "PRIMARY" | "SECONDARY" | "TERTIARY" | null;
   }>;
+  lazyLoadRules?: boolean;
 };
 
 type EditableParticipant = {
@@ -173,6 +174,7 @@ export default function ParticipantDetailContent({
   rules,
   initialView = "rules",
   initialParticipantTabs = [],
+  lazyLoadRules = false,
 }: Props) {
   const { t } = useI18n();
   const [displayParticipantName, setDisplayParticipantName] = useState(participantName);
@@ -182,6 +184,9 @@ export default function ParticipantDetailContent({
   const [editParticipant, setEditParticipant] = useState<EditableParticipant | null>(null);
   const [view, setView] = useState<"rules" | "schedule">(initialView);
   const [rulesState, setRulesState] = useState<Rule[]>(rules);
+  const [rulesLoadedParticipantId, setRulesLoadedParticipantId] = useState<string | null>(() =>
+    lazyLoadRules && rules.length === 0 ? null : String(participantId),
+  );
   const [inlineAddOpen, setInlineAddOpen] = useState(false);
   const [inlineAddDay, setInlineAddDay] = useState<number>(daysIdx[0] ?? 0);
   const [inlineAddStart, setInlineAddStart] = useState(dayStartHHMM);
@@ -253,6 +258,21 @@ export default function ParticipantDetailContent({
   const participantActionsDisabled = commentsPanelOpen;
   const canOpenScheduleTab = true;
 
+  const setParticipantView = useCallback(
+    (nextView: "rules" | "schedule") => {
+      setView(nextView);
+      if (typeof window === "undefined") return;
+      const url = new URL(window.location.href);
+      if (!url.searchParams.get("pid")) {
+        const activeTab = initialParticipantTabs.find((tab) => String(tab.id) === String(participantId));
+        url.searchParams.set("pid", String(activeTab?.routeId ?? participantId));
+      }
+      url.searchParams.set("view", nextView);
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    },
+    [initialParticipantTabs, participantId],
+  );
+
   useEffect(() => {
     const nextView =
       commentsPanelOpen || !canViewRules
@@ -260,8 +280,8 @@ export default function ParticipantDetailContent({
         : !canOpenScheduleTab && view === "schedule"
         ? "rules"
         : view;
-    if (nextView !== view) setView(nextView);
-  }, [canOpenScheduleTab, canViewRules, commentsPanelOpen, view]);
+    if (nextView !== view) setParticipantView(nextView);
+  }, [canOpenScheduleTab, canViewRules, commentsPanelOpen, setParticipantView, view]);
 
   useEffect(() => {
     if (!commentsPanelOpen || typeof document === "undefined") return;
@@ -328,6 +348,10 @@ export default function ParticipantDetailContent({
   useEffect(() => {
     setParticipantLinkedState((prev) => (prev === participantLinked ? prev : participantLinked));
   }, [participantLinked]);
+
+  useEffect(() => {
+    setView((prev) => (prev === initialView ? prev : initialView));
+  }, [initialView, participantId]);
 
   const loadParticipantForEdit = useCallback(async () => {
     const res = await fetch(`/api/participants/${encodeURIComponent(String(participantId))}`, { cache: "no-store" });
@@ -477,7 +501,8 @@ export default function ParticipantDetailContent({
 
   useEffect(() => {
     setRulesState((prev) => (prev === rules ? prev : rules));
-  }, [rules]);
+    setRulesLoadedParticipantId(() => (lazyLoadRules && rules.length === 0 ? null : String(participantId)));
+  }, [lazyLoadRules, participantId, rules]);
 
   const fetchParticipantRules = useCallback(async (): Promise<Rule[]> => {
     const res = await fetch(`/api/availability_rules?participant=${participantId}`, { cache: "no-store" });
@@ -490,8 +515,30 @@ export default function ParticipantDetailContent({
   const reloadParticipantRules = useCallback(async () => {
     const nextRules = await fetchParticipantRules();
     setRulesState(nextRules);
+    setRulesLoadedParticipantId(String(participantId));
     return nextRules;
-  }, [fetchParticipantRules]);
+  }, [fetchParticipantRules, participantId]);
+
+  useEffect(() => {
+    if (!lazyLoadRules || !canViewRules || view !== "rules") return;
+    if (rulesLoadedParticipantId === String(participantId)) return;
+    let active = true;
+    (async () => {
+      try {
+        const nextRules = await fetchParticipantRules();
+        if (!active) return;
+        setRulesState(nextRules);
+      } catch {
+        if (!active) return;
+        setRulesState([]);
+      } finally {
+        if (active) setRulesLoadedParticipantId(String(participantId));
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [canViewRules, fetchParticipantRules, lazyLoadRules, participantId, rulesLoadedParticipantId, view]);
 
   const rows = useMemo(() => {
     const out: number[] = [];
@@ -1397,7 +1444,7 @@ export default function ParticipantDetailContent({
             <div className="mt-1 text-sm text-gray-500 flex items-center justify-center gap-2">
               <button
                 type="button"
-                onClick={() => setView("schedule")}
+                onClick={() => setParticipantView("schedule")}
                 className={view === "schedule" ? "font-semibold text-gray-800" : "hover:text-gray-700"}
               >
                 Schedule
@@ -1407,7 +1454,7 @@ export default function ParticipantDetailContent({
                   <span className="text-gray-400">|</span>
                   <button
                     type="button"
-                    onClick={() => setView("rules")}
+                    onClick={() => setParticipantView("rules")}
                     disabled={participantActionsDisabled}
                     className={view === "rules" ? "font-semibold text-gray-800" : "hover:text-gray-700"}
                   >
@@ -1445,7 +1492,7 @@ export default function ParticipantDetailContent({
             type="button"
             title="Comments"
             onClick={() => {
-              setView("schedule");
+              setParticipantView("schedule");
               setInlineAddOpen(false);
               setEditingRuleId(null);
               setEditParticipantOpen(false);
