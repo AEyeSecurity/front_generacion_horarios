@@ -69,7 +69,9 @@ export function writeLastSyncedPreferredLanguage(userId: string | number, langua
 
 export function readDocumentPreferredLanguage(): PreferredLanguage {
   if (typeof document === "undefined") return "en-US";
-  return normalizePreferredLanguage(document.documentElement.lang);
+  const documentLanguage = parsePreferredLanguage(document.documentElement.lang);
+  if (documentLanguage) return documentLanguage;
+  return detectPreferredLanguageFromNavigator();
 }
 
 export function applyDocumentPreferredLanguage(language: PreferredLanguage): void {

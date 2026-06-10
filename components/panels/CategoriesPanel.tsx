@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import PanelShell from "@/components/panels/PanelShell";
 import PanelScrollArea from "@/components/panels/PanelScrollArea";
+import { useI18n } from "@/lib/use-i18n";
 
 type Category = { id: number; name: string; parent: number | null };
 
@@ -22,6 +23,7 @@ export default function CategoriesPanel({
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Category | null>(null);
   const [showDialog, setShowDialog] = useState(false);
+  const { t } = useI18n();
 
   const CategoryDialog = dynamic(() => import("../dialogs/CategoryDialog"), { ssr: false });
 
@@ -65,15 +67,19 @@ export default function CategoriesPanel({
 
   return (
     <div className="h-full" data-onboarding-target="categories-panel">
-      <PanelShell title="Categories" error={err}>
+      <PanelShell title={t("category_panel.title")} error={err}>
         <input
           className="w-full border rounded px-3 py-2 text-sm"
-          placeholder="Search..."
+          placeholder={t("common.search")}
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
 
-        <PanelScrollArea loading={loading} empty={filtered.length === 0} emptyLabel="No categories found">
+        <PanelScrollArea loading={loading}
+        empty={filtered.length === 0}
+        loadingLabel={t("common.loading")}
+        emptyLabel={t("category_panel.no_participants_found")}
+      >
           <ul className="grid gap-2">
             {filtered.map((c) => (
               <li key={c.id}>
@@ -87,7 +93,7 @@ export default function CategoriesPanel({
                 >
                   <div className="font-medium">{c.name}</div>
                   {c.parent !== null && (
-                    <div className="text-xs text-gray-500">Parent: {parentNameById[c.parent] ?? c.parent}</div>
+                    <div className="text-xs text-gray-500">{t("category_panel.parent")} {parentNameById[c.parent] ?? c.parent}</div>
                   )}
                 </button>
               </li>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties} from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import {
@@ -61,6 +61,8 @@ const shadeHex = (hex: string, amt: number) => {
 
 type ScheduleResource = {
   id: number;
+  schedule_id?: number | string | null;
+  published_schedule_id?: number | string | null;
   status?: string;
   source_run?: number | null;
   source_candidate_index?: number | null;
@@ -71,6 +73,7 @@ type ScheduleResource = {
     id: number | string;
     placement_id?: number | string;
     schedule_placement_id?: number | string;
+    snapshot_placement_id?: number | string | null;
     source_cell?: string | number | null;
     source_cell_id?: string | number | null;
     bundle?: string | number | null;
@@ -91,6 +94,8 @@ type ScheduleResource = {
 
 type ScheduleRow = {
   cell_id: string;
+  placement_id?: string | number;
+  schedule_placement_id?: string | number;
   source_cell_id?: string | number;
   bundle_id?: string | number;
   bundle?: string | number;
@@ -980,9 +985,12 @@ export default function SolveOverlay({
 
   const canSolve = role === "supervisor" && !historyMode;
   const notifyDraftMutation = useCallback(() => {
+    if (historyMode) return;
+    if (scheduleViewMode !== "draft") return;
+
     invalidatePlacementPreviewCacheForSchedule(gridId, currentSchedule?.id);
     onDraftMutated?.();
-  }, [currentSchedule?.id, gridId, onDraftMutated]);
+  }, [currentSchedule?.id, gridId, historyMode, onDraftMutated, scheduleViewMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1489,6 +1497,8 @@ export default function SolveOverlay({
 
     return {
       cell_id: String(placementId),
+      placement_id: placementId,
+      schedule_placement_id: placementId,
       source_cell_id: sourceCellId,
       bundle_id: bundleId,
       bundle: bundleId,
@@ -1719,20 +1729,54 @@ export default function SolveOverlay({
             root.latest ??
             root) as Record<string, unknown>);
       if (!candidate || typeof candidate !== "object") return null;
-      const placementsRaw = Array.isArray((candidate as any).placements)
-        ? (candidate as any).placements
-        : Array.isArray((candidate as any).schedule)
-        ? (candidate as any).schedule
-        : Array.isArray((candidate as any).snapshot_placements)
-        ? (candidate as any).snapshot_placements
+      const candidateRecord = candidate as Record<string, unknown>;
+      const placementsRaw = Array.isArray(candidateRecord.placements)
+        ? candidateRecord.placements
+        : Array.isArray(candidateRecord.schedule)
+        ? candidateRecord.schedule
+        : Array.isArray(candidateRecord.snapshot_placements)
+        ? candidateRecord.snapshot_placements
         : [];
+      const candidateScheduleId =
+        readEntityId(candidateRecord.schedule_id) ??
+        readEntityId(candidateRecord.source_schedule) ??
+        readEntityId(candidateRecord.schedule) ??
+        readEntityId(candidateRecord.id);
       const scheduleId =
-        Number((candidate as any).schedule_id ?? (candidate as any).schedule ?? (candidate as any).id) || 0;
+        Number(candidateScheduleId) || 0;
       if (!scheduleId && placementsRaw.length === 0) return null;
+      const normalizedPlacements = placementsRaw.map((placement) => {
+        if (!placement || typeof placement !== "object") return placement;
+        const placementRecord = placement as Record<string, unknown>;
+        const realPlacementId =
+          readEntityId(placementRecord.placement_id) ??
+          readEntityId(placementRecord.placementId) ??
+          readEntityId(placementRecord.schedule_placement_id) ??
+          readEntityId(placementRecord.schedulePlacementId) ??
+          readEntityId(placementRecord.schedule_placement) ??
+          readEntityId(placementRecord.id);
+        if (realPlacementId == null) return { ...placementRecord };
+        const snapshotPlacementId = readEntityId(placementRecord.id);
+        return {
+          ...placementRecord,
+          snapshot_placement_id:
+            snapshotPlacementId != null && String(snapshotPlacementId) !== String(realPlacementId)
+              ? snapshotPlacementId
+              : readEntityId(placementRecord.snapshot_placement_id) ?? null,
+          id: realPlacementId,
+          placement_id: realPlacementId,
+          schedule_placement_id: realPlacementId,
+        };
+      });
       return {
-        ...(candidate as Record<string, unknown>),
+        ...candidateRecord,
+        schedule_id: scheduleId || candidateRecord.schedule_id,
+        published_schedule_id:
+          candidateRecord.schedule_id != null || candidateRecord.source_schedule != null
+            ? (readEntityId(candidateRecord.id) ?? null)
+            : readEntityId(candidateRecord.published_schedule_id),
         id: scheduleId || Number(gridId),
-        placements: placementsRaw,
+        placements: normalizedPlacements,
       } as ScheduleResource;
     },
     [gridId],
@@ -2045,7 +2089,12 @@ export default function SolveOverlay({
     placementPreviewVisibleRequestRef.current = null;
     placementPreviewCache.clear();
     clearPlacementPreviewState();
-  }, [clearPlacementPreviewState, gridId, scheduleViewMode]);
+    if (!historyMode) {
+      setCurrentSchedule(null);
+      setScheduleBlockages([]);
+      setPlacementComments([]);
+    }
+  }, [clearPlacementPreviewState, gridId, historyMode, scheduleViewMode]);
 
   const fetchCurrentSchedule = useCallback(async (): Promise<ScheduleResource | null> => {
     const endpoint =
@@ -2372,8 +2421,8 @@ export default function SolveOverlay({
     if (selected.key !== selectedHistoryKey) {
       setSelectedHistoryKey(selected.key);
     }
-    setCurrentSchedule(selected.schedule);
-  }, [historyMode, publishedHistorySchedules, selectedHistoryKey]);
+    setCurrentSchedule(normalizeScheduleResource(selected.schedule));
+  }, [historyMode, normalizeScheduleResource, publishedHistorySchedules, selectedHistoryKey]);
 
   useEffect(() => {
     if (historyMode) {
@@ -2406,9 +2455,10 @@ export default function SolveOverlay({
               raw.text ??
               raw.comment ??
               "";
+            const commentScheduleId = readEntityId(raw.schedule ?? raw.schedule_id);
             if (
               raw?.id == null ||
-              raw?.schedule == null ||
+              commentScheduleId == null ||
               raw?.source_cell_id == null ||
               raw?.day_index == null ||
               raw?.start_slot == null
@@ -2417,7 +2467,7 @@ export default function SolveOverlay({
             }
             return {
               id: raw.id,
-              schedule: raw.schedule,
+              schedule: commentScheduleId,
               schedule_placement:
                 raw.schedule_placement ??
                 raw.schedule_placement_id ??
@@ -2676,24 +2726,8 @@ export default function SolveOverlay({
         const scheduleCandidate =
           context?.schedule ?? context?.published_schedule ?? context?.latest ?? null;
         if (!historyMode && active && scheduleCandidate && typeof scheduleCandidate === "object") {
-          const placementsRaw = Array.isArray((scheduleCandidate as any).placements)
-            ? (scheduleCandidate as any).placements
-            : Array.isArray((scheduleCandidate as any).schedule)
-            ? (scheduleCandidate as any).schedule
-            : [];
-          const scheduleId =
-            Number(
-              (scheduleCandidate as any).id ??
-                (scheduleCandidate as any).schedule_id ??
-                (scheduleCandidate as any).schedule,
-            ) || 0;
-          if (scheduleId || placementsRaw.length > 0) {
-            setCurrentSchedule({
-              ...(scheduleCandidate as Record<string, unknown>),
-              id: scheduleId || Number(gridId),
-              placements: placementsRaw,
-            } as ScheduleResource);
-          }
+          const normalizedSchedule = normalizeScheduleResource(scheduleCandidate);
+          if (normalizedSchedule) setCurrentSchedule(normalizedSchedule);
         }
 
         const cmap: Record<string, string> = {};
@@ -2895,7 +2929,7 @@ export default function SolveOverlay({
       } catch {}
     })();
     return () => { active = false; };
-  }, [dayStartMin, externalRefreshTick, gridId, historyMode, scheduleViewMode, slotMin]);
+  }, [dayStartMin, externalRefreshTick, gridId, historyMode, normalizeScheduleResource, scheduleViewMode, slotMin]);
 
   useEffect(() => {
     if (!isSolving) return;
@@ -3154,20 +3188,24 @@ export default function SolveOverlay({
     }
   }
 
-  const refreshGridView = useCallback(() => {
-    invalidateGridScreenContext(gridId);
+  const refreshGridView = useCallback((scope: ScheduleViewMode | "all" = "all") => {
+    if (scope === "all") {
+      invalidateGridScreenContext(gridId);
+    } else {
+      invalidateGridScreenContext(gridId, scope);
+    }
     if (pathname?.startsWith("/grid/")) {
       router.replace(pathname);
     }
     router.refresh();
   }, [gridId, pathname, router]);
 
-  const hardReloadGridView = useCallback(() => {
+  const hardReloadGridView = useCallback((scope: ScheduleViewMode | "all" = "all") => {
     if (typeof window !== "undefined") {
       window.location.reload();
       return;
     }
-    refreshGridView();
+    refreshGridView(scope);
   }, [refreshGridView]);
 
   const chooseCandidate = async (candidateIndex: number) => {
@@ -3210,7 +3248,7 @@ export default function SolveOverlay({
         setInputSignature(pendingSolveSignature);
       }
       persistPendingCandidateRun(null);
-      hardReloadGridView();
+      hardReloadGridView("draft");
     } catch (e: any) {
       setCandidateError(e?.message || t("solve_overlay.could_not_choose_candidate"));
     } finally {
@@ -3249,7 +3287,7 @@ export default function SolveOverlay({
       setCandidateDialogOpen(false);
       setError(t("solve_overlay.candidates_rejected_adjust_and_run_again"));
       persistPendingCandidateRun(null);
-      hardReloadGridView();
+      hardReloadGridView("draft");
     } catch (e: any) {
       setCandidateError(e?.message || t("solve_overlay.could_not_reject_candidates"));
     } finally {
@@ -3265,6 +3303,14 @@ export default function SolveOverlay({
   const schedule = useMemo<ScheduleRow[]>(() => {
     const placements = Array.isArray(currentSchedule?.placements) ? currentSchedule.placements : [];
     return placements.map((placement) => {
+      const placementIdentityRaw =
+        readEntityId((placement as { placement_id?: unknown }).placement_id) ??
+        readEntityId((placement as { placementId?: unknown }).placementId) ??
+        readEntityId((placement as { schedule_placement_id?: unknown }).schedule_placement_id) ??
+        readEntityId((placement as { schedulePlacementId?: unknown }).schedulePlacementId) ??
+        readEntityId((placement as { schedule_placement?: unknown }).schedule_placement) ??
+        readEntityId(placement.id);
+      const placementIdentity = placementIdentityRaw == null ? String(placement.id) : String(placementIdentityRaw);
       const bundleId =
         readEntityId((placement as { bundle_id?: unknown }).bundle_id) ??
         readEntityId((placement as { bundle?: unknown }).bundle) ??
@@ -3303,7 +3349,9 @@ export default function SolveOverlay({
             .filter((entry): entry is BreakEntry => Boolean(entry))
         : [];
       return {
-        cell_id: String(placement.id),
+        cell_id: placementIdentity,
+        placement_id: placementIdentity,
+        schedule_placement_id: placementIdentity,
         source_cell_id: sourceCellId,
         bundle_id: bundleId,
         bundle: bundleId,
@@ -4500,7 +4548,7 @@ export default function SolveOverlay({
         throw new Error(txt || `${t("solve_overlay.could_not_restore_draft")} (${res.status})`);
       }
       writeGridScheduleViewMode(gridId, "draft");
-      invalidateGridScreenContext(gridId);
+      invalidateGridScreenContext(gridId, "draft");
       closeHistoryView();
       router.refresh();
     } catch (error: unknown) {
@@ -4747,10 +4795,13 @@ export default function SolveOverlay({
       return;
     }
     const syncMaskRect = () => {
+      const overlayElement = overlayRef.current;
+
       const source =
         mainScheduleScrollRef.current ??
-        ((overlayRef.current?.closest("[data-schedule-scroll]") as HTMLElement | null) ?? null) ??
-        overlayRef.current;
+        (overlayElement?.closest("[data-schedule-scroll]") as HTMLElement | null | undefined) ??
+        overlayElement;
+
       if (!source) {
         setPlacementPreviewMaskRect(null);
         return;
@@ -6792,8 +6843,9 @@ export default function SolveOverlay({
         cache: "no-store",
       });
       if (latestPublished.ok) {
-        const raw = (await latestPublished.json().catch(() => ({}))) as ScheduleResource;
-        if (raw?.id != null) setCurrentSchedule(raw);
+        const raw = await latestPublished.json().catch(() => ({}));
+        const normalizedPublished = normalizeScheduleResource(raw);
+        if (normalizedPublished?.id != null) setCurrentSchedule(normalizedPublished);
       }
 
       refreshGridView();
@@ -7890,7 +7942,7 @@ export default function SolveOverlay({
                           }`}
                           onClick={() => {
                             setSelectedHistoryKey(entry.key);
-                            setCurrentSchedule(entry.schedule);
+                            setCurrentSchedule(normalizeScheduleResource(entry.schedule));
                             setHistoryPanelError(null);
                           }}
                         >

@@ -2,6 +2,8 @@ import "@/styles/globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import localFont from "next/font/local";
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
+import { normalizePreferredLanguage } from "@/lib/language";
 
 export const dynamic = "force-dynamic";
 
@@ -28,9 +30,12 @@ const googleSans = localFont({
   display: "swap",
 });
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const h = await headers();
+  const language = normalizePreferredLanguage(h.get("accept-language"));
+
   return (
-    <html lang="en">
+    <html lang={language}>
       <body className={`${googleSans.variable} min-h-dvh bg-gray-50 text-gray-900 font-sans`}>
         <main className="w-full">{children}</main>
 

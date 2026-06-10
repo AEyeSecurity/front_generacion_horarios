@@ -674,10 +674,10 @@ export default function InviteDialog({
                   <ArrowLeft className="h-4 w-4" />
                 </button>
               )}
-              <DialogTitle>Share "{gridName}"</DialogTitle>
+              <DialogTitle>{t("invite_dialog.title", { gridName })}</DialogTitle>
             </div>
             <DialogDescription>
-              Add up to 10 email addresses at once.
+              {t("invite_dialog.description")}
             </DialogDescription>
           </DialogHeader>
 

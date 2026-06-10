@@ -262,6 +262,7 @@ export default function ParticipantScheduleOverlay({
             : [];
           const resolvedScheduleId = Number(
             readEntityId(scheduleCandidate?.schedule_id) ??
+              readEntityId(scheduleCandidate?.source_schedule) ??
               readEntityId(scheduleCandidate?.schedule) ??
               readEntityId(scheduleCandidate?.id) ??
               0,
@@ -292,6 +293,7 @@ export default function ParticipantScheduleOverlay({
           : [];
         const resolvedScheduleId = Number(
           readEntityId(scheduleCandidate?.schedule_id) ??
+            readEntityId(scheduleCandidate?.source_schedule) ??
             readEntityId(scheduleCandidate?.schedule) ??
             readEntityId(scheduleCandidate?.id) ??
             0,
@@ -427,9 +429,10 @@ export default function ParticipantScheduleOverlay({
             const bundleRaw =
               typeof raw?.bundle === "object" && raw.bundle?.id != null ? raw.bundle.id : raw?.bundle;
             const message = raw?.message ?? raw?.text ?? raw?.comment ?? "";
+            const commentScheduleId = readEntityId(raw.schedule ?? raw.schedule_id);
             if (
               raw?.id == null ||
-              raw?.schedule == null ||
+              commentScheduleId == null ||
               raw?.source_cell_id == null ||
               raw?.day_index == null ||
               raw?.start_slot == null
@@ -438,7 +441,7 @@ export default function ParticipantScheduleOverlay({
             }
             return {
               id: raw.id,
-              schedule: raw.schedule,
+              schedule: commentScheduleId,
               schedule_placement:
                 raw.schedule_placement ??
                 raw.schedule_placement_id ??
