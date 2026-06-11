@@ -30,7 +30,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   const access = await getAccessToken();
   if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-  const res = await fetch(`${B}/api/schedule-blockages/${encodeURIComponent(id)}/`, {
+  const query = req.nextUrl.searchParams.toString();
+  const targetUrl = `${B}/api/schedule-blockages/${encodeURIComponent(id)}/${query ? `?${query}` : ""}`;
+  const res = await fetch(targetUrl, {
     method: "DELETE",
     headers: {
       Authorization: `Bearer ${access}`,

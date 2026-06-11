@@ -32,6 +32,10 @@ type SchedulePlacement = {
   id: number | string;
   placement_id?: string | number | null;
   placementId?: string | number | null;
+  published_placement_id?: string | number | null;
+  publishedPlacementId?: string | number | null;
+  snapshot_placement_id?: string | number | null;
+  snapshotPlacementId?: string | number | null;
   schedule_placement?: string | number | null;
   schedule_placement_id?: string | number | null;
   schedulePlacementId?: string | number | null;
@@ -47,7 +51,9 @@ type SchedulePlacement = {
 
 type PlacementComment = {
   id: number | string;
-  schedule: number | string;
+  published_schedule: number | string;
+  schedule?: number | string | null;
+  published_placement?: number | string | null;
   schedule_placement?: number | string | null;
   source_cell_id: number | string;
   bundle: number | string | null;
@@ -62,7 +68,9 @@ type PlacementComment = {
 
 type CommentAnchor = {
   placementId?: number | string | null;
+  publishedPlacementId?: number | string | null;
   scheduleId: number;
+  publishedScheduleId: number | string;
   sourceCellId: string;
   bundleId: number | string | null;
   dayIndex: number;
@@ -121,15 +129,17 @@ const readEntityId = (value: unknown): string | number | null => {
 };
 
 function buildPlacementKey(
-  scheduleId: number | string,
+  publishedScheduleId: number | string,
   sourceCellId: number | string,
   bundleId: number | string | null,
   dayIndex: number,
   startSlot: number,
-  placementId?: number | string | null,
+  publishedPlacementId?: number | string | null,
 ) {
-  if (placementId != null && String(placementId).trim()) return `placement|${placementId}`;
-  return `${scheduleId}|${sourceCellId}|${bundleId == null ? "__no_bundle__" : bundleId}|${dayIndex}|${startSlot}`;
+  if (publishedPlacementId != null && String(publishedPlacementId).trim()) {
+    return `published-placement|${publishedScheduleId}|${publishedPlacementId}`;
+  }
+  return `published|${publishedScheduleId}|${sourceCellId}|${bundleId == null ? "__no_bundle__" : bundleId}|${dayIndex}|${startSlot}`;
 }
 
 const extractAuthorName = (raw: any): string | undefined => {
@@ -177,6 +187,7 @@ export default function ParticipantScheduleOverlay({
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [schedulePlacements, setSchedulePlacements] = useState<SchedulePlacement[]>([]);
   const [scheduleId, setScheduleId] = useState<number | null>(null);
+  const [publishedScheduleId, setPublishedScheduleId] = useState<number | string | null>(null);
   const [cellNameById, setCellNameById] = useState<Record<string, string>>({});
   const [cellColorById, setCellColorById] = useState<Record<string, string>>({});
   const [bundleNameById, setBundleNameById] = useState<Record<string, string>>({});
@@ -267,10 +278,19 @@ export default function ParticipantScheduleOverlay({
               readEntityId(scheduleCandidate?.id) ??
               0,
           );
+          const resolvedPublishedScheduleId =
+            scheduleViewMode === "published"
+              ? readEntityId(scheduleCandidate?.published_schedule_id) ??
+                readEntityId(scheduleCandidate?.publishedScheduleId) ??
+                readEntityId(scheduleCandidate?.id)
+              : null;
           if (active) {
             setSchedulePlacements((prev) => (prev === placements ? prev : placements));
             const nextScheduleId = Number.isFinite(resolvedScheduleId) && resolvedScheduleId > 0 ? resolvedScheduleId : null;
             setScheduleId((prev) => (prev === nextScheduleId ? prev : nextScheduleId));
+            setPublishedScheduleId((prev) =>
+              String(prev ?? "") === String(resolvedPublishedScheduleId ?? "") ? prev : resolvedPublishedScheduleId,
+            );
           }
           return;
         }
@@ -298,10 +318,19 @@ export default function ParticipantScheduleOverlay({
             readEntityId(scheduleCandidate?.id) ??
             0,
         );
+        const resolvedPublishedScheduleId =
+          scheduleViewMode === "published"
+            ? readEntityId(scheduleCandidate?.published_schedule_id) ??
+              readEntityId(scheduleCandidate?.publishedScheduleId) ??
+              readEntityId(scheduleCandidate?.id)
+            : null;
         if (active) {
           setSchedulePlacements((prev) => (prev === placements ? prev : placements));
           const nextScheduleId = Number.isFinite(resolvedScheduleId) && resolvedScheduleId > 0 ? resolvedScheduleId : null;
           setScheduleId((prev) => (prev === nextScheduleId ? prev : nextScheduleId));
+          setPublishedScheduleId((prev) =>
+            String(prev ?? "") === String(resolvedPublishedScheduleId ?? "") ? prev : resolvedPublishedScheduleId,
+          );
         }
       } catch {}
     })();
@@ -407,8 +436,26 @@ export default function ParticipantScheduleOverlay({
         placement.id,
     ), []);
 
+  const getPublishedPlacementId = useCallback(
+    (placement: SchedulePlacement): string | number | null => {
+      const explicit =
+        readEntityId(placement.published_placement_id) ??
+        readEntityId(placement.publishedPlacementId) ??
+        readEntityId(placement.snapshot_placement_id) ??
+        readEntityId(placement.snapshotPlacementId);
+      if (explicit != null) return explicit;
+      if (scheduleViewMode !== "published") return null;
+      const rowId = readEntityId(placement.id);
+      const realPlacementId = getPlacementId(placement);
+      if (rowId != null && realPlacementId != null && String(rowId) !== String(realPlacementId)) return rowId;
+      if (rowId != null && realPlacementId == null) return rowId;
+      return null;
+    },
+    [getPlacementId, scheduleViewMode],
+  );
+
   useEffect(() => {
-    if (!canComment || !scheduleId) {
+    if (!canComment || scheduleViewMode !== "published" || !publishedScheduleId) {
       setPlacementComments([]);
       setCommentsLoading(false);
       return;
@@ -418,7 +465,7 @@ export default function ParticipantScheduleOverlay({
       setCommentsLoading(true);
       try {
         const res = await authFetch(
-          `/api/placement-comments/?schedule=${encodeURIComponent(String(scheduleId))}&grid=${encodeURIComponent(String(gridId))}`,
+          `/api/placement-comments/?published_schedule_id=${encodeURIComponent(String(publishedScheduleId))}`,
           { cache: "no-store" },
         );
         if (!res.ok) throw new Error(`Failed to load comments (${res.status})`);
@@ -429,10 +476,12 @@ export default function ParticipantScheduleOverlay({
             const bundleRaw =
               typeof raw?.bundle === "object" && raw.bundle?.id != null ? raw.bundle.id : raw?.bundle;
             const message = raw?.message ?? raw?.text ?? raw?.comment ?? "";
-            const commentScheduleId = readEntityId(raw.schedule ?? raw.schedule_id);
+            const commentPublishedScheduleId = readEntityId(
+              raw.published_schedule_id ?? raw.published_schedule ?? raw.publishedScheduleId,
+            );
             if (
               raw?.id == null ||
-              commentScheduleId == null ||
+              commentPublishedScheduleId == null ||
               raw?.source_cell_id == null ||
               raw?.day_index == null ||
               raw?.start_slot == null
@@ -441,7 +490,13 @@ export default function ParticipantScheduleOverlay({
             }
             return {
               id: raw.id,
-              schedule: commentScheduleId,
+              published_schedule: commentPublishedScheduleId,
+              schedule: raw.schedule ?? raw.schedule_id ?? null,
+              published_placement:
+                raw.published_placement_id ??
+                raw.published_placement ??
+                raw.publishedPlacementId ??
+                null,
               schedule_placement:
                 raw.schedule_placement ??
                 raw.schedule_placement_id ??
@@ -470,27 +525,28 @@ export default function ParticipantScheduleOverlay({
     return () => {
       active = false;
     };
-  }, [canComment, gridId, scheduleId]);
+  }, [canComment, publishedScheduleId, scheduleViewMode]);
 
   const commentCountByPlacement = useMemo(() => {
     const map: Record<string, number> = {};
     for (const comment of placementComments) {
       const anchorKey = buildPlacementKey(
-        comment.schedule,
+        comment.published_schedule,
         comment.source_cell_id,
         comment.bundle,
         Number(comment.day_index),
         Number(comment.start_slot),
+        comment.published_placement,
       );
       map[anchorKey] = (map[anchorKey] || 0) + 1;
       if (comment.schedule_placement != null) {
         const placementKey = buildPlacementKey(
-          comment.schedule,
+          comment.published_schedule,
           comment.source_cell_id,
           comment.bundle,
           Number(comment.day_index),
           Number(comment.start_slot),
-          comment.schedule_placement,
+          comment.published_placement,
         );
         if (placementKey !== anchorKey) map[placementKey] = (map[placementKey] || 0) + 1;
       }
@@ -499,21 +555,22 @@ export default function ParticipantScheduleOverlay({
   }, [placementComments]);
 
   const commentPlacementOptions = useMemo(() => {
-    if (!canComment || scheduleId == null) return [];
+    if (!canComment || scheduleViewMode !== "published" || scheduleId == null || publishedScheduleId == null) return [];
     const deduped = new Map<string, { key: string; anchor: CommentAnchor; label: string; count: number }>();
     for (const placement of filteredSchedule) {
       const sourceCellId = String(placement.source_cell_id ?? placement.source_cell ?? placement.id);
       const placementId = getPlacementId(placement);
+      const publishedPlacementId = getPublishedPlacementId(placement);
       const bundleId = placement.bundle_id ?? placement.bundle ?? null;
       const cellName = cellNameById[sourceCellId] || `Cell ${sourceCellId}`;
       const timeLabel = formatSlotRange(dayStartMin, slotMin, placement.start_slot, placement.end_slot);
       const key = buildPlacementKey(
-        scheduleId,
+        publishedScheduleId,
         sourceCellId,
         bundleId,
         placement.day_index,
         placement.start_slot,
-        placementId,
+        publishedPlacementId,
       );
       if (deduped.has(key)) continue;
       deduped.set(key, {
@@ -522,7 +579,9 @@ export default function ParticipantScheduleOverlay({
         count: commentCountByPlacement[key] || 0,
         anchor: {
           placementId,
+          publishedPlacementId,
           scheduleId,
+          publishedScheduleId,
           sourceCellId,
           bundleId,
           dayIndex: placement.day_index,
@@ -539,16 +598,28 @@ export default function ParticipantScheduleOverlay({
         a.anchor.startSlot - b.anchor.startSlot ||
         a.anchor.cellName.localeCompare(b.anchor.cellName),
     );
-  }, [canComment, cellNameById, commentCountByPlacement, dayStartMin, filteredSchedule, getPlacementId, scheduleId, slotMin]);
+  }, [
+    canComment,
+    cellNameById,
+    commentCountByPlacement,
+    dayStartMin,
+    filteredSchedule,
+    getPlacementId,
+    getPublishedPlacementId,
+    publishedScheduleId,
+    scheduleId,
+    scheduleViewMode,
+    slotMin,
+  ]);
 
   const selectedCommentPlacementKey = commentAnchor
     ? buildPlacementKey(
-        commentAnchor.scheduleId,
+        commentAnchor.publishedScheduleId,
         commentAnchor.sourceCellId,
         commentAnchor.bundleId,
         commentAnchor.dayIndex,
         commentAnchor.startSlot,
-        commentAnchor.placementId,
+        commentAnchor.publishedPlacementId,
       )
     : "";
 
@@ -591,12 +662,12 @@ export default function ParticipantScheduleOverlay({
       setCommentAnchor((prev) => {
         if (!prev) return commentPlacementOptions[0].anchor;
         const prevKey = buildPlacementKey(
-          prev.scheduleId,
+          prev.publishedScheduleId,
           prev.sourceCellId,
           prev.bundleId,
           prev.dayIndex,
           prev.startSlot,
-          prev.placementId,
+          prev.publishedPlacementId,
         );
         return prevKey === commentPlacementOptions[0].key ? prev : commentPlacementOptions[0].anchor;
       });
@@ -607,11 +678,11 @@ export default function ParticipantScheduleOverlay({
     if (!commentAnchor) return [];
     return placementComments.filter((comment) => {
       const placementMatches =
-        commentAnchor.placementId != null &&
-        comment.schedule_placement != null &&
-        String(comment.schedule_placement) === String(commentAnchor.placementId);
+        commentAnchor.publishedPlacementId != null &&
+        comment.published_placement != null &&
+        String(comment.published_placement) === String(commentAnchor.publishedPlacementId);
       const anchorMatches =
-        Number(comment.schedule) === Number(commentAnchor.scheduleId) &&
+        String(comment.published_schedule) === String(commentAnchor.publishedScheduleId) &&
         String(comment.source_cell_id) === String(commentAnchor.sourceCellId) &&
         String(comment.bundle) === String(commentAnchor.bundleId) &&
         Number(comment.day_index) === Number(commentAnchor.dayIndex) &&
@@ -635,21 +706,28 @@ export default function ParticipantScheduleOverlay({
 
   const submitPlacementComment = async () => {
     if (!commentAnchor || !commentDraft.trim()) return;
+    if (scheduleViewMode !== "published" || !publishedScheduleId) {
+      setCommentError(t("solve_overlay.comments_unavailable"));
+      return;
+    }
     setCommentBusy(true);
     setCommentError(null);
     try {
-      const payload =
-        commentAnchor.placementId != null && String(commentAnchor.placementId).trim()
-          ? { placement_id: commentAnchor.placementId, text: commentDraft.trim() }
-          : {
-              schedule: commentAnchor.scheduleId,
-              source_cell_id: commentAnchor.sourceCellId,
-              bundle: commentAnchor.bundleId,
-              day_index: commentAnchor.dayIndex,
-              start_slot: commentAnchor.startSlot,
-              end_slot: commentAnchor.endSlot,
-              text: commentDraft.trim(),
-            };
+      const payload: Record<string, unknown> = {
+        published_schedule_id: commentAnchor.publishedScheduleId,
+        source_cell_id: commentAnchor.sourceCellId,
+        bundle: commentAnchor.bundleId,
+        day_index: commentAnchor.dayIndex,
+        start_slot: commentAnchor.startSlot,
+        end_slot: commentAnchor.endSlot,
+        text: commentDraft.trim(),
+      };
+      if (commentAnchor.publishedPlacementId != null && String(commentAnchor.publishedPlacementId).trim()) {
+        payload.published_placement_id = commentAnchor.publishedPlacementId;
+      }
+      if (commentAnchor.placementId != null && String(commentAnchor.placementId).trim()) {
+        payload.placement_id = commentAnchor.placementId;
+      }
       const res = await authFetch("/api/placement-comments/", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -664,7 +742,18 @@ export default function ParticipantScheduleOverlay({
         typeof raw?.bundle === "object" && raw.bundle?.id != null ? raw.bundle.id : raw?.bundle;
       const next: PlacementComment = {
         id: raw.id,
-        schedule: raw.schedule ?? commentAnchor.scheduleId,
+        published_schedule:
+          raw.published_schedule_id ??
+          raw.published_schedule ??
+          raw.publishedScheduleId ??
+          commentAnchor.publishedScheduleId,
+        schedule: raw.schedule ?? raw.schedule_id ?? commentAnchor.scheduleId,
+        published_placement:
+          raw.published_placement_id ??
+          raw.published_placement ??
+          raw.publishedPlacementId ??
+          commentAnchor.publishedPlacementId ??
+          null,
         schedule_placement:
           raw.schedule_placement ??
           raw.schedule_placement_id ??
@@ -786,9 +875,17 @@ export default function ParticipantScheduleOverlay({
             const textDark = useColor ? CELL_TEXT_DARK[colorIdx] : "#1f2937";
             const textLight = useColor ? CELL_TEXT_LIGHT[colorIdx] : "#111827";
             const border = useColor ? shadeHex(bg, -0.35) : "#e5e7eb";
+            const publishedPlacementId = getPublishedPlacementId(s);
             const commentKey =
-              scheduleId != null
-                ? buildPlacementKey(scheduleId, sourceCellId, bundleId, s.day_index, s.start_slot, placementId)
+              publishedScheduleId != null
+                ? buildPlacementKey(
+                    publishedScheduleId,
+                    sourceCellId,
+                    bundleId,
+                    s.day_index,
+                    s.start_slot,
+                    publishedPlacementId,
+                  )
                 : null;
             const isCommentFocused =
               commentsPanelOpen && Boolean(commentKey) && commentKey === selectedCommentPlacementKey;
@@ -797,10 +894,12 @@ export default function ParticipantScheduleOverlay({
             const isCommentMuted =
               shouldDimScheduleForCommentFocus && !isCommentFocused && !isCommentHovered;
             const commentAnchorForCard =
-              canComment && scheduleId != null
+              canComment && scheduleViewMode === "published" && scheduleId != null && publishedScheduleId != null
                 ? {
                     placementId,
+                    publishedPlacementId,
                     scheduleId,
+                    publishedScheduleId,
                     sourceCellId,
                     bundleId,
                     dayIndex: s.day_index,

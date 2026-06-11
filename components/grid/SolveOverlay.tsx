@@ -96,6 +96,8 @@ type ScheduleRow = {
   cell_id: string;
   placement_id?: string | number;
   schedule_placement_id?: string | number;
+  published_placement_id?: string | number | null;
+  snapshot_placement_id?: string | number | null;
   source_cell_id?: string | number;
   bundle_id?: string | number;
   bundle?: string | number;
@@ -203,7 +205,9 @@ type CellPinMeta = {
 
 type PlacementComment = {
   id: number | string;
-  schedule: number | string;
+  published_schedule: number | string;
+  schedule?: number | string | null;
+  published_placement?: number | string | null;
   schedule_placement?: number | string | null;
   source_cell_id: number | string;
   bundle: number | string | null;
@@ -218,7 +222,9 @@ type PlacementComment = {
 
 type CommentAnchor = {
   placementId?: number | string | null;
+  publishedPlacementId?: number | string | null;
   scheduleId: number;
+  publishedScheduleId: number | string;
   sourceCellId: string;
   bundleId: number | string | null;
   dayIndex: number;
@@ -250,15 +256,17 @@ type PrecheckDialogState = {
 type PinErrorCardState = { message: string };
 
 function buildPlacementKey(
-  scheduleId: number | string,
+  publishedScheduleId: number | string,
   sourceCellId: number | string,
   bundleId: number | string | null,
   dayIndex: number,
   startSlot: number,
-  placementId?: number | string | null,
+  publishedPlacementId?: number | string | null,
 ) {
-  if (placementId != null && String(placementId).trim()) return `placement|${placementId}`;
-  return `${scheduleId}|${sourceCellId}|${bundleId == null ? "__no_bundle__" : bundleId}|${dayIndex}|${startSlot}`;
+  if (publishedPlacementId != null && String(publishedPlacementId).trim()) {
+    return `published-placement|${publishedScheduleId}|${publishedPlacementId}`;
+  }
+  return `published|${publishedScheduleId}|${sourceCellId}|${bundleId == null ? "__no_bundle__" : bundleId}|${dayIndex}|${startSlot}`;
 }
 
 const DAY_LABEL_TO_INDEX: Record<string, number> = {
@@ -750,6 +758,7 @@ type BlockageDragState = {
   mode: "move" | "resize-start" | "resize-end";
   durationSlots: number;
   grabOffsetY: number;
+  originalBlockage: ScheduleBlockage;
 };
 
 type BreakDialogState = {
@@ -806,6 +815,10 @@ export default function SolveOverlay({
   const [isSolving, setIsSolving] = useState(false);
   const [solveStartedAt, setSolveStartedAt] = useState<number | null>(null);
   const [currentSchedule, setCurrentSchedule] = useState<ScheduleResource | null>(null);
+  const activePublishedScheduleId =
+    scheduleViewMode === "published"
+      ? currentSchedule?.published_schedule_id ?? currentSchedule?.id ?? null
+      : null;
   const [error, setError] = useState<string | null>(null);
   const [precheck, setPrecheck] = useState<PrecheckResponse | null>(null);
   const [precheckBusy, setPrecheckBusy] = useState(false);
@@ -930,6 +943,7 @@ export default function SolveOverlay({
   const [placementPreviewDurationSlots, setPlacementPreviewDurationSlots] = useState<number | null>(null);
   const [backendPreviewActive, setBackendPreviewActive] = useState(false);
   const [placementPreviewBusy, setPlacementPreviewBusy] = useState(false);
+  const [blockageMutationBusy, setBlockageMutationBusy] = useState(false);
   const [pendingDropWhilePreviewLoading, setPendingDropWhilePreviewLoading] =
     useState<PendingDropWhilePreviewLoading | null>(null);
   const [placementPreviewMaskRect, setPlacementPreviewMaskRect] = useState<{
@@ -2430,9 +2444,9 @@ export default function SolveOverlay({
       setCommentsLoading(false);
       return;
     }
-    const scheduleId = currentSchedule?.id;
-    if (!scheduleId) {
+    if (!activePublishedScheduleId) {
       setPlacementComments([]);
+      setCommentsLoading(false);
       return;
     }
     let active = true;
@@ -2440,7 +2454,7 @@ export default function SolveOverlay({
       setCommentsLoading(true);
       try {
         const r = await authFetch(
-          `/api/placement-comments/?schedule=${encodeURIComponent(String(scheduleId))}&grid=${encodeURIComponent(String(gridId))}`,
+          `/api/placement-comments/?published_schedule_id=${encodeURIComponent(String(activePublishedScheduleId))}`,
           { cache: "no-store" },
         );
         if (!r.ok) throw new Error(`Failed to load comments (${r.status})`);
@@ -2455,10 +2469,12 @@ export default function SolveOverlay({
               raw.text ??
               raw.comment ??
               "";
-            const commentScheduleId = readEntityId(raw.schedule ?? raw.schedule_id);
+            const commentPublishedScheduleId = readEntityId(
+              raw.published_schedule_id ?? raw.published_schedule ?? raw.publishedScheduleId,
+            );
             if (
               raw?.id == null ||
-              commentScheduleId == null ||
+              commentPublishedScheduleId == null ||
               raw?.source_cell_id == null ||
               raw?.day_index == null ||
               raw?.start_slot == null
@@ -2467,7 +2483,13 @@ export default function SolveOverlay({
             }
             return {
               id: raw.id,
-              schedule: commentScheduleId,
+              published_schedule: commentPublishedScheduleId,
+              schedule: raw.schedule ?? raw.schedule_id ?? null,
+              published_placement:
+                raw.published_placement_id ??
+                raw.published_placement ??
+                raw.publishedPlacementId ??
+                null,
               schedule_placement:
                 raw.schedule_placement ??
                 raw.schedule_placement_id ??
@@ -2496,7 +2518,7 @@ export default function SolveOverlay({
     return () => {
       active = false;
     };
-  }, [gridId, historyMode, currentSchedule?.id]);
+  }, [activePublishedScheduleId, historyMode]);
 
   useEffect(() => {
     const scheduleId = Number(currentSchedule?.id ?? 0);
@@ -3352,6 +3374,14 @@ export default function SolveOverlay({
         cell_id: placementIdentity,
         placement_id: placementIdentity,
         schedule_placement_id: placementIdentity,
+        published_placement_id:
+          readEntityId((placement as { published_placement_id?: unknown }).published_placement_id) ??
+          readEntityId((placement as { publishedPlacementId?: unknown }).publishedPlacementId) ??
+          null,
+        snapshot_placement_id:
+          readEntityId((placement as { snapshot_placement_id?: unknown }).snapshot_placement_id) ??
+          readEntityId((placement as { snapshotPlacementId?: unknown }).snapshotPlacementId) ??
+          null,
         source_cell_id: sourceCellId,
         bundle_id: bundleId,
         bundle: bundleId,
@@ -4188,7 +4218,7 @@ export default function SolveOverlay({
     !hasPendingCandidateResolution;
   const canCommentCards =
     scheduleViewMode === "published" &&
-    Boolean(currentSchedule?.id) &&
+    Boolean(currentSchedule?.published_schedule_id ?? currentSchedule?.id) &&
     !historyMode;
   const hasUnassignedCells = unassignedCells.length > 0;
   const hasPlacedCells = Array.isArray(currentSchedule?.placements) && currentSchedule.placements.length > 0;
@@ -4788,9 +4818,10 @@ export default function SolveOverlay({
     placementPreviewBusy &&
     !hasUsablePlacementPreviewMap &&
     (pendingDropWhilePreviewLoading != null || dragState?.dragType !== "participant-tool");
+  const scheduleValidationMaskActive = placementPreviewLoadingWithoutCache || blockageMutationBusy;
 
   useEffect(() => {
-    if (!placementPreviewLoadingWithoutCache) {
+    if (!scheduleValidationMaskActive) {
       setPlacementPreviewMaskRect(null);
       return;
     }
@@ -4836,7 +4867,7 @@ export default function SolveOverlay({
       window.removeEventListener("resize", syncMaskRect);
       window.removeEventListener("scroll", syncMaskRect, true);
     };
-  }, [placementPreviewLoadingWithoutCache]);
+  }, [scheduleValidationMaskActive]);
 
   useEffect(() => {
     if (dragState?.dragType === "participant-tool") return;
@@ -4869,25 +4900,48 @@ export default function SolveOverlay({
     return /^\d+$/.test(String(fallback)) ? Number(fallback) : fallback;
   };
 
+  const getPublishedPlacementIdForCard = useCallback(
+    (entry: ScheduleRow): string | number | null => {
+      const explicit =
+        readEntityId(entry.published_placement_id) ??
+        readEntityId((entry as { publishedPlacementId?: unknown }).publishedPlacementId) ??
+        readEntityId(entry.snapshot_placement_id) ??
+        readEntityId((entry as { snapshotPlacementId?: unknown }).snapshotPlacementId);
+      if (explicit != null) return explicit;
+      if (scheduleViewMode !== "published") return null;
+
+      const rowId = readEntityId(entry.cell_id);
+      const realPlacementId =
+        readEntityId(entry.placement_id) ??
+        readEntityId(entry.schedule_placement_id) ??
+        readEntityId((entry as { schedule_placement?: unknown }).schedule_placement);
+      if (rowId != null && realPlacementId != null && String(rowId) !== String(realPlacementId)) return rowId;
+      if (rowId != null && realPlacementId == null) return rowId;
+      return null;
+    },
+    [scheduleViewMode],
+  );
+
   const commentCountByPlacement = useMemo(() => {
     const map: Record<string, number> = {};
     for (const c of placementComments) {
       const anchorKey = buildPlacementKey(
-        c.schedule,
+        c.published_schedule,
         c.source_cell_id,
         c.bundle,
         Number(c.day_index),
         Number(c.start_slot),
+        c.published_placement,
       );
       map[anchorKey] = (map[anchorKey] || 0) + 1;
       if (c.schedule_placement != null) {
         const placementKey = buildPlacementKey(
-          c.schedule,
+          c.published_schedule,
           c.source_cell_id,
           c.bundle,
           Number(c.day_index),
           Number(c.start_slot),
-          c.schedule_placement,
+          c.published_placement,
         );
         if (placementKey !== anchorKey) {
           map[placementKey] = (map[placementKey] || 0) + 1;
@@ -4898,21 +4952,22 @@ export default function SolveOverlay({
   }, [placementComments]);
 
   const commentPlacementOptions = useMemo<CommentPlacementOption[]>(() => {
-    if (!canCommentCards || currentSchedule?.id == null) return [];
+    if (!canCommentCards || currentSchedule?.id == null || activePublishedScheduleId == null) return [];
     const deduped = new Map<string, CommentPlacementOption>();
     for (const s of filteredSchedule) {
       const sourceCellId = String(s.source_cell_id ?? s.cell_id);
       const placementId = String(s.cell_id ?? "");
+      const publishedPlacementId = getPublishedPlacementIdForCard(s);
       const resolvedBundleId = resolveBundleIdForCard(s);
       const cellName = cellNameById[sourceCellId] || `Cell ${sourceCellId}`;
       const timeLabel = formatSlotRange(dayStartMin, slotMin, s.start_slot, s.end_slot);
       const key = buildPlacementKey(
-        currentSchedule.id,
+        activePublishedScheduleId,
         sourceCellId,
         resolvedBundleId,
         s.day_index,
         s.start_slot,
-        placementId || null,
+        publishedPlacementId,
       );
       if (deduped.has(key)) continue;
       deduped.set(key, {
@@ -4921,7 +4976,9 @@ export default function SolveOverlay({
         count: commentCountByPlacement[key] || 0,
         anchor: {
           placementId: placementId || null,
+          publishedPlacementId,
           scheduleId: currentSchedule.id,
+          publishedScheduleId: activePublishedScheduleId,
           sourceCellId,
           bundleId: resolvedBundleId,
           dayIndex: s.day_index,
@@ -4938,12 +4995,14 @@ export default function SolveOverlay({
       a.anchor.cellName.localeCompare(b.anchor.cellName),
     );
   }, [
+    activePublishedScheduleId,
     canCommentCards,
     cellNameById,
     commentCountByPlacement,
     currentSchedule?.id,
     dayStartMin,
     filteredSchedule,
+    getPublishedPlacementIdForCard,
     resolveBundleIdForCard,
     slotMin,
   ]);
@@ -4964,7 +5023,8 @@ export default function SolveOverlay({
     }
     const hasCurrent = commentPlacementOptions.some(
       (option) =>
-        Number(option.anchor.scheduleId) === Number(commentAnchor.scheduleId) &&
+        String(option.anchor.publishedScheduleId) === String(commentAnchor.publishedScheduleId) &&
+        String(option.anchor.publishedPlacementId ?? "") === String(commentAnchor.publishedPlacementId ?? "") &&
         String(option.anchor.placementId ?? "") === String(commentAnchor.placementId ?? "") &&
         String(option.anchor.sourceCellId) === String(commentAnchor.sourceCellId) &&
         String(option.anchor.bundleId) === String(commentAnchor.bundleId) &&
@@ -5009,11 +5069,11 @@ export default function SolveOverlay({
     if (!commentAnchor) return [];
     return placementComments.filter((c) => {
       const placementMatches =
-        commentAnchor.placementId != null &&
-        c.schedule_placement != null &&
-        String(c.schedule_placement) === String(commentAnchor.placementId);
+        commentAnchor.publishedPlacementId != null &&
+        c.published_placement != null &&
+        String(c.published_placement) === String(commentAnchor.publishedPlacementId);
       const anchorMatches =
-        Number(c.schedule) === Number(commentAnchor.scheduleId) &&
+        String(c.published_schedule) === String(commentAnchor.publishedScheduleId) &&
         String(c.source_cell_id) === String(commentAnchor.sourceCellId) &&
         String(c.bundle) === String(commentAnchor.bundleId) &&
         Number(c.day_index) === Number(commentAnchor.dayIndex) &&
@@ -5024,12 +5084,12 @@ export default function SolveOverlay({
 
   const selectedCommentPlacementKey = commentAnchor
     ? buildPlacementKey(
-        commentAnchor.scheduleId,
+        commentAnchor.publishedScheduleId,
         commentAnchor.sourceCellId,
         commentAnchor.bundleId,
         commentAnchor.dayIndex,
         commentAnchor.startSlot,
-        commentAnchor.placementId,
+        commentAnchor.publishedPlacementId,
       )
     : "";
 
@@ -5065,24 +5125,28 @@ export default function SolveOverlay({
 
   const submitPlacementComment = async () => {
     if (!commentAnchor || !commentDraft.trim()) return;
+    if (!activePublishedScheduleId || scheduleViewMode !== "published") {
+      setCommentError(t("solve_overlay.comments_unavailable"));
+      return;
+    }
     setCommentBusy(true);
     setCommentError(null);
     try {
-      const payload =
-        commentAnchor.placementId != null && String(commentAnchor.placementId).trim()
-          ? {
-              placement_id: commentAnchor.placementId,
-              text: commentDraft.trim(),
-            }
-          : {
-              schedule: commentAnchor.scheduleId,
-              source_cell_id: commentAnchor.sourceCellId,
-              bundle: commentAnchor.bundleId,
-              day_index: commentAnchor.dayIndex,
-              start_slot: commentAnchor.startSlot,
-              end_slot: commentAnchor.endSlot,
-              text: commentDraft.trim(),
-            };
+      const payload: Record<string, unknown> = {
+        published_schedule_id: commentAnchor.publishedScheduleId,
+        source_cell_id: commentAnchor.sourceCellId,
+        bundle: commentAnchor.bundleId,
+        day_index: commentAnchor.dayIndex,
+        start_slot: commentAnchor.startSlot,
+        end_slot: commentAnchor.endSlot,
+        text: commentDraft.trim(),
+      };
+      if (commentAnchor.publishedPlacementId != null && String(commentAnchor.publishedPlacementId).trim()) {
+        payload.published_placement_id = commentAnchor.publishedPlacementId;
+      }
+      if (commentAnchor.placementId != null && String(commentAnchor.placementId).trim()) {
+        payload.placement_id = commentAnchor.placementId;
+      }
       const res = await authFetch("/api/placement-comments/", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -5097,7 +5161,18 @@ export default function SolveOverlay({
         typeof raw.bundle === "object" && raw.bundle?.id != null ? raw.bundle.id : raw.bundle;
       const next: PlacementComment = {
         id: raw.id,
-        schedule: raw.schedule ?? commentAnchor.scheduleId,
+        published_schedule:
+          raw.published_schedule_id ??
+          raw.published_schedule ??
+          raw.publishedScheduleId ??
+          commentAnchor.publishedScheduleId,
+        schedule: raw.schedule ?? raw.schedule_id ?? commentAnchor.scheduleId,
+        published_placement:
+          raw.published_placement_id ??
+          raw.published_placement ??
+          raw.publishedPlacementId ??
+          commentAnchor.publishedPlacementId ??
+          null,
         schedule_placement:
           raw.schedule_placement ??
           raw.schedule_placement_id ??
@@ -5319,15 +5394,11 @@ export default function SolveOverlay({
       const previous = scheduleBlockages;
       setScheduleBlockages((prev) => prev.filter((entry) => entry.id !== blockage.id));
       try {
-        const payload: Record<string, unknown> = { delete_scope: deleteScope };
         const apiUnitId = toApiEntityId(unitId);
-        if (apiUnitId != null) payload.unit_id = apiUnitId;
         const params = new URLSearchParams({ delete_scope: deleteScope });
         if (apiUnitId != null) params.set("unit_id", String(apiUnitId));
         const res = await authFetch(`/api/schedule-blockages/${encodeURIComponent(blockage.id)}/?${params.toString()}`, {
           method: "DELETE",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(payload),
         });
         if (!res.ok && res.status !== 204) {
           const txt = await res.text().catch(() => "");
@@ -5965,24 +6036,41 @@ export default function SolveOverlay({
       setIsDeleteDropActive(false);
       if (!current) return;
       if (droppedOnDelete) {
-        void deleteBlockage(current.id).catch((error: unknown) => {
+        const original = blockageDragState.originalBlockage;
+        setScheduleBlockages((prev) =>
+          prev.map((entry) => (entry.id === original.id ? original : entry)),
+        );
+        void deleteBlockage(original).catch((error: unknown) => {
           setPinError(error instanceof Error ? error.message : "Could not delete blockage.");
         });
         return;
       }
-      void upsertBlockage(
-        current.id,
-        current.day_index,
-        current.start_slot,
-        current.end_slot,
-        current.unit_ids ?? [],
-      ).catch((error: unknown) => {
-        setPinError(error instanceof Error ? error.message : "Could not update blockage.");
-      });
+      const original = blockageDragState.originalBlockage;
+      const next = current;
+      setScheduleBlockages((prev) =>
+        prev.map((entry) => (entry.id === original.id ? original : entry)),
+      );
+      setBlockageMutationBusy(true);
+      void upsertBlockage(next.id, next.day_index, next.start_slot, next.end_slot, next.unit_ids ?? [])
+        .then(() => {
+          setScheduleBlockages((prev) =>
+            prev.map((entry) => (entry.id === next.id ? next : entry)),
+          );
+        })
+        .catch((error: unknown) => {
+          setPinError(error instanceof Error ? error.message : "Could not update blockage.");
+        })
+        .finally(() => {
+          setBlockageMutationBusy(false);
+        });
     };
 
     const onPointerCancel = (event: PointerEvent) => {
       if (event.pointerId !== blockageDragState.pointerId) return;
+      const original = blockageDragState.originalBlockage;
+      setScheduleBlockages((prev) =>
+        prev.map((entry) => (entry.id === original.id ? original : entry)),
+      );
       setBlockageDragState(null);
       setIsDeleteDropActive(false);
     };
@@ -6886,7 +6974,7 @@ export default function SolveOverlay({
           document.body,
         )}
       {isClientReady &&
-        placementPreviewLoadingWithoutCache &&
+        scheduleValidationMaskActive &&
         placementPreviewMaskRect &&
         placementPreviewMaskRect.width > 0 &&
         placementPreviewMaskRect.height > 0 &&
@@ -6930,7 +7018,7 @@ export default function SolveOverlay({
         <div
           ref={overlayRef}
           className={`absolute inset-x-0 z-[5] ${
-            (canManualEditCards && isBlockageToolActive) || placementPreviewLoadingWithoutCache
+            (canManualEditCards && isBlockageToolActive) || scheduleValidationMaskActive
               ? "pointer-events-auto"
               : "pointer-events-none"
           }`}
@@ -7065,6 +7153,7 @@ export default function SolveOverlay({
                     mode: "move",
                     durationSlots: Math.max(1, blockage.end_slot - blockage.start_slot),
                     grabOffsetY: event.clientY - cardRect.top,
+                    originalBlockage: { ...blockage, unit_ids: [...(blockage.unit_ids ?? [])] },
                   });
                 }}
                 onPointerUp={() => clearLongPressTimer()}
@@ -7112,6 +7201,7 @@ export default function SolveOverlay({
                           mode: "resize-start",
                           durationSlots: Math.max(1, blockage.end_slot - blockage.start_slot),
                           grabOffsetY: 0,
+                          originalBlockage: { ...blockage, unit_ids: [...(blockage.unit_ids ?? [])] },
                         });
                       }}
                     />
@@ -7126,6 +7216,7 @@ export default function SolveOverlay({
                           mode: "resize-end",
                           durationSlots: Math.max(1, blockage.end_slot - blockage.start_slot),
                           grabOffsetY: 0,
+                          originalBlockage: { ...blockage, unit_ids: [...(blockage.unit_ids ?? [])] },
                         });
                       }}
                     />
@@ -7191,11 +7282,14 @@ export default function SolveOverlay({
             const pinKnobBorder = useColor ? shadeHex(bg, -0.08) : "#b8bfc9";
             const pinKnobTranslatePx = isPinnedVisual ? 16 : 0;
             const resolvedBundleId = resolveBundleIdForCard(s);
+            const publishedPlacementId = getPublishedPlacementIdForCard(s);
             const commentAnchorForCard =
-              canCommentCards && currentSchedule?.id != null
+              canCommentCards && currentSchedule?.id != null && activePublishedScheduleId != null
                 ? {
                     placementId: placementId || null,
+                    publishedPlacementId,
                     scheduleId: currentSchedule.id,
+                    publishedScheduleId: activePublishedScheduleId,
                     sourceCellId,
                     bundleId: resolvedBundleId,
                     dayIndex: s.day_index,
@@ -7207,12 +7301,12 @@ export default function SolveOverlay({
                 : null;
             const cardCommentPlacementKey = commentAnchorForCard
               ? buildPlacementKey(
-                  commentAnchorForCard.scheduleId,
+                  commentAnchorForCard.publishedScheduleId,
                   commentAnchorForCard.sourceCellId,
                   commentAnchorForCard.bundleId,
                   commentAnchorForCard.dayIndex,
                   commentAnchorForCard.startSlot,
-                  commentAnchorForCard.placementId,
+                  commentAnchorForCard.publishedPlacementId,
                 )
               : null;
             const isCommentFocusedCard =
@@ -7341,12 +7435,12 @@ export default function SolveOverlay({
                   }
                   if (!commentsPanelOpen || !commentAnchorForCard) return;
                   const clickedKey = buildPlacementKey(
-                    commentAnchorForCard.scheduleId,
+                    commentAnchorForCard.publishedScheduleId,
                     commentAnchorForCard.sourceCellId,
                     commentAnchorForCard.bundleId,
                     commentAnchorForCard.dayIndex,
                     commentAnchorForCard.startSlot,
-                    commentAnchorForCard.placementId,
+                    commentAnchorForCard.publishedPlacementId,
                   );
                   if (clickedKey === selectedCommentPlacementKey) {
                     commentManuallyDeselectedRef.current = true;
