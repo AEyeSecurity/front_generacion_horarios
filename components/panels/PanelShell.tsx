@@ -17,7 +17,7 @@ export default function PanelShell({ title, error, controls, children, className
         <h2 className="text-lg font-semibold">{title}</h2>
         {controls}
       </div>
-      {error && <div className="text-sm text-red-600">{error}</div>}
+      {error && <div className="whitespace-pre-line text-sm text-red-600">{error}</div>}
       {children}
     </div>
   );

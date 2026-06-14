@@ -142,6 +142,28 @@ function buildPlacementKey(
   return `published|${publishedScheduleId}|${sourceCellId}|${bundleId == null ? "__no_bundle__" : bundleId}|${dayIndex}|${startSlot}`;
 }
 
+function schedulePlacementsSignature(placements: SchedulePlacement[]): string {
+  return placements
+    .map((placement) =>
+      [
+        placement.id,
+        placement.placement_id,
+        placement.schedule_placement_id,
+        placement.published_placement_id,
+        placement.snapshot_placement_id,
+        placement.source_cell_id ?? placement.source_cell,
+        placement.bundle_id ?? placement.bundle,
+        placement.day_index,
+        placement.start_slot,
+        placement.end_slot,
+        Array.isArray(placement.assigned_participants)
+          ? placement.assigned_participants.map(String).sort().join(",")
+          : "",
+      ].join(":"),
+    )
+    .join("|");
+}
+
 const extractAuthorName = (raw: any): string | undefined => {
   const direct = raw?.author_name ?? raw?.created_by_name ?? raw?.user_name;
   if (direct) return String(direct);
@@ -285,7 +307,9 @@ export default function ParticipantScheduleOverlay({
                 readEntityId(scheduleCandidate?.id)
               : null;
           if (active) {
-            setSchedulePlacements((prev) => (prev === placements ? prev : placements));
+            setSchedulePlacements((prev) =>
+              schedulePlacementsSignature(prev) === schedulePlacementsSignature(placements) ? prev : placements,
+            );
             const nextScheduleId = Number.isFinite(resolvedScheduleId) && resolvedScheduleId > 0 ? resolvedScheduleId : null;
             setScheduleId((prev) => (prev === nextScheduleId ? prev : nextScheduleId));
             setPublishedScheduleId((prev) =>
@@ -325,7 +349,9 @@ export default function ParticipantScheduleOverlay({
               readEntityId(scheduleCandidate?.id)
             : null;
         if (active) {
-          setSchedulePlacements((prev) => (prev === placements ? prev : placements));
+          setSchedulePlacements((prev) =>
+            schedulePlacementsSignature(prev) === schedulePlacementsSignature(placements) ? prev : placements,
+          );
           const nextScheduleId = Number.isFinite(resolvedScheduleId) && resolvedScheduleId > 0 ? resolvedScheduleId : null;
           setScheduleId((prev) => (prev === nextScheduleId ? prev : nextScheduleId));
           setPublishedScheduleId((prev) =>
@@ -654,7 +680,20 @@ export default function ParticipantScheduleOverlay({
       return;
     }
     if (!selectedCommentPlacementKey) {
-      setCommentAnchor((prev) => (prev ? prev : commentPlacementOptions[0].anchor));
+      setCommentAnchor((prev) => {
+        const next = commentPlacementOptions[0];
+        if (!next) return prev;
+        if (!prev) return next.anchor;
+        const prevKey = buildPlacementKey(
+          prev.publishedScheduleId,
+          prev.sourceCellId,
+          prev.bundleId,
+          prev.dayIndex,
+          prev.startSlot,
+          prev.publishedPlacementId,
+        );
+        return prevKey === next.key ? prev : next.anchor;
+      });
       return;
     }
     const hasCurrent = commentPlacementOptions.some((option) => option.key === selectedCommentPlacementKey);

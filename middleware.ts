@@ -19,6 +19,7 @@ export function middleware(req: NextRequest) {
   // Public pages
   if (
     pathname === "/" ||
+    pathname === "/home" ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/register") ||
     pathname.startsWith("/verify-email") ||

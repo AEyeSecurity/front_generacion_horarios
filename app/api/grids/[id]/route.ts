@@ -38,7 +38,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return NextResponse.json({ ok: true }, { status: 200 });
     }
     const body = await res.text().catch(() => "");
-    return new NextResponse(body, { status: res.status });
+    return new NextResponse(body, {
+      status: res.status,
+      headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
+    });
   }
 
   const refresh = await getRefreshToken();
@@ -58,7 +61,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ ok: true }, { status: 200 });
   }
   const body = await res.text().catch(() => "");
-  return new NextResponse(body, { status: res.status });
+  return new NextResponse(body, {
+    status: res.status,
+    headers: { "content-type": res.headers.get("content-type") ?? "application/json" },
+  });
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

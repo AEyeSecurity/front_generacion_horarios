@@ -296,10 +296,12 @@ export default function CreateCellDialog({
   gridId,
   open,
   onOpenChange,
+  onCreated,
 }: {
   gridId: number;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  onCreated?: () => void | Promise<void>;
 }) {
   const { t } = useI18n();
   const [step, setStep] = React.useState<number>(1);
@@ -948,6 +950,7 @@ export default function CreateCellDialog({
         throw new Error(buildApiErrorMessage(raw, res.status, t("create_cell.failed_create")));
       }
       onOpenChange(false);
+      await onCreated?.();
     } catch (e: any) {
       setErr(e?.message || t("create_cell.failed_create"));
     } finally {

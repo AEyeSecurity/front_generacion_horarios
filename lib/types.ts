@@ -1,4 +1,5 @@
 export type Role = 'viewer' | 'editor' | 'supervisor';
+export type TimeWindowMode = "SOFT" | "HARD";
 
 export type User = {
   id: number;
@@ -30,6 +31,7 @@ export type Grid = {
   cell_size_min: number;     // minutos
   day_heatmap?: Partial<Record<string, number>> | null;
   allow_overstaffing?: boolean | null;
+  time_window_mode?: TimeWindowMode | null;
   tier_enable?: boolean | null;
   tier_enabled?: boolean | null;
   tiers_enabled?: boolean | null;

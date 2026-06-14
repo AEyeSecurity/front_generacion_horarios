@@ -90,6 +90,20 @@ type ScheduleResource = {
     status?: string;
     reasons?: unknown[];
   }>;
+  blockages?: ScheduleBlockage[];
+  schedule_blockages?: ScheduleBlockage[];
+  time_ranges?: unknown[];
+  time_window_mode?: "SOFT" | "HARD" | string | null;
+  structure?: { time_window_mode?: "SOFT" | "HARD" | string | null; [key: string]: unknown } | null;
+};
+
+const getContextListIfPresent = <T,>(payload: unknown): T[] | null => {
+  if (payload == null) return null;
+  if (Array.isArray(payload)) return payload as T[];
+  if (payload && typeof payload === "object" && Array.isArray((payload as { results?: unknown[] }).results)) {
+    return (payload as { results: T[] }).results;
+  }
+  return null;
 };
 
 type ScheduleRow = {
@@ -738,6 +752,13 @@ const invalidatePlacementPreviewCacheForSchedule = (
 ) => {
   if (scheduleId == null) return;
   const prefix = `placement-preview:${String(gridId)}:${String(scheduleId)}:`;
+  for (const key of Array.from(placementPreviewCache.keys())) {
+    if (key.startsWith(prefix)) placementPreviewCache.delete(key);
+  }
+};
+
+export const invalidatePlacementPreviewCacheForGrid = (gridId: number | string) => {
+  const prefix = `placement-preview:${String(gridId)}:`;
   for (const key of Array.from(placementPreviewCache.keys())) {
     if (key.startsWith(prefix)) placementPreviewCache.delete(key);
   }
@@ -1527,7 +1548,11 @@ export default function SolveOverlay({
     };
   };
 
-  const normalizeScheduleBlockageFromAny = (raw: unknown, fallbackId: string): ScheduleBlockage | null => {
+  const normalizeScheduleBlockageFromAny = (
+    raw: unknown,
+    fallbackId: string,
+    fallbackScheduleId?: number,
+  ): ScheduleBlockage | null => {
     if (!raw || typeof raw !== "object") return null;
     const source = raw as Record<string, unknown>;
     const dayIndex = Number(source.day_index);
@@ -1535,7 +1560,7 @@ export default function SolveOverlay({
     const endSlot = Number(source.end_slot);
     if (!Number.isFinite(dayIndex) || !Number.isFinite(startSlot) || !Number.isFinite(endSlot)) return null;
     if (endSlot <= startSlot) return null;
-    const scheduleId = Number(readEntityId(source.schedule) ?? readEntityId(source.schedule_id) ?? 0);
+    const scheduleId = Number(readEntityId(source.schedule) ?? readEntityId(source.schedule_id) ?? fallbackScheduleId ?? 0);
     return {
       id: String(readEntityId(source.id) ?? fallbackId),
       schedule: Number.isFinite(scheduleId) ? scheduleId : 0,
@@ -1616,7 +1641,7 @@ export default function SolveOverlay({
     const context = await fetchGridScreenContext(gridId, scheduleViewMode);
     const cells = getContextList(context?.cells);
     const participants = getContextList(context?.participants);
-    const timeRanges = getContextList(context?.time_ranges);
+    let timeRanges = getContextList(context?.time_ranges);
     const bundles = getContextList(context?.bundles);
     const staffs = getContextList(context?.staffs);
     const explicitStaffMembers = getContextList(context?.staff_members);
@@ -1633,12 +1658,18 @@ export default function SolveOverlay({
         .filter(Boolean);
     });
     const staffMembers = explicitStaffMembers.length > 0 ? explicitStaffMembers : derivedStaffMembers;
-    const availabilityRules = getContextList(context?.availability_rules);
+    const availabilityRules = getContextList(context?.effective_availability_rules ?? context?.availability_rules);
     const scheduleCandidate =
-      (context?.schedule ??
-        context?.published_schedule ??
-        context?.latest ??
-        null) as Record<string, unknown> | null;
+      (scheduleViewMode === "published"
+        ? context?.published_schedule ?? context?.publishedSchedule ?? context?.schedule ?? context?.latest ?? null
+        : context?.schedule ?? context?.latest ?? null) as Record<string, unknown> | null;
+    if (scheduleViewMode === "published") {
+      const snapshotTimeRanges =
+        getContextListIfPresent(scheduleCandidate?.time_ranges) ??
+        getContextListIfPresent((context?.published_schedule as { time_ranges?: unknown } | undefined)?.time_ranges) ??
+        getContextListIfPresent((context?.publishedSchedule as { time_ranges?: unknown } | undefined)?.time_ranges);
+      if (snapshotTimeRanges) timeRanges = snapshotTimeRanges;
+    }
     const rawSchedulePlacements = Array.isArray(scheduleCandidate?.placements)
       ? scheduleCandidate.placements
       : Array.isArray(scheduleCandidate?.schedule)
@@ -1782,6 +1813,16 @@ export default function SolveOverlay({
           schedule_placement_id: realPlacementId,
         };
       });
+      const blockagesRaw = Array.isArray(candidateRecord.blockages)
+        ? candidateRecord.blockages
+        : Array.isArray(candidateRecord.schedule_blockages)
+        ? candidateRecord.schedule_blockages
+        : Array.isArray(candidateRecord.snapshot_blockages)
+        ? candidateRecord.snapshot_blockages
+        : [];
+      const normalizedBlockages = blockagesRaw
+        .map((blockage, index) => normalizeScheduleBlockageFromAny(blockage, `snapshot-blockage-${index}`, scheduleId))
+        .filter((blockage): blockage is ScheduleBlockage => Boolean(blockage));
       return {
         ...candidateRecord,
         schedule_id: scheduleId || candidateRecord.schedule_id,
@@ -1791,6 +1832,8 @@ export default function SolveOverlay({
             : readEntityId(candidateRecord.published_schedule_id),
         id: scheduleId || Number(gridId),
         placements: normalizedPlacements,
+        blockages: normalizedBlockages,
+        schedule_blockages: normalizedBlockages,
       } as ScheduleResource;
     },
     [gridId],
@@ -2524,8 +2567,24 @@ export default function SolveOverlay({
     const scheduleId = Number(currentSchedule?.id ?? 0);
     if (!scheduleId) {
       setScheduleBlockages([]);
+      setBlockagesBusy(false);
       return;
     }
+
+    if (scheduleViewMode === "published" || historyMode) {
+      const snapshotBlockages = Array.isArray(currentSchedule?.blockages)
+        ? currentSchedule.blockages
+        : Array.isArray(currentSchedule?.schedule_blockages)
+        ? currentSchedule.schedule_blockages
+        : [];
+      const normalized = snapshotBlockages
+        .map((raw, index) => normalizeScheduleBlockageFromAny(raw, `published-blockage-${index}`, scheduleId))
+        .filter((entry): entry is ScheduleBlockage => Boolean(entry));
+      setScheduleBlockages(normalized);
+      setBlockagesBusy(false);
+      return;
+    }
+
     let active = true;
     (async () => {
       setBlockagesBusy(true);
@@ -2570,7 +2629,7 @@ export default function SolveOverlay({
     return () => {
       active = false;
     };
-  }, [blockagesRefreshTick, currentSchedule?.id, externalRefreshTick]);
+  }, [blockagesRefreshTick, currentSchedule, externalRefreshTick, historyMode, scheduleViewMode]);
 
   useEffect(() => {
     let active = true;
@@ -2746,7 +2805,16 @@ export default function SolveOverlay({
         smlist = explicitStaffMembers.length > 0 ? explicitStaffMembers : derivedStaffMembers;
 
         const scheduleCandidate =
-          context?.schedule ?? context?.published_schedule ?? context?.latest ?? null;
+          scheduleViewMode === "published"
+            ? context?.published_schedule ?? context?.publishedSchedule ?? context?.schedule ?? context?.latest ?? null
+            : context?.schedule ?? context?.latest ?? null;
+        if (scheduleViewMode === "published") {
+          const snapshotTimeRanges =
+            getContextListIfPresent((scheduleCandidate as { time_ranges?: unknown } | null)?.time_ranges) ??
+            getContextListIfPresent((context?.published_schedule as { time_ranges?: unknown } | undefined)?.time_ranges) ??
+            getContextListIfPresent((context?.publishedSchedule as { time_ranges?: unknown } | undefined)?.time_ranges);
+          if (snapshotTimeRanges) trlist = snapshotTimeRanges;
+        }
         if (!historyMode && active && scheduleCandidate && typeof scheduleCandidate === "object") {
           const normalizedSchedule = normalizeScheduleResource(scheduleCandidate);
           if (normalizedSchedule) setCurrentSchedule(normalizedSchedule);
@@ -4220,6 +4288,9 @@ export default function SolveOverlay({
     scheduleViewMode === "published" &&
     Boolean(currentSchedule?.published_schedule_id ?? currentSchedule?.id) &&
     !historyMode;
+  const canWritePublishedComments =
+    canCommentCards &&
+    (role === "editor" || role === "supervisor");
   const hasUnassignedCells = unassignedCells.length > 0;
   const hasPlacedCells = Array.isArray(currentSchedule?.placements) && currentSchedule.placements.length > 0;
   const hasOverstaffableCells = useMemo(
@@ -5125,7 +5196,7 @@ export default function SolveOverlay({
 
   const submitPlacementComment = async () => {
     if (!commentAnchor || !commentDraft.trim()) return;
-    if (!activePublishedScheduleId || scheduleViewMode !== "published") {
+    if (!canWritePublishedComments || !activePublishedScheduleId || scheduleViewMode !== "published") {
       setCommentError(t("solve_overlay.comments_unavailable"));
       return;
     }
@@ -7284,7 +7355,7 @@ export default function SolveOverlay({
             const resolvedBundleId = resolveBundleIdForCard(s);
             const publishedPlacementId = getPublishedPlacementIdForCard(s);
             const commentAnchorForCard =
-              canCommentCards && currentSchedule?.id != null && activePublishedScheduleId != null
+              canWritePublishedComments && currentSchedule?.id != null && activePublishedScheduleId != null
                 ? {
                     placementId: placementId || null,
                     publishedPlacementId,
@@ -8186,7 +8257,7 @@ export default function SolveOverlay({
               )}
             </div>
 
-            {canCommentCards && role === "supervisor" && (
+            {canWritePublishedComments && (
               <div className="border-t border-gray-200 px-4 py-3">
                 <textarea
                   className="min-h-[100px] w-full rounded border bg-white px-3 py-2 text-sm"
@@ -8914,13 +8985,11 @@ export default function SolveOverlay({
       )}
 
       {/* Right-side published dock */}
-      {canSolve &&
-        scheduleViewMode === "published" &&
+      {canWritePublishedComments &&
         !isJiggleMode &&
         !suppressRightDock &&
         !commentsPanelOpen &&
-        !(isNarrowMobile && leftPanelOpen) &&
-        canCommentCards && (
+        !(isNarrowMobile && leftPanelOpen) && (
         <RightSideDock
           visible={true}
           publishedCommentOnly={true}

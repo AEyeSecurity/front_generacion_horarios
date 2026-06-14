@@ -90,10 +90,38 @@ type SchedulePlacement = {
   assigned_participants?: Array<string | number>;
 };
 
+type ScheduleStructure = {
+  days?: unknown;
+  days_enabled?: unknown;
+  time_window_mode?: "SOFT" | "HARD" | string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  day_start?: string | null;
+  day_end?: string | null;
+  day_start_min?: number | string | null;
+  day_end_min?: number | string | null;
+  cell_size_minutes?: number | string | null;
+  cell_size_min?: number | string | null;
+  slot_min?: number | string | null;
+};
+
+type ActiveScheduleStructure = {
+  dayIndexes: number[];
+  dayStartMin: number;
+  dayEndMin: number;
+  slotMin: number;
+};
+
 type ScreenContextSchedule = {
   id?: number | string | null;
+  schedule_id?: number | string | null;
+  source_schedule?: number | string | null;
+  time_window_mode?: "SOFT" | "HARD" | string | null;
+  structure?: ScheduleStructure | null;
+  snapshot?: { structure?: ScheduleStructure | null } | ScheduleStructure | null;
   placements?: SchedulePlacement[];
   schedule?: SchedulePlacement[];
+  time_ranges?: TimeRange[];
 };
 
 type DraftHistory = {
@@ -178,6 +206,24 @@ const DAY_LABEL_TO_INDEX: Record<string, number> = {
   sat: 5,
   sun: 6,
 };
+const DAY_CODE_TO_INDEX: Record<string, number> = {
+  MON: 0,
+  TUE: 1,
+  WED: 2,
+  THU: 3,
+  FRI: 4,
+  SAT: 5,
+  SUN: 6,
+};
+const DAY_LABEL_KEYS = [
+  "day.mon_short",
+  "day.tue_short",
+  "day.wed_short",
+  "day.thu_short",
+  "day.fri_short",
+  "day.sat_short",
+  "day.sun_short",
+] as const;
 const GRID_COMMENTS_PANEL_STATE_EVENT = "shift:grid-comments-panel-state";
 const GRID_LEFT_PANEL_STATE_EVENT = "shift:grid-left-panel-state";
 const CATEGORY_VALUES_UPDATED_EVENT = "shift:category-values-updated";
@@ -278,6 +324,112 @@ const normalizeDraftHistory = (value: unknown): DraftHistory => {
   };
 };
 
+const normalizeDayIndexesFromValue = (value: unknown, fallback: number[]) => {
+  const source = Array.isArray(value) ? value : [];
+  const out = source
+    .map((item, index) => {
+      if (typeof item === "number" && Number.isInteger(item) && item >= 0 && item <= 6) return item;
+      if (typeof item === "string") {
+        const trimmed = item.trim();
+        const upper = trimmed.toUpperCase();
+        if (typeof DAY_CODE_TO_INDEX[upper] === "number") return DAY_CODE_TO_INDEX[upper];
+        const short = trimmed.slice(0, 3).toLowerCase();
+        if (typeof DAY_LABEL_TO_INDEX[short] === "number") return DAY_LABEL_TO_INDEX[short];
+        const numeric = Number(trimmed);
+        if (Number.isInteger(numeric) && numeric >= 0 && numeric <= 6) return numeric;
+      }
+      return fallback[index] ?? index;
+    })
+    .filter((item, index, list) => Number.isInteger(item) && item >= 0 && item <= 6 && list.indexOf(item) === index);
+  return out.length > 0 ? out : fallback;
+};
+
+const normalizeStructureMinutes = (value: unknown, fallback: number) => {
+  if (typeof value === "string" && value.includes(":")) {
+    const parsed = parseClockToMin(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+};
+
+const normalizeScheduleStructure = (
+  value: unknown,
+  fallback: ActiveScheduleStructure,
+): ActiveScheduleStructure | null => {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as ScheduleStructure;
+  const hasStructureField =
+    raw.days != null ||
+    raw.days_enabled != null ||
+    raw.start_time != null ||
+    raw.end_time != null ||
+    raw.day_start != null ||
+    raw.day_end != null ||
+    raw.day_start_min != null ||
+    raw.day_end_min != null ||
+    raw.cell_size_minutes != null ||
+    raw.cell_size_min != null ||
+    raw.slot_min != null;
+  if (!hasStructureField) return null;
+  const dayIndexes = normalizeDayIndexesFromValue(raw.days ?? raw.days_enabled, fallback.dayIndexes);
+  const dayStartMin = normalizeStructureMinutes(raw.start_time ?? raw.day_start ?? raw.day_start_min, fallback.dayStartMin);
+  const dayEndMin = normalizeStructureMinutes(raw.end_time ?? raw.day_end ?? raw.day_end_min, fallback.dayEndMin);
+  const slotMinRaw = Number(raw.cell_size_minutes ?? raw.cell_size_min ?? raw.slot_min);
+  const slotMin = Number.isFinite(slotMinRaw) && slotMinRaw > 0 ? slotMinRaw : fallback.slotMin;
+  if (dayEndMin <= dayStartMin) return { ...fallback, dayIndexes };
+  return { dayIndexes, dayStartMin, dayEndMin, slotMin };
+};
+
+const readScheduleStructureFromContext = (
+  contextJson: Record<string, unknown> | null | undefined,
+  scheduleCandidate: ScreenContextSchedule | null,
+  fallback: ActiveScheduleStructure,
+  viewMode: ScheduleViewMode,
+) => {
+  const publishedSchedule = contextJson?.published_schedule as
+    | (ScreenContextSchedule & { snapshot?: unknown })
+    | undefined;
+  const publishedScheduleCamel = contextJson?.publishedSchedule as
+    | (ScreenContextSchedule & { snapshot?: unknown })
+    | undefined;
+  const snapshotStructure = (source: unknown) => {
+    if (!source || typeof source !== "object") return null;
+    const raw = source as { snapshot?: unknown };
+    if (!raw.snapshot || typeof raw.snapshot !== "object") return null;
+    return (raw.snapshot as { structure?: unknown }).structure ?? raw.snapshot;
+  };
+  const publishedStructures = [
+    scheduleCandidate?.structure,
+    snapshotStructure(scheduleCandidate),
+    scheduleCandidate,
+    publishedSchedule?.structure,
+    snapshotStructure(publishedSchedule),
+    publishedSchedule,
+    publishedScheduleCamel?.structure,
+    snapshotStructure(publishedScheduleCamel),
+    publishedScheduleCamel,
+  ];
+  const candidates =
+    viewMode === "published"
+      ? [...publishedStructures, contextJson?.structure, contextJson?.grid]
+      : [scheduleCandidate?.structure, snapshotStructure(scheduleCandidate), scheduleCandidate, contextJson?.structure, contextJson?.grid];
+  for (const candidate of candidates) {
+    const normalized = normalizeScheduleStructure(candidate, fallback);
+    if (normalized) return normalized;
+  }
+  return null;
+};
+
+const getContextListIfPresent = <T,>(payload: unknown): T[] | null => {
+  if (payload == null) return null;
+  if (Array.isArray(payload)) return payload as T[];
+  if (payload && typeof payload === "object" && Array.isArray((payload as { results?: unknown[] }).results)) {
+    return (payload as { results: T[] }).results;
+  }
+  return null;
+};
+
 const normalizeUnitsCollection = (
   payload: unknown,
   fallbackName: (id: string | number) => string,
@@ -331,11 +483,42 @@ export default function GridSchedulePanel({
     }),
     [t],
   );
+  const fallbackDayIndexes = useMemo(
+    () =>
+      days.map((day, index) => {
+        const label = String(day ?? "").trim().slice(0, 3).toLowerCase();
+        return typeof DAY_LABEL_TO_INDEX[label] === "number" ? DAY_LABEL_TO_INDEX[label] : index;
+      }),
+    [days],
+  );
+  const fallbackStructure = useMemo<ActiveScheduleStructure>(
+    () => ({
+      dayIndexes: fallbackDayIndexes,
+      dayStartMin,
+      dayEndMin,
+      slotMin,
+    }),
+    [dayEndMin, dayStartMin, fallbackDayIndexes, slotMin],
+  );
+  const [contextScheduleStructure, setContextScheduleStructure] = useState<ActiveScheduleStructure | null>(null);
+  const activeDayIndexes = contextScheduleStructure?.dayIndexes ?? fallbackDayIndexes;
+  const activeDayStartMin = contextScheduleStructure?.dayStartMin ?? dayStartMin;
+  const activeDayEndMin = contextScheduleStructure?.dayEndMin ?? dayEndMin;
+  const activeSlotMin = contextScheduleStructure?.slotMin ?? slotMin;
+  const activeDays = useMemo(
+    () =>
+      activeDayIndexes.map((dayIndex, columnIndex) => {
+        const fallbackLabel = days[columnIndex];
+        const labelKey = DAY_LABEL_KEYS[dayIndex];
+        return labelKey ? t(labelKey) : fallbackLabel ?? String(dayIndex);
+      }),
+    [activeDayIndexes, days, t],
+  );
   const rows = useMemo(() => {
     const out: number[] = [];
-    for (let t = dayStartMin; t < dayEndMin; t += slotMin) out.push(t);
+    for (let t = activeDayStartMin; t < activeDayEndMin; t += activeSlotMin) out.push(t);
     return out;
-  }, [dayStartMin, dayEndMin, slotMin]);
+  }, [activeDayEndMin, activeDayStartMin, activeSlotMin]);
   const baseBodyHeight = rows.length * rowPx;
   const [effectiveRowPx, setEffectiveRowPx] = useState(rowPx);
   const [scheduleViewportHeight, setScheduleViewportHeight] = useState(baseBodyHeight);
@@ -517,12 +700,12 @@ export default function GridSchedulePanel({
   const sidePanelOpen = commentsPanelOpen || historyMode;
   const minDayColumnPx = compactHorizontal ? 180 : 0;
   const scheduleGridTemplateColumns = useMemo(
-    () => `${timeColPx}px repeat(${days.length}, minmax(${minDayColumnPx}px, 1fr))`,
-    [days.length, minDayColumnPx, timeColPx],
+    () => `${timeColPx}px repeat(${activeDays.length}, minmax(${minDayColumnPx}px, 1fr))`,
+    [activeDays.length, minDayColumnPx, timeColPx],
   );
   const scheduleMinWidthPx = useMemo(
-    () => timeColPx + days.length * minDayColumnPx,
-    [days.length, minDayColumnPx, timeColPx],
+    () => timeColPx + activeDays.length * minDayColumnPx,
+    [activeDays.length, minDayColumnPx, timeColPx],
   );
   const scheduleContentStyle = useMemo<React.CSSProperties | undefined>(
     () => (compactHorizontal ? { minWidth: scheduleMinWidthPx } : undefined),
@@ -690,12 +873,37 @@ export default function GridSchedulePanel({
     setParticipantsLoading(true);
     (async () => {
       try {
-        const contextJson = await fetchGridScreenContext(gridId, scheduleViewMode);
+        const contextJson = (await fetchGridScreenContext(gridId, scheduleViewMode)) as Record<string, unknown> | null;
         const participantsList = getContextList<Participant>(contextJson?.participants);
         let cellsList = getContextList<Cell>(contextJson?.cells);
         let bundlesList = getContextList<Bundle>(contextJson?.bundles);
-        const timeRangesList = getContextList<TimeRange>(contextJson?.time_ranges);
-        const availabilityRules = getContextList<AvailabilityRule>(contextJson?.availability_rules);
+        const scheduleCandidate = (
+          scheduleViewMode === "published"
+            ? contextJson?.published_schedule ?? contextJson?.publishedSchedule ?? contextJson?.schedule ?? null
+            : contextJson?.schedule ?? null
+        ) as ScreenContextSchedule | null;
+        let timeRangesList = getContextList<TimeRange>(contextJson?.time_ranges);
+        if (scheduleViewMode === "published") {
+          const snapshotTimeRanges =
+            getContextListIfPresent<TimeRange>(scheduleCandidate?.time_ranges) ??
+            getContextListIfPresent<TimeRange>(
+              (contextJson?.published_schedule as { time_ranges?: unknown } | undefined)?.time_ranges,
+            ) ??
+            getContextListIfPresent<TimeRange>(
+              (contextJson?.publishedSchedule as { time_ranges?: unknown } | undefined)?.time_ranges,
+            );
+          if (snapshotTimeRanges) timeRangesList = snapshotTimeRanges;
+        }
+        const availabilityRules = getContextList<AvailabilityRule>(
+          contextJson?.effective_availability_rules ?? contextJson?.availability_rules,
+        );
+        const contextStructure = readScheduleStructureFromContext(
+          contextJson,
+          scheduleCandidate,
+          fallbackStructure,
+          scheduleViewMode,
+        );
+        const structureForContext = contextStructure ?? fallbackStructure;
         if (bundlesList.length === 0) {
           const gridQuery = encodeURIComponent(String(gridId));
           const candidateEndpoints = [`/api/bundles/?grid=${gridQuery}`, `/api/bundles?grid=${gridQuery}`];
@@ -850,10 +1058,10 @@ export default function GridSchedulePanel({
               ? tr.end_slot
               : null;
           if (startSlot == null && typeof tr.start_time === "string") {
-            startSlot = Math.round((parseClockToMin(tr.start_time) - dayStartMin) / slotMin);
+            startSlot = Math.round((parseClockToMin(tr.start_time) - structureForContext.dayStartMin) / structureForContext.slotMin);
           }
           if (endSlot == null && typeof tr.end_time === "string") {
-            endSlot = Math.round((parseClockToMin(tr.end_time) - dayStartMin) / slotMin);
+            endSlot = Math.round((parseClockToMin(tr.end_time) - structureForContext.dayStartMin) / structureForContext.slotMin);
           }
           const normalizedStart = Math.max(0, Number.isFinite(startSlot ?? NaN) ? Number(startSlot) : 0);
           const normalizedEnd = Math.max(normalizedStart + 1, Number.isFinite(endSlot ?? NaN) ? Number(endSlot) : normalizedStart + 1);
@@ -872,18 +1080,19 @@ export default function GridSchedulePanel({
           availabilityMap[participantId].push(rule);
         }
 
-        const scheduleCandidate = (contextJson?.schedule ?? null) as ScreenContextSchedule | null;
         const scheduleList = Array.isArray(scheduleCandidate?.placements)
           ? scheduleCandidate.placements
           : Array.isArray(scheduleCandidate?.schedule)
           ? scheduleCandidate.schedule
           : [];
         const normalizedScheduleId =
-          scheduleCandidate?.id != null && Number.isFinite(Number(scheduleCandidate.id))
-            ? Number(scheduleCandidate.id)
+          (scheduleCandidate?.schedule_id ?? scheduleCandidate?.source_schedule ?? scheduleCandidate?.id) != null &&
+          Number.isFinite(Number(scheduleCandidate?.schedule_id ?? scheduleCandidate?.source_schedule ?? scheduleCandidate?.id))
+            ? Number(scheduleCandidate?.schedule_id ?? scheduleCandidate?.source_schedule ?? scheduleCandidate?.id)
             : null;
 
         if (active) {
+          setContextScheduleStructure(contextStructure);
           setParticipants(participantsList);
           setCellById(cellMap);
           setBundleNameById(bundleNameMap);
@@ -903,6 +1112,7 @@ export default function GridSchedulePanel({
           setAvailabilityRulesByParticipant({});
           setScheduleId(null);
           setSchedulePlacements([]);
+          setContextScheduleStructure(null);
         }
       } finally {
         if (active) setParticipantsLoading(false);
@@ -912,7 +1122,7 @@ export default function GridSchedulePanel({
     return () => {
       active = false;
     };
-  }, [gridId, scheduleViewMode, dayStartMin, slotMin, contextRefreshTick, t]);
+  }, [gridId, scheduleViewMode, fallbackStructure, contextRefreshTick, t]);
 
   const orderedParticipants = useMemo(() => {
     return participants
@@ -973,14 +1183,7 @@ export default function GridSchedulePanel({
     return map;
   }, [participants]);
 
-  const dayIndexByColumn = useMemo(
-    () =>
-      Array.from({ length: days.length }).map((_, idx) => {
-        const label = String(days[idx] ?? "").trim().slice(0, 3).toLowerCase();
-        return typeof DAY_LABEL_TO_INDEX[label] === "number" ? DAY_LABEL_TO_INDEX[label] : idx;
-      }),
-    [days],
-  );
+  const dayIndexByColumn = useMemo(() => activeDayIndexes, [activeDayIndexes]);
 
   const dayColumnByIndex = useMemo(() => {
     const map: Record<number, number> = {};
@@ -998,7 +1201,7 @@ export default function GridSchedulePanel({
       const sourceCellId = String(item.source_cell_id ?? item.source_cell ?? item.id);
       const dayIndex = Number(item.day_index);
       const dayColumnIndex = Number.isFinite(dayColumnByIndex[dayIndex]) ? dayColumnByIndex[dayIndex] : dayIndex;
-      if (!Number.isFinite(dayColumnIndex) || dayColumnIndex < 0 || dayColumnIndex >= days.length) continue;
+      if (!Number.isFinite(dayColumnIndex) || dayColumnIndex < 0 || dayColumnIndex >= activeDays.length) continue;
       const placementId = String(item.id);
       const bundleId =
         readEntityId(item.bundle_id) ??
@@ -1021,7 +1224,7 @@ export default function GridSchedulePanel({
       const trName = trId
         ? timeRangeMetaById[trId]?.name || t("grid_schedule.no_time_range")
         : t("grid_schedule.no_time_range");
-      const timeLabel = formatSlotRange(dayStartMin, slotMin, item.start_slot, item.end_slot);
+      const timeLabel = formatSlotRange(activeDayStartMin, activeSlotMin, item.start_slot, item.end_slot);
 
       for (const rawPid of assigned) {
         const pid = String(rawPid);
@@ -1062,12 +1265,12 @@ export default function GridSchedulePanel({
   }, [
     schedulePlacements,
     dayColumnByIndex,
-    days.length,
+    activeDays.length,
     cellById,
     bundleNameById,
     bundleUnitsById,
-    dayStartMin,
-    slotMin,
+    activeDayStartMin,
+    activeSlotMin,
     timeRangeMetaById,
     t,
   ]);
@@ -1112,11 +1315,11 @@ export default function GridSchedulePanel({
         const trMeta = trId ? timeRangeMetaById[trId] : undefined;
         const fallbackDurationSlots =
           cell.duration_min != null && Number.isFinite(Number(cell.duration_min))
-            ? Math.max(1, Math.round(Number(cell.duration_min) / slotMin))
+            ? Math.max(1, Math.round(Number(cell.duration_min) / activeSlotMin))
             : 1;
         const startSlot = trMeta?.startSlot ?? 0;
         const endSlot = trMeta?.endSlot ?? Math.max(startSlot + fallbackDurationSlots, 1);
-        const timeLabel = formatSlotRange(dayStartMin, slotMin, startSlot, endSlot);
+        const timeLabel = formatSlotRange(activeDayStartMin, activeSlotMin, startSlot, endSlot);
         const tierCounts = (cell.tier_counts ?? null) as Partial<Record<TierKey, number>> | null;
         return [{
           sourceCellId,
@@ -1140,10 +1343,10 @@ export default function GridSchedulePanel({
     bundleNameById,
     bundleUnitsById,
     cellById,
-    dayStartMin,
+    activeDayStartMin,
+    activeSlotMin,
     participantBoardSelectedUnitId,
     schedulePlacements,
-    slotMin,
     t,
     timeRangeMetaById,
   ]);
@@ -1409,8 +1612,8 @@ export default function GridSchedulePanel({
       const rules = availabilityRulesByParticipant[participantId] || [];
       const overlappingRules = rules.filter((rule) => {
         if (Number(rule.day_of_week) !== Number(scheduleDayIndex)) return false;
-        const ruleStartSlot = Math.round((parseClockToMin(rule.start_time) - dayStartMin) / slotMin);
-        const ruleEndSlot = Math.round((parseClockToMin(rule.end_time) - dayStartMin) / slotMin);
+        const ruleStartSlot = Math.round((parseClockToMin(rule.start_time) - activeDayStartMin) / activeSlotMin);
+        const ruleEndSlot = Math.round((parseClockToMin(rule.end_time) - activeDayStartMin) / activeSlotMin);
         if (ruleEndSlot <= ruleStartSlot) return false;
         return overlaps(startSlot, endSlot, ruleStartSlot, ruleEndSlot);
       });
@@ -1433,7 +1636,7 @@ export default function GridSchedulePanel({
       if (allPreferred) return preferredCount > 1 ? "preferred-strong" : "preferred";
       return "flexible";
     },
-    [availabilityRulesByParticipant, dayIndexByColumn, dayStartMin, slotMin],
+    [activeDayStartMin, activeSlotMin, availabilityRulesByParticipant, dayIndexByColumn],
   );
 
   const hasImpossibleRuleCollision = useCallback(
@@ -1879,8 +2082,8 @@ export default function GridSchedulePanel({
                   </div>
                 )}
               </div>
-              {days.map((day) => (
-                <div key={day} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
+              {activeDays.map((day, dayIndex) => (
+                <div key={`${dayIndex}-${day}`} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
                   {day}
                 </div>
               ))}
@@ -1913,13 +2116,13 @@ export default function GridSchedulePanel({
                     {fmt(time)}
                   </div>
                   {rowIndex === rows.length - 1 && (
-                    <div className="absolute inset-x-0 bottom-1 text-center text-xs text-gray-500">{fmt(dayEndMin)}</div>
+                    <div className="absolute inset-x-0 bottom-1 text-center text-xs text-gray-500">{fmt(activeDayEndMin)}</div>
                   )}
                 </div>
-                {days.map((day, dayIndex) => (
+                {activeDays.map((day, dayIndex) => (
                   <div
                     key={`${time}-${day}`}
-                    className={`border-b ${dayIndex < days.length - 1 ? "border-r" : ""} hover:bg-gray-50`}
+                    className={`border-b ${dayIndex < activeDays.length - 1 ? "border-r" : ""} hover:bg-gray-50`}
                     style={{ height: effectiveRowPx }}
                   />
                 ))}
@@ -1930,13 +2133,13 @@ export default function GridSchedulePanel({
               gridId={gridId}
               role={role}
               units={unitList}
-              daysCount={days.length}
-              dayLabels={days}
+              daysCount={activeDays.length}
+              dayLabels={activeDays}
               rowPx={effectiveRowPx}
               timeColPx={timeColPx}
               bodyHeight={bodyHeight}
-              dayStartMin={dayStartMin}
-              slotMin={slotMin}
+              dayStartMin={activeDayStartMin}
+              slotMin={activeSlotMin}
               scheduleViewMode={scheduleViewMode}
               enablePinning={role === "supervisor" && scheduleViewMode === "draft"}
               externalRefreshTick={contextRefreshTick}

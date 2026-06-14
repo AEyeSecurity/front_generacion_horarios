@@ -68,38 +68,46 @@ export default async function GridOverview({
   const days = (grid.days_enabled || []).map((i) => t(DAY_KEYS[i] ?? "day.mon_short"));
   const ROW_PX = 64;
   const TIME_COL_PX = 100;
-  let units: { id: number | string; name: string }[] = [];
-  try {
-    const udata = await backendFetchJSON<any>(`/api/units/?grid=${id}`);
-    const list = Array.isArray(udata) ? udata : udata.results ?? [];
-    units = list.map((u: any) => ({ id: u.id, name: u.name || t("format.unit_with_id", { id: u.id }) }));
-  } catch {}
 
-  // Resolve my role and (if editor) my participant id in this grid
+  const [unitsResult, membershipsResult, participantsResult] = await Promise.allSettled([
+    (async () => {
+      const udata = await backendFetchJSON<any>(`/api/units/?grid=${id}`);
+      const list = Array.isArray(udata) ? udata : udata.results ?? [];
+      return list.map((u: any) => ({ id: u.id, name: u.name || t("format.unit_with_id", { id: u.id }) }));
+    })(),
+    (async () => {
+      const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
+      return Array.isArray(data) ? data : data.results ?? [];
+    })(),
+    (async () => {
+      try {
+        const pdata = await backendFetchJSON<any>(`/api/participants/?grid=${id}`);
+        return Array.isArray(pdata) ? pdata : pdata.results ?? [];
+      } catch {
+        const pdata = await backendFetchJSON<any>(`/api/participants?grid=${id}`);
+        return Array.isArray(pdata) ? pdata : pdata.results ?? [];
+      }
+    })(),
+  ]);
+
+  const units: { id: number | string; name: string }[] =
+    unitsResult.status === "fulfilled" ? unitsResult.value : [];
+  const memberships = membershipsResult.status === "fulfilled" ? membershipsResult.value : [];
+  const participants = participantsResult.status === "fulfilled" ? participantsResult.value : [];
+
+  // Resolve my role and participant id in this grid without waiting on schedule data.
   let role: Role = "viewer";
   let selfPid: number | null = null;
   let selfRoutePid: string | number | null = null;
-  if (me) {
-    // Role
+  {
     try {
-      const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
-      const list = Array.isArray(data) ? data : data.results ?? [];
-      const mine = list.find(
+      const mine = memberships.find(
         (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
       );
       role = (mine?.role ?? "viewer") as Role;
     } catch {}
-    // Self participant id
     try {
-      let plist: any[] = [];
-      try {
-        const pdata = await backendFetchJSON<any>(`/api/participants/?grid=${id}`);
-        plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
-      } catch {
-        const pdata = await backendFetchJSON<any>(`/api/participants?grid=${id}`);
-        plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
-      }
-      const myp = plist.find(
+      const myp = participants.find(
         (p: any) => (p.user_id ?? (typeof p.user === "number" ? p.user : p.user?.id)) === me.id
       );
       if (myp?.id != null) selfPid = Number(myp.id);

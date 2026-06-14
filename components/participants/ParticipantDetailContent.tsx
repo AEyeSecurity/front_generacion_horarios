@@ -87,6 +87,8 @@ const toMinutes = (hhmm: string) => {
   return h * 60 + m;
 };
 
+const isEmptyRecord = (value: object) => Object.keys(value).length === 0;
+
 const normalizeRulePreference = (value: unknown): Rule["preference"] => {
   const raw = typeof value === "string" ? value.toLowerCase() : "";
   if (raw === "preferred" || raw === "flexible" || raw === "impossible") return raw;
@@ -258,30 +260,21 @@ export default function ParticipantDetailContent({
   const participantActionsDisabled = commentsPanelOpen;
   const canOpenScheduleTab = true;
 
-  const setParticipantView = useCallback(
-    (nextView: "rules" | "schedule") => {
-      setView(nextView);
-      if (typeof window === "undefined") return;
-      const url = new URL(window.location.href);
-      if (!url.searchParams.get("pid")) {
-        const activeTab = initialParticipantTabs.find((tab) => String(tab.id) === String(participantId));
-        url.searchParams.set("pid", String(activeTab?.routeId ?? participantId));
-      }
-      url.searchParams.set("view", nextView);
-      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
-    },
-    [initialParticipantTabs, participantId],
-  );
+  const setParticipantView = useCallback((nextView: "rules" | "schedule") => {
+    setView((prev) => (prev === nextView ? prev : nextView));
+  }, []);
 
   useEffect(() => {
-    const nextView =
-      commentsPanelOpen || !canViewRules
-        ? "schedule"
-        : !canOpenScheduleTab && view === "schedule"
-        ? "rules"
-        : view;
-    if (nextView !== view) setParticipantView(nextView);
-  }, [canOpenScheduleTab, canViewRules, commentsPanelOpen, setParticipantView, view]);
+    setView((prev) => {
+      const nextView =
+        commentsPanelOpen || !canViewRules
+          ? "schedule"
+          : !canOpenScheduleTab && prev === "schedule"
+          ? "rules"
+          : prev;
+      return prev === nextView ? prev : nextView;
+    });
+  }, [canOpenScheduleTab, canViewRules, commentsPanelOpen]);
 
   useEffect(() => {
     if (!commentsPanelOpen || typeof document === "undefined") return;
@@ -350,8 +343,9 @@ export default function ParticipantDetailContent({
   }, [participantLinked]);
 
   useEffect(() => {
-    setView((prev) => (prev === initialView ? prev : initialView));
-  }, [initialView, participantId]);
+    const nextView = commentsPanelOpen || !canViewRules ? "schedule" : initialView;
+    setView((prev) => (prev === nextView ? prev : nextView));
+  }, [canViewRules, commentsPanelOpen, initialView, participantId]);
 
   const loadParticipantForEdit = useCallback(async () => {
     const res = await fetch(`/api/participants/${encodeURIComponent(String(participantId))}`, { cache: "no-store" });
@@ -500,8 +494,13 @@ export default function ParticipantDetailContent({
   }, [daysIdx]);
 
   useEffect(() => {
-    setRulesState((prev) => (prev === rules ? prev : rules));
-    setRulesLoadedParticipantId(() => (lazyLoadRules && rules.length === 0 ? null : String(participantId)));
+    setRulesState((prev) => {
+      if (prev === rules) return prev;
+      if (prev.length === rules.length && prev.every((rule, index) => rule.id === rules[index]?.id)) return prev;
+      return rules;
+    });
+    const nextLoadedId = lazyLoadRules && rules.length === 0 ? null : String(participantId);
+    setRulesLoadedParticipantId((prev) => (prev === nextLoadedId ? prev : nextLoadedId));
   }, [lazyLoadRules, participantId, rules]);
 
   const fetchParticipantRules = useCallback(async (): Promise<Rule[]> => {
@@ -926,14 +925,14 @@ export default function ParticipantDetailContent({
       clearMoveHoldTimer();
       pendingMovePressRef.current = null;
       movePointerRef.current = null;
-      setIsRuleDeleteDropActive(false);
-      setRuleResize(null);
-      setRuleMove(null);
-      setRuleDraftBoundsById({});
-      setRuleDraftDayById({});
-      setRuleMoveHoverHandleById({});
-      setRuleResizeHoverEdgeById({});
       resizePointerYRef.current = null;
+      setIsRuleDeleteDropActive((prev) => (prev === false ? prev : false));
+      setRuleResize((prev) => (prev === null ? prev : null));
+      setRuleMove((prev) => (prev === null ? prev : null));
+      setRuleDraftBoundsById((prev) => (isEmptyRecord(prev) ? prev : {}));
+      setRuleDraftDayById((prev) => (isEmptyRecord(prev) ? prev : {}));
+      setRuleMoveHoverHandleById((prev) => (isEmptyRecord(prev) ? prev : {}));
+      setRuleResizeHoverEdgeById((prev) => (isEmptyRecord(prev) ? prev : {}));
       return;
     }
     if (!ruleResize) return;

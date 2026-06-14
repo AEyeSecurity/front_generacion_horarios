@@ -97,6 +97,10 @@ function flattenApiError(value: unknown): string[] {
 function parseApiErrorMessage(raw: string, fallback: string): string {
   const text = raw.trim();
   if (!text) return fallback;
+  if (/^<!doctype html/i.test(text) || /^<html[\s>]/i.test(text)) {
+    if (process.env.NODE_ENV !== "production") console.error("Unexpected HTML API error:", text);
+    return fallback;
+  }
   try {
     const parsed = JSON.parse(text) as unknown;
     const flattened = flattenApiError(parsed);
@@ -105,6 +109,34 @@ function parseApiErrorMessage(raw: string, fallback: string): string {
     return text;
   }
   return fallback;
+}
+
+function parseTimeRangeDeleteError(raw: string, status: number, fallback: string): string {
+  const text = raw.trim();
+  if (text) {
+    try {
+      const parsed = JSON.parse(text) as {
+        detail?: unknown;
+        code?: unknown;
+        referencing_cells?: Array<{ id?: unknown; name?: unknown }>;
+      };
+      if (status === 409 && parsed.code === "TIME_RANGE_IN_USE") {
+        const detail =
+          typeof parsed.detail === "string" && parsed.detail.trim()
+            ? parsed.detail.trim()
+            : "This time range cannot be deleted because it is used by existing cells.";
+        const cells = Array.isArray(parsed.referencing_cells)
+          ? parsed.referencing_cells
+              .map((cell) => String(cell?.name ?? cell?.id ?? "").trim())
+              .filter(Boolean)
+          : [];
+        return cells.length > 0 ? `${detail}\n\nUsed by:\n${cells.map((name) => `- ${name}`).join("\n")}` : detail;
+      }
+    } catch {
+      // Fall back to generic parsing below.
+    }
+  }
+  return parseApiErrorMessage(raw, fallback);
 }
 
 function polar(cx: number, cy: number, radius: number, angleDeg: number) {
@@ -351,7 +383,7 @@ export default function TimeRangesEditor({
       const res = await fetch(`/api/time_ranges/${encodeURIComponent(String(id))}`, { method: "DELETE" });
       if (res.status !== 204) {
         const raw = await res.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, t("grid_solver_settings.time_ranges_delete_failed")));
+        throw new Error(parseTimeRangeDeleteError(raw, res.status, t("grid_solver_settings.time_ranges_delete_failed")));
       }
       setRanges((prev) => prev.filter((entry) => entry.id !== id));
     } catch (err: unknown) {
@@ -529,7 +561,7 @@ export default function TimeRangesEditor({
       <div className="grid min-h-0 flex-1 grid-rows-2 gap-3 overflow-hidden">
         <div className="min-h-0 overflow-hidden overflow-x-hidden rounded-lg border bg-white p-4 pb-3">
           <div className="flex h-full min-h-0 flex-col">
-            {error ? <div className="mb-2 text-sm text-red-600">{error}</div> : null}
+            {error ? <div className="mb-2 whitespace-pre-line text-sm text-red-600">{error}</div> : null}
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden pr-1">
               {loading ? (
                 <div className="text-sm text-gray-500 py-2">{t("common.loading")}</div>

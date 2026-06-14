@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Stepper, { Step } from "@/components/ui/Stepper";
 import { useI18n } from "@/lib/use-i18n";
+import { fetchGridConfig, normalizeAllowedCellSizesFromConfig } from "@/lib/grid-config";
 
 type Grid = {
   id: number;
@@ -15,6 +16,7 @@ type Grid = {
   day_end: string;
   days_enabled: number[];
   cell_size_min: number;
+  time_window_mode?: "SOFT" | "HARD" | null;
   solver_profile?: string;
   solver_options?: Record<string, unknown>;
   objective_weights?: Record<string, number>;
@@ -240,10 +242,10 @@ export default function NewGridPage() {
   const router = useRouter();
   const { t } = useI18n();
 
-  const tt = (key: string, fallback: string, params?: Record<string, string | number>) => {
+  const tt = useCallback((key: string, fallback: string, params?: Record<string, string | number>) => {
     const translated = t(key as never, params);
     return translated === key ? fallback : translated;
-  };
+  }, [t]);
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
@@ -252,6 +254,9 @@ export default function NewGridPage() {
   const [start, setStart] = useState("08:00");
   const [end, setEnd] = useState("20:00");
   const [cellMinutes, setCellMinutes] = useState(60);
+  const [allowedCellSizes, setAllowedCellSizes] = useState<number[]>([]);
+  const [cellSizeConfigLoading, setCellSizeConfigLoading] = useState(true);
+  const [cellSizeConfigError, setCellSizeConfigError] = useState<string | null>(null);
 
   const [organizationType, setOrganizationType] = useState<OrganizationType | null>(null);
   const [unitNature, setUnitNature] = useState<UnitNature | null>(null);
@@ -259,6 +264,35 @@ export default function NewGridPage() {
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setCellSizeConfigLoading(true);
+    setCellSizeConfigError(null);
+
+    fetchGridConfig()
+      .then((config) => {
+        if (!active) return;
+        const sizes = normalizeAllowedCellSizesFromConfig(config);
+        if (sizes.length === 0) {
+          throw new Error(tt("grid_new.cell_size_config_error", "Could not load supported cell sizes."));
+        }
+        setAllowedCellSizes(sizes);
+        setCellMinutes((current) => (sizes.includes(current) ? current : sizes.includes(60) ? 60 : sizes[0]));
+      })
+      .catch(() => {
+        if (!active) return;
+        setAllowedCellSizes([]);
+        setCellSizeConfigError(tt("grid_new.cell_size_config_error", "Could not load supported cell sizes."));
+      })
+      .finally(() => {
+        if (active) setCellSizeConfigLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [tt]);
 
   const dayOptions = [
     { idx: 0, label: t("day.mon_short") },
@@ -339,12 +373,14 @@ export default function NewGridPage() {
 
   const normalizedStart = normalizeTime(start);
   const normalizedEnd = normalizeTime(end);
-  const validTime = toMin(normalizedEnd) > toMin(normalizedStart);
-  const validCell = Number.isFinite(cellMinutes) && cellMinutes >= 30 && cellMinutes % 5 === 0;
+  const daySpanMinutes = toMin(normalizedEnd) - toMin(normalizedStart);
+  const validTime = daySpanMinutes > 0;
+  const validCell = allowedCellSizes.includes(Number(cellMinutes));
+  const validSlotDivision = validTime && validCell && daySpanMinutes % Number(cellMinutes) === 0;
   const hasName = name.trim().length > 0;
   const hasDays = days.length > 0;
 
-  const step1Valid = hasName && hasDays && validTime && validCell;
+  const step1Valid = hasName && hasDays && validTime && validCell && validSlotDivision && !cellSizeConfigLoading;
   const trimmedOtherDescription = otherContextDescription.trim();
   const needsOtherDescription = organizationType === "other";
   const otherDescriptionValid = !needsOtherDescription || (trimmedOtherDescription.length > 0 && trimmedOtherDescription.length <= 500);
@@ -400,12 +436,29 @@ export default function NewGridPage() {
 
   function validateBeforeSubmit() {
     if (!step1Valid) {
+      if (!hasDays) {
+        setErr(tt("grid_new.days_required", "Select at least one day."));
+        return false;
+      }
       if (!validTime) {
         setErr(tt("grid_new.end_time_after_start_error", "End time must be after start time."));
         return false;
       }
+      if (cellSizeConfigLoading || cellSizeConfigError) {
+        setErr(cellSizeConfigError || tt("grid_new.cell_size_config_error", "Could not load supported cell sizes."));
+        return false;
+      }
       if (!validCell) {
-        setErr(tt("grid_new.cell_size_validation_error", "Cell size must be at least 30 and a multiple of 5."));
+        setErr(tt("grid_new.invalid_slot_size", "Invalid slot size."));
+        return false;
+      }
+      if (!validSlotDivision) {
+        setErr(
+          tt(
+            "grid_new.interval_divisible_error",
+            "The interval between start and end time must be divisible by the selected cell size.",
+          ),
+        );
         return false;
       }
       setErr(tt("solver_wizard.fix_basic_fields", "Complete all required grid basics."));
@@ -612,6 +665,9 @@ export default function NewGridPage() {
                             );
                           })}
                         </div>
+                        {!hasDays ? (
+                          <p className="mt-1 text-xs text-red-600">{tt("grid_new.days_required", "Select at least one day.")}</p>
+                        ) : null}
                       </div>
 
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -634,17 +690,42 @@ export default function NewGridPage() {
                           />
                         </div>
                       </div>
+                      {!validTime ? (
+                        <p className="text-xs text-red-600">
+                          {tt("grid_new.end_time_after_start_error", "End time must be after start time.")}
+                        </p>
+                      ) : null}
 
                       <div>
                         <label className="block text-sm mb-1 text-gray-700">{tt("grid_new.cell_size_min", "Cell size (min)")}</label>
-                        <input
-                          type="number"
-                          min={30}
-                          step={5}
+                        <select
                           className="w-40 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                          value={cellMinutes}
-                          onChange={(event) => setCellMinutes(Number(event.target.value) || 0)}
-                        />
+                          value={String(cellMinutes)}
+                          disabled={cellSizeConfigLoading || allowedCellSizes.length === 0}
+                          onChange={(event) => setCellMinutes(Number(event.target.value))}
+                        >
+                          {allowedCellSizes.map((minutes) => (
+                            <option key={minutes} value={minutes}>
+                              {minutes} min
+                            </option>
+                          ))}
+                        </select>
+                        {cellSizeConfigLoading ? (
+                          <p className="mt-1 text-xs text-gray-500">
+                            {tt("grid_new.loading_cell_sizes", "Loading supported cell sizes...")}
+                          </p>
+                        ) : cellSizeConfigError ? (
+                          <p className="mt-1 text-xs text-red-600">{cellSizeConfigError}</p>
+                        ) : !validCell ? (
+                          <p className="mt-1 text-xs text-red-600">{tt("grid_new.invalid_slot_size", "Invalid slot size.")}</p>
+                        ) : !validSlotDivision ? (
+                          <p className="mt-1 text-xs text-red-600">
+                            {tt(
+                              "grid_new.interval_divisible_error",
+                              "The interval between start and end time must be divisible by the selected cell size.",
+                            )}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                   </section>

@@ -70,6 +70,10 @@ function flattenApiError(value: unknown): string[] {
 function parseApiErrorMessage(raw: string, fallback: string): string {
   const text = raw.trim();
   if (!text) return fallback;
+  if (/^<!doctype html/i.test(text) || /^<html[\s>]/i.test(text)) {
+    if (process.env.NODE_ENV !== "production") console.error("Unexpected HTML API error:", text);
+    return fallback;
+  }
   try {
     const parsed = JSON.parse(text) as unknown;
     const flattened = flattenApiError(parsed);
@@ -80,6 +84,33 @@ function parseApiErrorMessage(raw: string, fallback: string): string {
   return fallback;
 }
 
+function parseTimeRangeDeleteError(raw: string, status: number, fallback: string): string {
+  const text = raw.trim();
+  if (text) {
+    try {
+      const parsed = JSON.parse(text) as {
+        detail?: unknown;
+        code?: unknown;
+        referencing_cells?: Array<{ id?: unknown; name?: unknown }>;
+      };
+      if (status === 409 && parsed.code === "TIME_RANGE_IN_USE") {
+        const detail =
+          typeof parsed.detail === "string" && parsed.detail.trim()
+            ? parsed.detail.trim()
+            : "This time range cannot be deleted because it is used by existing cells.";
+        const cells = Array.isArray(parsed.referencing_cells)
+          ? parsed.referencing_cells
+              .map((cell) => String(cell?.name ?? cell?.id ?? "").trim())
+              .filter(Boolean)
+          : [];
+        return cells.length > 0 ? `${detail}\n\nUsed by:\n${cells.map((name) => `- ${name}`).join("\n")}` : detail;
+      }
+    } catch {
+      // Fall back to generic parsing below.
+    }
+  }
+  return parseApiErrorMessage(raw, fallback);
+}
 export default function TimeRangesPanel({
   gridId,
   dayStartMin,
@@ -322,7 +353,7 @@ export default function TimeRangesPanel({
       });
       if (response.status !== 204) {
         const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, t("grid_solver_settings.time_ranges_delete_failed")));
+        throw new Error(parseTimeRangeDeleteError(raw, response.status, t("grid_solver_settings.time_ranges_delete_failed")));
       }
       await load();
       emitCurrentStats();
@@ -529,7 +560,7 @@ export default function TimeRangesPanel({
                       <span className="truncate font-medium text-gray-800">{segment.name}</span>
                       <span className="text-gray-500">{`${segment.start}-${segment.end}`}</span>
                       <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600">
-                        {placementCount != null ? `${placementCount} cells` : "—"}
+                        {placementCount != null ? `${placementCount} cells` : "â€”"}
                       </span>
                       <span className="text-gray-500">{formatPercent(segment.ratio)}</span>
                     </div>

@@ -17,7 +17,10 @@ import {
 import { OBJECTIVE_WEIGHT_DEFAULTS, TIER_KEYS } from "@/lib/grid-solver-settings";
 import { useI18n } from "@/lib/use-i18n";
 import { readGridTierEnabled } from "@/lib/grid-tier";
+import { invalidateGridScreenContext } from "@/lib/screen-context";
+import { normalizeAllowedCellSizesFromConfig } from "@/lib/grid-config";
 import GridSolverSettingsForm from "@/components/grid/GridSolverSettingsForm";
+import { invalidatePlacementPreviewCacheForGrid } from "@/components/grid/SolveOverlay";
 import {
   Dialog,
   DialogContent,
@@ -37,8 +40,10 @@ type SectionId = "main" | "schedule" | "solver" | "units" | "danger";
 type TierKey = (typeof TIER_KEYS)[number];
 type OrganizationType = "school" | "work" | "gym" | "private_tutor" | "event" | "other" | "";
 type UnitNature = "audience" | "internal" | "none" | "space" | "";
+type TimeWindowMode = "SOFT" | "HARD";
 type DayHeatmapKey = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 type DayHeatmapValues = Record<DayHeatmapKey, 1 | 2 | 3>;
+type DayCode = "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN";
 
 type GridSettingsResponse = {
   id?: number;
@@ -51,7 +56,13 @@ type GridSettingsResponse = {
   day_start?: string | null;
   day_end?: string | null;
   cell_size_min?: number | null;
+  cell_size_minutes?: number | null;
+  allowed_cell_sizes_min?: number[] | null;
+  allowed_cell_size_minutes?: number[] | null;
+  allowed_cell_sizes?: number[] | null;
+  allowed_cell_size_min?: number[] | null;
   allow_overstaffing?: boolean | null;
+  time_window_mode?: string | null;
   timezone?: string | null;
   tiers_enabled?: boolean | null;
   tier_enabled?: boolean | null;
@@ -64,6 +75,33 @@ type GridSettingsResponse = {
   } | null;
   base_weights?: Record<string, unknown> | null;
   day_heatmap?: Partial<Record<string, number>> | null;
+};
+
+type DraftStructurePayload = {
+  days: DayCode[];
+  start_time: string;
+  end_time: string;
+  cell_size_minutes: number;
+};
+
+type DraftStructurePreviewResponse = {
+  can_apply?: boolean;
+  requires_confirmation?: boolean;
+  blocking_errors?: unknown[];
+  errors?: unknown[];
+  warnings?: unknown[];
+  impact?: Record<string, unknown> | null;
+  new_structure?: Partial<{
+    days: Array<DayCode | string | number>;
+    time_window_mode: TimeWindowMode;
+    start_time: string;
+    end_time: string;
+    cell_size_minutes: number;
+    cell_size_min: number;
+  }> | null;
+  preview_token?: string;
+  preview_id?: string | number;
+  token?: string;
 };
 
 type PriorityState = {
@@ -106,7 +144,24 @@ const DAY_INDEX_TO_KEY: Record<number, DayHeatmapKey> = {
   5: "Sat",
   6: "Sun",
 };
-
+const DAY_INDEX_TO_CODE: Record<number, DayCode> = {
+  0: "MON",
+  1: "TUE",
+  2: "WED",
+  3: "THU",
+  4: "FRI",
+  5: "SAT",
+  6: "SUN",
+};
+const DAY_CODE_TO_INDEX: Record<string, number> = {
+  MON: 0,
+  TUE: 1,
+  WED: 2,
+  THU: 3,
+  FRI: 4,
+  SAT: 5,
+  SUN: 6,
+};
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -140,6 +195,43 @@ function parseClockToMin(value: string): number {
   return h * 60 + m;
 }
 
+function normalizeDayIndexes(value: unknown, fallback: number[] = [0, 1, 2, 3, 4]): number[] {
+  if (!Array.isArray(value)) return fallback;
+  const indexes = value
+    .map((entry) => {
+      if (typeof entry === "number" || (typeof entry === "string" && /^\d+$/.test(entry))) {
+        const parsed = Number(entry);
+        return Number.isInteger(parsed) && parsed >= 0 && parsed <= 6 ? parsed : null;
+      }
+      const code = String(entry ?? "").trim().toUpperCase().slice(0, 3);
+      return Object.prototype.hasOwnProperty.call(DAY_CODE_TO_INDEX, code) ? DAY_CODE_TO_INDEX[code] : null;
+    })
+    .filter((entry): entry is number => entry != null);
+  const unique = Array.from(new Set(indexes)).sort((a, b) => a - b);
+  return unique.length > 0 ? unique : fallback;
+}
+
+function dayIndexesToCodes(days: number[]): DayCode[] {
+  return Array.from(new Set(days))
+    .sort((a, b) => a - b)
+    .map((day) => DAY_INDEX_TO_CODE[day])
+    .filter((day): day is DayCode => Boolean(day));
+}
+
+function normalizeAllowedCellSizes(data: GridSettingsResponse, currentSize: number, config: unknown): number[] {
+  const configSizes = normalizeAllowedCellSizesFromConfig(config);
+  if (configSizes.length > 0) return configSizes;
+
+  const responseSizes = normalizeAllowedCellSizesFromConfig(data);
+  if (responseSizes.length > 0) return responseSizes;
+
+  return Number.isFinite(currentSize) && currentSize > 0 ? [currentSize] : [];
+}
+
+function normalizeTimeWindowMode(value: unknown): TimeWindowMode {
+  return String(value ?? "").trim().toUpperCase() === "HARD" ? "HARD" : "SOFT";
+}
+
 function flattenApiError(value: unknown): string[] {
   if (typeof value === "string") {
     const trimmed = value.trim();
@@ -155,14 +247,122 @@ function flattenApiError(value: unknown): string[] {
 function parseApiErrorMessage(raw: string, fallback: string): string {
   const text = raw.trim();
   if (!text) return fallback;
+  if (/^<!doctype/i.test(text) || /^<html[\s>]/i.test(text)) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("API returned HTML error body:", text);
+    }
+    return fallback;
+  }
   try {
     const parsed = JSON.parse(text) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      (parsed as { code?: unknown }).code === "GRID_DELETE_PROTECTED"
+    ) {
+      return fallback;
+    }
     const flattened = flattenApiError(parsed);
     if (flattened.length > 0) return flattened.join(" ");
   } catch {
     return text;
   }
   return fallback;
+}
+
+function parseGridDeleteErrorMessage(raw: string, fallback: string, protectedFallback: string): string {
+  const text = raw.trim();
+  if (!text) return fallback;
+  if (/^<!doctype/i.test(text) || /^<html[\s>]/i.test(text)) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("Grid delete returned HTML error body:", text);
+    }
+    return fallback;
+  }
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      (parsed as { code?: unknown }).code === "GRID_DELETE_PROTECTED"
+    ) {
+      return protectedFallback;
+    }
+    const flattened = flattenApiError(parsed);
+    if (flattened.length > 0) return flattened.join(" ");
+  } catch {
+    return text;
+  }
+  return fallback;
+}
+
+function parseJsonObject<T extends object>(raw: string): T {
+  if (!raw.trim()) return {} as T;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as T) : ({} as T);
+  } catch {
+    return {} as T;
+  }
+}
+
+function getImpactItems(preview: DraftStructurePreviewResponse | null, key: string): unknown[] {
+  const value = preview?.impact?.[key];
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object" && Array.isArray((value as { results?: unknown[] }).results)) {
+    return (value as { results: unknown[] }).results;
+  }
+  return [];
+}
+
+function hasDraftStructureImpact(preview: DraftStructurePreviewResponse | null): boolean {
+  if (!preview?.impact || typeof preview.impact !== "object") return false;
+  return Object.values(preview.impact).some((value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === "number") return value > 0;
+    return Boolean(value);
+  });
+}
+
+function formatUnknownValue(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map(formatUnknownValue).filter(Boolean).join(", ");
+  if (typeof value === "object") {
+    const raw = value as Record<string, unknown>;
+    const name =
+      raw.name ??
+      raw.cell_name ??
+      raw.cell ??
+      raw.source_cell_name ??
+      raw.title ??
+      raw.detail ??
+      raw.message ??
+      raw.reason;
+    const day = raw.day ?? raw.day_label ?? raw.day_name ?? raw.day_index;
+    const start = raw.start_time ?? raw.start ?? raw.start_slot;
+    const end = raw.end_time ?? raw.end ?? raw.end_slot;
+    const nextStart = raw.new_start_time ?? raw.trimmed_start_time ?? raw.next_start_time;
+    const nextEnd = raw.new_end_time ?? raw.trimmed_end_time ?? raw.next_end_time;
+    const base = [name, day != null ? `day ${day}` : "", start != null && end != null ? `${start} - ${end}` : ""]
+      .filter(Boolean)
+      .join(" - ");
+    if ((nextStart != null || nextEnd != null) && (start != null || end != null)) {
+      return `${base || "Item"} -> ${nextStart ?? start} - ${nextEnd ?? end}`;
+    }
+    if (base) return base;
+    const firstValues = Object.entries(raw)
+      .filter(([, entry]) => entry == null || ["string", "number", "boolean"].includes(typeof entry))
+      .slice(0, 4)
+      .map(([key, entry]) => `${key}: ${String(entry)}`);
+    if (firstValues.length > 0) return firstValues.join(", ");
+  }
+  return "";
+}
+
+function formatImpactItems(items: unknown[], fallback: string): string[] {
+  if (items.length === 0) return [];
+  return items.map((item) => formatUnknownValue(item) || fallback);
 }
 
 function mapWeightToPriority(weight: number, min: number, max: number): number {
@@ -614,7 +814,6 @@ function SettingsSidebar({
           <p className="mt-1 truncate text-base font-semibold text-slate-900 dark:text-slate-100">
             {gridName || notAvailableLabel}
           </p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">#{gridId}</p>
         </div>
       </div>
 
@@ -662,6 +861,36 @@ function SettingsSidebar({
   );
 }
 
+function DraftStructureImpactList({
+  title,
+  items,
+  fallback,
+  tone = "default",
+}: {
+  title: string;
+  items: unknown[];
+  fallback: string;
+  tone?: "default" | "danger" | "warning";
+}) {
+  if (items.length === 0) return null;
+  const toneClass =
+    tone === "danger"
+      ? "border-red-200 bg-red-50 text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+      : tone === "warning"
+      ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+      : "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300";
+  return (
+    <div className={`rounded-md border px-3 py-2 text-sm ${toneClass}`}>
+      <div className="font-medium">{title}</div>
+      <ul className="mt-2 list-disc space-y-1 pl-5">
+        {formatImpactItems(items, fallback).map((line, index) => (
+          <li key={`${title}-${index}`}>{line}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function GridSettingsTabs({ gridId, backHref }: { gridId: number; backHref: string }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -680,6 +909,8 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
   const [loadingError, setLoadingError] = useState<string | null>(null);
 
   const [principalSaving, setPrincipalSaving] = useState(false);
+  const [schedulePreviewing, setSchedulePreviewing] = useState(false);
+  const [scheduleApplying, setScheduleApplying] = useState(false);
   const [solverSaving, setSolverSaving] = useState(false);
   const [participantsSaving, setParticipantsSaving] = useState(false);
   const [tabError, setTabError] = useState<string | null>(null);
@@ -697,11 +928,25 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
   const [dayStart, setDayStart] = useState("08:00");
   const [dayEnd, setDayEnd] = useState("20:00");
   const [cellSizeMin, setCellSizeMin] = useState(60);
+  const [allowedCellSizes, setAllowedCellSizes] = useState<number[]>([]);
   const [allowOverstaffing, setAllowOverstaffing] = useState(false);
+  const [timeWindowMode, setTimeWindowMode] = useState<TimeWindowMode>("SOFT");
   const [timezone, setTimezone] = useState<string | null>(null);
+  const [draftStructurePreview, setDraftStructurePreview] = useState<DraftStructurePreviewResponse | null>(null);
+  const [draftStructureDialogOpen, setDraftStructureDialogOpen] = useState(false);
+  const clearDraftStructurePreview = useCallback(() => {
+    setDraftStructurePreview(null);
+    setDraftStructureDialogOpen(false);
+  }, []);
 
   const initialOrganizationRef = useRef<OrganizationType>("");
   const initialUnitNatureRef = useRef<UnitNature>("");
+  const initialDaysEnabledRef = useRef<number[]>([0, 1, 2, 3, 4]);
+  const initialDayStartRef = useRef("08:00");
+  const initialDayEndRef = useRef("20:00");
+  const initialCellSizeMinRef = useRef(60);
+  const initialAllowOverstaffingRef = useRef(false);
+  const initialTimeWindowModeRef = useRef<TimeWindowMode>("SOFT");
   const persistedGridNameRef = useRef("");
 
   const [priorities, setPriorities] = useState<PriorityState>({
@@ -791,6 +1036,14 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
     [t],
   );
 
+  const timeWindowModeOptions = useMemo(
+    () => [
+      { value: "SOFT" as const, label: tt("grid_settings.time_window_mode_soft", "Soft windows") },
+      { value: "HARD" as const, label: tt("grid_settings.time_window_mode_hard", "Hard windows") },
+    ],
+    [tt],
+  );
+
   const sectionOptions = useMemo<SectionOption[]>(
     () => [
       {
@@ -868,6 +1121,22 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
     () => organizationType !== initialOrganizationRef.current || unitNature !== initialUnitNatureRef.current,
     [organizationType, unitNature],
   );
+  const sortedDaysEnabled = useMemo(
+    () => Array.from(new Set(daysEnabled)).sort((a, b) => a - b),
+    [daysEnabled],
+  );
+  const draftStructureChanged = useMemo(
+    () =>
+      sortedDaysEnabled.join(",") !== initialDaysEnabledRef.current.join(",") ||
+      dayStart !== initialDayStartRef.current ||
+      dayEnd !== initialDayEndRef.current ||
+      Number(cellSizeMin) !== Number(initialCellSizeMinRef.current),
+    [cellSizeMin, dayEnd, dayStart, sortedDaysEnabled],
+  );
+  const allowOverstaffingChanged = allowOverstaffing !== initialAllowOverstaffingRef.current;
+  const timeWindowModeChanged = timeWindowMode !== initialTimeWindowModeRef.current;
+  const unsupportedCellSize = !allowedCellSizes.includes(Number(cellSizeMin));
+  const scheduleSettingsChanged = draftStructureChanged || allowOverstaffingChanged || timeWindowModeChanged;
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -875,12 +1144,16 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
     setTabError(null);
     setTabSaved(null);
     try {
-      const response = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}`, { cache: "no-store" });
+      const [response, configResponse] = await Promise.all([
+        fetch(`/api/grids/${encodeURIComponent(String(gridId))}`, { cache: "no-store" }),
+        fetch("/api/grids/config/", { cache: "no-store" }).catch(() => null),
+      ]);
       if (!response.ok) {
         const raw = await response.text().catch(() => "");
         throw new Error(parseApiErrorMessage(raw, tt("grid_settings.load_failed", "Could not load grid settings.")));
       }
       const data = (await response.json().catch(() => ({}))) as GridSettingsResponse;
+      const configData = configResponse?.ok ? await configResponse.json().catch(() => ({})) : null;
       const loadedName = String(data.name ?? "");
       setName(loadedName);
       persistedGridNameRef.current = loadedName.trim();
@@ -890,20 +1163,32 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
       setOrganizationType(org);
       setUnitNature(unit);
       setOtherContextDescription(String(data.other_context_description ?? ""));
-      setDaysEnabled(
-        Array.isArray(data.days_enabled)
-          ? data.days_enabled.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value >= 0 && value <= 6)
-          : [0, 1, 2, 3, 4],
-      );
-      setDayStart(normalizeTime(data.day_start, "08:00"));
-      setDayEnd(normalizeTime(data.day_end, "20:00"));
-      setCellSizeMin(Number.isFinite(Number(data.cell_size_min)) ? Number(data.cell_size_min) : 60);
-      setAllowOverstaffing(Boolean(data.allow_overstaffing));
+      const loadedDays = normalizeDayIndexes(data.days_enabled, [0, 1, 2, 3, 4]);
+      const loadedDayStart = normalizeTime(data.day_start, "08:00");
+      const loadedDayEnd = normalizeTime(data.day_end, "20:00");
+      const loadedCellSize = Number.isFinite(Number(data.cell_size_minutes ?? data.cell_size_min))
+        ? Number(data.cell_size_minutes ?? data.cell_size_min)
+        : 60;
+      const loadedAllowOverstaffing = Boolean(data.allow_overstaffing);
+      const loadedTimeWindowMode = normalizeTimeWindowMode(data.time_window_mode);
+      setDaysEnabled(loadedDays);
+      setDayStart(loadedDayStart);
+      setDayEnd(loadedDayEnd);
+      setCellSizeMin(loadedCellSize);
+      setAllowedCellSizes(normalizeAllowedCellSizes(data, loadedCellSize, configData));
+      setAllowOverstaffing(loadedAllowOverstaffing);
+      setTimeWindowMode(loadedTimeWindowMode);
       setTimezone(data.timezone ?? null);
       setTiersEnabled(readGridTierEnabled(data as Record<string, unknown>, true));
 
       initialOrganizationRef.current = org;
       initialUnitNatureRef.current = unit;
+      initialDaysEnabledRef.current = loadedDays;
+      initialDayStartRef.current = loadedDayStart;
+      initialDayEndRef.current = loadedDayEnd;
+      initialCellSizeMinRef.current = loadedCellSize;
+      initialAllowOverstaffingRef.current = loadedAllowOverstaffing;
+      initialTimeWindowModeRef.current = loadedTimeWindowMode;
 
       const solverSource =
         (data.solve_preference?.solver_params && typeof data.solve_preference.solver_params === "object"
@@ -1050,6 +1335,191 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
     },
     [gridId, tt],
   );
+
+  const patchScheduleGridSettings = useCallback(async () => {
+    const payload: Record<string, unknown> = {};
+    if (allowOverstaffingChanged) payload.allow_overstaffing = allowOverstaffing;
+    if (timeWindowModeChanged) payload.time_window_mode = timeWindowMode;
+    if (Object.keys(payload).length === 0) return false;
+
+    await patchGrid(payload, "grid_settings.save_principal_failed");
+    if (allowOverstaffingChanged) initialAllowOverstaffingRef.current = allowOverstaffing;
+    if (timeWindowModeChanged) initialTimeWindowModeRef.current = timeWindowMode;
+    invalidateGridScreenContext(gridId, "draft");
+    invalidateGridScreenContext(gridId, "published");
+    invalidatePlacementPreviewCacheForGrid(gridId);
+    return true;
+  }, [
+    allowOverstaffing,
+    allowOverstaffingChanged,
+    gridId,
+    patchGrid,
+    timeWindowMode,
+    timeWindowModeChanged,
+  ]);
+
+  const buildDraftStructurePayload = useCallback(
+    (): DraftStructurePayload => ({
+      days: dayIndexesToCodes(sortedDaysEnabled),
+      start_time: dayStart,
+      end_time: dayEnd,
+      cell_size_minutes: Number(cellSizeMin),
+    }),
+    [cellSizeMin, dayEnd, dayStart, sortedDaysEnabled],
+  );
+
+  const applyStructureToLocalState = useCallback(
+    (structure: DraftStructurePreviewResponse["new_structure"] | undefined | null, fallback: DraftStructurePayload) => {
+      const nextDays = normalizeDayIndexes(structure?.days, sortedDaysEnabled);
+      const nextStart = normalizeTime(structure?.start_time, fallback.start_time);
+      const nextEnd = normalizeTime(structure?.end_time, fallback.end_time);
+      const nextCellSizeRaw = Number(structure?.cell_size_minutes ?? structure?.cell_size_min ?? fallback.cell_size_minutes);
+      const nextCellSize = Number.isFinite(nextCellSizeRaw) ? nextCellSizeRaw : fallback.cell_size_minutes;
+      setDaysEnabled(nextDays);
+      setDayStart(nextStart);
+      setDayEnd(nextEnd);
+      setCellSizeMin(nextCellSize);
+      initialDaysEnabledRef.current = nextDays;
+      initialDayStartRef.current = nextStart;
+      initialDayEndRef.current = nextEnd;
+      initialCellSizeMinRef.current = nextCellSize;
+    },
+    [sortedDaysEnabled],
+  );
+
+  const applyDraftStructure = useCallback(
+    async (preview: DraftStructurePreviewResponse | null) => {
+      const payload = buildDraftStructurePayload();
+      const applyPayload: Record<string, unknown> = {
+        ...payload,
+        confirmed: true,
+      };
+      const previewToken = preview?.preview_token ?? preview?.preview_id ?? preview?.token;
+      if (previewToken != null) applyPayload.preview_token = previewToken;
+
+      setScheduleApplying(true);
+      setTabError(null);
+      setTabSaved(null);
+      try {
+        const response = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}/draft-structure/apply/`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(applyPayload),
+        });
+        const rawText = await response.text().catch(() => "");
+        if (!response.ok) {
+          throw new Error(parseApiErrorMessage(rawText, tt("grid_settings.draft_structure_apply_failed", "Could not update draft structure.")));
+        }
+        const data = parseJsonObject<Record<string, unknown>>(rawText);
+
+        applyStructureToLocalState(
+          ((data.new_structure ?? data.structure) as DraftStructurePreviewResponse["new_structure"]) ??
+            preview?.new_structure,
+          payload,
+        );
+        await patchScheduleGridSettings();
+        invalidateGridScreenContext(gridId, "draft");
+        invalidatePlacementPreviewCacheForGrid(gridId);
+        clearDraftStructurePreview();
+        const msg = tt("grid_settings.draft_structure_updated", "Draft structure updated.");
+        setTabSaved(
+          `${msg} ${tt(
+            "grid_settings.draft_structure_publish_note",
+            "Published schedule remains unchanged until you publish the draft.",
+          )}`,
+        );
+        toast.success(msg);
+        router.refresh();
+      } catch (error: unknown) {
+        const msg =
+          error instanceof Error
+            ? error.message
+            : tt("grid_settings.draft_structure_apply_failed", "Could not update draft structure.");
+        setTabError(msg);
+        toast.error(msg);
+      } finally {
+        setScheduleApplying(false);
+      }
+    },
+    [
+      applyStructureToLocalState,
+      buildDraftStructurePayload,
+      clearDraftStructurePreview,
+      gridId,
+      patchScheduleGridSettings,
+      router,
+      tt,
+    ],
+  );
+
+  const previewDraftStructure = async () => {
+    setTabSaved(null);
+    setTabError(null);
+    setDraftStructurePreview(null);
+    setDraftStructureDialogOpen(false);
+    if (parseClockToMin(dayEnd) <= parseClockToMin(dayStart)) {
+      const msg = tt("grid_settings.end_time_after_start", "Day end must be after day start.");
+      setTabError(msg);
+      toast.error(msg);
+      return;
+    }
+    if (sortedDaysEnabled.length === 0) {
+      const msg = tt("grid_settings.days_required", "Select at least one day.");
+      setTabError(msg);
+      toast.error(msg);
+      return;
+    }
+    if (unsupportedCellSize) {
+      const msg = tt("grid_settings.unsupported_cell_size", "This cell size is not supported.");
+      setTabError(msg);
+      toast.error(msg);
+      return;
+    }
+    if (!draftStructureChanged) {
+      if (!allowOverstaffingChanged && !timeWindowModeChanged) return;
+      setScheduleApplying(true);
+      try {
+        await patchScheduleGridSettings();
+        const msg = tt("grid_settings.saved", "Saved.");
+        setTabSaved(msg);
+        toast.success(msg);
+        router.refresh();
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : tt("grid_settings.save_principal_failed", "Could not save principal settings.");
+        setTabError(msg);
+        toast.error(msg);
+      } finally {
+        setScheduleApplying(false);
+      }
+      return;
+    }
+
+    const payload = buildDraftStructurePayload();
+    setSchedulePreviewing(true);
+    try {
+      const response = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}/draft-structure/preview/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const rawText = await response.text().catch(() => "");
+      if (!response.ok) {
+        throw new Error(parseApiErrorMessage(rawText, tt("grid_settings.draft_structure_preview_failed", "Could not preview draft structure changes.")));
+      }
+      const data = parseJsonObject<DraftStructurePreviewResponse>(rawText);
+      setDraftStructurePreview(data);
+      setDraftStructureDialogOpen(true);
+    } catch (error: unknown) {
+      const msg =
+        error instanceof Error
+          ? error.message
+          : tt("grid_settings.draft_structure_preview_failed", "Could not preview draft structure changes.");
+      setTabError(msg);
+      toast.error(msg);
+    } finally {
+      setSchedulePreviewing(false);
+    }
+  };
 
   const buildObjectiveWeightPayload = useCallback(() => {
     const next = { ...objectiveWeightsRef.current };
@@ -1233,11 +1703,6 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
           organization_type: organizationType || null,
           unit_nature: unitNature || null,
           other_context_description: organizationType === "other" ? otherContextDescription.trim() : null,
-          days_enabled: Array.from(new Set(daysEnabled)).sort((a, b) => a - b),
-          day_start: dayStart,
-          day_end: dayEnd,
-          cell_size_min: cellSizeMin,
-          allow_overstaffing: allowOverstaffing,
         },
         "grid_settings.save_principal_failed",
       );
@@ -1360,7 +1825,16 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
       const response = await fetch(`/api/grids/${id}`, { method: "DELETE" });
       if (!response.ok) {
         const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, tt("grid_settings.delete_grid_failed", "Could not delete grid.")));
+        throw new Error(
+          parseGridDeleteErrorMessage(
+            raw,
+            tt("grid_settings.delete_grid_failed", "Could not delete grid."),
+            tt(
+              "grid_settings.delete_grid_protected",
+              "The grid could not be deleted because it still has related data.",
+            ),
+          ),
+        );
       }
       toast.success(tt("grid_settings.delete_grid_deleted", "Grid deleted."));
       setDeleteDialogOpen(false);
@@ -1403,6 +1877,25 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
     }
     return mapped;
   }, [dayHeatmapValues]);
+  const draftStructureBlockingErrors = [
+    ...flattenApiError(draftStructurePreview?.blocking_errors ?? []),
+    ...(draftStructurePreview?.can_apply === false
+      ? flattenApiError(draftStructurePreview?.errors ?? [])
+      : []),
+  ];
+  const draftStructureLockedPlacements = getImpactItems(draftStructurePreview, "locked_placements_blocking");
+  const draftStructureIncompatibleEntities = getImpactItems(draftStructurePreview, "cell_size_incompatible_entities");
+  const draftStructureBlocksApply =
+    draftStructurePreview?.can_apply === false ||
+    draftStructureBlockingErrors.length > 0 ||
+    draftStructureLockedPlacements.length > 0 ||
+    draftStructureIncompatibleEntities.length > 0;
+  const draftStructureWarnings = flattenApiError(draftStructurePreview?.warnings ?? []);
+  const draftStructurePlacementsToUnassign = getImpactItems(draftStructurePreview, "placements_to_unassign");
+  const draftStructureBlockagesToDelete = getImpactItems(draftStructurePreview, "blockages_to_delete");
+  const draftStructureBlockagesToTrim = getImpactItems(draftStructurePreview, "blockages_to_trim");
+  const draftStructureAvailabilityAffected = getImpactItems(draftStructurePreview, "availability_rules_affected");
+  const draftStructureTimeRangesAffected = getImpactItems(draftStructurePreview, "time_ranges_affected");
 
   if (loading) {
     return (
@@ -1607,6 +2100,12 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
                     title={tt("grid_settings.schedule_tab", "Schedule")}
                     description={tt("grid_settings.schedule_tab_desc", "Schedule boundaries, days, and time resolution.")}
                   >
+                    <div className="mb-4 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300">
+                      {tt(
+                        "grid_settings.draft_structure_notice",
+                        "Structure changes apply to the draft only. Published schedules will not change until the draft is published.",
+                      )}
+                    </div>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div className="sm:col-span-2">
                         <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -1619,6 +2118,7 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
                                 type="checkbox"
                                 checked={daysEnabled.includes(day.value)}
                                 onChange={(event) => {
+                                  clearDraftStructurePreview();
                                   setDaysEnabled((prev) => {
                                     if (event.target.checked) {
                                       return Array.from(new Set([...prev, day.value])).sort((a, b) => a - b);
@@ -1639,7 +2139,10 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
                         <input
                           type="time"
                           value={dayStart}
-                          onChange={(event) => setDayStart(event.target.value)}
+                          onChange={(event) => {
+                            clearDraftStructurePreview();
+                            setDayStart(event.target.value);
+                          }}
                           className={sectionCardInputClass}
                         />
                       </div>
@@ -1650,7 +2153,10 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
                         <input
                           type="time"
                           value={dayEnd}
-                          onChange={(event) => setDayEnd(event.target.value)}
+                          onChange={(event) => {
+                            clearDraftStructurePreview();
+                            setDayEnd(event.target.value);
+                          }}
                           className={sectionCardInputClass}
                         />
                       </div>
@@ -1660,10 +2166,13 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
                         </label>
                         <select
                           value={String(cellSizeMin)}
-                          onChange={(event) => setCellSizeMin(Number(event.target.value) || 60)}
+                          onChange={(event) => {
+                            clearDraftStructurePreview();
+                            setCellSizeMin(Number(event.target.value) || 60);
+                          }}
                           className={sectionCardInputClass}
                         >
-                          {[5, 10, 15, 20, 30, 40, 45, 60].map((minutes) => (
+                          {allowedCellSizes.map((minutes) => (
                             <option key={minutes} value={minutes}>
                               {minutes} min
                             </option>
@@ -1679,11 +2188,39 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
                         </div>
                       </div>
                       <div className="sm:col-span-2">
+                        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                          {tt("grid_settings.time_window_mode", "Time window mode")}
+                        </label>
+                        <select
+                          value={timeWindowMode}
+                          onChange={(event) => {
+                            clearDraftStructurePreview();
+                            setTimeWindowMode(normalizeTimeWindowMode(event.target.value));
+                          }}
+                          className={sectionCardInputClass}
+                        >
+                          {timeWindowModeOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                          {tt(
+                            "grid_settings.time_window_mode_help",
+                            "Soft windows allow backend warnings. Hard windows make backend preview reject out-of-window drops.",
+                          )}
+                        </p>
+                      </div>
+                      <div className="sm:col-span-2">
                         <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
                           <input
                             type="checkbox"
                             checked={allowOverstaffing}
-                            onChange={(event) => setAllowOverstaffing(event.target.checked)}
+                            onChange={(event) => {
+                              clearDraftStructurePreview();
+                              setAllowOverstaffing(event.target.checked);
+                            }}
                           />
                           <span>{tt("grid_settings.allow_overstaffing", "Allow Overstaffing")}</span>
                         </label>
@@ -1693,11 +2230,22 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
                     <div className="mt-5 flex justify-end">
                       <button
                         type="button"
-                        onClick={() => void savePrincipal()}
-                        disabled={principalSaving}
+                        onClick={() => void previewDraftStructure()}
+                        disabled={
+                          schedulePreviewing ||
+                          scheduleApplying ||
+                          !scheduleSettingsChanged ||
+                          unsupportedCellSize
+                        }
                         className="rounded-md bg-black px-4 py-2 text-sm text-white transition-colors hover:bg-slate-800 disabled:opacity-60"
                       >
-                        {principalSaving ? tt("common.saving", "Saving...") : tt("common.save", "Save")}
+                        {schedulePreviewing
+                          ? tt("grid_settings.previewing_changes", "Previewing...")
+                          : scheduleApplying
+                          ? tt("grid_settings.applying_changes", "Applying...")
+                          : draftStructureChanged
+                          ? tt("grid_settings.preview_structure_changes", "Preview changes")
+                          : tt("common.save", "Save")}
                       </button>
                     </div>
                   </SettingsSectionCard>
@@ -1857,6 +2405,142 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
           </SheetContent>
         </Sheet>
       </div>
+
+      <Dialog
+        open={draftStructureDialogOpen}
+        onOpenChange={(open) => {
+          if (scheduleApplying) return;
+          setDraftStructureDialogOpen(open);
+          if (!open) setDraftStructurePreview(null);
+        }}
+      >
+        <DialogContent className="max-h-[85dvh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {tt("grid_settings.draft_structure_dialog_title", "Apply structure changes to draft?")}
+            </DialogTitle>
+            <DialogDescription>
+              {tt(
+                "grid_settings.draft_structure_dialog_description",
+                "This change will affect the current draft only. The published schedule will not change until you publish the draft.",
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {draftStructureBlockingErrors.length > 0 ? (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
+                <div className="font-medium">{tt("grid_settings.draft_structure_blocking_errors", "Blocking errors")}</div>
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {draftStructureBlockingErrors.map((line, index) => (
+                    <li key={`draft-structure-blocking-${index}`}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {draftStructureWarnings.length > 0 ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+                <div className="font-medium">{tt("grid_settings.draft_structure_warnings", "Warnings")}</div>
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {draftStructureWarnings.map((line, index) => (
+                    <li key={`draft-structure-warning-${index}`}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            <DraftStructureImpactList
+              title={tt(
+                "grid_settings.placements_to_unassign",
+                "The following draft placements will be unassigned:",
+              )}
+              items={draftStructurePlacementsToUnassign}
+              fallback={tt("grid_settings.placement_item", "Placement")}
+            />
+            <DraftStructureImpactList
+              title={tt(
+                "grid_settings.locked_placements_blocking",
+                "This change cannot be applied because some locked placements would be affected:",
+              )}
+              items={draftStructureLockedPlacements}
+              fallback={tt("grid_settings.placement_item", "Placement")}
+              tone="danger"
+            />
+            <DraftStructureImpactList
+              title={tt(
+                "grid_settings.blockages_to_delete",
+                "The following blockages will be deleted from the draft:",
+              )}
+              items={draftStructureBlockagesToDelete}
+              fallback={tt("grid_settings.blockage_item", "Blockage")}
+              tone="warning"
+            />
+            <DraftStructureImpactList
+              title={tt("grid_settings.blockages_to_trim", "The following blockages will be adapted:")}
+              items={draftStructureBlockagesToTrim}
+              fallback={tt("grid_settings.blockage_item", "Blockage")}
+              tone="warning"
+            />
+            <DraftStructureImpactList
+              title={tt(
+                "grid_settings.cell_size_incompatible_entities",
+                "This cell size cannot be applied because some entities cannot be represented in the new grid granularity.",
+              )}
+              items={draftStructureIncompatibleEntities}
+              fallback={tt("grid_settings.entity_item", "Entity")}
+              tone="danger"
+            />
+
+            {draftStructureAvailabilityAffected.length > 0 ? (
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+                {tt(
+                  "grid_settings.availability_rules_affected",
+                  "Availability rules will be preserved, but only the part that fits the new draft structure will be rendered.",
+                )}
+              </div>
+            ) : null}
+            {draftStructureTimeRangesAffected.length > 0 ? (
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+                {tt(
+                  "grid_settings.time_ranges_affected",
+                  "Time ranges will be preserved in structure metadata and adjusted for the current draft view when applicable.",
+                )}
+              </div>
+            ) : null}
+
+            {!draftStructureBlocksApply && !hasDraftStructureImpact(draftStructurePreview) && draftStructureWarnings.length === 0 ? (
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+                {tt("grid_settings.no_destructive_impact", "No destructive impact was reported by the preview.")}
+              </div>
+            ) : null}
+          </div>
+
+          <DialogFooter>
+            <button
+              type="button"
+              className="rounded border px-4 py-2 text-sm"
+              disabled={scheduleApplying}
+              onClick={() => {
+                setDraftStructureDialogOpen(false);
+                setDraftStructurePreview(null);
+              }}
+            >
+              {tt("common.cancel", "Cancel")}
+            </button>
+            <button
+              type="button"
+              disabled={scheduleApplying || draftStructureBlocksApply}
+              onClick={() => void applyDraftStructure(draftStructurePreview)}
+              className="rounded bg-black px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {scheduleApplying
+                ? tt("grid_settings.applying_changes", "Applying...")
+                : tt("grid_settings.apply_to_draft", "Apply to draft")}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={deleteDialogOpen}

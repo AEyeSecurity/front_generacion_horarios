@@ -4,6 +4,7 @@ import localFont from "next/font/local";
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { normalizePreferredLanguage } from "@/lib/language";
+import { I18nProvider } from "@/components/providers/I18nProvider";
 
 export const dynamic = "force-dynamic";
 
@@ -37,10 +38,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang={language}>
       <body className={`${googleSans.variable} min-h-dvh bg-gray-50 text-gray-900 font-sans`}>
-        <main className="w-full">{children}</main>
+        <I18nProvider initialLocale={language}>
+          <main className="w-full">{children}</main>
 
-        {/* Sonner */}
-        <Toaster position="top-right" richColors closeButton />
+          {/* Sonner */}
+          <Toaster position="top-right" richColors closeButton />
+        </I18nProvider>
       </body>
     </html>
   );

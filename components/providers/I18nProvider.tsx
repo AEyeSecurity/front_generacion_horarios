@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useI18nContext } from "@/components/providers/I18nProvider";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { t as translate, type I18nKey } from "@/lib/i18n";
 import {
+  normalizePreferredLanguage,
   PREFERRED_LANGUAGE_CHANGED_EVENT,
   readDocumentPreferredLanguage,
   type PreferredLanguage,
@@ -11,26 +11,35 @@ import {
 
 type Params = Record<string, string | number>;
 
-type I18nApi = {
+export type I18nApi = {
   locale: PreferredLanguage;
   t: (key: I18nKey, params?: Params) => string;
 };
 
-export function useI18n(): I18nApi {
-  const context = useI18nContext();
-  const [fallbackLocale, setFallbackLocale] = useState<PreferredLanguage>("en-US");
+const I18nContext = createContext<I18nApi | null>(null);
+
+export function I18nProvider({
+  initialLocale,
+  children,
+}: {
+  initialLocale: PreferredLanguage | string;
+  children: ReactNode;
+}) {
+  const [locale, setLocale] = useState<PreferredLanguage>(() => normalizePreferredLanguage(initialLocale));
 
   useEffect(() => {
-    if (context) return;
+    const setIfChanged = (next: PreferredLanguage) => {
+      setLocale((prev) => (prev === next ? prev : next));
+    };
+
     const syncLocale = () => {
-      const next = readDocumentPreferredLanguage();
-      setFallbackLocale((prev) => (prev === next ? prev : next));
+      setIfChanged(readDocumentPreferredLanguage());
     };
 
     const onLanguageChanged = (event: Event) => {
       const customEvent = event as CustomEvent<{ language?: PreferredLanguage }>;
       if (customEvent.detail?.language) {
-        setFallbackLocale((prev) => (prev === customEvent.detail?.language ? prev : customEvent.detail?.language ?? prev));
+        setIfChanged(customEvent.detail.language);
         return;
       }
       syncLocale();
@@ -46,13 +55,18 @@ export function useI18n(): I18nApi {
       window.removeEventListener("storage", syncLocale);
       window.removeEventListener(PREFERRED_LANGUAGE_CHANGED_EVENT, onLanguageChanged as EventListener);
     };
-  }, [context]);
+  }, []);
 
-  const locale = context?.locale ?? fallbackLocale;
+  const t = useCallback(
+    (key: I18nKey, params?: Params) => translate(locale, key, params),
+    [locale],
+  );
 
-  const t = useCallback((key: I18nKey, params?: Params) => {
-    return translate(locale, key, params);
-  }, [locale]);
+  const value = useMemo<I18nApi>(() => ({ locale, t }), [locale, t]);
 
-  return { locale, t };
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
+}
+
+export function useI18nContext(): I18nApi | null {
+  return useContext(I18nContext);
 }

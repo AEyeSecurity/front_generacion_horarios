@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import EntityPageHeader from "./EntityPageHeader";
 
 const CreateCellDialog = dynamic(() => import("@/components/dialogs/CreateCellDialog"), { ssr: false });
@@ -15,6 +16,7 @@ export default function CellsHeader({
   backHref: string;
   canCreate: boolean;
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
 
   return (
@@ -24,7 +26,7 @@ export default function CellsHeader({
       canCreate={canCreate}
       createOnboardingTarget="cell-create-button"
       onCreateClick={() => setOpen(true)}
-      dialog={<CreateCellDialog gridId={gridId} open={open} onOpenChange={setOpen} />}
+      dialog={<CreateCellDialog gridId={gridId} open={open} onOpenChange={setOpen} onCreated={() => router.refresh()} />}
     />
   );
 }
