@@ -4556,6 +4556,28 @@ export default function SolveOverlay({
     canCommentCards &&
     (role === "editor" || role === "supervisor");
   const hasUnassignedCells = unassignedCells.length > 0;
+  const hasAnyCells = Object.keys(cellNameById).length > 0;
+  const unitsWithAvailableCells = useMemo(() => {
+    const placedCountBySourceCell = schedule.reduce<Record<string, number>>((acc, row) => {
+      const sourceCellId = String(row.source_cell_id ?? row.cell_id);
+      acc[sourceCellId] = (acc[sourceCellId] ?? 0) + 1;
+      return acc;
+    }, {});
+    const unitIds = new Set<string>();
+    for (const cellId of Object.keys(cellNameById)) {
+      const cellKey = String(cellId);
+      const requiredPlacements = Math.max(1, Number(cellRequiredPlacementsById[cellKey] ?? 1));
+      const currentPlacements = Number(placedCountBySourceCell[cellKey] ?? 0);
+      if (currentPlacements >= requiredPlacements) continue;
+      const bundles = (cellPinMetaById[cellKey]?.bundles || []).map(String);
+      for (const bundleId of bundles) {
+        for (const unitId of bundleUnitsById[bundleId] || []) {
+          unitIds.add(String(unitId));
+        }
+      }
+    }
+    return Array.from(unitIds);
+  }, [bundleUnitsById, cellNameById, cellPinMetaById, cellRequiredPlacementsById, schedule]);
   const hasPlacedCells = Array.isArray(currentSchedule?.placements) && currentSchedule.placements.length > 0;
   const hasOverstaffableCells = useMemo(
     () => gridAllowsOverstaffing && Object.values(cellAllowOverstaffById).some(Boolean),
@@ -9578,9 +9600,12 @@ export default function SolveOverlay({
           canUseSolve={canUseSolve}
           solveDisabledReason={solveDisabledReason}
           canManualEditCards={canManualEditCards}
+          hasAnyCells={hasAnyCells}
+          hasOverstaffingEnabled={gridAllowsOverstaffing}
           hasOverstaffableCells={hasOverstaffableCells}
           hasUnassignedCells={hasUnassignedCells}
           hasPlacedCells={hasPlacedCells}
+          unitsWithAvailableCells={unitsWithAvailableCells}
           isParticipantsToolActive={isParticipantsToolActive}
           isBreakToolActive={isBreakToolActive}
           isBlockageToolActive={isBlockageToolActive}
@@ -9593,12 +9618,15 @@ export default function SolveOverlay({
           labels={{
             add: t("common.add"),
             participants: t("solve_overlay.participants"),
-            breaks: "Breaks",
-            blockages: "Blockages",
-            cells: "Cells",
+            breaks: t("solve_overlay.breaks"),
+            blockages: t("solve_overlay.blockages"),
+            cells: t("entity.cells"),
             publishDraft: t("solve_overlay.publish_draft_schedule"),
             nothingToPublish: t("solve_overlay.nothing_to_publish"),
             solving: t("solve_overlay.solving"),
+            createAtLeastOneCellFirst: t("dock.create_at_least_one_cell_first"),
+            noCellsAvailableForUnit: t("dock.no_cells_available_for_unit"),
+            assignCellBeforeBreaks: t("dock.assign_cell_before_breaks"),
           }}
           participantScrollerItems={participantScrollerItems}
           unassignedCellItems={unassignedCells.map((cell) => ({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   Sheet,
@@ -14,6 +14,7 @@ import type { Role } from "@/lib/types";
 const ParticipantsPanel = dynamic(() => import("@/components/panels/ParticipantsPanel"), { ssr: false });
 const CategoriesPanel = dynamic(() => import("@/components/panels/CategoriesPanel"), { ssr: false });
 const TimeRangesEditor = dynamic(() => import("@/components/grid/TimeRangesEditor"), { ssr: false });
+const PARTICIPANT_ADD_HIGHLIGHT_EVENT = "shift:participants-add-highlight";
 
 export default function SidePanel({
   gridId,
@@ -58,9 +59,22 @@ export default function SidePanel({
   const [categoryParents, setCategoryParents] = useState<{ id: number; name: string }[]>([]);
   const [participantsKey, setParticipantsKey] = useState(0);
   const [categoriesKey, setCategoriesKey] = useState(0);
+  const [highlightAddParticipant, setHighlightAddParticipant] = useState(false);
 
   const AddParticipantDialog = dynamic(() => import("@/components/dialogs/AddParticipantDialog"), { ssr: false });
   const AddCategoryDialog = dynamic(() => import("@/components/dialogs/AddCategoryDialog"), { ssr: false });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onHighlight = (event: Event) => {
+      const custom = event as CustomEvent<{ gridId?: string }>;
+      if (custom.detail?.gridId !== String(gridId)) return;
+      setHighlightAddParticipant(true);
+      window.setTimeout(() => setHighlightAddParticipant(false), 1800);
+    };
+    window.addEventListener(PARTICIPANT_ADD_HIGHLIGHT_EVENT, onHighlight as EventListener);
+    return () => window.removeEventListener(PARTICIPANT_ADD_HIGHLIGHT_EVENT, onHighlight as EventListener);
+  }, [gridId]);
 
   // Evitar que un click en el dock sea considerado "outside" por el Sheet
   const ignoreDockOutside = (e: any) => {
@@ -125,7 +139,9 @@ export default function SidePanel({
                   <button
                     data-onboarding-target="participants-add-button"
                     onClick={() => setShowPerson(true)}
-                    className="w-full py-2 rounded bg-black text-white text-sm"
+                    className={`w-full py-2 rounded bg-black text-white text-sm transition-shadow ${
+                      highlightAddParticipant ? "ring-4 ring-amber-300 ring-offset-2 animate-pulse" : ""
+                    }`}
                   >
                     {t("side_panel.add_participant")}
                   </button>

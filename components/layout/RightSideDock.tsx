@@ -6,8 +6,11 @@ import GlassSurface from "@/components/ui/GlassSurface";
 import { CELL_COLOR_OPTIONS, CELL_TEXT_DARK, CELL_TEXT_LIGHT } from "@/lib/cell-colors";
 
 type ToolKey = "participants" | "break" | "blockage" | "unassigned";
+type DockActionStatus = "active" | "locked" | "hidden";
 const GRID_ONBOARDING_RIGHT_FAN_REQUEST_EVENT = "shift:onboarding-right-fan-request";
 const GRID_ONBOARDING_RIGHT_TOOL_REQUEST_EVENT = "shift:onboarding-right-tool-request";
+const DOCK_FEEDBACK_HIGHLIGHT_EVENT = "shift:dock-feedback-highlight";
+const UNIT_TABS_HIGHLIGHT_EVENT = "shift:unit-tabs-highlight";
 const TOOL_KEYS: ToolKey[] = ["participants", "break", "blockage", "unassigned"];
 
 function isToolKey(value: unknown): value is ToolKey {
@@ -45,9 +48,12 @@ type Props = {
   canUseSolve?: boolean;
   solveDisabledReason?: string;
   canManualEditCards?: boolean;
+  hasAnyCells?: boolean;
+  hasOverstaffingEnabled?: boolean;
   hasOverstaffableCells?: boolean;
   hasUnassignedCells?: boolean;
   hasPlacedCells?: boolean;
+  unitsWithAvailableCells?: string[];
   isParticipantsToolActive?: boolean;
   isBreakToolActive?: boolean;
   isBlockageToolActive?: boolean;
@@ -68,6 +74,9 @@ type Props = {
     solving: string;
     noParticipants?: string;
     noCells?: string;
+    createAtLeastOneCellFirst?: string;
+    noCellsAvailableForUnit?: string;
+    assignCellBeforeBreaks?: string;
   };
   participantScrollerItems?: ParticipantScrollerItem[];
   unassignedCellItems?: UnassignedCellItem[];
@@ -136,9 +145,12 @@ export default function RightSideDock({
   canUseSolve = false,
   solveDisabledReason = "",
   canManualEditCards = false,
+  hasAnyCells = false,
+  hasOverstaffingEnabled = false,
   hasOverstaffableCells = false,
   hasUnassignedCells = false,
   hasPlacedCells = false,
+  unitsWithAvailableCells = [],
   isParticipantsToolActive = false,
   isBreakToolActive = false,
   isBlockageToolActive = false,
@@ -245,6 +257,33 @@ export default function RightSideDock({
     return null;
   }, [showParticipantScroller, showUnassignedScroller]);
 
+  const handleLockedRadialAction = (key: ToolKey | "cells", reason: string) => {
+    window.dispatchEvent(new CustomEvent(DOCK_FEEDBACK_HIGHLIGHT_EVENT, { detail: { message: reason } }));
+    if (key === "cells" && !hasAnyCells) {
+      window.dispatchEvent(
+        new CustomEvent(DOCK_FEEDBACK_HIGHLIGHT_EVENT, {
+          detail: { target: "cells" },
+        }),
+      );
+      return;
+    }
+    if (key === "cells" && hasAnyCells && unitsWithAvailableCells.length > 0) {
+      window.dispatchEvent(
+        new CustomEvent(UNIT_TABS_HIGHLIGHT_EVENT, {
+          detail: { unitIds: unitsWithAvailableCells },
+        }),
+      );
+      return;
+    }
+    if (key === "participants" && !hasAnyCells) {
+      window.dispatchEvent(
+        new CustomEvent(DOCK_FEEDBACK_HIGHLIGHT_EVENT, {
+          detail: { target: "cells" },
+        }),
+      );
+    }
+  };
+
   if (!visible) return null;
   if (publishedCommentOnly) {
     return (
@@ -280,7 +319,7 @@ export default function RightSideDock({
                 onSolvePressed?.();
               }}
               disabled={pendingCandidateReview ? false : !canUseSolve}
-              className={`${bubbleClass} relative scale-75 opacity-90 ${pendingCandidateReview || canUseSolve ? "" : "opacity-70"} disabled:cursor-not-allowed`}
+              className={`${bubbleClass} relative scale-75 opacity-90 ${pendingCandidateReview || canUseSolve ? "" : "opacity-70"} disabled:cursor-default`}
               aria-disabled={pendingCandidateReview ? false : !canUseSolve}
             >
               {pendingCandidateReview || canUseSolve ? (
@@ -319,22 +358,26 @@ export default function RightSideDock({
                 />
               </div>
               {[
-                {
+                hasOverstaffingEnabled
+                  ? {
                   key: "participants" as const,
                   title: labels.participants,
                   icon: <Users className="h-5 w-5" />,
                   active: isParticipantsToolActive,
-                  disabled: !hasOverstaffableCells,
+                      status: hasOverstaffableCells ? "active" as DockActionStatus : "locked" as DockActionStatus,
+                      lockedReason: labels.createAtLeastOneCellFirst || labels.noCells || labels.participants,
                   onClick: () => onActivateTool?.("participants"),
                   angle: -78,
                   onboardingTarget: undefined as string | undefined,
-                },
+                    }
+                  : null,
                 {
                   key: "break" as const,
                   title: labels.breaks,
                   icon: <Coffee className="h-6 w-6" />,
                   active: isBreakToolActive,
-                  disabled: !hasPlacedCells,
+                  status: hasPlacedCells ? "active" as DockActionStatus : "locked" as DockActionStatus,
+                  lockedReason: labels.assignCellBeforeBreaks || labels.breaks,
                   onClick: () => onActivateTool?.("break"),
                   angle: -26,
                   onboardingTarget: undefined as string | undefined,
@@ -344,7 +387,8 @@ export default function RightSideDock({
                   title: labels.blockages,
                   icon: <CircleOff className="h-6 w-6" />,
                   active: isBlockageToolActive,
-                  disabled: false,
+                  status: "active" as DockActionStatus,
+                  lockedReason: "",
                   onClick: () => onActivateTool?.("blockage"),
                   angle: 26,
                   onboardingTarget: "right-dock-blockage",
@@ -354,41 +398,62 @@ export default function RightSideDock({
                   title: labels.cells,
                   icon: <LayoutGrid className="h-5 w-5" />,
                   active: isUnassignedToolActive,
-                  disabled: !hasUnassignedCells,
+                  status: !hasAnyCells
+                    ? "locked" as DockActionStatus
+                    : hasUnassignedCells
+                    ? "active" as DockActionStatus
+                    : "locked" as DockActionStatus,
+                  lockedReason: !hasAnyCells
+                    ? labels.createAtLeastOneCellFirst || labels.noCells || labels.cells
+                    : labels.noCellsAvailableForUnit || labels.cells,
                   onClick: () => onActivateTool?.("unassigned"),
                   angle: 78,
                   onboardingTarget: undefined as string | undefined,
                 },
-              ].map((action, idx, list) => {
-                const angleRad = (action.angle * Math.PI) / 180;
+              ].filter((action): action is NonNullable<typeof action> => Boolean(action)).map((action, idx, list) => {
+                const fanStartAngle = -78;
+                const fanEndAngle = 78;
+                const computedAngle =
+                  list.length <= 1
+                    ? 0
+                    : fanStartAngle + (idx * (fanEndAngle - fanStartAngle)) / (list.length - 1);
+                const angleRad = (computedAngle * Math.PI) / 180;
                 const x = -Math.round(98 * Math.cos(angleRad));
                 const y = Math.round(98 * Math.sin(angleRad));
                 const openDelay = idx * 50;
                 const closeDelay = (list.length - idx - 1) * 50;
+                const locked = action.status === "locked";
                 return (
                   <button
                     key={action.key}
                     type="button"
                     data-onboarding-target={action.onboardingTarget}
                     data-onboarding-active={action.active ? "true" : undefined}
-                    title={action.title}
-                    disabled={action.disabled}
+                    data-state={action.status}
+                    title={locked ? action.lockedReason : action.title}
                     onClick={(event) => {
                       event.stopPropagation();
+                      if (locked) {
+                        event.preventDefault();
+                        handleLockedRadialAction(action.key, action.lockedReason);
+                        return;
+                      }
                       action.onClick();
                     }}
                     className={`absolute left-0 top-0 z-[161] ${bubbleClass} transition-[transform,opacity] duration-220 ease-out ${
                       action.active ? "scale-100" : "scale-75 opacity-90"
-                    } ${action.disabled ? "cursor-not-allowed opacity-55" : "cursor-pointer"}`}
+                    } ${locked ? "cursor-pointer opacity-55 hover:shadow-md" : "cursor-pointer"}`}
                     style={{
                       opacity: fanOpen ? 1 : 0,
                       transform: fanOpen ? `translate(${x}px, ${y}px) scale(1)` : "translate(0px,0px) scale(0)",
                       transitionDelay: `${fanOpen ? openDelay : closeDelay}ms`,
                       pointerEvents: fanOpen ? "auto" : "none",
                     }}
-                    aria-disabled={action.disabled}
+                    aria-disabled={locked}
                   >
-                    <div className={`flex h-full w-full items-center justify-center ${iconClass}`}>{action.icon}</div>
+                    <div className={`flex h-full w-full items-center justify-center ${locked ? "text-gray-300" : iconClass}`}>
+                      {action.icon}
+                    </div>
                   </button>
                 );
               })}
@@ -399,7 +464,7 @@ export default function RightSideDock({
                 title={labels.add}
                 onClick={() => setFanOpen((prev) => !prev)}
                 disabled={!canManualEditCards}
-                className={`absolute inset-0 ${bubbleClass} scale-75 opacity-90 disabled:cursor-not-allowed ${
+                className={`absolute inset-0 ${bubbleClass} scale-75 opacity-90 disabled:cursor-default ${
                   canManualEditCards ? "" : "opacity-70"
                 }`}
                 aria-disabled={!canManualEditCards}
@@ -415,7 +480,7 @@ export default function RightSideDock({
               title={canPublishDraft ? labels.publishDraft : labels.nothingToPublish}
               onClick={onPublishDraft}
               disabled={!canPublishDraft}
-              className={`${bubbleClass} scale-75 opacity-90 ${canPublishDraft ? "" : "opacity-70"} disabled:cursor-not-allowed`}
+              className={`${bubbleClass} scale-75 opacity-90 ${canPublishDraft ? "" : "opacity-70"} disabled:cursor-default`}
               aria-disabled={!canPublishDraft}
             >
               {isPublishing ? (

@@ -5,6 +5,7 @@ import CellsCardSwap from "@/components/grid/CellsCardSwap";
 import OnboardingGuide from "@/components/grid/OnboardingGuide";
 import { CellsHeader } from "@/components/grid/headers";
 import { resolveGridByCode } from "../_helpers";
+import { redirect } from "next/navigation";
 
 const EN_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -41,6 +42,7 @@ export default async function GridCellsPage({
   // Resolve my role and (if editor) my participant id in this grid
   let role: Role = "viewer";
   let selfPid: number | null = null;
+  let participants: any[] = [];
   try {
     const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
     const list = Array.isArray(data) ? data : data.results ?? [];
@@ -50,19 +52,22 @@ export default async function GridCellsPage({
     role = (mine?.role ?? "viewer") as Role;
   } catch {}
   try {
-    let plist: any[] = [];
     try {
       const pdata = await backendFetchJSON<any>(`/api/participants/?grid=${id}`);
-      plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
+      participants = Array.isArray(pdata) ? pdata : pdata.results ?? [];
     } catch {
       const pdata = await backendFetchJSON<any>(`/api/participants?grid=${id}`);
-      plist = Array.isArray(pdata) ? pdata : pdata.results ?? [];
+      participants = Array.isArray(pdata) ? pdata : pdata.results ?? [];
     }
-    const myp = plist.find(
+    const myp = participants.find(
       (p: any) => (p.user_id ?? (typeof p.user === "number" ? p.user : p.user?.id)) === me.id
     );
     if (myp?.id != null) selfPid = Number(myp.id);
   } catch {}
+
+  if (participants.length === 0) {
+    redirect(`${gridBase}?dock=participants&dock_feedback=participants_before_cells`);
+  }
 
   const days = (grid.days_enabled || []).map((i) => EN_DAY[i] ?? String(i));
 

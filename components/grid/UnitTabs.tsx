@@ -7,6 +7,8 @@ import type { ScheduleViewMode } from "@/lib/schedule-view";
 
 type Unit = { id: number | string; name: string };
 const UNIT_TAB_SELECT_EVENT = "shift:unit-tab:select";
+const UNIT_TABS_HIGHLIGHT_EVENT = "shift:unit-tabs-highlight";
+const DOCK_FEEDBACK_HIGHLIGHT_EVENT = "shift:dock-feedback-highlight";
 const NO_UNIT_TAB_ID = "__no_unit__";
 const GLOBAL_BLOCKAGE_TAB_ID = "__global__";
 
@@ -57,6 +59,8 @@ export default function UnitTabs({
   const [hasUnitlessPlacements, setHasUnitlessPlacements] = useState(false);
   const [hasNoUnitCells, setHasNoUnitCells] = useState(false);
   const [blockageGlobalModeActive, setBlockageGlobalModeActive] = useState(false);
+  const [highlightedUnitTabs, setHighlightedUnitTabs] = useState<Set<string>>(new Set());
+  const [dockFeedback, setDockFeedback] = useState<{ id: string; message: string } | null>(null);
 
   const unitTabs = useMemo(
     () =>
@@ -134,6 +138,40 @@ export default function UnitTabs({
     return () => window.removeEventListener(UNIT_TAB_SELECT_EVENT, onSelectRequested as EventListener);
   }, [tabs]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onHighlight = (event: Event) => {
+      const custom = event as CustomEvent<{ unitIds?: Array<string | number> }>;
+      const unitIds = Array.isArray(custom.detail?.unitIds)
+        ? custom.detail.unitIds.map((id) => String(id))
+        : [];
+      setHighlightedUnitTabs(new Set(unitIds));
+      if (unitIds.length > 0) {
+        window.setTimeout(() => setHighlightedUnitTabs(new Set()), 1800);
+      }
+    };
+    window.addEventListener(UNIT_TABS_HIGHLIGHT_EVENT, onHighlight as EventListener);
+    return () => window.removeEventListener(UNIT_TABS_HIGHLIGHT_EVENT, onHighlight as EventListener);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let clearTimer: number | null = null;
+    const onFeedback = (event: Event) => {
+      const custom = event as CustomEvent<{ message?: string }>;
+      const message = typeof custom.detail?.message === "string" ? custom.detail.message.trim() : "";
+      if (!message) return;
+      if (clearTimer != null) window.clearTimeout(clearTimer);
+      setDockFeedback({ id: `${Date.now()}`, message });
+      clearTimer = window.setTimeout(() => setDockFeedback(null), 3200);
+    };
+    window.addEventListener(DOCK_FEEDBACK_HIGHLIGHT_EVENT, onFeedback as EventListener);
+    return () => {
+      window.removeEventListener(DOCK_FEEDBACK_HIGHLIGHT_EVENT, onFeedback as EventListener);
+      if (clearTimer != null) window.clearTimeout(clearTimer);
+    };
+  }, []);
+
   return (
     <>
       <SolveOverlay
@@ -179,11 +217,22 @@ export default function UnitTabs({
                   effectiveSelected === t.id
                     ? "bg-white text-black shadow-lg border-gray-300"
                     : "bg-gray-100 text-gray-700 shadow-md hover:shadow-lg hover:bg-white hover:scale-[1.02]",
+                  highlightedUnitTabs.has(String(t.id)) ? "ring-4 ring-amber-300 ring-offset-2 animate-pulse" : "",
                 ].join(" ")}
               >
                 {t.name}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+      {dockFeedback && (
+        <div className="fixed bottom-16 left-0 right-0 z-[170] flex justify-center pointer-events-none px-4">
+          <div
+            key={dockFeedback.id}
+            className="max-w-[min(90vw,520px)] rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm font-medium text-amber-950 shadow-lg"
+          >
+            {dockFeedback.message}
           </div>
         </div>
       )}

@@ -1,7 +1,7 @@
 "use client";
 
 import { MouseEvent, useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import SidePanel from "./SidePanel";
 import { Users, Tags, User as UserIcon, LayoutGrid, Clock } from "lucide-react";
 import type { Role } from "@/lib/types";
@@ -13,15 +13,21 @@ const SHEET_ANIM_MS = 240;
 const GRID_COMMENTS_PANEL_STATE_EVENT = "shift:grid-comments-panel-state";
 const GRID_LEFT_PANEL_STATE_EVENT = "shift:grid-left-panel-state";
 const GRID_ONBOARDING_LEFT_PANEL_REQUEST_EVENT = "shift:onboarding-left-panel-request";
+const DOCK_FEEDBACK_HIGHLIGHT_EVENT = "shift:dock-feedback-highlight";
+const PARTICIPANT_ADD_HIGHLIGHT_EVENT = "shift:participants-add-highlight";
 
 function DockButton({
   active,
+  locked,
+  highlighted,
   onClick,
   title,
   onboardingTarget,
   children,
 }: {
   active?: boolean;
+  locked?: boolean;
+  highlighted?: boolean;
   onClick?: (e: MouseEvent) => void;
   title: string;
   onboardingTarget?: string;
@@ -31,7 +37,9 @@ function DockButton({
     <button
       type="button"
       data-onboarding-target={onboardingTarget}
+      data-state={locked ? "locked" : active ? "active" : "idle"}
       title={title}
+      aria-disabled={locked ? "true" : undefined}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();
@@ -39,9 +47,11 @@ function DockButton({
       }}
       className={`w-12 h-12 rounded-full shadow-md border border-gray-200 bg-white
                   flex items-center justify-center transition-all duration-200 pointer-events-auto
-                  ${active ? "scale-100" : "scale-75 opacity-90"}`}
+                  ${active ? "scale-100" : "scale-75 opacity-90"}
+                  ${locked ? "opacity-55 cursor-pointer hover:shadow-md" : ""}
+                  ${highlighted ? "ring-4 ring-amber-300 ring-offset-2 animate-pulse" : ""}`}
     >
-      <div className={`${active ? "text-black" : "text-gray-400 hover:text-black"} transition-colors duration-200`}>
+      <div className={`${locked ? "text-gray-300" : active ? "text-black" : "text-gray-400 hover:text-black"} transition-colors duration-200`}>
         {children}
       </div>
     </button>
@@ -60,6 +70,7 @@ export default function LeftSideDock({
   dayStartMin,
   dayEndMin,
   tiersEnabled,
+  participantCount = 0,
 }: {
   gridId: number;
   gridCode?: string | null;
@@ -72,10 +83,13 @@ export default function LeftSideDock({
   dayStartMin?: number;
   dayEndMin?: number;
   tiersEnabled?: boolean;
+  participantCount?: number;
 }) {
   const { t } = useI18n();
+  const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("participants");
+  const [highlightCells, setHighlightCells] = useState(false);
   const [showDeleteDrop, setShowDeleteDrop] = useState(false);
   const [deleteDropActive, setDeleteDropActive] = useState(false);
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
@@ -84,13 +98,7 @@ export default function LeftSideDock({
   const pendingTabRef = useRef<Tab | null>(null);
   const router = useRouter();
   const gridBase = `/grid/${encodeURIComponent(gridCode || String(gridId))}`;
-  const gotoCells = () => {
-    const onboardingActive =
-      typeof window !== "undefined" &&
-      window.localStorage.getItem(`onboarding-step-grid-${gridId}`) != null &&
-      window.localStorage.getItem(`onboarding-done-grid-${gridId}`) !== "1";
-    router.push(`${gridBase}/cells${onboardingActive ? "?onboarding=1" : ""}`);
-  };
+  const feedbackCooldownRef = useRef(0);
 
   const switchTo = useCallback(
     (next: Tab) => {
@@ -113,6 +121,32 @@ export default function LeftSideDock({
     },
     [open, tab],
   );
+
+  const triggerParticipantsFeedback = useCallback(
+    (message: string) => {
+      const now = Date.now();
+      if (now - feedbackCooldownRef.current < 900) return;
+      feedbackCooldownRef.current = now;
+      switchTo("participants");
+      window.dispatchEvent(new CustomEvent(DOCK_FEEDBACK_HIGHLIGHT_EVENT, { detail: { message } }));
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent(PARTICIPANT_ADD_HIGHLIGHT_EVENT, { detail: { gridId: String(gridId) } }));
+      }, 260);
+    },
+    [gridId, switchTo],
+  );
+
+  const gotoCells = () => {
+    if (participantCount <= 0) {
+      triggerParticipantsFeedback(t("dock.create_participants_first"));
+      return;
+    }
+    const onboardingActive =
+      typeof window !== "undefined" &&
+      window.localStorage.getItem(`onboarding-step-grid-${gridId}`) != null &&
+      window.localStorage.getItem(`onboarding-done-grid-${gridId}`) !== "1";
+    router.push(`${gridBase}/cells${onboardingActive ? "?onboarding=1" : ""}`);
+  };
 
   useEffect(() => {
     const onState = (event: Event) => {
@@ -157,6 +191,29 @@ export default function LeftSideDock({
       }),
     );
   }, [gridId, open, tab]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onDockFeedbackHighlight = (event: Event) => {
+      const custom = event as CustomEvent<{ target?: string; message?: string }>;
+      if (custom.detail?.target !== "cells") return;
+      setHighlightCells(true);
+      window.setTimeout(() => setHighlightCells(false), 1800);
+    };
+    window.addEventListener(DOCK_FEEDBACK_HIGHLIGHT_EVENT, onDockFeedbackHighlight as EventListener);
+    return () => window.removeEventListener(DOCK_FEEDBACK_HIGHLIGHT_EVENT, onDockFeedbackHighlight as EventListener);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const dock = searchParams.get("dock");
+    const feedback = searchParams.get("dock_feedback");
+    if (dock !== "participants" || feedback !== "participants_before_cells") return;
+    triggerParticipantsFeedback(t("dock.create_participants_before_cells"));
+    window.setTimeout(() => {
+      router.replace(gridBase, { scroll: false });
+    }, 350);
+  }, [gridBase, router, searchParams, t, triggerParticipantsFeedback]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -220,7 +277,13 @@ export default function LeftSideDock({
           showDeleteDrop ? "opacity-0 pointer-events-none" : "opacity-100"
         }`}
       >
-        <DockButton title={t("side_dock.cells")} onboardingTarget="left-dock-cells" onClick={gotoCells}>
+        <DockButton
+          title={participantCount <= 0 ? t("dock.create_participants_first") : t("side_dock.cells")}
+          onboardingTarget="left-dock-cells"
+          locked={participantCount <= 0}
+          highlighted={highlightCells}
+          onClick={gotoCells}
+        >
           <LayoutGrid className="w-5 h-5" />
         </DockButton>
 

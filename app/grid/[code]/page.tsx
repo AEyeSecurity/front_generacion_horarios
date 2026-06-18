@@ -129,6 +129,7 @@ export default async function GridOverview({
         dayStartMin={start}
         dayEndMin={end}
         tiersEnabled={tiersEnabled}
+        participantCount={participants.length}
       />
       <OnboardingGuide
         gridId={Number(grid.id)}
