@@ -3,8 +3,6 @@
 import * as React from "react";
 import {
   Dialog,
-  DialogPortal,
-  DialogOverlay,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -15,6 +13,13 @@ import { Trash2, Plus, Pencil, Check, X } from "lucide-react";
 import AnimatedList from "@/components/navigation/AnimatedList";
 import { useI18n } from "@/lib/use-i18n";
 const CATEGORY_VALUES_UPDATED_EVENT = "shift:category-values-updated";
+
+function safeApiText(raw: string, fallback: string) {
+  const trimmed = raw.trim();
+  if (!trimmed) return fallback;
+  if (/^<!doctype/i.test(trimmed) || /^<html/i.test(trimmed)) return fallback;
+  return trimmed;
+}
 
 type Category = { id: number; name: string };
 type CategoryValue = { id: number; name: string; category: number };
@@ -72,7 +77,10 @@ export default function CategoryDialog({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ category: catId, name: newValue.trim() }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(safeApiText(txt, t("category_dialog.failed_add_value")));
+      }
       setNewValue("");
       await load();
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CATEGORY_VALUES_UPDATED_EVENT));
@@ -88,7 +96,12 @@ export default function CategoryDialog({
     const res = await fetch(`/api/category_values/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      alert(t("category_dialog.failed_delete_value", { status: res.status, details: txt }));
+      alert(
+        t("category_dialog.failed_delete_value", {
+          status: res.status,
+          details: safeApiText(txt, ""),
+        }),
+      );
       return;
     }
     await load();
@@ -108,7 +121,7 @@ export default function CategoryDialog({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || `Failed (${res.status})`);
+        throw new Error(safeApiText(txt, `Failed (${res.status})`));
       }
       setEditingValueId(null);
       setEditingValueName("");
@@ -129,7 +142,12 @@ export default function CategoryDialog({
     const res = await fetch(`/api/categories/${catId}`, { method: "DELETE" });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      alert(t("category_dialog.failed_delete_category", { status: res.status, details: txt }));
+      alert(
+        t("category_dialog.failed_delete_category", {
+          status: res.status,
+          details: safeApiText(txt, ""),
+        }),
+      );
       return;
     }
     onOpenChange(false);
@@ -139,13 +157,13 @@ export default function CategoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogPortal>
-        <DialogOverlay className="fixed inset-0 bg-black/50 z-[180]" />
-        <DialogContent className="sm:max-w-[720px] z-[181]">
-          <DialogHeader>
+        <DialogContent className="max-w-[720px] p-0">
+          <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
+          <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
             <DialogTitle>{t("category_dialog.title_with_name", { name: category?.name ?? "" })}</DialogTitle>
           </DialogHeader>
 
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-600">{t("category_dialog.description")}</p>
           <button
@@ -283,14 +301,15 @@ export default function CategoryDialog({
             />
           )}
         </div>
+        </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 items-center justify-between gap-3 border-t px-6 py-4 sm:justify-end">
             <DialogClose asChild>
-              <button type="button" className="px-3 py-2 rounded border text-sm">{t("common.close")}</button>
+              <button type="button" className="px-3 py-2 rounded border text-sm hover:bg-gray-50">{t("common.close")}</button>
             </DialogClose>
           </DialogFooter>
+          </div>
         </DialogContent>
-      </DialogPortal>
     </Dialog>
   );
 }

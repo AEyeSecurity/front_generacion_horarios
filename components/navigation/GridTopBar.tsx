@@ -15,6 +15,7 @@ export default async function GridTopBar({
   canInvite = false,
   hasSolution = false,
   canConfigureSolve = false,
+  hasPublishedSchedule = false,
 }: {
   id: number;
   gridCode?: string | null;
@@ -23,6 +24,7 @@ export default async function GridTopBar({
   canInvite?: boolean;
   hasSolution?: boolean;
   canConfigureSolve?: boolean;
+  hasPublishedSchedule?: boolean;
 }) {
   const me = await getCurrentUser();
   const homeHref = me ? "/dashboard" : "/";
@@ -46,8 +48,13 @@ export default async function GridTopBar({
             />
           )}
           {me && <UserMenu me={me} />}
-          {(hasSolution || canConfigureSolve || canDelete) && (
-            <GridActions gridId={id} gridCode={gridCode} canConfigureSolve={canConfigureSolve} />
+          {(hasPublishedSchedule || canConfigureSolve || canDelete) && (
+            <GridActions
+              gridId={id}
+              gridCode={gridCode}
+              canConfigureSolve={canConfigureSolve}
+              hasPublishedSchedule={hasPublishedSchedule}
+            />
           )}
         </div>
       </div>

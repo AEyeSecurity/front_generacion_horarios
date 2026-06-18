@@ -382,12 +382,14 @@ export default function AddAvailabilityRuleDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl" data-onboarding-target="availability-rule-dialog">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl p-0" data-onboarding-target="availability-rule-dialog">
+        <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
+        <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
           <DialogTitle>{t("add_rule.title")}</DialogTitle>
           <DialogDescription>{t("add_rule.description")}</DialogDescription>
         </DialogHeader>
 
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <label className="text-sm font-medium">{t("add_rule.availability_type")}</label>
@@ -443,16 +445,18 @@ export default function AddAvailabilityRuleDialog({
                    value={end} onChange={(e) => setEnd(e.target.value)} />
           </div>
         </div>
-        <DialogFooter className="gap-2">
-          <button type="button" className="px-3 py-2 rounded border text-sm"
+        </div>
+        <DialogFooter className="shrink-0 items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">
+          <button type="button" className="px-3 py-2 rounded border text-sm hover:bg-gray-50"
                   onClick={() => onOpenChange(false)} disabled={loading}>
-            {t("add_rule.cancel")}
+            {t("common.cancel")}
           </button>
           <button type="button" className="px-3 py-2 rounded bg-black text-white text-sm"
                   onClick={submit} disabled={loading}>
             {loading ? t("add_rule.saving") : t("common.add")}
           </button>
         </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -20,6 +20,7 @@ export default async function GridByCodeLayout({
   let gridCode: string | null = null;
   let role: Role = "viewer";
   let hasSolved = false;
+  let hasPublishedSchedule = false;
 
   try {
     const grid = await resolveGridByCode(code);
@@ -46,6 +47,11 @@ export default async function GridByCodeLayout({
       const schedule = await resolveScheduleByGridId(gridId);
       hasSolved = Array.isArray(schedule?.placements) && schedule.placements.length > 0;
     } catch {}
+
+    try {
+      const published = await backendFetchJSON<any>(`/api/grids/${encodeURIComponent(String(gridId))}/published-schedule/`);
+      hasPublishedSchedule = Boolean(published?.id);
+    } catch {}
   }
 
   return (
@@ -58,6 +64,7 @@ export default async function GridByCodeLayout({
         canInvite={role === "supervisor"}
         hasSolution={hasSolved}
         canConfigureSolve={role === "supervisor"}
+        hasPublishedSchedule={hasPublishedSchedule}
       />
       {children}
     </>

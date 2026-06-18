@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Send } from "lucide-react";
 import InviteDialog from "@/components/dialogs/InviteDialog";
+import { useI18n } from "@/lib/use-i18n";
 
 type Role = "viewer" | "editor" | "supervisor";
 
@@ -17,6 +18,7 @@ export default function ShareInviteButton({
   disabled?: boolean;
   roleOptions?: Role[];
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -25,8 +27,8 @@ export default function ShareInviteButton({
         onClick={() => setOpen(true)}
         disabled={disabled}
       >
+        <span className="max-[700px]:hidden">{t("invite_dialog.button")}</span>
         <Send className="h-4 w-4" />
-        <span className="max-[700px]:hidden">Share</span>
       </button>
       <InviteDialog gridId={gridId} gridName={gridName} open={open} onOpenChange={setOpen} roleOptions={roleOptions} />
     </>

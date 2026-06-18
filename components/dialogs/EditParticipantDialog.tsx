@@ -5,8 +5,6 @@ import { type Tier } from "@/components/badges/TierBadge";
 import { readGridTierEnabled } from "@/lib/grid-tier";
 import {
   Dialog,
-  DialogPortal,
-  DialogOverlay,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -100,18 +98,18 @@ export default function EditParticipantDialog({
     e.preventDefault();
     if (!participant) return;
     if (!name.trim()) {
-      setErr("Name is required.");
+      setErr(t("add_participant.name_required_error"));
       return;
     }
 
     const minParsed = parseNullableNumber(minHours);
     const maxParsed = parseNullableNumber(maxHours);
     if (minParsed === "invalid" || maxParsed === "invalid") {
-      setErr("Min/Max hours must be valid non-negative numbers.");
+      setErr(t("add_participant.invalid_hours_override"));
       return;
     }
     if (minParsed != null && maxParsed != null && minParsed > maxParsed) {
-      setErr("Min weekly override cannot be greater than max weekly override.");
+      setErr(t("add_participant.min_cannot_exceed_max"));
       return;
     }
 
@@ -146,7 +144,7 @@ export default function EditParticipantDialog({
       onUpdated?.();
       onOpenChange(false);
     } catch (error: unknown) {
-      setErr(error instanceof Error ? error.message : "Error");
+      setErr(error instanceof Error ? error.message : t("edit_participant.failed_update"));
     } finally {
       setSaving(false);
     }
@@ -154,14 +152,14 @@ export default function EditParticipantDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogPortal>
-        <DialogOverlay className="fixed inset-0 bg-black/50 z-[180] data-[state=open]:animate-in data-[state=closed]:animate-out" />
-        <DialogContent className="sm:max-w-[720px] z-[181]">
-          <DialogHeader>
-            <DialogTitle>Edit participant</DialogTitle>
+        <DialogContent className="max-w-[720px] p-0">
+          <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
+          <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
+            <DialogTitle>{t("edit_participant.title")}</DialogTitle>
           </DialogHeader>
 
-          <form onSubmit={submit} className="space-y-4">
+          <form onSubmit={submit} className="contents">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
             <div className={`grid grid-cols-1 gap-3 ${tierEnabled && isSupervisor ? "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_112px]" : "sm:grid-cols-2"}`}>
               <div>
                 <label className="block text-sm mb-1">{t("add_participant.first_name_required")}</label>
@@ -224,10 +222,11 @@ export default function EditParticipantDialog({
             </div>
 
             {err && <div className="text-sm text-red-600 whitespace-pre-wrap">{err}</div>}
+            </div>
 
-            <DialogFooter className="gap-2">
+            <DialogFooter className="shrink-0 items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">
               <DialogClose asChild>
-                <button type="button" className="px-3 py-2 rounded border text-sm">
+                <button type="button" className="px-3 py-2 rounded border text-sm hover:bg-gray-50">
                   {t("common.cancel")}
                 </button>
               </DialogClose>
@@ -240,8 +239,8 @@ export default function EditParticipantDialog({
               </button>
             </DialogFooter>
           </form>
+          </div>
         </DialogContent>
-      </DialogPortal>
     </Dialog>
   );
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { useI18n } from "@/lib/use-i18n";
 import EntityPageHeader from "./EntityPageHeader";
 
 const CreateCellDialog = dynamic(() => import("@/components/dialogs/CreateCellDialog"), { ssr: false });
@@ -16,12 +17,13 @@ export default function CellsHeader({
   backHref: string;
   canCreate: boolean;
 }) {
+  const { t } = useI18n();
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
   return (
     <EntityPageHeader
-      title="Cells"
+      title={t("cells.title")}
       backHref={backHref}
       canCreate={canCreate}
       createOnboardingTarget="cell-create-button"

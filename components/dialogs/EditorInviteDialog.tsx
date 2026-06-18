@@ -3,12 +3,11 @@
 import * as React from "react";
 import {
   Dialog,
-  DialogPortal,
-  DialogOverlay,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
 import { useI18n } from "@/lib/use-i18n";
@@ -104,7 +103,7 @@ export default function EditorInviteDialog({
         return pid !== String(participantId) && linkedEmail !== "" && linkedEmail === targetEmail;
       });
       if (linkedElsewhere) {
-        throw new Error("This email already has another participant linked in this grid.");
+        throw new Error(t("editor_invite.email_linked_elsewhere"));
       }
 
       const res = await fetch(`/api/invitations/`, {
@@ -138,12 +137,12 @@ export default function EditorInviteDialog({
     try {
       const who = await fetch("/api/whoami", { cache: "no-store" });
       if (!who.ok) {
-        throw new Error("Could not load current user.");
+        throw new Error(t("editor_invite.failed_load_current_user"));
       }
       const me = await who.json().catch(() => ({} as { id?: number | string }));
       const meId = me?.id;
       if (meId == null || meId === "") {
-        throw new Error("Could not identify current user.");
+        throw new Error(t("editor_invite.failed_identify_current_user"));
       }
 
       const participants = await loadLinkedParticipantByGrid();
@@ -153,7 +152,7 @@ export default function EditorInviteDialog({
         return pid !== String(participantId) && linkedUserId != null && String(linkedUserId) === String(meId);
       });
       if (linkedElsewhere) {
-        throw new Error("You already have another participant linked in this grid.");
+        throw new Error(t("editor_invite.current_user_linked_elsewhere"));
       }
 
       const patchCandidates = [{ user_id: meId }, { user: meId }];
@@ -172,12 +171,12 @@ export default function EditorInviteDialog({
         const raw = await res.text().catch(() => "");
         lastMessage = raw || `Failed (${res.status})`;
       }
-      if (!patched) throw new Error(lastMessage || "Could not link participant.");
+      if (!patched) throw new Error(lastMessage || t("editor_invite.failed_link_participant"));
 
       onOpenChange(false);
       onLinked?.();
     } catch (e: any) {
-      setErr(e?.message || "Could not link participant.");
+      setErr(e?.message || t("editor_invite.failed_link_participant"));
     } finally {
       setLinkingSelf(false);
     }
@@ -185,14 +184,14 @@ export default function EditorInviteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogPortal>
-        <DialogOverlay className="fixed inset-0 bg-black/50 z-[95] data-[state=open]:animate-in data-[state=closed]:animate-out" />
-        <DialogContent className="sm:max-w-[560px] z-[96]">
-          <DialogHeader>
+        <DialogContent className="max-w-[560px] p-0">
+          <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
+          <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
             <DialogTitle>{t("editor_invite.link_participant_to_user")}</DialogTitle>
             <DialogDescription>{t("editor_invite.send_editor_invite")}</DialogDescription>
           </DialogHeader>
-          <form onSubmit={submit} className="space-y-4">
+          <form onSubmit={submit} className="contents">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
             <div>
               <label className="block text-sm mb-1">{t("editor_invite.email")}</label>
               <input className="w-full border rounded px-3 py-2 text-sm" type="email" value={email} onChange={(e)=>setEmail(e.target.value)} />
@@ -202,7 +201,8 @@ export default function EditorInviteDialog({
               <textarea className="w-full border rounded px-3 py-2 text-sm" value={message} onChange={(e)=>setMessage(e.target.value)} rows={3} />
             </div>
             {err && <div className="text-sm text-red-600 whitespace-pre-wrap">{err}</div>}
-            <div className="flex justify-end gap-2">
+            </div>
+            <DialogFooter className="shrink-0 items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">
               {canShowLinkSelf && (
                 <button
                   type="button"
@@ -210,19 +210,21 @@ export default function EditorInviteDialog({
                   disabled={linkingSelf || saving}
                   onClick={linkMyself}
                 >
-                  {linkingSelf ? "Linking..." : "Link myself"}
+                  {linkingSelf ? t("editor_invite.linking_self") : t("editor_invite.link_self")}
                 </button>
               )}
-              <DialogClose asChild>
-                <button type="button" className="px-3 py-2 rounded border text-sm">{t("common.cancel")}</button>
-              </DialogClose>
-              <button type="submit" className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50" disabled={saving}>
-                {saving ? t("editor_invite.sending") : t("common.send_invite")}
-              </button>
-            </div>
+              <div className="flex items-center gap-2">
+                <DialogClose asChild>
+                  <button type="button" className="px-3 py-2 rounded border text-sm hover:bg-gray-50">{t("common.cancel")}</button>
+                </DialogClose>
+                <button type="submit" className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50" disabled={saving}>
+                  {saving ? t("editor_invite.sending") : t("common.send_invite")}
+                </button>
+              </div>
+            </DialogFooter>
           </form>
+          </div>
         </DialogContent>
-      </DialogPortal>
     </Dialog>
   );
 }

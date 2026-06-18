@@ -5,8 +5,6 @@ import { type Tier } from "@/components/badges/TierBadge";
 import { readGridTierEnabled } from "@/lib/grid-tier";
 import {
   Dialog,
-  DialogPortal,
-  DialogOverlay,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -93,15 +91,14 @@ export default function AddParticipantDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogPortal>
-        {/* Overlay por encima del panel lateral */}
-        <DialogOverlay className="fixed inset-0 bg-black/50 z-[180] data-[state=open]:animate-in data-[state=closed]:animate-out" />
-        <DialogContent className="sm:max-w-[720px] z-[181]" data-onboarding-target="participant-dialog">
-          <DialogHeader>
+        <DialogContent className="max-w-[720px] p-0" data-onboarding-target="participant-dialog">
+          <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
+          <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
             <DialogTitle>{t("add_participant.title")}</DialogTitle>
           </DialogHeader>
 
-          <form onSubmit={submit} className="space-y-4">
+          <form onSubmit={submit} className="contents">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
             <div className={`grid grid-cols-1 gap-3 ${tierEnabled ? "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_112px]" : "sm:grid-cols-2"}`}>
               <div>
                 <label className="block text-sm mb-1">{t("add_participant.first_name_required")}</label>
@@ -138,10 +135,11 @@ export default function AddParticipantDialog({
             </div>
 
             {err && <div className="text-sm text-red-600 whitespace-pre-wrap">{err}</div>}
+            </div>
 
-            <DialogFooter className="gap-2">
+            <DialogFooter className="shrink-0 items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">
               <DialogClose asChild>
-                <button type="button" className="px-3 py-2 rounded border text-sm">
+                <button type="button" className="px-3 py-2 rounded border text-sm hover:bg-gray-50">
                   {t("common.cancel")}
                 </button>
               </DialogClose>
@@ -154,8 +152,8 @@ export default function AddParticipantDialog({
               </button>
             </DialogFooter>
           </form>
+          </div>
         </DialogContent>
-      </DialogPortal>
     </Dialog>
   );
 }

@@ -67,6 +67,24 @@ type TimeRange = {
   end_slot?: number;
 };
 
+type ScheduleBlockage = {
+  id: number | string;
+
+  day_index?: number;
+  day?: number | string;
+
+  start_slot?: number;
+  end_slot?: number;
+
+  start_time?: string;
+  end_time?: string;
+
+  unit_id?: number | string | null;
+  unit_ids?: Array<number | string>;
+
+  scope?: "GLOBAL" | "UNIT" | "CURRENT_UNIT_ONLY" | string;
+};
+
 type AvailabilityRule = {
   id?: number | string;
   participant: number | string;
@@ -78,6 +96,9 @@ type AvailabilityRule = {
 
 type SchedulePlacement = {
   id: number | string;
+  cell_name?: string | null;
+  source_cell_name?: string | null;
+  cell_id?: string | number | null;
   source_cell?: string | number | null;
   source_cell_id?: string | number | null;
   bundle?: string | number | null;
@@ -100,6 +121,8 @@ type ScheduleStructure = {
   day_end?: string | null;
   day_start_min?: number | string | null;
   day_end_min?: number | string | null;
+  start_slot?: number | string | null;
+  end_slot?: number | string | null;
   cell_size_minutes?: number | string | null;
   cell_size_min?: number | string | null;
   slot_min?: number | string | null;
@@ -129,6 +152,24 @@ type DraftHistory = {
   latest: number;
   can_undo: boolean;
   can_redo: boolean;
+};
+
+export type ScheduleRenderModel = {
+  mode: ScheduleViewMode;
+  source: "draft" | "published_snapshot" | "legacy_published_snapshot";
+  
+  structure: ActiveScheduleStructure | null;
+  scheduleId: number | null;
+  publishedScheduleId?: number | null;
+
+  placements: SchedulePlacement[];
+  cells: Cell[];
+  bundles: Bundle[];
+  units: Unit[];
+  blockages: ScheduleBlockage[];
+  timeRanges: TimeRange[];
+
+  missingReason?: "no_published_schedule" | "missing_published_structure";
 };
 
 type Props = {
@@ -381,38 +422,123 @@ const normalizeScheduleStructure = (
   return { dayIndexes, dayStartMin, dayEndMin, slotMin };
 };
 
+const normalizePublishedScheduleStructure = (value: unknown): ActiveScheduleStructure | null => {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as ScheduleStructure;
+  const slotMinRaw = Number(raw.cell_size_minutes ?? raw.cell_size_min ?? raw.slot_min);
+  const slotMin = Number.isFinite(slotMinRaw) && slotMinRaw > 0 ? slotMinRaw : null;
+  if (slotMin == null) return null;
+
+  const dayIndexes = normalizeDayIndexesFromValue(raw.days ?? raw.days_enabled, []);
+  if (dayIndexes.length === 0) return null;
+
+  const rawStart = raw.start_time ?? raw.day_start ?? raw.day_start_min;
+  const rawEnd = raw.end_time ?? raw.day_end ?? raw.day_end_min;
+  const startSlot = Number(raw.start_slot);
+  const endSlot = Number(raw.end_slot);
+  const dayStartMin =
+    rawStart != null
+      ? normalizeStructureMinutes(rawStart, NaN)
+      : Number.isFinite(startSlot)
+      ? startSlot * slotMin
+      : NaN;
+  const dayEndMin =
+    rawEnd != null
+      ? normalizeStructureMinutes(rawEnd, NaN)
+      : Number.isFinite(endSlot)
+      ? endSlot * slotMin
+      : NaN;
+  if (!Number.isFinite(dayStartMin) || !Number.isFinite(dayEndMin) || dayEndMin <= dayStartMin) return null;
+  return { dayIndexes, dayStartMin, dayEndMin, slotMin };
+};
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value && typeof value === "object" && !Array.isArray(value));
+
+const snapshotStructure = (source: unknown) => {
+  if (!isObjectRecord(source)) return null;
+  const snapshot = source.snapshot;
+  if (!isObjectRecord(snapshot)) return null;
+  return (
+    snapshot.structure ??
+    snapshot.grid_structure ??
+    snapshot.schedule_structure ??
+    (isObjectRecord(snapshot.grid) ? snapshot.grid : null) ??
+    snapshot
+  );
+};
+
+const snapshotPayload = (source: unknown) => {
+  if (!isObjectRecord(source)) return null;
+  return isObjectRecord(source.snapshot) ? source.snapshot : null;
+};
+
+const looksLikePublishedSchedule = (source: unknown) => {
+  if (!isObjectRecord(source)) return false;
+  return Boolean(
+    source.published_schedule_id != null ||
+      source.publishedScheduleId != null ||
+      source.published_version != null ||
+      source.publishedVersion != null ||
+      source.published_at != null ||
+      source.publishedAt != null ||
+      source.source_schedule != null ||
+      source.sourceSchedule != null ||
+      source.snapshot != null,
+  );
+};
+
+const readPublishedScheduleCandidateFromContext = (
+  contextJson: Record<string, unknown> | null | undefined,
+): (ScreenContextSchedule & Record<string, unknown>) | null => {
+  if (!contextJson) return null;
+  if (looksLikePublishedSchedule(contextJson)) {
+    return contextJson as ScreenContextSchedule & Record<string, unknown>;
+  }
+
+  const candidates = [
+    contextJson.published_schedule,
+    contextJson.publishedSchedule,
+    contextJson.published,
+    contextJson.published_snapshot,
+    contextJson.publishedSnapshot,
+    contextJson.latest_published_schedule,
+    contextJson.latestPublishedSchedule,
+    contextJson.latest_published,
+    contextJson.latestPublished,
+    contextJson.latest,
+  ];
+
+  for (const candidate of candidates) {
+    if (isObjectRecord(candidate)) return candidate as ScreenContextSchedule & Record<string, unknown>;
+  }
+
+  const legacySchedule = contextJson.schedule;
+  if (looksLikePublishedSchedule(legacySchedule)) {
+    return legacySchedule as ScreenContextSchedule & Record<string, unknown>;
+  }
+
+  return null;
+};
+
 const readScheduleStructureFromContext = (
   contextJson: Record<string, unknown> | null | undefined,
   scheduleCandidate: ScreenContextSchedule | null,
   fallback: ActiveScheduleStructure,
   viewMode: ScheduleViewMode,
 ) => {
-  const publishedSchedule = contextJson?.published_schedule as
-    | (ScreenContextSchedule & { snapshot?: unknown })
-    | undefined;
-  const publishedScheduleCamel = contextJson?.publishedSchedule as
-    | (ScreenContextSchedule & { snapshot?: unknown })
-    | undefined;
-  const snapshotStructure = (source: unknown) => {
-    if (!source || typeof source !== "object") return null;
-    const raw = source as { snapshot?: unknown };
-    if (!raw.snapshot || typeof raw.snapshot !== "object") return null;
-    return (raw.snapshot as { structure?: unknown }).structure ?? raw.snapshot;
-  };
+  const publishedSchedule = readPublishedScheduleCandidateFromContext(contextJson);
   const publishedStructures = [
-    scheduleCandidate?.structure,
-    snapshotStructure(scheduleCandidate),
-    scheduleCandidate,
     publishedSchedule?.structure,
     snapshotStructure(publishedSchedule),
     publishedSchedule,
-    publishedScheduleCamel?.structure,
-    snapshotStructure(publishedScheduleCamel),
-    publishedScheduleCamel,
+    scheduleCandidate?.structure,
+    snapshotStructure(scheduleCandidate),
+    scheduleCandidate,
   ];
   const candidates =
     viewMode === "published"
-      ? [...publishedStructures, contextJson?.structure, contextJson?.grid]
+      ? publishedStructures
       : [scheduleCandidate?.structure, snapshotStructure(scheduleCandidate), scheduleCandidate, contextJson?.structure, contextJson?.grid];
   for (const candidate of candidates) {
     const normalized = normalizeScheduleStructure(candidate, fallback);
@@ -428,6 +554,260 @@ const getContextListIfPresent = <T,>(payload: unknown): T[] | null => {
     return (payload as { results: T[] }).results;
   }
   return null;
+};
+
+const getPublishedCandidateList = <T,>(
+  scheduleCandidate: unknown,
+  keys: string[],
+  options: { includeScheduleArray?: boolean } = {},
+): T[] | null => {
+  if (!isObjectRecord(scheduleCandidate)) return null;
+  for (const key of keys) {
+    const direct = getContextListIfPresent<T>(scheduleCandidate[key]);
+    if (direct) return direct;
+  }
+  const snapshot = snapshotPayload(scheduleCandidate);
+  if (snapshot) {
+    for (const key of keys) {
+      const fromSnapshot = getContextListIfPresent<T>(snapshot[key]);
+      if (fromSnapshot) return fromSnapshot;
+    }
+    const snapshotSchedule = snapshot.schedule;
+    if (isObjectRecord(snapshotSchedule)) {
+      for (const key of keys) {
+        const fromSnapshotSchedule = getContextListIfPresent<T>(snapshotSchedule[key]);
+        if (fromSnapshotSchedule) return fromSnapshotSchedule;
+      }
+    }
+    if (options.includeScheduleArray) {
+      const snapshotScheduleArray = getContextListIfPresent<T>(snapshotSchedule);
+      if (snapshotScheduleArray) return snapshotScheduleArray;
+    }
+  }
+  const nestedSchedule = scheduleCandidate.schedule;
+  if (isObjectRecord(nestedSchedule)) {
+    for (const key of keys) {
+      const fromNestedSchedule = getContextListIfPresent<T>(nestedSchedule[key]);
+      if (fromNestedSchedule) return fromNestedSchedule;
+    }
+  }
+  if (options.includeScheduleArray) {
+    const scheduleArray = getContextListIfPresent<T>(nestedSchedule);
+    if (scheduleArray) return scheduleArray;
+  }
+  return null;
+};
+
+const readCellIdentityKeys = (cell: unknown): string[] => {
+  if (!isObjectRecord(cell)) return [];
+  return Array.from(
+    new Set(
+      [
+        readEntityId(cell.id),
+        readEntityId(cell.cell_id),
+        readEntityId(cell.source_cell_id),
+        readEntityId(cell.schedule_cell_id),
+        readEntityId(cell.placement_cell_id),
+      ].filter((id): id is string => Boolean(id)),
+    ),
+  );
+};
+
+const readCellIdentity = (cell: unknown): string | null => readCellIdentityKeys(cell)[0] ?? null;
+
+const readPlacementCellIdentity = (placement: unknown): string | null => {
+  if (!isObjectRecord(placement)) return null;
+  return (
+    readEntityId(placement.source_cell_id) ??
+    readEntityId(placement.source_cell) ??
+    readEntityId(placement.cell_id) ??
+    readEntityId(placement.cell) ??
+    readEntityId(placement.schedule_cell_id) ??
+    readEntityId(placement.placement_cell_id)
+  );
+};
+
+const readPublishedStructure = (scheduleCandidate: unknown): ActiveScheduleStructure | null => {
+  if (!isObjectRecord(scheduleCandidate)) return null;
+  const candidates = [
+    scheduleCandidate.structure,
+    snapshotStructure(scheduleCandidate),
+    scheduleCandidate,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizePublishedScheduleStructure(candidate);
+    if (normalized) return normalized;
+  }
+  return null;
+};
+
+const readScheduleIdFromCandidate = (scheduleCandidate: unknown): number | null => {
+  if (!isObjectRecord(scheduleCandidate)) return null;
+  const raw =
+    scheduleCandidate.schedule_id ??
+    scheduleCandidate.source_schedule ??
+    scheduleCandidate.sourceSchedule ??
+    scheduleCandidate.id;
+  const numeric = Number(readEntityId(raw));
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const buildPublishedRenderModel = (
+  contextJson: Record<string, unknown> | null,
+): ScheduleRenderModel => {
+  const scheduleCandidate = readPublishedScheduleCandidateFromContext(contextJson);
+  if (!scheduleCandidate) {
+    return {
+      mode: "published",
+      source: "published_snapshot",
+      structure: null,
+      scheduleId: null,
+      placements: [],
+      cells: [],
+      bundles: [],
+      units: [],
+      blockages: [],
+      timeRanges: [],
+      missingReason: "no_published_schedule",
+    };
+  }
+  const structure = readPublishedStructure(scheduleCandidate);
+  return {
+    mode: "published",
+    source: snapshotPayload(scheduleCandidate) ? "published_snapshot" : "legacy_published_snapshot",
+    structure,
+    scheduleId: readScheduleIdFromCandidate(scheduleCandidate),
+    placements:
+      getPublishedCandidateList<SchedulePlacement>(
+        scheduleCandidate,
+        ["placements", "snapshot_placements"],
+        { includeScheduleArray: true },
+      ) ?? [],
+    cells: getPublishedCandidateList<Cell>(scheduleCandidate, ["cells", "snapshot_cells"]) ?? [],
+    bundles: getPublishedCandidateList<Bundle>(scheduleCandidate, ["bundles", "snapshot_bundles"]) ?? [],
+    units: getPublishedCandidateList<Unit>(scheduleCandidate, ["units", "snapshot_units"]) ?? [],
+    blockages: getPublishedCandidateList<ScheduleBlockage>(scheduleCandidate, ["blockages", "snapshot_blockages"]) ?? [],
+    timeRanges:
+      getPublishedCandidateList<TimeRange>(
+        scheduleCandidate,
+        ["time_ranges", "timeRanges", "snapshot_time_ranges"],
+      ) ?? [],
+    missingReason: structure ? undefined : "missing_published_structure",
+  };
+};
+
+const buildDraftRenderModel = (
+  contextJson: Record<string, unknown> | null,
+  fallbackStructure: ActiveScheduleStructure,
+): ScheduleRenderModel => {
+  const scheduleCandidate = (contextJson?.schedule ?? null) as ScreenContextSchedule | null;
+  return {
+    mode: "draft",
+    source: "draft",
+    structure: readScheduleStructureFromContext(contextJson, scheduleCandidate, fallbackStructure, "draft"),
+    scheduleId: readScheduleIdFromCandidate(scheduleCandidate),
+    placements: Array.isArray(scheduleCandidate?.placements)
+      ? scheduleCandidate.placements
+      : Array.isArray(scheduleCandidate?.schedule)
+      ? scheduleCandidate.schedule
+      : [],
+    cells: getContextList<Cell>(contextJson?.cells),
+    bundles: getContextList<Bundle>(contextJson?.bundles),
+    units: getContextList<Unit>(contextJson?.units),
+    blockages: getContextList<ScheduleBlockage>(contextJson?.blockages),
+    timeRanges: getContextList<TimeRange>(contextJson?.time_ranges),
+  };
+};
+
+const compareUnitsForTabs = (a: Unit, b: Unit) =>
+  String(a.name || "").localeCompare(String(b.name || ""), "es", {
+    numeric: true,
+    sensitivity: "base",
+  });
+
+const derivePublishedUnitsForTabs = (renderModel: ScheduleRenderModel): Unit[] => {
+  const unitsById = new Map<string, Unit>();
+
+  const upsertUnit = (rawId: unknown, rawName?: unknown) => {
+    const id = readEntityId(rawId);
+    if (!id) return;
+
+    const name =
+      typeof rawName === "string" && rawName.trim()
+        ? rawName.trim()
+        : `Unit ${id}`;
+
+    const existing = unitsById.get(id);
+
+    if (!existing) {
+      unitsById.set(id, { id, name });
+      return;
+    }
+
+    const existingName = String(existing.name || "");
+    const shouldReplaceGenericName =
+      existingName === `Unit ${id}` && name !== `Unit ${id}`;
+
+    if (shouldReplaceGenericName) {
+      unitsById.set(id, { id, name });
+    }
+  };
+
+  // 1) Best case: published snapshot already includes units.
+  for (const unit of renderModel.units) {
+    upsertUnit(unit.id, unit.name);
+  }
+
+  if (unitsById.size > 0) {
+    return Array.from(unitsById.values()).sort(compareUnitsForTabs);
+  }
+
+  // 2) Fallback: derive units from published bundles.
+  for (const bundle of renderModel.bundles) {
+    const bundleId = readEntityId(bundle.id);
+    const bundleName = typeof bundle.name === "string" ? bundle.name : undefined;
+    const unitIds = getBundleUnitIds(bundle);
+
+    if (unitIds.length > 0) {
+      for (const unitId of unitIds) {
+        // If the bundle only maps to one unit, its name is a decent fallback label.
+        upsertUnit(unitId, unitIds.length === 1 ? bundleName : undefined);
+      }
+    } else if (bundleId) {
+      // Some published payloads use bundle_id as the tab/filter id.
+      upsertUnit(bundleId, bundleName);
+    }
+  }
+
+  if (unitsById.size > 0) {
+    return Array.from(unitsById.values()).sort(compareUnitsForTabs);
+  }
+
+  // 3) Last fallback: derive units from published placements.
+  for (const placement of renderModel.placements) {
+    const placementRecord = placement as SchedulePlacement & Record<string, unknown>;
+
+    const placementUnitIds = readEntityIdArray(
+      placementRecord.unit_ids ?? placementRecord.units,
+    );
+
+    for (const unitId of placementUnitIds) {
+      upsertUnit(unitId);
+    }
+
+    const bundleId =
+      readEntityId(placementRecord.bundle_id) ??
+      readEntityId(placementRecord.source_bundle_id) ??
+      readEntityId(placementRecord.bundle);
+
+    if (placementUnitIds.length === 0 && bundleId) {
+      // Same compatibility fallback used elsewhere:
+      // if only bundle_id exists, use it as a tab/filter id.
+      upsertUnit(bundleId);
+    }
+  }
+
+  return Array.from(unitsById.values()).sort(compareUnitsForTabs);
 };
 
 const normalizeUnitsCollection = (
@@ -541,6 +921,8 @@ export default function GridSchedulePanel({
   >({});
   const [scheduleId, setScheduleId] = useState<number | null>(null);
   const [schedulePlacements, setSchedulePlacements] = useState<SchedulePlacement[]>([]);
+  const [scheduleRenderModel, setScheduleRenderModel] = useState<ScheduleRenderModel | null>(null);
+  const [publishedRenderError, setPublishedRenderError] = useState<string | null>(null);
   const [participantEditMode, setParticipantEditMode] = useState(false);
   const [participantEditBusy, setParticipantEditBusy] = useState(false);
   const [participantEditError, setParticipantEditError] = useState<string | null>(null);
@@ -549,6 +931,8 @@ export default function GridSchedulePanel({
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyErrorAnchor, setHistoryErrorAnchor] = useState<{ left: number; top: number } | null>(null);
   const [contextRefreshTick, setContextRefreshTick] = useState(0);
+  const [hasLatestPublishedSchedule, setHasLatestPublishedSchedule] = useState(false);
+  const [latestPublishedSchedule, setLatestPublishedSchedule] = useState<Record<string, unknown> | null>(null);
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [dragPayload, setDragPayload] = useState<ParticipantDragPayload | null>(null);
   const [dragHoverCellKey, setDragHoverCellKey] = useState<string | null>(null);
@@ -572,6 +956,21 @@ export default function GridSchedulePanel({
     marginRight: string;
     transition: string;
   } | null>(null);
+
+  const fetchLatestPublishedSchedulePayload = async (gridId: number) => {
+    const res = await authFetch(`/api/grids/${gridId}/published-schedule/`, {
+      cache: "no-store",
+    });
+
+    if (res.status === 404) return null;
+
+    if (!res.ok) {
+      throw new Error(`Could not load published schedule (${res.status})`);
+    }
+
+    const data = await res.json().catch(() => null);
+    return isObjectRecord(data) ? data : null;
+  };
 
   useEffect(() => {
     if (historyMode) {
@@ -605,11 +1004,41 @@ export default function GridSchedulePanel({
   }, [gridId, historyMode]);
 
   useEffect(() => {
+    if (scheduleViewMode === "published") return;
     setUnitList(units);
-  }, [units]);
+  }, [scheduleViewMode, units]);
+
+  useEffect(() => {
+    if (historyMode) {
+      setHasLatestPublishedSchedule(true);
+      return;
+    }
+
+    let active = true;
+
+    (async () => {
+      try {
+        const published = await fetchLatestPublishedSchedulePayload(gridId);
+        if (!active) return;
+
+        setLatestPublishedSchedule(published);
+        setHasLatestPublishedSchedule(Boolean(published));
+      } catch {
+        if (!active) return;
+
+        setLatestPublishedSchedule(null);
+        setHasLatestPublishedSchedule(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [contextRefreshTick, gridId, historyMode]);
 
   useEffect(() => {
     if (historyMode) return;
+    if (scheduleViewMode === "published") return;
     let active = true;
     const syncUnits = async () => {
       const fallbackName = (id: string | number) => t("format.unit_with_id", { id });
@@ -635,7 +1064,7 @@ export default function GridSchedulePanel({
       active = false;
       window.clearInterval(intervalId);
     };
-  }, [gridId, historyMode, t]);
+  }, [gridId, historyMode, scheduleViewMode, t]);
 
   useEffect(() => {
     if (historyMode) return;
@@ -874,37 +1303,60 @@ export default function GridSchedulePanel({
     (async () => {
       try {
         const contextJson = (await fetchGridScreenContext(gridId, scheduleViewMode)) as Record<string, unknown> | null;
-        const participantsList = getContextList<Participant>(contextJson?.participants);
-        let cellsList = getContextList<Cell>(contextJson?.cells);
-        let bundlesList = getContextList<Bundle>(contextJson?.bundles);
-        const scheduleCandidate = (
-          scheduleViewMode === "published"
-            ? contextJson?.published_schedule ?? contextJson?.publishedSchedule ?? contextJson?.schedule ?? null
-            : contextJson?.schedule ?? null
-        ) as ScreenContextSchedule | null;
-        let timeRangesList = getContextList<TimeRange>(contextJson?.time_ranges);
+
+        let publishedPayload: Record<string, unknown> | null = null;
+
         if (scheduleViewMode === "published") {
-          const snapshotTimeRanges =
-            getContextListIfPresent<TimeRange>(scheduleCandidate?.time_ranges) ??
-            getContextListIfPresent<TimeRange>(
-              (contextJson?.published_schedule as { time_ranges?: unknown } | undefined)?.time_ranges,
-            ) ??
-            getContextListIfPresent<TimeRange>(
-              (contextJson?.publishedSchedule as { time_ranges?: unknown } | undefined)?.time_ranges,
-            );
-          if (snapshotTimeRanges) timeRangesList = snapshotTimeRanges;
+          publishedPayload =
+            latestPublishedSchedule ??
+            (await fetchLatestPublishedSchedulePayload(gridId));
+
+          if (active) {
+            setLatestPublishedSchedule(publishedPayload);
+            setHasLatestPublishedSchedule(Boolean(publishedPayload));
+          }
         }
+
+        const renderModel =
+          scheduleViewMode === "published"
+            ? buildPublishedRenderModel(publishedPayload)
+            : buildDraftRenderModel(contextJson, fallbackStructure);
+        const participantsList = getContextList<Participant>(contextJson?.participants);
+        let cellsList = renderModel.cells;
+        let bundlesList = renderModel.bundles;
+        let timeRangesList = renderModel.timeRanges;
+        const unitsForModel =
+          scheduleViewMode === "published"
+            ? derivePublishedUnitsForTabs(renderModel)
+            : renderModel.units.length > 0
+            ? [...renderModel.units].sort(compareUnitsForTabs)
+            : [...unitList].sort(compareUnitsForTabs);
+        if (scheduleViewMode === "published" && (!renderModel.structure || renderModel.missingReason)) {
+          if (active) {
+            setPublishedRenderError(
+              renderModel.missingReason === "no_published_schedule"
+                ? t("solve_overlay.no_published_versions")
+                : t("grid_schedule.published_snapshot_missing_structure"),
+            );
+            setParticipants(participantsList);
+            setCellById({});
+            setBundleNameById({});
+            setBundleUnitsById({});
+            setScheduleRenderModel(null);
+            setTimeRangeMetaById({});
+            setAvailabilityRulesByParticipant({});
+            setScheduleId(null);
+            setSchedulePlacements([]);
+            setContextScheduleStructure(null);
+          }
+          return;
+        }
+        const contextStructure = renderModel.structure ?? fallbackStructure;
         const availabilityRules = getContextList<AvailabilityRule>(
           contextJson?.effective_availability_rules ?? contextJson?.availability_rules,
         );
-        const contextStructure = readScheduleStructureFromContext(
-          contextJson,
-          scheduleCandidate,
-          fallbackStructure,
-          scheduleViewMode,
-        );
         const structureForContext = contextStructure ?? fallbackStructure;
-        if (bundlesList.length === 0) {
+        if (scheduleViewMode !== "published" && bundlesList.length === 0) {
           const gridQuery = encodeURIComponent(String(gridId));
           const candidateEndpoints = [`/api/bundles/?grid=${gridQuery}`, `/api/bundles?grid=${gridQuery}`];
           for (const endpoint of candidateEndpoints) {
@@ -945,7 +1397,8 @@ export default function GridSchedulePanel({
           }
           return true;
         };
-        const gridAllowsOverstaffing = await resolveGridAllowsOverstaffing();
+        const gridAllowsOverstaffing =
+          scheduleViewMode === "published" ? true : await resolveGridAllowsOverstaffing();
         const hasOwn = (obj: unknown, key: string) =>
           Boolean(obj && typeof obj === "object" && Object.prototype.hasOwnProperty.call(obj, key));
         const needsCellContractEnrichment = cellsList.some(
@@ -955,7 +1408,7 @@ export default function GridSchedulePanel({
               !hasOwn(cell, "split_parts_min") ||
               !hasOwn(cell, "division_days")),
         );
-        if (needsCellContractEnrichment) {
+        if (scheduleViewMode !== "published" && needsCellContractEnrichment) {
           const gridQuery = encodeURIComponent(String(gridId));
           const candidateEndpoints = [
             `/api/cells/?grid=${gridQuery}`,
@@ -980,13 +1433,38 @@ export default function GridSchedulePanel({
           if (cellsFromApi.length > 0) {
             const apiCellById = new Map<string, Cell>();
             for (const apiCell of cellsFromApi) {
-              if (apiCell?.id == null) continue;
-              apiCellById.set(String(apiCell.id), apiCell);
+              const apiCellId = readEntityId(
+                (apiCell as { id?: unknown; cell_id?: unknown } | null | undefined)?.id ??
+                  (apiCell as {
+                    cell_id?: unknown;
+                    source_cell_id?: unknown;
+                    schedule_cell_id?: unknown;
+                    placement_cell_id?: unknown;
+                  } | null | undefined)?.cell_id ??
+                  (apiCell as { source_cell_id?: unknown } | null | undefined)?.source_cell_id ??
+                  (apiCell as { schedule_cell_id?: unknown } | null | undefined)?.schedule_cell_id ??
+                  (apiCell as { placement_cell_id?: unknown } | null | undefined)?.placement_cell_id,
+              );
+              if (apiCellId == null) continue;
+              apiCellById.set(String(apiCellId), apiCell);
             }
             cellsList = cellsList.map((cell) => {
-              const apiCell = apiCellById.get(String(cell?.id));
+              const cellId = readEntityId(
+                (cell as { id?: unknown; cell_id?: unknown } | null | undefined)?.id ??
+                  (cell as {
+                    cell_id?: unknown;
+                    source_cell_id?: unknown;
+                    schedule_cell_id?: unknown;
+                    placement_cell_id?: unknown;
+                  } | null | undefined)?.cell_id ??
+                  (cell as { source_cell_id?: unknown } | null | undefined)?.source_cell_id ??
+                  (cell as { schedule_cell_id?: unknown } | null | undefined)?.schedule_cell_id ??
+                  (cell as { placement_cell_id?: unknown } | null | undefined)?.placement_cell_id,
+              );
+              if (cellId == null) return cell;
+              const apiCell = apiCellById.get(String(cellId));
               if (!apiCell) return cell;
-              const merged: Cell = { ...cell };
+              const merged: Cell = { ...cell, id: cellId };
               if (!hasOwn(merged, "allow_overstaffing") && hasOwn(apiCell, "allow_overstaffing")) {
                 merged.allow_overstaffing = apiCell.allow_overstaffing;
               }
@@ -1008,13 +1486,21 @@ export default function GridSchedulePanel({
         }
         const cellMap: Record<string, Cell> = {};
         for (const cell of cellsList) {
-          if (cell?.id == null) continue;
-          cellMap[String(cell.id)] = gridAllowsOverstaffing ? cell : { ...cell, allow_overstaffing: null };
+          const cellIds = readCellIdentityKeys(cell);
+          const primaryCellId = cellIds[0];
+          if (primaryCellId == null) continue;
+          const normalizedCell = { ...cell, id: primaryCellId };
+          const mappedCell = gridAllowsOverstaffing
+            ? normalizedCell
+            : { ...normalizedCell, allow_overstaffing: null };
+          for (const cellId of cellIds) {
+            cellMap[String(cellId)] = mappedCell;
+          }
         }
         const bundleNameMap: Record<string, string> = {};
         const bundleUnitsMap: Record<string, string[]> = {};
         const unitNameToIdMap: Record<string, string> = {};
-        for (const unit of unitList) {
+        for (const unit of unitsForModel) {
           if (unit?.id == null) continue;
           const uid = String(unit.id);
           const uname = String(unit.name || "").trim();
@@ -1038,7 +1524,7 @@ export default function GridSchedulePanel({
         }
         // Fallback for deployments where placements carry bundle_id but bundle records are absent:
         // treat bundle_id as direct unit id mapping.
-        for (const unit of unitList) {
+        for (const unit of unitsForModel) {
           if (unit?.id == null) continue;
           const key = String(unit.id);
           if (!bundleUnitsMap[key]) bundleUnitsMap[key] = [key];
@@ -1080,18 +1566,12 @@ export default function GridSchedulePanel({
           availabilityMap[participantId].push(rule);
         }
 
-        const scheduleList = Array.isArray(scheduleCandidate?.placements)
-          ? scheduleCandidate.placements
-          : Array.isArray(scheduleCandidate?.schedule)
-          ? scheduleCandidate.schedule
-          : [];
-        const normalizedScheduleId =
-          (scheduleCandidate?.schedule_id ?? scheduleCandidate?.source_schedule ?? scheduleCandidate?.id) != null &&
-          Number.isFinite(Number(scheduleCandidate?.schedule_id ?? scheduleCandidate?.source_schedule ?? scheduleCandidate?.id))
-            ? Number(scheduleCandidate?.schedule_id ?? scheduleCandidate?.source_schedule ?? scheduleCandidate?.id)
-            : null;
+        const scheduleList = renderModel.placements;
+        const normalizedScheduleId = renderModel.scheduleId;
 
         if (active) {
+          setPublishedRenderError(null);
+          setScheduleRenderModel(renderModel);
           setContextScheduleStructure(contextStructure);
           setParticipants(participantsList);
           setCellById(cellMap);
@@ -1101,9 +1581,15 @@ export default function GridSchedulePanel({
           setAvailabilityRulesByParticipant(availabilityMap);
           setScheduleId(normalizedScheduleId);
           setSchedulePlacements(scheduleList);
+          setUnitList((prev) => {
+            const nextUnits = [...unitsForModel].sort(compareUnitsForTabs);
+            return areUnitListsEqual(prev, nextUnits) ? prev : nextUnits;
+          });
         }
       } catch {
         if (active) {
+          setPublishedRenderError(null);
+          setScheduleRenderModel(null);
           setParticipants([]);
           setCellById({});
           setBundleNameById({});
@@ -1122,7 +1608,7 @@ export default function GridSchedulePanel({
     return () => {
       active = false;
     };
-  }, [gridId, scheduleViewMode, fallbackStructure, contextRefreshTick, t]);
+  }, [gridId, scheduleViewMode, fallbackStructure, contextRefreshTick, t, latestPublishedSchedule]);
 
   const orderedParticipants = useMemo(() => {
     return participants
@@ -1198,7 +1684,7 @@ export default function GridSchedulePanel({
 
     for (const item of schedulePlacements) {
       const assigned = Array.isArray(item.assigned_participants) ? item.assigned_participants : [];
-      const sourceCellId = String(item.source_cell_id ?? item.source_cell ?? item.id);
+      const sourceCellId = readPlacementCellIdentity(item) ?? String(item.id);
       const dayIndex = Number(item.day_index);
       const dayColumnIndex = Number.isFinite(dayColumnByIndex[dayIndex]) ? dayColumnByIndex[dayIndex] : dayIndex;
       if (!Number.isFinite(dayColumnIndex) || dayColumnIndex < 0 || dayColumnIndex >= activeDays.length) continue;
@@ -1215,7 +1701,19 @@ export default function GridSchedulePanel({
           ? (bundleUnitsById[bundleId] || []).map(String)
           : [];
       const cell = cellById[sourceCellId];
-      const cellName = cell?.name || t("format.cell_with_id", { id: sourceCellId });
+      const placementCellName =
+        typeof (item as { cell_name?: unknown }).cell_name === "string"
+          ? String((item as { cell_name?: unknown }).cell_name)
+          : typeof (item as { source_cell_name?: unknown }).source_cell_name === "string"
+          ? String((item as { source_cell_name?: unknown }).source_cell_name)
+          : isObjectRecord((item as { cell?: unknown }).cell) &&
+            typeof ((item as { cell?: { name?: unknown } }).cell?.name) === "string"
+          ? String((item as { cell?: { name?: unknown } }).cell?.name)
+          : isObjectRecord((item as { source_cell?: unknown }).source_cell) &&
+            typeof ((item as { source_cell?: { name?: unknown } }).source_cell?.name) === "string"
+          ? String((item as { source_cell?: { name?: unknown } }).source_cell?.name)
+          : "";
+      const cellName = cell?.name || placementCellName || t("format.cell_with_id", { id: sourceCellId });
       const color = cell?.colorHex || cell?.color_hex || undefined;
       const bundleLabel = bundleId
         ? bundleNameById[bundleId] || t("format.bundle_with_id", { id: bundleId })
@@ -1277,7 +1775,7 @@ export default function GridSchedulePanel({
 
   const cellCatalog = useMemo(() => {
     const placementCountByCellId = schedulePlacements.reduce<Record<string, number>>((acc, placement) => {
-      const sourceCellId = readEntityId(placement.source_cell_id ?? placement.source_cell ?? placement.id);
+      const sourceCellId = readPlacementCellIdentity(placement) ?? readEntityId(placement.id);
       if (!sourceCellId) return acc;
       const key = String(sourceCellId);
       acc[key] = (acc[key] ?? 0) + 1;
@@ -1368,7 +1866,7 @@ export default function GridSchedulePanel({
   const canUseDraftHistory = !historyMode && role === "supervisor" && scheduleViewMode === "draft";
   const canUndoDraft = canUseDraftHistory && !historyBusy && draftHistory.can_undo;
   const canRedoDraft = canUseDraftHistory && !historyBusy && draftHistory.can_redo;
-  const canRestoreDraft = canUseDraftHistory && !historyBusy;
+  const canRestoreDraft = canUseDraftHistory && !historyBusy && hasLatestPublishedSchedule;
 
   const refreshAfterDraftMutation = useCallback(() => {
     invalidateGridScreenContext(gridId, "draft");
@@ -1843,7 +2341,7 @@ export default function GridSchedulePanel({
         : targetParticipantId;
       const bundleKey = String(payload.bundleId);
       const matchingPlacements = schedulePlacements.filter((placement) => {
-        const placementSource = readEntityId(placement.source_cell_id ?? placement.source_cell);
+        const placementSource = readPlacementCellIdentity(placement);
         const placementBundle = readEntityId(placement.bundle_id ?? placement.bundle);
         return placementSource === payload.sourceCellId && placementBundle === bundleKey;
       });
@@ -1926,7 +2424,7 @@ export default function GridSchedulePanel({
               rawText.toLowerCase().includes("schedule, source_cell, bundle, day_index, start_slot");
             if (looksLikeUniqueSet) {
               const concurrentSameDayCandidates = schedulePlacements.filter((placement) => {
-                const placementSource = readEntityId(placement.source_cell_id ?? placement.source_cell);
+                const placementSource = readPlacementCellIdentity(placement);
                 const placementBundle = readEntityId(placement.bundle_id ?? placement.bundle);
                 return (
                   placementSource === payload.sourceCellId &&
@@ -2024,16 +2522,22 @@ export default function GridSchedulePanel({
   return (
     <>
       <div ref={panelRootRef}>
-        <div
-          ref={scheduleHeaderScrollRef}
-          className={`${compactHorizontal ? "overflow-x-auto" : "overflow-x-hidden"} overflow-y-hidden hide-scrollbar`}
-          onScroll={(event) => {
-            if (syncingHorizontalScrollRef.current === "body") return;
-            syncScheduleHorizontalScroll("header", event.currentTarget.scrollLeft);
-          }}
-        >
-          <div style={scheduleContentStyle}>
-            <div className="grid select-none" style={{ gridTemplateColumns: scheduleGridTemplateColumns }}>
+        {scheduleViewMode === "published" && publishedRenderError ? (
+          <div className="flex min-h-[260px] items-center justify-center rounded-xl border border-dashed border-gray-300 bg-white/80 px-6 text-center text-sm text-gray-600">
+            {publishedRenderError}
+          </div>
+        ) : (
+          <>
+            <div
+              ref={scheduleHeaderScrollRef}
+              className={`${compactHorizontal ? "overflow-x-auto" : "overflow-x-hidden"} overflow-y-hidden hide-scrollbar`}
+              onScroll={(event) => {
+                if (syncingHorizontalScrollRef.current === "body") return;
+                syncScheduleHorizontalScroll("header", event.currentTarget.scrollLeft);
+              }}
+            >
+              <div style={scheduleContentStyle}>
+                <div className="grid select-none" style={{ gridTemplateColumns: scheduleGridTemplateColumns }}>
               <div className="sticky left-0 z-[30] bg-gray-50 border-b h-12 flex items-center justify-center px-1.5 relative">
                 {canUseDraftHistory && (
                   <div className="inline-flex items-center gap-0.5">
@@ -2065,20 +2569,22 @@ export default function GridSchedulePanel({
                     >
                       <Redo2 className="h-5 w-5" />
                     </button>
-                    <button
-                      type="button"
-                      title={t("grid_schedule.restore_draft_title")}
-                      onClick={() => {
-                        if (!canRestoreDraft) return;
-                        promptRestorePublished();
-                      }}
-                      aria-disabled={!canRestoreDraft}
-                      className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
-                        canRestoreDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
-                      }`}
-                    >
-                      <RotateCcw className="h-5 w-5" />
-                    </button>
+                    {hasLatestPublishedSchedule && (
+                      <button
+                        type="button"
+                        title={t("grid_schedule.restore_draft_title")}
+                        onClick={() => {
+                          if (!canRestoreDraft) return;
+                          promptRestorePublished();
+                        }}
+                        aria-disabled={!canRestoreDraft}
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
+                          canRestoreDraft ? "text-gray-700 hover:text-black" : "text-gray-300 cursor-default"
+                        }`}
+                      >
+                        <RotateCcw className="h-5 w-5" />
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -2087,21 +2593,21 @@ export default function GridSchedulePanel({
                   {day}
                 </div>
               ))}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div
-          ref={scheduleScrollRef}
-          data-schedule-scroll
-          className={`relative ${compactHorizontal ? "overflow-auto" : "overflow-y-auto overflow-x-hidden"} hide-scrollbar select-none`}
-          style={{ height: scheduleViewportHeight, maxHeight: scheduleViewportHeight }}
-          onScroll={(event) => {
-            if (syncingHorizontalScrollRef.current === "header") return;
-            syncScheduleHorizontalScroll("body", event.currentTarget.scrollLeft);
-          }}
-        >
-          <div className="relative" style={scheduleContentStyle}>
+            <div
+              ref={scheduleScrollRef}
+              data-schedule-scroll
+              className={`relative ${compactHorizontal ? "overflow-auto" : "overflow-y-auto overflow-x-hidden"} hide-scrollbar select-none`}
+              style={{ height: scheduleViewportHeight, maxHeight: scheduleViewportHeight }}
+              onScroll={(event) => {
+                if (syncingHorizontalScrollRef.current === "header") return;
+                syncScheduleHorizontalScroll("body", event.currentTarget.scrollLeft);
+              }}
+            >
+              <div className="relative" style={scheduleContentStyle}>
             {rows.map((time, rowIndex) => (
               <div key={time} className="grid" style={{ gridTemplateColumns: scheduleGridTemplateColumns }}>
                 <div
@@ -2133,6 +2639,7 @@ export default function GridSchedulePanel({
               gridId={gridId}
               role={role}
               units={unitList}
+              renderModel={scheduleRenderModel}
               daysCount={activeDays.length}
               dayLabels={activeDays}
               rowPx={effectiveRowPx}
@@ -2150,8 +2657,10 @@ export default function GridSchedulePanel({
               historyGridCode={historyGridCode}
 
             />
-          </div>
-        </div>
+              </div>
+            </div>
+          </>
+        )}
         {historyError && historyErrorAnchor && (
           <ScheduleErrorCard
             message={historyError}
@@ -2161,30 +2670,34 @@ export default function GridSchedulePanel({
           />
         )}
 
-      <GradualBlur
-        target="parent"
-        position="top"
-        height="2.1rem"
-        strength={2}
-        divCount={5}
-        curve="bezier"
-        exponential
-        opacity={1}
-        showWhen="not-at-start"
-        style={{ top: "3rem", left: `${timeColPx}px`, width: `calc(100% - ${timeColPx}px)` }}
-      />
-      <GradualBlur
-        target="parent"
-        position="bottom"
-        height="2.1rem"
-        strength={2}
-        divCount={5}
-        curve="bezier"
-        exponential
-        opacity={1}
-        showWhen="not-at-end"
-        style={{ left: `${timeColPx}px`, width: `calc(100% - ${timeColPx}px)` }}
-      />
+      {!publishedRenderError && (
+        <>
+          <GradualBlur
+            target="parent"
+            position="top"
+            height="2.1rem"
+            strength={2}
+            divCount={5}
+            curve="bezier"
+            exponential
+            opacity={1}
+            showWhen="not-at-start"
+            style={{ top: "3rem", left: `${timeColPx}px`, width: `calc(100% - ${timeColPx}px)` }}
+          />
+          <GradualBlur
+            target="parent"
+            position="bottom"
+            height="2.1rem"
+            strength={2}
+            divCount={5}
+            curve="bezier"
+            exponential
+            opacity={1}
+            showWhen="not-at-end"
+            style={{ left: `${timeColPx}px`, width: `calc(100% - ${timeColPx}px)` }}
+          />
+        </>
+      )}
       </div>
     </>
   );

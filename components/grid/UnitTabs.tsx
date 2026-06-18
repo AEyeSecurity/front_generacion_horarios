@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { ScheduleRenderModel } from "@/components/grid/GridSchedulePanel";
 import SolveOverlay from "@/components/grid/SolveOverlay";
 import type { ScheduleViewMode } from "@/lib/schedule-view";
 
@@ -13,6 +14,7 @@ export default function UnitTabs({
   gridId,
   role,
   units,
+  renderModel,
   daysCount,
   dayLabels,
   rowPx,
@@ -33,6 +35,7 @@ export default function UnitTabs({
   gridId: number;
   role: "viewer" | "editor" | "supervisor";
   units: Unit[];
+  renderModel?: ScheduleRenderModel | null;
   daysCount: number;
   dayLabels?: string[];
   rowPx: number;
@@ -63,7 +66,13 @@ export default function UnitTabs({
           const name = (u.name || "").toLowerCase();
           return id !== "all" && name !== "all";
         })
-        .map((u) => ({ id: String(u.id), name: u.name })),
+        .map((u) => ({ id: String(u.id), name: u.name }))
+        .sort((a, b) =>
+          a.name.localeCompare(b.name, "es", {
+            numeric: true,
+            sensitivity: "base",
+          }),
+        ),
     [units],
   );
 
@@ -130,6 +139,7 @@ export default function UnitTabs({
       <SolveOverlay
         gridId={gridId}
         role={role}
+        renderModel={renderModel}
         daysCount={daysCount}
         dayLabels={dayLabels}
         rowPx={rowPx}

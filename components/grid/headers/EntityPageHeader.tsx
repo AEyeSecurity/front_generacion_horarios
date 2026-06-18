@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus } from "lucide-react";
+import { useI18n } from "@/lib/use-i18n";
 
 export type EntityPageHeaderProps = {
   title: string;
@@ -19,12 +20,13 @@ export default function EntityPageHeader({
   title,
   backHref,
   canCreate = false,
-  createLabel = "Create",
   createOnboardingTarget,
   onCreateClick,
   dialog,
   rightSlot,
 }: EntityPageHeaderProps) {
+  const { t } = useI18n();
+
   return (
     <div className="grid grid-cols-[1fr_auto_1fr] items-center">
       <div className="flex items-center">
@@ -48,7 +50,7 @@ export default function EntityPageHeader({
             className="inline-flex items-center gap-1 rounded bg-black px-3 py-2 text-sm text-white sm:gap-2 sm:px-4"
           >
             <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">{createLabel}</span>
+            <span className="hidden sm:inline"> {t("common.create")} </span>
           </button>
         ) : null}
         {rightSlot}

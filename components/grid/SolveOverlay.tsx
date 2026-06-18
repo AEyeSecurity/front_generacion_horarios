@@ -22,6 +22,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -40,7 +41,6 @@ import {
 import RightSideDock from "@/components/layout/RightSideDock";
 import GlassSurface from "@/components/ui/GlassSurface";
 import ScheduleErrorCard from "@/components/grid/ScheduleErrorCard";
-import BreakDialog from "@/components/grid/BreakDialog";
 import PlacementCommentBubble from "@/components/grid/PlacementCommentBubble";
 import type { ScheduleViewMode } from "@/lib/schedule-view";
 import { useI18n } from "@/lib/use-i18n";
@@ -108,6 +108,7 @@ const getContextListIfPresent = <T,>(payload: unknown): T[] | null => {
 
 type ScheduleRow = {
   cell_id: string;
+  cell_name?: string;
   placement_id?: string | number;
   schedule_placement_id?: string | number;
   published_placement_id?: string | number | null;
@@ -357,6 +358,94 @@ const parseJsonObjectResponse = (raw: string, contentType: string, endpointFallb
   }
 };
 
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value && typeof value === "object" && !Array.isArray(value));
+
+const looksLikePublishedSchedulePayload = (source: unknown) => {
+  if (!isObjectRecord(source)) return false;
+  return Boolean(
+    source.published_schedule_id != null ||
+      source.publishedScheduleId != null ||
+      source.published_version != null ||
+      source.publishedVersion != null ||
+      source.published_at != null ||
+      source.publishedAt != null ||
+      source.source_schedule != null ||
+      source.sourceSchedule != null ||
+      source.snapshot != null,
+  );
+};
+
+const readPublishedScheduleCandidateFromContext = (
+  context: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null => {
+  if (!context) return null;
+  const candidates = [
+    context.published_schedule,
+    context.publishedSchedule,
+    context.published,
+    context.published_snapshot,
+    context.publishedSnapshot,
+    context.latest_published_schedule,
+    context.latestPublishedSchedule,
+    context.latest_published,
+    context.latestPublished,
+    context.latest,
+  ];
+  for (const candidate of candidates) {
+    if (isObjectRecord(candidate)) return candidate;
+  }
+  const legacySchedule = context.schedule;
+  return looksLikePublishedSchedulePayload(legacySchedule) ? (legacySchedule as Record<string, unknown>) : null;
+};
+
+const getSnapshotPayload = (source: unknown) => {
+  if (!isObjectRecord(source)) return null;
+  return isObjectRecord(source.snapshot) ? source.snapshot : null;
+};
+
+const getPublishedCandidateList = <T,>(
+  scheduleCandidate: unknown,
+  keys: string[],
+  options: { includeScheduleArray?: boolean } = {},
+): T[] | null => {
+  if (!isObjectRecord(scheduleCandidate)) return null;
+  for (const key of keys) {
+    const direct = getContextListIfPresent<T>(scheduleCandidate[key]);
+    if (direct) return direct;
+  }
+  const snapshot = getSnapshotPayload(scheduleCandidate);
+  if (snapshot) {
+    for (const key of keys) {
+      const fromSnapshot = getContextListIfPresent<T>(snapshot[key]);
+      if (fromSnapshot) return fromSnapshot;
+    }
+    const snapshotSchedule = snapshot.schedule;
+    if (isObjectRecord(snapshotSchedule)) {
+      for (const key of keys) {
+        const fromSnapshotSchedule = getContextListIfPresent<T>(snapshotSchedule[key]);
+        if (fromSnapshotSchedule) return fromSnapshotSchedule;
+      }
+    }
+    if (options.includeScheduleArray) {
+      const snapshotScheduleArray = getContextListIfPresent<T>(snapshotSchedule);
+      if (snapshotScheduleArray) return snapshotScheduleArray;
+    }
+  }
+  const nestedSchedule = scheduleCandidate.schedule;
+  if (isObjectRecord(nestedSchedule)) {
+    for (const key of keys) {
+      const fromNestedSchedule = getContextListIfPresent<T>(nestedSchedule[key]);
+      if (fromNestedSchedule) return fromNestedSchedule;
+    }
+  }
+  if (options.includeScheduleArray) {
+    const scheduleArray = getContextListIfPresent<T>(nestedSchedule);
+    if (scheduleArray) return scheduleArray;
+  }
+  return null;
+};
+
 const stripNonFieldPrefix = (message: string) =>
   message
     .replace(/^non_field_errors:\s*/i, "")
@@ -478,9 +567,22 @@ const extractAuthorName = (raw: any): string | undefined => {
   return undefined;
 };
 
+type OverlayScheduleRenderModel = {
+  mode?: ScheduleViewMode;
+  source?: string;
+  scheduleId?: number | string | null;
+  placements?: unknown[];
+  cells?: unknown[];
+  bundles?: unknown[];
+  units?: unknown[];
+  blockages?: unknown[];
+  timeRanges?: unknown[];
+};
+
 type Props = {
   gridId: number;
   role: "viewer" | "editor" | "supervisor";
+  renderModel?: OverlayScheduleRenderModel | null;
   daysCount: number;
   dayLabels?: string[];
   rowPx: number;
@@ -791,6 +893,44 @@ type BreakDialogState = {
   breaks: BreakEntry[];
 };
 
+type BreakDragState = {
+  index: number;
+  mode: "move" | "resize-start" | "resize-end";
+  pointerId: number;
+  startClientY: number;
+  originalOffsetMin: number;
+  originalDurationMin: number;
+};
+
+const roundBreakMinutes = (value: number) => Math.round(value / 5) * 5;
+const floorBreakMinutes = (value: number) => Math.floor(value / 5) * 5;
+
+const mergeBreakEntries = (entries: BreakEntry[]) => {
+  const sorted = [...entries]
+    .map((entry) => ({
+      offset_min: Math.round(Number(entry.offset_min)),
+      duration_min: Math.round(Number(entry.duration_min)),
+    }))
+    .filter((entry) => Number.isFinite(entry.offset_min) && Number.isFinite(entry.duration_min))
+    .sort((a, b) => a.offset_min - b.offset_min);
+  const merged: BreakEntry[] = [];
+  for (const entry of sorted) {
+    if (merged.length === 0) {
+      merged.push({ ...entry });
+      continue;
+    }
+    const last = merged[merged.length - 1];
+    const lastEnd = last.offset_min + last.duration_min;
+    if (entry.offset_min <= lastEnd) {
+      const nextEnd = Math.max(lastEnd, entry.offset_min + entry.duration_min);
+      last.duration_min = nextEnd - last.offset_min;
+      continue;
+    }
+    merged.push({ ...entry });
+  }
+  return merged;
+};
+
 type EditToolMode = "none" | "break" | "blockage" | "unassigned" | "participants";
 
 type PendingCandidateRunSnapshot = {
@@ -808,6 +948,7 @@ type PendingCandidateRunSnapshot = {
 export default function SolveOverlay({
   gridId,
   role,
+  renderModel,
   daysCount,
   dayLabels,
   rowPx,
@@ -931,6 +1072,8 @@ export default function SolveOverlay({
   const [breakDraftDurationMin, setBreakDraftDurationMin] = useState<number>(5);
   const [breakDialogBusy, setBreakDialogBusy] = useState(false);
   const [breakDialogError, setBreakDialogError] = useState<string | null>(null);
+  const breakReplicaRef = useRef<HTMLDivElement | null>(null);
+  const [breakDragState, setBreakDragState] = useState<BreakDragState | null>(null);
   const [scheduleBlockages, setScheduleBlockages] = useState<ScheduleBlockage[]>([]);
   const [blockagesBusy, setBlockagesBusy] = useState(false);
   const [blockagesRefreshTick, setBlockagesRefreshTick] = useState(0);
@@ -1186,6 +1329,24 @@ export default function SolveOverlay({
       if (id != null) return id;
     }
     return undefined;
+  };
+
+  const readCellIdentityKeys = (value: unknown): string[] => {
+    if (!value || typeof value !== "object") return [];
+    const source = value as Record<string, unknown>;
+    return Array.from(
+      new Set(
+        [
+          readEntityId(source.id),
+          readEntityId(source.cell_id),
+          readEntityId(source.source_cell_id),
+          readEntityId(source.schedule_cell_id),
+          readEntityId(source.placement_cell_id),
+        ]
+          .filter((id): id is string | number => id != null)
+          .map((id) => String(id)),
+      ),
+    );
   };
 
   const normalizeIdArray = (value: unknown): string[] => {
@@ -1509,8 +1670,25 @@ export default function SolveOverlay({
       readEntityId(source.source_cell) ??
       readEntityId(source.cell) ??
       readEntityId(source.cell_id) ??
+      readEntityId(source.schedule_cell_id) ??
+      readEntityId(source.placement_cell_id) ??
       fallbackId;
-    const bundleId = readEntityId(source.bundle_id) ?? readEntityId(source.bundle);
+    const bundleId =
+      readEntityId(source.bundle_id) ??
+      readEntityId(source.source_bundle_id) ??
+      readEntityId(source.bundle);
+    const cellName =
+      typeof source.cell_name === "string"
+        ? source.cell_name
+        : typeof source.source_cell_name === "string"
+        ? source.source_cell_name
+        : isObjectRecord(source.cell) && typeof source.cell.name === "string"
+        ? source.cell.name
+        : isObjectRecord(source.source_cell) && typeof source.source_cell.name === "string"
+        ? source.source_cell.name
+        : typeof source.name === "string"
+        ? source.name
+        : undefined;
     const assignedParticipants = normalizeIdArray(
       source.assigned_participants ?? source.participants,
     );
@@ -1532,6 +1710,7 @@ export default function SolveOverlay({
 
     return {
       cell_id: String(placementId),
+      cell_name: cellName,
       placement_id: placementId,
       schedule_placement_id: placementId,
       source_cell_id: sourceCellId,
@@ -1639,12 +1818,29 @@ export default function SolveOverlay({
     const solverParams = buildSolverParamsPayload(parsedSettings);
 
     const context = await fetchGridScreenContext(gridId, scheduleViewMode);
-    const cells = getContextList(context?.cells);
+    const scheduleCandidate =
+      (scheduleViewMode === "published"
+        ? readPublishedScheduleCandidateFromContext(context)
+        : context?.schedule ?? context?.latest ?? null) as Record<string, unknown> | null;
+    const cells =
+      scheduleViewMode === "published"
+        ? getPublishedCandidateList(scheduleCandidate, ["cells", "snapshot_cells"]) ?? []
+        : getContextList(context?.cells);
     const participants = getContextList(context?.participants);
-    let timeRanges = getContextList(context?.time_ranges);
-    const bundles = getContextList(context?.bundles);
-    const staffs = getContextList(context?.staffs);
-    const explicitStaffMembers = getContextList(context?.staff_members);
+    let timeRanges =
+      scheduleViewMode === "published"
+        ? getPublishedCandidateList(scheduleCandidate, ["time_ranges", "timeRanges", "snapshot_time_ranges"]) ?? []
+        : getContextList(context?.time_ranges);
+    const bundles =
+      scheduleViewMode === "published"
+        ? getPublishedCandidateList(scheduleCandidate, ["bundles", "snapshot_bundles"]) ?? []
+        : getContextList(context?.bundles);
+    const staffs =
+      scheduleViewMode === "published"
+        ? getPublishedCandidateList(scheduleCandidate, ["staffs", "staff", "snapshot_staffs"]) ?? []
+        : getContextList(context?.staffs);
+    const explicitStaffMembers =
+      scheduleViewMode === "published" ? [] : getContextList(context?.staff_members);
     const derivedStaffMembers = staffs.flatMap((staff: any) => {
       const staffId = readEntityId(staff?.id);
       const members = Array.isArray(staff?.members) ? staff.members : [];
@@ -1659,27 +1855,24 @@ export default function SolveOverlay({
     });
     const staffMembers = explicitStaffMembers.length > 0 ? explicitStaffMembers : derivedStaffMembers;
     const availabilityRules = getContextList(context?.effective_availability_rules ?? context?.availability_rules);
-    const scheduleCandidate =
-      (scheduleViewMode === "published"
-        ? context?.published_schedule ?? context?.publishedSchedule ?? context?.schedule ?? context?.latest ?? null
-        : context?.schedule ?? context?.latest ?? null) as Record<string, unknown> | null;
-    if (scheduleViewMode === "published") {
-      const snapshotTimeRanges =
-        getContextListIfPresent(scheduleCandidate?.time_ranges) ??
-        getContextListIfPresent((context?.published_schedule as { time_ranges?: unknown } | undefined)?.time_ranges) ??
-        getContextListIfPresent((context?.publishedSchedule as { time_ranges?: unknown } | undefined)?.time_ranges);
-      if (snapshotTimeRanges) timeRanges = snapshotTimeRanges;
-    }
-    const rawSchedulePlacements = Array.isArray(scheduleCandidate?.placements)
-      ? scheduleCandidate.placements
-      : Array.isArray(scheduleCandidate?.schedule)
-      ? scheduleCandidate.schedule
-      : [];
-    const rawScheduleBlockages = Array.isArray(scheduleCandidate?.blockages)
-      ? scheduleCandidate.blockages
-      : Array.isArray(context?.blockages)
-      ? (context?.blockages as unknown[])
-      : [];
+    const rawSchedulePlacements =
+      scheduleViewMode === "published"
+        ? getPublishedCandidateList(scheduleCandidate, ["placements", "snapshot_placements"], {
+            includeScheduleArray: true,
+          }) ?? []
+        : Array.isArray(scheduleCandidate?.placements)
+        ? scheduleCandidate.placements
+        : Array.isArray(scheduleCandidate?.schedule)
+        ? scheduleCandidate.schedule
+        : [];
+    const rawScheduleBlockages =
+      scheduleViewMode === "published"
+        ? getPublishedCandidateList(scheduleCandidate, ["blockages", "schedule_blockages", "snapshot_blockages"]) ?? []
+        : Array.isArray(scheduleCandidate?.blockages)
+        ? scheduleCandidate.blockages
+        : Array.isArray(context?.blockages)
+        ? (context?.blockages as unknown[])
+        : [];
     const schedulePlacements = rawSchedulePlacements
       .map((entry, index) => normalizeScheduleRowFromAny(entry, `signature-placement-${index}`))
       .filter((entry): entry is ScheduleRow => Boolean(entry));
@@ -1775,13 +1968,10 @@ export default function SolveOverlay({
             root) as Record<string, unknown>);
       if (!candidate || typeof candidate !== "object") return null;
       const candidateRecord = candidate as Record<string, unknown>;
-      const placementsRaw = Array.isArray(candidateRecord.placements)
-        ? candidateRecord.placements
-        : Array.isArray(candidateRecord.schedule)
-        ? candidateRecord.schedule
-        : Array.isArray(candidateRecord.snapshot_placements)
-        ? candidateRecord.snapshot_placements
-        : [];
+      const placementsRaw =
+        getPublishedCandidateList(candidateRecord, ["placements", "snapshot_placements"], {
+          includeScheduleArray: true,
+        }) ?? [];
       const candidateScheduleId =
         readEntityId(candidateRecord.schedule_id) ??
         readEntityId(candidateRecord.source_schedule) ??
@@ -1813,13 +2003,8 @@ export default function SolveOverlay({
           schedule_placement_id: realPlacementId,
         };
       });
-      const blockagesRaw = Array.isArray(candidateRecord.blockages)
-        ? candidateRecord.blockages
-        : Array.isArray(candidateRecord.schedule_blockages)
-        ? candidateRecord.schedule_blockages
-        : Array.isArray(candidateRecord.snapshot_blockages)
-        ? candidateRecord.snapshot_blockages
-        : [];
+      const blockagesRaw =
+        getPublishedCandidateList(candidateRecord, ["blockages", "schedule_blockages", "snapshot_blockages"]) ?? [];
       const normalizedBlockages = blockagesRaw
         .map((blockage, index) => normalizeScheduleBlockageFromAny(blockage, `snapshot-blockage-${index}`, scheduleId))
         .filter((blockage): blockage is ScheduleBlockage => Boolean(blockage));
@@ -2643,17 +2828,56 @@ export default function SolveOverlay({
         let ulist: any[] = [];
         let trlist: any[] = [];
 
-        const context = await fetchGridScreenContext(gridId, scheduleViewMode, {
-          force: externalRefreshTick > 0,
-        });
-        clist = getContextList(context?.cells);
-        blist = getContextList(context?.bundles);
-        slist = getContextList(context?.staffs);
-        plist = getContextList(context?.participants);
-        ulist = getContextList(context?.units);
-        trlist = getContextList(context?.time_ranges);
+        let context: Record<string, unknown> | null = null;
+        let scheduleCandidate: Record<string, unknown> | null = null;
 
-        if (blist.length === 0) {
+        if (scheduleViewMode === "published" && renderModel) {
+          clist = Array.isArray(renderModel.cells) ? renderModel.cells : [];
+          blist = Array.isArray(renderModel.bundles) ? renderModel.bundles : [];
+          ulist = Array.isArray(renderModel.units) ? renderModel.units : [];
+          trlist = Array.isArray(renderModel.timeRanges) ? renderModel.timeRanges : [];
+
+          const placements = Array.isArray(renderModel.placements) ? renderModel.placements : [];
+          const blockages = Array.isArray(renderModel.blockages) ? renderModel.blockages : [];
+
+          scheduleCandidate = {
+            id: renderModel.scheduleId ?? 0,
+            schedule_id: renderModel.scheduleId ?? null,
+            placements,
+            blockages,
+            schedule_blockages: blockages,
+            time_ranges: trlist,
+          };
+        } else {
+          context = (await fetchGridScreenContext(gridId, scheduleViewMode, {
+            force: externalRefreshTick > 0,
+          })) as Record<string, unknown> | null;
+
+          const rawScheduleCandidate =
+            scheduleViewMode === "published"
+              ? readPublishedScheduleCandidateFromContext(context)
+              : context?.schedule ?? context?.latest ?? null;
+
+          scheduleCandidate = isObjectRecord(rawScheduleCandidate) ? rawScheduleCandidate : null;
+
+          clist = getContextList(context?.cells);
+          blist = getContextList(context?.bundles);
+          slist = getContextList(context?.staffs);
+          plist = getContextList(context?.participants);
+          ulist = getContextList(context?.units);
+          trlist = getContextList(context?.time_ranges);
+
+          if (scheduleViewMode === "published") {
+            clist = getPublishedCandidateList(scheduleCandidate, ["cells", "snapshot_cells"]) ?? [];
+            blist = getPublishedCandidateList(scheduleCandidate, ["bundles", "snapshot_bundles"]) ?? [];
+            slist = getPublishedCandidateList(scheduleCandidate, ["staffs", "staff", "snapshot_staffs"]) ?? [];
+            plist = getPublishedCandidateList(scheduleCandidate, ["participants", "snapshot_participants"]) ?? plist;
+            ulist = getPublishedCandidateList(scheduleCandidate, ["units", "snapshot_units"]) ?? [];
+            trlist = getPublishedCandidateList(scheduleCandidate, ["time_ranges", "timeRanges", "snapshot_time_ranges"]) ?? [];
+          }
+        }
+
+        if (scheduleViewMode !== "published" && blist.length === 0) {
           const bundleEndpoints = [`/api/bundles?grid=${gridId}`, `/api/bundles/?grid=${gridId}`];
           for (const endpoint of bundleEndpoints) {
             try {
@@ -2675,7 +2899,7 @@ export default function SolveOverlay({
           }
         }
 
-        if (ulist.length === 0) {
+        if (scheduleViewMode !== "published" && ulist.length === 0) {
           const unitEndpoints = [`/api/units?grid=${gridId}`, `/api/units/?grid=${gridId}`];
           for (const endpoint of unitEndpoints) {
             try {
@@ -2723,7 +2947,10 @@ export default function SolveOverlay({
           }
           return { allowOverstaffing: allowOverstaffing ?? true, tierEnabled };
         };
-        const gridSettings = await resolveGridSettings();
+        const gridSettings =
+          scheduleViewMode === "published"
+            ? { allowOverstaffing: true, tierEnabled: true }
+            : await resolveGridSettings();
 
         const hasOwn = (obj: unknown, key: string) =>
           Boolean(obj && typeof obj === "object" && Object.prototype.hasOwnProperty.call(obj, key));
@@ -2734,7 +2961,7 @@ export default function SolveOverlay({
               !hasOwn(cell, "split_parts_min") ||
               !hasOwn(cell, "division_days")),
         );
-        if (needsCellContractEnrichment) {
+        if (scheduleViewMode !== "published" && needsCellContractEnrichment) {
           const gridQuery = encodeURIComponent(String(gridId));
           const candidateEndpoints = [
             `/api/cells/?grid=${gridQuery}`,
@@ -2759,16 +2986,28 @@ export default function SolveOverlay({
           if (cellsFromApi.length > 0) {
             const apiCellById = new Map<string, any>();
             for (const apiCell of cellsFromApi) {
-              const apiId = readEntityId(apiCell?.id);
+              const apiId = readEntityId(
+                apiCell?.id ??
+                  apiCell?.cell_id ??
+                  apiCell?.source_cell_id ??
+                  apiCell?.schedule_cell_id ??
+                  apiCell?.placement_cell_id,
+              );
               if (apiId == null) continue;
               apiCellById.set(String(apiId), apiCell);
             }
             clist = clist.map((cell: any) => {
-              const cellId = readEntityId(cell?.id);
+              const cellId = readEntityId(
+                cell?.id ??
+                  cell?.cell_id ??
+                  cell?.source_cell_id ??
+                  cell?.schedule_cell_id ??
+                  cell?.placement_cell_id,
+              );
               if (cellId == null) return cell;
               const apiCell = apiCellById.get(String(cellId));
               if (!apiCell) return cell;
-              const merged = { ...cell };
+              const merged = { ...cell, id: cellId };
               if (!hasOwn(merged, "allow_overstaffing") && hasOwn(apiCell, "allow_overstaffing")) {
                 merged.allow_overstaffing = apiCell.allow_overstaffing;
               }
@@ -2789,7 +3028,8 @@ export default function SolveOverlay({
           }
         }
 
-        const explicitStaffMembers = getContextList(context?.staff_members);
+        const explicitStaffMembers =
+          scheduleViewMode === "published" ? [] : getContextList(context?.staff_members);
         const derivedStaffMembers = slist.flatMap((staff: any) => {
           const staffId = readEntityId(staff?.id);
           const members = Array.isArray(staff?.members) ? staff.members : [];
@@ -2804,20 +3044,11 @@ export default function SolveOverlay({
         });
         smlist = explicitStaffMembers.length > 0 ? explicitStaffMembers : derivedStaffMembers;
 
-        const scheduleCandidate =
-          scheduleViewMode === "published"
-            ? context?.published_schedule ?? context?.publishedSchedule ?? context?.schedule ?? context?.latest ?? null
-            : context?.schedule ?? context?.latest ?? null;
-        if (scheduleViewMode === "published") {
-          const snapshotTimeRanges =
-            getContextListIfPresent((scheduleCandidate as { time_ranges?: unknown } | null)?.time_ranges) ??
-            getContextListIfPresent((context?.published_schedule as { time_ranges?: unknown } | undefined)?.time_ranges) ??
-            getContextListIfPresent((context?.publishedSchedule as { time_ranges?: unknown } | undefined)?.time_ranges);
-          if (snapshotTimeRanges) trlist = snapshotTimeRanges;
-        }
         if (!historyMode && active && scheduleCandidate && typeof scheduleCandidate === "object") {
           const normalizedSchedule = normalizeScheduleResource(scheduleCandidate);
-          if (normalizedSchedule) setCurrentSchedule(normalizedSchedule);
+          setCurrentSchedule(normalizedSchedule ?? null);
+        } else if (!historyMode && active && scheduleViewMode === "published") {
+          setCurrentSchedule(null);
         }
 
         const cmap: Record<string, string> = {};
@@ -2832,9 +3063,11 @@ export default function SolveOverlay({
         const crequiredPlacements: Record<string, number> = {};
         const coverstaff: Record<string, boolean> = {};
         for (const c of clist) {
-          if (c?.id != null) {
-            const cid = String(c.id);
-            cmap[cid] = c.name || `Cell ${c.id}`;
+          const cellIds = readCellIdentityKeys(c);
+          const cellId = cellIds[0];
+          if (cellId != null) {
+            const cid = String(cellId);
+            cmap[cid] = c.name || `Cell ${cid}`;
             coverstaff[cid] = Boolean(c?.allow_overstaffing);
             const splitPartsCount = Array.isArray(c?.split_parts_min)
               ? c.split_parts_min
@@ -2918,6 +3151,19 @@ export default function SolveOverlay({
             const durationMin = Number(c?.duration_min ?? c?.duration ?? 0);
             if (Number.isFinite(durationMin) && durationMin > 0) {
               cdurationSlots[cid] = Math.max(1, Math.ceil(durationMin / slotMin));
+            }
+            for (const aliasId of cellIds.slice(1)) {
+              cmap[aliasId] = cmap[cid];
+              coverstaff[aliasId] = coverstaff[cid];
+              if (cstaffs[cid]) cstaffs[aliasId] = cstaffs[cid];
+              if (ccolors[cid]) ccolors[aliasId] = ccolors[cid];
+              ctierCounts[aliasId] = ctierCounts[cid];
+              ctierPools[aliasId] = ctierPools[cid];
+              cpins[aliasId] = cpins[cid];
+              if (ctrange[cid]) ctrange[aliasId] = ctrange[cid];
+              if (cdurationSlots[cid]) cdurationSlots[aliasId] = cdurationSlots[cid];
+              csplitPartSlots[aliasId] = csplitPartSlots[cid];
+              crequiredPlacements[aliasId] = crequiredPlacements[cid];
             }
           }
         }
@@ -3019,7 +3265,7 @@ export default function SolveOverlay({
       } catch {}
     })();
     return () => { active = false; };
-  }, [dayStartMin, externalRefreshTick, gridId, historyMode, normalizeScheduleResource, scheduleViewMode, slotMin]);
+  }, [dayStartMin, externalRefreshTick, gridId, historyMode, normalizeScheduleResource, renderModel, scheduleViewMode, slotMin]);
 
   useEffect(() => {
     if (!isSolving) return;
@@ -3403,13 +3649,30 @@ export default function SolveOverlay({
       const placementIdentity = placementIdentityRaw == null ? String(placement.id) : String(placementIdentityRaw);
       const bundleId =
         readEntityId((placement as { bundle_id?: unknown }).bundle_id) ??
+        readEntityId((placement as { source_bundle_id?: unknown }).source_bundle_id) ??
         readEntityId((placement as { bundle?: unknown }).bundle) ??
         undefined;
       const sourceCellId =
-        readEntityId((placement as { source_cell?: unknown }).source_cell) ??
         readEntityId((placement as { source_cell_id?: unknown }).source_cell_id) ??
+        readEntityId((placement as { source_cell?: unknown }).source_cell) ??
+        readEntityId((placement as { cell?: unknown }).cell) ??
+        readEntityId((placement as { cell_id?: unknown }).cell_id) ??
+        readEntityId((placement as { schedule_cell_id?: unknown }).schedule_cell_id) ??
+        readEntityId((placement as { placement_cell_id?: unknown }).placement_cell_id) ??
         String(placement.id);
       const assignedParticipants = normalizeIdArray((placement as { assigned_participants?: unknown }).assigned_participants);
+      const cellName =
+        typeof (placement as { cell_name?: unknown }).cell_name === "string"
+          ? String((placement as { cell_name?: unknown }).cell_name)
+          : typeof (placement as { source_cell_name?: unknown }).source_cell_name === "string"
+          ? String((placement as { source_cell_name?: unknown }).source_cell_name)
+          : isObjectRecord((placement as { cell?: unknown }).cell) &&
+            typeof ((placement as { cell?: { name?: unknown } }).cell?.name) === "string"
+          ? String((placement as { cell?: { name?: unknown } }).cell?.name)
+          : isObjectRecord((placement as { source_cell?: unknown }).source_cell) &&
+            typeof ((placement as { source_cell?: { name?: unknown } }).source_cell?.name) === "string"
+          ? String((placement as { source_cell?: { name?: unknown } }).source_cell?.name)
+          : undefined;
       const placementUnitIds = normalizeIdArray(
         (placement as { unit_ids?: unknown; units?: unknown }).unit_ids ??
           (placement as { unit_ids?: unknown; units?: unknown }).units,
@@ -3440,6 +3703,7 @@ export default function SolveOverlay({
         : [];
       return {
         cell_id: placementIdentity,
+        cell_name: cellName,
         placement_id: placementIdentity,
         schedule_placement_id: placementIdentity,
         published_placement_id:
@@ -4319,6 +4583,119 @@ export default function SolveOverlay({
     slotMin,
     (Math.max(1, breakDialogState.endSlot - breakDialogState.startSlot) * slotMin),
   );
+  const breakDialogMaxTotalMin = Math.floor(breakDialogDurationMin / 2);
+  const breakDialogTotalMin = useMemo(
+    () => breakDialogState.breaks.reduce((sum, entry) => sum + Number(entry.duration_min || 0), 0),
+    [breakDialogState.breaks],
+  );
+  const breakDialogRemainingMin = Math.max(0, breakDialogMaxTotalMin - breakDialogTotalMin);
+  const breakDialogMaxDraftForNew = floorBreakMinutes(breakDialogRemainingMin);
+  const canCreateNewBreak = breakDialogMaxDraftForNew >= 5;
+
+  const validateBreakCollection = useCallback(
+    (items: BreakEntry[]) => {
+      for (const entry of items) {
+        if (entry.duration_min < 5 || entry.duration_min % 5 !== 0) {
+          return t("break_dialog.duration_invalid");
+        }
+        if (entry.offset_min < 0 || entry.offset_min % 5 !== 0) {
+          return t("break_dialog.start_invalid");
+        }
+        if (entry.offset_min + entry.duration_min > breakDialogDurationMin) {
+          return t("break_dialog.must_fit");
+        }
+      }
+      const sum = items.reduce((acc, entry) => acc + entry.duration_min, 0);
+      if (sum > breakDialogMaxTotalMin) return t("break_dialog.total_invalid");
+      return null;
+    },
+    [breakDialogDurationMin, breakDialogMaxTotalMin, t],
+  );
+
+  const applyBreakDraftEntries = useCallback(
+    (next: BreakEntry[], merge = false) => {
+      const candidate = merge ? mergeBreakEntries(next) : next;
+      const error = validateBreakCollection(candidate);
+      if (error) {
+        setBreakDialogError(error);
+        return false;
+      }
+      setBreakDialogError(null);
+      setBreakDialogState((prev) => ({
+        ...prev,
+        breaks: candidate.sort((a, b) => a.offset_min - b.offset_min),
+      }));
+      return true;
+    },
+    [validateBreakCollection],
+  );
+
+  useEffect(() => {
+    if (!canCreateNewBreak) return;
+    const next = Math.max(
+      5,
+      Math.min(floorBreakMinutes(Math.max(5, breakDraftDurationMin)), Math.max(5, breakDialogMaxDraftForNew)),
+    );
+    if (next !== breakDraftDurationMin) setBreakDraftDurationMin(next);
+  }, [breakDialogMaxDraftForNew, breakDraftDurationMin, canCreateNewBreak]);
+
+  useEffect(() => {
+    if (!breakDragState || !breakDialogState.open) return;
+    const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== breakDragState.pointerId) return;
+      const rect = breakReplicaRef.current?.getBoundingClientRect();
+      if (!rect?.height) return;
+      const deltaPx = event.clientY - breakDragState.startClientY;
+      const deltaMin = roundBreakMinutes((deltaPx / rect.height) * breakDialogDurationMin);
+      const current = breakDialogState.breaks[breakDragState.index];
+      if (!current) return;
+      let nextOffset = breakDragState.originalOffsetMin;
+      let nextDuration = breakDragState.originalDurationMin;
+      if (breakDragState.mode === "move") {
+        nextOffset = Math.max(
+          0,
+          Math.min(breakDialogDurationMin - nextDuration, breakDragState.originalOffsetMin + deltaMin),
+        );
+      } else if (breakDragState.mode === "resize-start") {
+        const candidate = Math.max(
+          0,
+          Math.min(
+            breakDragState.originalOffsetMin + breakDragState.originalDurationMin - 5,
+            breakDragState.originalOffsetMin + deltaMin,
+          ),
+        );
+        nextDuration = breakDragState.originalDurationMin - (candidate - breakDragState.originalOffsetMin);
+        nextOffset = candidate;
+      } else {
+        nextDuration = Math.max(
+          5,
+          Math.min(breakDialogDurationMin - breakDragState.originalOffsetMin, breakDragState.originalDurationMin + deltaMin),
+        );
+      }
+      const next = [...breakDialogState.breaks];
+      next[breakDragState.index] = {
+        offset_min: Math.max(0, roundBreakMinutes(nextOffset)),
+        duration_min: Math.max(5, roundBreakMinutes(nextDuration)),
+      };
+      void applyBreakDraftEntries(next, false);
+    };
+    const onPointerUp = (event: PointerEvent) => {
+      if (event.pointerId !== breakDragState.pointerId) return;
+      setBreakDialogState((prev) => ({
+        ...prev,
+        breaks: mergeBreakEntries(prev.breaks),
+      }));
+      setBreakDragState(null);
+    };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+    };
+  }, [applyBreakDraftEntries, breakDialogDurationMin, breakDialogState.breaks, breakDialogState.open, breakDragState]);
 
   const onSolvePressed = () => {
     if (!canUseSolve) return;
@@ -5030,7 +5407,7 @@ export default function SolveOverlay({
       const placementId = String(s.cell_id ?? "");
       const publishedPlacementId = getPublishedPlacementIdForCard(s);
       const resolvedBundleId = resolveBundleIdForCard(s);
-      const cellName = cellNameById[sourceCellId] || `Cell ${sourceCellId}`;
+      const cellName = cellNameById[sourceCellId] || s.cell_name || `Cell ${sourceCellId}`;
       const timeLabel = formatSlotRange(dayStartMin, slotMin, s.start_slot, s.end_slot);
       const key = buildPlacementKey(
         activePublishedScheduleId,
@@ -5355,7 +5732,7 @@ export default function SolveOverlay({
       await applyPlacementBreaks(breakDialogState.placementId, normalized);
       setBreakDialogState((prev) => ({ ...prev, open: false }));
     } catch (error: unknown) {
-      setBreakDialogError(error instanceof Error ? error.message : "Could not update breaks.");
+      setBreakDialogError(error instanceof Error ? error.message : t("break_dialog.update_failed"));
     } finally {
       setBreakDialogBusy(false);
     }
@@ -7324,7 +7701,7 @@ export default function SolveOverlay({
             const height = Math.max(6, (s.end_slot - s.start_slot) * rowPx);
             const left = `calc(${timeColPx}px + ${col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
             const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`;
-            const cellName = cellNameById[sourceCellId] || `Cell ${sourceCellId}`;
+            const cellName = cellNameById[sourceCellId] || s.cell_name || `Cell ${sourceCellId}`;
             const timeLabel = formatSlotRange(dayStartMin, slotMin, s.start_slot, s.end_slot);
             const staffIds = cellStaffsById[sourceCellId] || [];
             const bg = cellColorById[sourceCellId] || "";
@@ -7754,36 +8131,198 @@ export default function SolveOverlay({
         </div>
       )}
 
-      <BreakDialog
+      <Dialog
         open={breakDialogState.open}
-        sourceCellId={breakDialogState.sourceCellId}
-        startSlot={breakDialogState.startSlot}
-        endSlot={breakDialogState.endSlot}
-        breaks={breakDialogState.breaks}
-        breakDraftDurationMin={breakDraftDurationMin}
-        breakDialogBusy={breakDialogBusy}
-        breakDialogError={breakDialogError}
-        dayStartMin={dayStartMin}
-        slotMin={slotMin}
-        cellNameById={cellNameById}
-        cellColorById={cellColorById}
-        t={t}
         onOpenChange={(open) => {
           setBreakDialogState((prev) => ({ ...prev, open }));
-          if (!open) setBreakDialogError(null);
+          if (!open) {
+            setBreakDialogError(null);
+            setBreakDragState(null);
+          }
         }}
-        setBreakDraftDurationMin={setBreakDraftDurationMin}
-        setBreakDialogError={setBreakDialogError}
-        setBreaks={(updater) =>
-          setBreakDialogState((prev) => ({
-            ...prev,
-            breaks: updater(prev.breaks),
-          }))
-        }
-        onSave={() => {
-          void saveBreakDialog();
-        }}
-      />
+      >
+        <DialogContent className="z-[182] max-w-[560px] p-0">
+          <div data-break-dialog className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
+            <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
+              <DialogTitle>{t("break_dialog.title")}</DialogTitle>
+              <DialogDescription>{t("break_dialog.description")}</DialogDescription>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-4">
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  className="h-8 w-8 rounded border border-gray-300 bg-white text-sm disabled:opacity-50"
+                  onClick={() => setBreakDraftDurationMin(Math.max(5, breakDraftDurationMin - 5))}
+                  disabled={breakDraftDurationMin <= 5}
+                >
+                  -
+                </button>
+                <div className="min-w-[140px] text-center text-sm font-medium">
+                  {t("break_dialog.duration_label", { minutes: breakDraftDurationMin })}{" "}
+                  {t("break_dialog.max_label", { minutes: canCreateNewBreak ? breakDialogMaxDraftForNew : 0 })}
+                </div>
+                <button
+                  type="button"
+                  className="h-8 w-8 rounded border border-gray-300 bg-white text-sm disabled:opacity-50"
+                  onClick={() =>
+                    setBreakDraftDurationMin(Math.min(breakDialogMaxDraftForNew, breakDraftDurationMin + 5))
+                  }
+                  disabled={!canCreateNewBreak || breakDraftDurationMin >= breakDialogMaxDraftForNew}
+                >
+                  +
+                </button>
+              </div>
+              <div className="rounded border border-gray-200 bg-gray-50 px-3 py-4">
+                <div className="mx-auto flex max-w-[380px] gap-3">
+                  <div className="relative w-[72px] shrink-0">
+                    <div className="absolute left-0 top-0 text-[11px] text-gray-500">
+                      {formatSlotRange(
+                        0,
+                        1,
+                        dayStartMin + breakDialogState.startSlot * slotMin,
+                        dayStartMin + breakDialogState.startSlot * slotMin + 1,
+                      ).slice(0, 5)}
+                    </div>
+                    <div className="absolute bottom-0 left-0 text-[11px] text-gray-500">
+                      {formatSlotRange(
+                        0,
+                        1,
+                        dayStartMin + breakDialogState.endSlot * slotMin,
+                        dayStartMin + breakDialogState.endSlot * slotMin + 1,
+                      ).slice(0, 5)}
+                    </div>
+                  </div>
+                  <div
+                    ref={breakReplicaRef}
+                    className="relative h-[320px] flex-1 overflow-hidden rounded-md border border-gray-200"
+                    style={{
+                      backgroundColor:
+                        (breakDialogState.sourceCellId && cellColorById[breakDialogState.sourceCellId]) || "#f3f4f6",
+                    }}
+                    onClick={(event) => {
+                      if (!canCreateNewBreak) return;
+                      const rect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
+                      const y = event.clientY - rect.top;
+                      const offsetMin = Math.max(
+                        0,
+                        Math.min(
+                          breakDialogDurationMin - breakDraftDurationMin,
+                          roundBreakMinutes((y / rect.height) * breakDialogDurationMin),
+                        ),
+                      );
+                      const next = [
+                        ...breakDialogState.breaks,
+                        { offset_min: offsetMin, duration_min: breakDraftDurationMin },
+                      ];
+                      void applyBreakDraftEntries(next, true);
+                    }}
+                  >
+                    <div className="pointer-events-none absolute left-2 right-2 top-2 text-center text-xs font-semibold text-white drop-shadow">
+                      {breakDialogState.sourceCellId
+                        ? cellNameById[breakDialogState.sourceCellId] ||
+                          t("format.cell_with_id", { id: breakDialogState.sourceCellId })
+                        : t("break_dialog.placement")}
+                    </div>
+                    {breakDialogState.breaks.map((entry, index) => {
+                      const topPct = Math.max(0, Math.min(100, (entry.offset_min / breakDialogDurationMin) * 100));
+                      const hPct = Math.max(2, Math.min(100, (entry.duration_min / breakDialogDurationMin) * 100));
+                      return (
+                        <div
+                          key={`break-band-${index}-${entry.offset_min}-${entry.duration_min}`}
+                          className="absolute left-2 right-2 rounded-sm border border-dashed border-black/60 bg-black/30"
+                          style={{ top: `${topPct}%`, height: `${hPct}%` }}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            className="absolute right-1 top-1 z-10 inline-flex h-4 w-4 items-center justify-center rounded-full bg-white/90 text-[10px] text-black"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setBreakDialogState((prev) => ({
+                                ...prev,
+                                breaks: prev.breaks.filter((_, i) => i !== index),
+                              }));
+                            }}
+                            aria-label={t("common.delete")}
+                          >
+                            x
+                          </button>
+                          <div
+                            className="absolute left-0 right-0 top-0 h-2 cursor-ns-resize"
+                            onPointerDown={(event) =>
+                              setBreakDragState({
+                                index,
+                                mode: "resize-start",
+                                pointerId: event.pointerId,
+                                startClientY: event.clientY,
+                                originalOffsetMin: entry.offset_min,
+                                originalDurationMin: entry.duration_min,
+                              })
+                            }
+                          />
+                          <div
+                            className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize"
+                            onPointerDown={(event) =>
+                              setBreakDragState({
+                                index,
+                                mode: "resize-end",
+                                pointerId: event.pointerId,
+                                startClientY: event.clientY,
+                                originalOffsetMin: entry.offset_min,
+                                originalDurationMin: entry.duration_min,
+                              })
+                            }
+                          />
+                          <div
+                            className="absolute bottom-2 left-0 right-0 top-2 cursor-grab active:cursor-grabbing"
+                            onPointerDown={(event) =>
+                              setBreakDragState({
+                                index,
+                                mode: "move",
+                                pointerId: event.pointerId,
+                                startClientY: event.clientY,
+                                originalOffsetMin: entry.offset_min,
+                                originalDurationMin: entry.duration_min,
+                              })
+                            }
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+              <div className="text-center text-sm text-gray-700">
+                {t("break_dialog.total_label", { total: breakDialogTotalMin, max: breakDialogMaxTotalMin })}
+              </div>
+              {breakDialogError && <div className="text-sm text-red-600">{breakDialogError}</div>}
+            </div>
+            <DialogFooter className="shrink-0 items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">
+              <button
+                type="button"
+                className="h-9 rounded border px-3 text-sm hover:bg-gray-50"
+                onClick={() => {
+                  setBreakDialogState((prev) => ({ ...prev, open: false }));
+                  setBreakDialogError(null);
+                  setBreakDragState(null);
+                }}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                className="h-9 rounded bg-black px-3 text-sm text-white disabled:opacity-60"
+                onClick={() => {
+                  void saveBreakDialog();
+                }}
+                disabled={breakDialogBusy}
+              >
+                {breakDialogBusy ? t("common.saving") : t("common.save")}
+              </button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={Boolean(pendingBlockageDelete)}
@@ -7791,58 +8330,63 @@ export default function SolveOverlay({
           if (!open && !blockageDeleteBusy) setPendingBlockageDelete(null);
         }}
       >
-        <DialogContent className="sm:max-w-[520px] z-[170]">
-          <DialogHeader>
-            <DialogTitle>{t("solve_overlay.delete_blockage_title")}</DialogTitle>
-            <DialogDescription>
-              {t("solve_overlay.delete_global_blockage_from_unit_message")}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-              disabled={blockageDeleteBusy}
-              onClick={() => setPendingBlockageDelete(null)}
-            >
-              {t("common.cancel")}
-            </button>
-            <button
-              type="button"
-              className="rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-60"
-              disabled={blockageDeleteBusy || !pendingBlockageDelete}
-              onClick={() => {
-                if (!pendingBlockageDelete) return;
-                const pending = pendingBlockageDelete;
-                setBlockageDeleteBusy(true);
-                void executeDeleteBlockage(pending.blockage, "CURRENT_UNIT_ONLY", pending.unitId)
-                  .then(() => setPendingBlockageDelete(null))
-                  .catch((error: unknown) => {
-                    setPinError(error instanceof Error ? error.message : "Could not delete blockage.");
-                  })
-                  .finally(() => setBlockageDeleteBusy(false));
-              }}
-            >
-              {t("solve_overlay.remove_blockage_from_unit")}
-            </button>
-            <button
-              type="button"
-              className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
-              disabled={blockageDeleteBusy || !pendingBlockageDelete}
-              onClick={() => {
-                if (!pendingBlockageDelete) return;
-                const pending = pendingBlockageDelete;
-                setBlockageDeleteBusy(true);
-                void executeDeleteBlockage(pending.blockage, "GLOBAL", pending.unitId)
-                  .then(() => setPendingBlockageDelete(null))
-                  .catch((error: unknown) => {
-                    setPinError(error instanceof Error ? error.message : "Could not delete blockage.");
-                  })
-                  .finally(() => setBlockageDeleteBusy(false));
-              }}
-            >
-              {t("solve_overlay.delete_blockage_globally")}
-            </button>
+        <DialogContent className="z-[170] max-w-[520px] p-0">
+          <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
+            <DialogHeader className="shrink-0 border-b px-6 py-4">
+              <DialogTitle>{t("solve_overlay.delete_blockage_title")}</DialogTitle>
+              <DialogDescription>
+                {t("solve_overlay.delete_global_blockage_from_unit_message")}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4" />
+            <DialogFooter className="flex items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">
+              <button
+                type="button"
+                className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                disabled={blockageDeleteBusy}
+                onClick={() => setPendingBlockageDelete(null)}
+              >
+                {t("common.cancel")}
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+                  disabled={blockageDeleteBusy || !pendingBlockageDelete}
+                  onClick={() => {
+                    if (!pendingBlockageDelete) return;
+                    const pending = pendingBlockageDelete;
+                    setBlockageDeleteBusy(true);
+                    void executeDeleteBlockage(pending.blockage, "CURRENT_UNIT_ONLY", pending.unitId)
+                      .then(() => setPendingBlockageDelete(null))
+                      .catch((error: unknown) => {
+                        setPinError(error instanceof Error ? error.message : "Could not delete blockage.");
+                      })
+                      .finally(() => setBlockageDeleteBusy(false));
+                  }}
+                >
+                  {t("solve_overlay.remove_blockage_from_unit")}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+                  disabled={blockageDeleteBusy || !pendingBlockageDelete}
+                  onClick={() => {
+                    if (!pendingBlockageDelete) return;
+                    const pending = pendingBlockageDelete;
+                    setBlockageDeleteBusy(true);
+                    void executeDeleteBlockage(pending.blockage, "GLOBAL", pending.unitId)
+                      .then(() => setPendingBlockageDelete(null))
+                      .catch((error: unknown) => {
+                        setPinError(error instanceof Error ? error.message : "Could not delete blockage.");
+                      })
+                      .finally(() => setBlockageDeleteBusy(false));
+                  }}
+                >
+                  {t("solve_overlay.delete_blockage_globally")}
+                </button>
+              </div>
+            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
@@ -7858,37 +8402,39 @@ export default function SolveOverlay({
           }
         }}
       >
-        <DialogContent className="sm:max-w-[620px] z-[170]">
-          <DialogHeader>
-            <DialogTitle>{t("solve_overlay.choose_participants_for_placement")}</DialogTitle>
-            <DialogDescription>
-              {pendingPlacementRequest
-                ? `${cellNameById[pendingPlacementRequest.sourceCellId] || t("format.cell_with_id", { id: pendingPlacementRequest.sourceCellId })} - ${formatSlotRange(
-                    dayStartMin,
-                    slotMin,
-                    pendingPlacementRequest.startSlot,
-                    pendingPlacementRequest.startSlot + pendingPlacementRequest.durationSlots,
-                  )}`
-                : t("solve_overlay.select_one_assignment_option")}
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="z-[170] max-w-[620px] p-0">
+          <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
+            <DialogHeader className="shrink-0 border-b px-6 py-4">
+              <DialogTitle>{t("solve_overlay.choose_participants_for_placement")}</DialogTitle>
+              <DialogDescription>
+                {pendingPlacementRequest
+                  ? `${cellNameById[pendingPlacementRequest.sourceCellId] || t("format.cell_with_id", { id: pendingPlacementRequest.sourceCellId })} - ${formatSlotRange(
+                      dayStartMin,
+                      slotMin,
+                      pendingPlacementRequest.startSlot,
+                      pendingPlacementRequest.startSlot + pendingPlacementRequest.durationSlots,
+                    )}`
+                  : t("solve_overlay.select_one_assignment_option")}
+              </DialogDescription>
+            </DialogHeader>
 
-          {pendingPlacementRequest?.previewItem?.assignment_preview && (
-            <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
-              <div className="font-medium text-gray-900">{t("solve_overlay.assignment_preview_summary")}</div>
-              <div className="mt-1">
-                {t("solve_overlay.assignment_preview_counts", {
-                  assignable: pendingPlacementRequest.previewItem.assignment_preview.assignable_count,
-                  headcount: pendingPlacementRequest.previewItem.assignment_preview.headcount,
-                })}
-              </div>
-              {pendingPlacementRequest.previewItem.assignment_preview.reason && (
-                <div className="mt-1">{pendingPlacementRequest.previewItem.assignment_preview.reason}</div>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-4">
+              {pendingPlacementRequest?.previewItem?.assignment_preview && (
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                  <div className="font-medium text-gray-900">{t("solve_overlay.assignment_preview_summary")}</div>
+                  <div className="mt-1">
+                    {t("solve_overlay.assignment_preview_counts", {
+                      assignable: pendingPlacementRequest.previewItem.assignment_preview.assignable_count,
+                      headcount: pendingPlacementRequest.previewItem.assignment_preview.headcount,
+                    })}
+                  </div>
+                  {pendingPlacementRequest.previewItem.assignment_preview.reason && (
+                    <div className="mt-1">{pendingPlacementRequest.previewItem.assignment_preview.reason}</div>
+                  )}
+                </div>
               )}
-            </div>
-          )}
 
-          <div className="space-y-2 max-h-[44vh] overflow-y-auto pr-1">
+              <div className="space-y-2 pr-1">
             {assignmentOptions.length === 0 && (
               <div className="rounded border border-gray-200 bg-white px-3 py-3 text-sm text-gray-600">
                 {t("solve_overlay.no_backend_recommendation_use_auto")}
@@ -7929,39 +8475,41 @@ export default function SolveOverlay({
                 </button>
               );
             })}
-          </div>
-
-          <div className="flex items-center justify-between pt-1">
-            <button
-              type="button"
-              className="h-9 px-3 rounded border text-sm"
-              onClick={() => {
-                setAssignmentDialogOpen(false);
-                setPendingPlacementRequest(null);
-                setAssignmentOptions([]);
-                setSelectedAssignmentOptionId(null);
-              }}
-            >
-              {t("common.cancel")}
-            </button>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="h-9 px-3 rounded border text-sm text-gray-700 hover:bg-gray-50"
-                onClick={confirmPendingPlacementWithAutoSelection}
-                disabled={!pendingPlacementRequest}
-              >
-                {t("solve_overlay.use_backend_auto_selection")}
-              </button>
-              <button
-                type="button"
-                className="h-9 px-3 rounded bg-black text-white text-sm disabled:opacity-60"
-                onClick={confirmSelectedAssignmentAndPlace}
-                disabled={!selectedAssignmentOptionId}
-              >
-                {t("solve_overlay.place_cell")}
-              </button>
+              </div>
             </div>
+
+            <DialogFooter className="flex items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">
+              <button
+                type="button"
+                className="h-9 rounded border px-3 text-sm hover:bg-gray-50"
+                onClick={() => {
+                  setAssignmentDialogOpen(false);
+                  setPendingPlacementRequest(null);
+                  setAssignmentOptions([]);
+                  setSelectedAssignmentOptionId(null);
+                }}
+              >
+                {t("common.cancel")}
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="h-9 rounded border px-3 text-sm text-gray-700 hover:bg-gray-50"
+                  onClick={confirmPendingPlacementWithAutoSelection}
+                  disabled={!pendingPlacementRequest}
+                >
+                  {t("solve_overlay.use_backend_auto_selection")}
+                </button>
+                <button
+                  type="button"
+                  className="h-9 rounded bg-black px-3 text-sm text-white disabled:opacity-60"
+                  onClick={confirmSelectedAssignmentAndPlace}
+                  disabled={!selectedAssignmentOptionId}
+                >
+                  {t("solve_overlay.place_cell")}
+                </button>
+              </div>
+            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
@@ -7975,61 +8523,65 @@ export default function SolveOverlay({
           }))
         }
       >
-        <DialogContent className="sm:max-w-[620px] z-[170]">
-          <DialogHeader>
-            <DialogTitle>
-              {precheckDialogState.blocking
-                ? t("solve_overlay.precheck_dialog_alert_title")
-                : t("solve_overlay.precheck_dialog_warning_title")}
-            </DialogTitle>
-            <DialogDescription>
-              {precheckDialogState.blocking
-                ? t("solve_overlay.precheck_dialog_alert_description")
-                : t("solve_overlay.precheck_dialog_warning_description")}
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="z-[170] max-w-[620px] p-0">
+          <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
+            <DialogHeader className="shrink-0 border-b px-6 py-4">
+              <DialogTitle>
+                {precheckDialogState.blocking
+                  ? t("solve_overlay.precheck_dialog_alert_title")
+                  : t("solve_overlay.precheck_dialog_warning_title")}
+              </DialogTitle>
+              <DialogDescription>
+                {precheckDialogState.blocking
+                  ? t("solve_overlay.precheck_dialog_alert_description")
+                  : t("solve_overlay.precheck_dialog_warning_description")}
+              </DialogDescription>
+            </DialogHeader>
 
-          {precheckDialogState.lines.length > 0 && (
-            <div className="max-h-[42vh] overflow-y-auto rounded border border-gray-200 bg-gray-50 px-3 py-2">
-              <ul className="space-y-1 text-sm text-gray-800">
-                {precheckDialogState.lines.map((line, idx) => (
-                  <li key={`precheck-dialog-line-${idx}`} className="leading-snug">
-                    - {line}
-                  </li>
-                ))}
-              </ul>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+              {precheckDialogState.lines.length > 0 && (
+                <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2">
+                  <ul className="space-y-1 text-sm text-gray-800">
+                    {precheckDialogState.lines.map((line, idx) => (
+                      <li key={`precheck-dialog-line-${idx}`} className="leading-snug">
+                        - {line}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
-          )}
 
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              className="h-9 px-3 rounded border text-sm"
-              onClick={() =>
-                setPrecheckDialogState((prev) => ({
-                  ...prev,
-                  open: false,
-                }))
-              }
-            >
-              {t("common.close")}
-            </button>
-            {!precheckDialogState.blocking && (
+            <DialogFooter className="flex items-center justify-end gap-2 border-t px-6 py-4">
               <button
                 type="button"
-                className="h-9 px-3 rounded bg-black text-white text-sm disabled:opacity-60"
-                onClick={() => {
+                className="h-9 rounded border px-3 text-sm hover:bg-gray-50"
+                onClick={() =>
                   setPrecheckDialogState((prev) => ({
                     ...prev,
                     open: false,
-                  }));
-                  void runSolve();
-                }}
-                disabled={isSolving || precheckBusy}
+                  }))
+                }
               >
-                {t("solve_overlay.run_anyways")}
+                {t("common.close")}
               </button>
-            )}
+              {!precheckDialogState.blocking && (
+                <button
+                  type="button"
+                  className="h-9 rounded bg-black px-3 text-sm text-white disabled:opacity-60"
+                  onClick={() => {
+                    setPrecheckDialogState((prev) => ({
+                      ...prev,
+                      open: false,
+                    }));
+                    void runSolve();
+                  }}
+                  disabled={isSolving || precheckBusy}
+                >
+                  {t("solve_overlay.run_anyways")}
+                </button>
+              )}
+            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
@@ -8289,15 +8841,16 @@ export default function SolveOverlay({
           if (!open) setCandidateError(null);
         }}
       >
-        <DialogContent className="sm:max-w-[760px] z-[170]">
-          <DialogHeader>
-            <DialogTitle>{t("solve_overlay.choose_candidate_title")}</DialogTitle>
-            <DialogDescription>
-              {t("solve_overlay.choose_candidate_description")}
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="z-[170] max-w-[760px] p-0">
+          <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
+            <DialogHeader className="shrink-0 border-b px-6 py-4">
+              <DialogTitle>{t("solve_overlay.choose_candidate_title")}</DialogTitle>
+              <DialogDescription>
+                {t("solve_overlay.choose_candidate_description")}
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="space-y-3">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-4">
             {candidatePreference && (
                 <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
                   {t("solve_overlay.candidate_preference_loaded")}
@@ -8432,6 +8985,7 @@ export default function SolveOverlay({
                   {candidateBusy ? t("solve_overlay.submitting") : t("solve_overlay.reject_all")}
                 </button>
               </div>
+            </div>
             </div>
           </div>
         </DialogContent>
@@ -8694,7 +9248,7 @@ export default function SolveOverlay({
                       const height = previewIsParticipantMode ? Math.max(6, rawHeight * 0.9) : rawHeight;
                       const left = `calc(${timeColPx}px + ${col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
                       const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`;
-                      const cellName = cellNameById[sourceCellId] || t("format.cell_with_id", { id: sourceCellId });
+                      const cellName = cellNameById[sourceCellId] || s.cell_name || t("format.cell_with_id", { id: sourceCellId });
                       const timeLabel = formatSlotRange(dayStartMin, slotMin, s.start_slot, s.end_slot);
                       const staffIds = cellStaffsById[sourceCellId] || [];
                       const bg = cellColorById[sourceCellId] || "";

@@ -2414,8 +2414,9 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
           if (!open) setDraftStructurePreview(null);
         }}
       >
-        <DialogContent className="max-h-[85dvh] max-w-2xl overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl p-0">
+          <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
+          <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
             <DialogTitle>
               {tt("grid_settings.draft_structure_dialog_title", "Apply structure changes to draft?")}
             </DialogTitle>
@@ -2427,7 +2428,7 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-3">
             {draftStructureBlockingErrors.length > 0 ? (
               <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
                 <div className="font-medium">{tt("grid_settings.draft_structure_blocking_errors", "Blocking errors")}</div>
@@ -2516,10 +2517,10 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
             ) : null}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">
             <button
               type="button"
-              className="rounded border px-4 py-2 text-sm"
+              className="rounded border px-4 py-2 text-sm hover:bg-gray-50"
               disabled={scheduleApplying}
               onClick={() => {
                 setDraftStructureDialogOpen(false);
@@ -2539,6 +2540,7 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
                 : tt("grid_settings.apply_to_draft", "Apply to draft")}
             </button>
           </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -2549,8 +2551,9 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
           if (!open) setDeleteConfirmText("");
         }}
       >
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
+        <DialogContent className="max-w-xl p-0">
+          <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
+          <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
             <DialogTitle>{tt("grid_settings.delete_grid_dialog_title", "Delete Grid")}</DialogTitle>
             <DialogDescription>
               {tt(
@@ -2560,7 +2563,7 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-2">
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-2">
             <label className="text-sm font-medium">{tt("grid_settings.delete_grid_name_label", "Grid name confirmation")}</label>
             <div className="rounded-md border bg-gray-50 px-3 py-2 text-sm text-gray-700">
               {persistedGridNameRef.current || tt("grid_settings.not_available", "Not available")}
@@ -2574,10 +2577,10 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
             />
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">
             <button
               type="button"
-              className="rounded border px-4 py-2 text-sm"
+              className="rounded border px-4 py-2 text-sm hover:bg-gray-50"
               onClick={() => {
                 setDeleteDialogOpen(false);
                 setDeleteConfirmText("");
@@ -2596,6 +2599,7 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
                 : tt("grid_settings.delete_grid_confirm_button", "Delete grid")}
             </button>
           </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </>

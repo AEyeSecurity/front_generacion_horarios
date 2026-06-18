@@ -5,8 +5,6 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
-  DialogPortal,
-  DialogOverlay,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -150,15 +148,15 @@ export default function EditRuleDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogPortal>
-        <DialogOverlay className="fixed inset-0 bg-black/50 z-[95]" />
-        <DialogContent className="sm:max-w-[560px] z-[96]">
-          <DialogHeader>
+        <DialogContent className="max-w-[560px] p-0">
+          <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
+          <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
             <DialogTitle>{t("edit_rule.title")}</DialogTitle>
             <DialogDescription>{t("edit_rule.description")}</DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={submit} className="space-y-4">
+          <form onSubmit={submit} className="contents">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className="text-sm font-medium">{t("add_rule.availability_type")}</label>
@@ -213,8 +211,9 @@ export default function EditRuleDialog({
                 <input type="time" className="border rounded px-3 py-2 w-full" value={end} onChange={(e) => setEnd(e.target.value)} disabled={loading} />
               </div>
             </div>
+            </div>
 
-            <DialogFooter className="mt-2 !flex-row items-center !justify-between">
+            <DialogFooter className="shrink-0 !flex-row items-center !justify-between gap-3 border-t px-6 py-4">
               <button
                 type="button"
                 className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
@@ -237,8 +236,8 @@ export default function EditRuleDialog({
               </div>
             </DialogFooter>
           </form>
+          </div>
         </DialogContent>
-      </DialogPortal>
     </Dialog>
   );
 }

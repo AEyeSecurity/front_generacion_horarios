@@ -3,8 +3,6 @@
 import * as React from "react";
 import {
   Dialog,
-  DialogPortal,
-  DialogOverlay,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -15,6 +13,13 @@ import AnimatedList from "@/components/navigation/AnimatedList";
 import { Trash2, Pencil, Check, X } from "lucide-react";
 import { useI18n } from "@/lib/use-i18n";
 const CATEGORY_VALUES_UPDATED_EVENT = "shift:category-values-updated";
+
+function safeApiText(raw: string, fallback: string) {
+  const trimmed = raw.trim();
+  if (!trimmed) return fallback;
+  if (/^<!doctype/i.test(trimmed) || /^<html/i.test(trimmed)) return fallback;
+  return trimmed;
+}
 
 export default function AddCategoryDialog({
   gridId,
@@ -138,7 +143,10 @@ export default function AddCategoryDialog({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ category: createdId, name: newValue.trim() }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(safeApiText(txt, t("add_category.failed_add_value")));
+      }
       setNewValue("");
       await loadValues(createdId);
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CATEGORY_VALUES_UPDATED_EVENT));
@@ -154,7 +162,7 @@ export default function AddCategoryDialog({
     if (res.status === 404) return;
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      throw new Error(txt || `Failed (${res.status})`);
+      throw new Error(safeApiText(txt, `Failed (${res.status})`));
     }
   }
 
@@ -163,7 +171,12 @@ export default function AddCategoryDialog({
     const res = await fetch(`/api/category_values/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      setErr(t("category_dialog.failed_delete_value", { status: res.status, details: txt }));
+      setErr(
+        t("category_dialog.failed_delete_value", {
+          status: res.status,
+          details: safeApiText(txt, ""),
+        }),
+      );
       return;
     }
     if (createdId) await loadValues(createdId);
@@ -183,7 +196,7 @@ export default function AddCategoryDialog({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || `Failed (${res.status})`);
+        throw new Error(safeApiText(txt, `Failed (${res.status})`));
       }
       setEditingValueId(null);
       setEditingValueName("");
@@ -250,14 +263,13 @@ export default function AddCategoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogPortal>
-        <DialogOverlay className="fixed inset-0 bg-black/50 z-[180]" />
         <DialogContent
-          className={`z-[181] sm:max-w-[720px] ${createdId ? "sm:h-[460px]" : ""}`}
+          className={`max-w-[720px] p-0 ${createdId ? "sm:h-[460px]" : ""}`}
           showCloseButton={!lockValueCreationCancel}
           data-onboarding-target="category-dialog"
         >
-          <DialogHeader>
+          <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
+          <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
             <DialogTitle>
               {createdId
                 ? t("add_category.add_category_values", { name })
@@ -265,8 +277,9 @@ export default function AddCategoryDialog({
             </DialogTitle>
           </DialogHeader>
 
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
           {!createdId ? (
-            <form onSubmit={submit} className="space-y-4">
+            <form id="add-category-form" onSubmit={submit} className="space-y-4">
               <div>
                 <label className="block text-sm mb-1">{t("add_category.name_required")}</label>
                 <input
@@ -297,20 +310,6 @@ export default function AddCategoryDialog({
 
               {err && <div className="text-sm text-red-600 whitespace-pre-wrap">{err}</div>}
 
-              <DialogFooter className="gap-2">
-                <DialogClose asChild>
-                  <button type="button" className="px-3 py-2 rounded border text-sm">
-                    {t("common.cancel")}
-                  </button>
-                </DialogClose>
-                <button
-                  type="submit"
-                  className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50"
-                  disabled={saving}
-                >
-                  {saving ? t("add_category.adding") : t("common.next")}
-                </button>
-              </DialogFooter>
             </form>
           ) : (
             <div className="flex h-full min-h-[320px] flex-col gap-4">
@@ -448,25 +447,39 @@ export default function AddCategoryDialog({
                 )}
               </div>
 
-              <DialogFooter className="mt-auto gap-2">
-                {!lockValueCreationCancel ? (
-                  <button type="button" className="px-3 py-2 rounded border text-sm" disabled={closing} onClick={() => void cancelDialog()}>
-                    {t("common.cancel")}
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50"
-                  disabled={values.length === 0 || closing}
-                  onClick={() => void finishValueStep()}
-                >
-                  {t("common.finish")}
-                </button>
-              </DialogFooter>
             </div>
           )}
+          </div>
+          <DialogFooter className="shrink-0 items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">
+            {!lockValueCreationCancel ? (
+              <button type="button" className="px-3 py-2 rounded border text-sm hover:bg-gray-50" disabled={closing} onClick={() => void cancelDialog()}>
+                {t("common.cancel")}
+              </button>
+            ) : (
+              <span />
+            )}
+            {!createdId ? (
+              <button
+                type="submit"
+                form="add-category-form"
+                className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50"
+                disabled={saving}
+              >
+                {saving ? t("add_category.adding") : t("common.next")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50"
+                disabled={values.length === 0 || closing}
+                onClick={() => void finishValueStep()}
+              >
+                {t("common.finish")}
+              </button>
+            )}
+          </DialogFooter>
+          </div>
         </DialogContent>
-      </DialogPortal>
     </Dialog>
   );
 }

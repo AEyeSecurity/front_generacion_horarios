@@ -133,7 +133,7 @@ function TierCountControls({
         ))}
       </div>
       <div className="text-xs text-gray-500 mt-2">
-        Inferred headcount: {currentTotal}
+        {t("cell_staffing.inferred_headcount", { count: currentTotal })}
       </div>
     </div>
   );
@@ -148,10 +148,11 @@ function HeadcountControls({
   maxHeadcount: number;
   onHeadcountChange: (value: number) => void;
 }) {
+  const { t } = useI18n();
   const safeHeadcount = Math.max(0, Math.floor(headcount || 0));
   return (
     <div className="rounded border bg-gray-50 p-3">
-      <div className="text-sm font-medium mb-2">Headcount</div>
+      <div className="text-sm font-medium mb-2">{t("cell_staffing.headcount")}</div>
       <div className="flex items-center gap-2">
         <button
           type="button"

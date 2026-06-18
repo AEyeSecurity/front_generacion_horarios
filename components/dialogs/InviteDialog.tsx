@@ -7,8 +7,6 @@ import { TIER_STYLES, type Tier } from "@/components/badges/TierBadge";
 import { readGridTierEnabled } from "@/lib/grid-tier";
 import {
   Dialog,
-  DialogPortal,
-  DialogOverlay,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -431,7 +429,7 @@ export default function InviteDialog({
         setGeneralAccessUrl("");
       }
     } catch {
-      setError("Could not load sharing data.");
+      setError(t("invite_dialog.load_failed"));
     } finally {
       setLoadingData(false);
     }
@@ -446,9 +444,9 @@ export default function InviteDialog({
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
-      toast.success("Link copied");
+      toast.success(t("invite_dialog.link_copied"));
     } catch {
-      toast.error("Could not copy link");
+      toast.error(t("invite_dialog.copy_link_failed"));
     }
   }
 
@@ -456,7 +454,7 @@ export default function InviteDialog({
     const value = raw.trim().toLowerCase();
     if (!value) return;
     if (!EMAIL_RE.test(value)) {
-      setError("Invalid email address.");
+      setError(t("invite_dialog.invalid_email"));
       return;
     }
     if (emails.includes(value)) {
@@ -466,7 +464,7 @@ export default function InviteDialog({
       return;
     }
     if (emails.length >= 10) {
-      setError("Maximum 10 addresses.");
+      setError(t("invite_dialog.max_addresses"));
       return;
     }
     setEmails((prev) => [...prev, value]);
@@ -524,7 +522,7 @@ export default function InviteDialog({
           (r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.ok)
         );
         if (failedCancel) {
-          throw new Error("Could not deactivate general access.");
+          throw new Error(t("invite_dialog.deactivate_failed"));
         }
 
         setViewerLinks((prev) =>
@@ -556,7 +554,7 @@ export default function InviteDialog({
       });
       const bodyRaw = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(parseApiError(bodyRaw, "Could not save general access."));
+        throw new Error(parseApiError(bodyRaw, t("invite_dialog.save_general_access_failed")));
       }
       const body = normalizeInvitation(bodyRaw);
       const url = getShareUrl(body);
@@ -564,7 +562,7 @@ export default function InviteDialog({
       setGeneralAccessEnabled(true);
       setViewerLinks((prev) => [...prev, body]);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Could not save general access.");
+      setError(e instanceof Error ? e.message : t("invite_dialog.save_general_access_failed"));
     } finally {
       setSavingGeneral(false);
     }
@@ -572,11 +570,11 @@ export default function InviteDialog({
 
   async function sendEmailInvites() {
     if (emails.length === 0) {
-      setError("Add at least one email.");
+      setError(t("invite_dialog.add_at_least_one_email"));
       return;
     }
     if (role === "editor" && gridTiersEnabled && !participantTier) {
-      setError("Participant tier is required for editor invites on tiered grids.");
+      setError(t("invite_dialog.editor_tier_required"));
       return;
     }
     if (role === "editor") {
@@ -587,7 +585,7 @@ export default function InviteDialog({
       );
       const duplicate = emails.find((value) => linkedEmails.has(value.trim().toLowerCase()));
       if (duplicate) {
-        setError(`"${duplicate}" already has a participant linked in this grid.`);
+        setError(t("invite_dialog.participant_email_already_linked", { email: duplicate }));
         return;
       }
     }
@@ -624,7 +622,7 @@ export default function InviteDialog({
           body: JSON.stringify(p),
         }).then(async (res) => {
           const bodyRaw = await res.json().catch(() => null);
-          if (!res.ok) throw new Error(parseApiError(bodyRaw, "Invite failed."));
+          if (!res.ok) throw new Error(parseApiError(bodyRaw, t("invite_dialog.invite_failed")));
           return normalizeInvitation(bodyRaw);
         })
       )
@@ -634,7 +632,7 @@ export default function InviteDialog({
     if (failed.length > 0) {
       const firstReason = failed[0]?.reason;
       const reasonMessage = firstReason instanceof Error ? firstReason.message : "";
-      setError(reasonMessage || `${failed.length} invites failed.`);
+      setError(reasonMessage || t("invite_dialog.invites_failed", { count: failed.length }));
       setSendingEmails(false);
       return;
     }
@@ -659,17 +657,16 @@ export default function InviteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogPortal>
-        <DialogOverlay className="fixed inset-0 bg-black/50 z-[95] data-[state=open]:animate-in data-[state=closed]:animate-out" />
-        <DialogContent className="sm:max-w-[760px] z-[96]">
-          <DialogHeader>
+        <DialogContent className="max-w-[760px] p-0">
+          <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
+          <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
             <div className="flex items-center gap-2">
               {viewMode === "compose" && (
                 <button
                   type="button"
                   className="inline-flex h-8 w-8 items-center justify-center rounded hover:bg-gray-100"
                   onClick={() => setViewMode("overview")}
-                  aria-label="Back"
+                  aria-label={t("common.back")}
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </button>
@@ -681,7 +678,7 @@ export default function InviteDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
             <div className={`grid gap-3 ${viewMode === "compose" ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-1"}`}>
               <div className="min-w-0 border rounded px-3 py-2">
                 <div className="overflow-x-auto">
@@ -807,7 +804,7 @@ export default function InviteDialog({
             {error && <div className="text-sm text-red-600">{error}</div>}
 
             {viewMode === "compose" ? (
-              <div className="flex items-center justify-between">
+              <div className="sticky bottom-0 -mx-6 -mb-4 flex items-center justify-between border-t bg-white px-6 py-4">
                 <button
                   type="button"
                   className="inline-flex h-9 w-9 items-center justify-center rounded text-sm hover:bg-gray-100 disabled:opacity-50"
@@ -836,7 +833,7 @@ export default function InviteDialog({
                 </div>
               </div>
             ) : (
-              <div className="flex items-center justify-between">
+              <div className="sticky bottom-0 -mx-6 -mb-4 flex items-center justify-between border-t bg-white px-6 py-4">
                 <button
                   type="button"
                   className="inline-flex items-center gap-2 px-3 py-2 rounded border text-sm disabled:opacity-50"
@@ -862,8 +859,8 @@ export default function InviteDialog({
               </div>
             )}
           </div>
+          </div>
         </DialogContent>
-      </DialogPortal>
     </Dialog>
   );
 }

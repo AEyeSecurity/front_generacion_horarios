@@ -14,11 +14,24 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useI18n } from "@/lib/use-i18n";
 
-type Props = { gridId: number | string; gridCode?: string | null; canConfigureSolve?: boolean };
+type Props = {
+  gridId: number | string;
+  gridCode?: string | null;
+  canConfigureSolve?: boolean;
+  hasPublishedSchedule?: boolean;
+};
 
-export default function GridActions({ gridId, gridCode, canConfigureSolve = false }: Props) {
+export default function GridActions({
+  gridId,
+  gridCode,
+  canConfigureSolve = false,
+  hasPublishedSchedule = false,
+}: Props) {
   const { t } = useI18n();
   const router = useRouter();
+  const canExportDraft = canConfigureSolve;
+  const canExportPublished = hasPublishedSchedule;
+  const hasExportOptions = canExportDraft || canExportPublished;
 
   const goSettings = () => {
     const codeOrId = gridCode || String(gridId);
@@ -76,20 +89,26 @@ export default function GridActions({ gridId, gridCode, canConfigureSolve = fals
             {t("grid_actions.settings")}
           </DropdownMenuItem>
         )}
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger>
-            <FileDown className="w-4 h-4 mr-2" />
-            {t("grid_actions.export_schedule_xlsx")}
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuItem onClick={() => void downloadScheduleExport("draft")}>
-              {t("grid_actions.draft_schedule")}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void downloadScheduleExport("published")}>
-              {t("grid_actions.published_schedule")}
-            </DropdownMenuItem>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
+        {hasExportOptions && (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <FileDown className="w-4 h-4 mr-2" />
+              {t("grid_actions.export_schedule_xlsx")}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              {canExportDraft && (
+                <DropdownMenuItem onClick={() => void downloadScheduleExport("draft")}>
+                  {t("grid_actions.draft_schedule")}
+                </DropdownMenuItem>
+              )}
+              {canExportPublished && (
+                <DropdownMenuItem onClick={() => void downloadScheduleExport("published")}>
+                  {t("grid_actions.published_schedule")}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

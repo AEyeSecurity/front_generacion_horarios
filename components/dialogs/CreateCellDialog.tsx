@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogClose,
@@ -21,6 +22,8 @@ import {
 import { CELL_COLOR_OPTIONS_NO_RED as COLOR_OPTIONS } from "@/lib/cell-colors";
 import { readGridTierEnabled } from "@/lib/grid-tier";
 import { useI18n } from "@/lib/use-i18n";
+
+type DialogTranslate = ReturnType<typeof useI18n>["t"];
 
 type TimeRange = { id: number; name: string; start_time: string; end_time: string };
 type Unit = { id: number; name: string };
@@ -162,6 +165,7 @@ function parseStructuredApiError(payload: unknown): string | null {
 function buildApiErrorMessage(raw: string, status: number, fallback: string): string {
   const trimmed = raw.trim();
   if (trimmed) {
+    if (/^<!doctype/i.test(trimmed) || /^<html/i.test(trimmed)) return `${fallback} (${status})`;
     try {
       const parsed = JSON.parse(trimmed) as unknown;
       const structured = parseStructuredApiError(parsed);
@@ -173,6 +177,7 @@ function buildApiErrorMessage(raw: string, status: number, fallback: string): st
 }
 
 function buildStaffingError(
+  t: DialogTranslate,
   tierEnabled: boolean,
   tierCounts: TierCounts,
   tierPools: TierPools,
@@ -182,27 +187,27 @@ function buildStaffingError(
 ) {
   if (!tierEnabled) {
     const headcount = Math.max(0, Number(tierCounts.PRIMARY || 0));
-    if (headcount < 1) return "Headcount must be at least 1.";
+    if (headcount < 1) return t("cell_staffing.headcount_min_error");
     const poolIds = new Set((tierPools.PRIMARY || []).map(String));
     const groupIds = new Set<string>();
     for (const group of staffGroups) {
       if (group.members.length !== headcount) {
-        return "Each staff group must contain exactly headcount participants.";
+        return t("cell_staffing.staff_group_exact_headcount_error");
       }
       for (const id of group.members) {
-        if (poolIds.has(id)) return "A participant cannot be in both eligible participants and a staff group.";
-        if (groupIds.has(id)) return "A participant cannot appear in more than one staff group.";
+        if (poolIds.has(id)) return t("cell_staffing.participant_in_pool_and_staff_error");
+        if (groupIds.has(id)) return t("cell_staffing.participant_multiple_staff_groups_error");
         groupIds.add(id);
-        if (!participantMap[id]) return "Staff group members must be valid participants.";
+        if (!participantMap[id]) return t("cell_staffing.staff_members_invalid_error");
       }
     }
     const hasPools = poolIds.size > 0;
     const hasGroups = staffGroups.length > 0;
     if (!hasPools && !hasGroups) {
-      return "At least one staffing source is required: eligible participants or explicit staff groups.";
+      return t("cell_staffing.staff_source_required_error");
     }
     if (participants.length > 0 && headcount > participants.length) {
-      return `Headcount cannot exceed available participants (${participants.length}).`;
+      return t("cell_staffing.headcount_exceeds_available_error", { count: participants.length });
     }
     return null;
   }
@@ -215,12 +220,15 @@ function buildStaffingError(
   }
   for (const tier of TIERS) {
     if (tierCounts[tier] > availableByTier[tier]) {
-      return `${tier} tier count cannot exceed available participants (${availableByTier[tier]}).`;
+      return t("cell_staffing.tier_count_exceeds_available_error", {
+        tier,
+        count: availableByTier[tier],
+      });
     }
   }
 
   const headcount = TIERS.reduce((sum, tier) => sum + Math.max(0, Number(tierCounts[tier] || 0)), 0);
-  if (headcount < 1) return "Headcount must be at least 1.";
+  if (headcount < 1) return t("cell_staffing.headcount_min_error");
 
   const poolIds = new Set<string>();
   for (const tier of TIERS) {
@@ -230,26 +238,26 @@ function buildStaffingError(
   const groupIds = new Set<string>();
   for (const group of staffGroups) {
     if (group.members.length !== headcount) {
-      return "Each staff group must contain exactly headcount participants.";
+      return t("cell_staffing.staff_group_exact_headcount_error");
     }
     const composition: TierCounts = { ...EMPTY_TIER_COUNTS };
     for (const id of group.members) {
-      if (poolIds.has(id)) return "A participant cannot be in both a tier pool and a staff group.";
-      if (groupIds.has(id)) return "A participant cannot appear in more than one staff group.";
+      if (poolIds.has(id)) return t("cell_staffing.participant_in_tier_pool_and_staff_error");
+      if (groupIds.has(id)) return t("cell_staffing.participant_multiple_staff_groups_error");
       groupIds.add(id);
       const tier = participantMap[id]?.tier;
-      if (!tier) return "All participants in staff groups must have a tier.";
+      if (!tier) return t("cell_staffing.staff_members_tier_required_error");
       composition[tier] += 1;
     }
     if (TIERS.some((tier) => composition[tier] !== tierCounts[tier])) {
-      return "Each staff group must match the required tier composition.";
+      return t("cell_staffing.staff_group_tier_composition_error");
     }
   }
 
   const hasPools = TIERS.some((tier) => tierPools[tier].length > 0);
   const hasGroups = staffGroups.length > 0;
   if (!hasPools && !hasGroups) {
-    return "At least one staffing source is required: tier pools or explicit staff groups.";
+    return t("cell_staffing.tier_staff_source_required_error");
   }
   return null;
 }
@@ -323,7 +331,7 @@ export default function CreateCellDialog({
   const [participants, setParticipants] = React.useState<Participant[]>([]);
   const [timeRanges, setTimeRanges] = React.useState<TimeRange[]>([]);
   const [units, setUnits] = React.useState<Unit[]>([]);
-  const [cellMin, setCellMin] = React.useState<number>(1);
+  const [cellMin, setCellMin] = React.useState<number>(60);
   const [enabledDaysCount, setEnabledDaysCount] = React.useState<number>(7);
   const [horizonDayMinutes, setHorizonDayMinutes] = React.useState<number | null>(null);
   const [tierCounts, setTierCounts] = React.useState<TierCounts>({ PRIMARY: 1, SECONDARY: 0, TERTIARY: 0 });
@@ -334,7 +342,6 @@ export default function CreateCellDialog({
   const [gridTierEnabled, setGridTierEnabled] = React.useState(true);
   const [globalUnitMode, setGlobalUnitMode] = React.useState<"AND" | "OR">("AND");
   const [unitModeOverride, setUnitModeOverride] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
   const splitSliderRef = React.useRef<HTMLDivElement | null>(null);
@@ -374,8 +381,11 @@ export default function CreateCellDialog({
     });
   }, [gridTierEnabled, participantTierCaps, participants.length]);
   const unitNameById = React.useMemo(
-    () => Object.fromEntries(units.map((u) => [String(u.id), u.name || `Unit ${u.id}`])) as Record<string, string>,
-    [units]
+    () =>
+      Object.fromEntries(
+        units.map((u) => [String(u.id), u.name || t("format.unit_with_id", { id: u.id })])
+      ) as Record<string, string>,
+    [t, units]
   );
   const usedUnitIds = React.useMemo(() => new Set(bundleUnitSets.flat()), [bundleUnitSets]);
   const effectiveUnitMode: "AND" | "OR" = unitModeOverride
@@ -391,8 +401,10 @@ export default function CreateCellDialog({
   const bundleSetsError = React.useMemo(() => {
     const duplicates = overlappingUnitIds(activeBundleSets);
     if (duplicates.length === 0) return null;
-    return `Bundle sets cannot share units: ${duplicates.map((id) => unitNameById[id] || `Unit ${id}`).join(", ")}.`;
-  }, [activeBundleSets, unitNameById]);
+    return t("create_cell.bundle_sets_overlap", {
+      units: duplicates.map((id) => unitNameById[id] || t("format.unit_with_id", { id })).join(", "),
+    });
+  }, [activeBundleSets, t, unitNameById]);
 
   const durationCellsSafe = React.useMemo(
     () => Math.max(1, Math.floor(Number(durationCells) || 1)),
@@ -452,7 +464,7 @@ export default function CreateCellDialog({
   }, [maxDurationDayCells, enabledDaysCount]);
   const hasTimeRangeOptions = timeRanges.length > 0;
   const canShowMultiDayToggle = enabledDaysCount > 1;
-  const hasUnitsStep = units.length > 0;
+  const hasUnitsStep = true;
 
   React.useEffect(() => {
     if (!multiDayEnabled) {
@@ -585,10 +597,10 @@ export default function CreateCellDialog({
     if (hasUnitsStep) flow.push("units");
     flow.push("staffing");
     return flow;
-  }, [multiDayEnabled, hasUnitsStep]);
-  const totalSteps = steps.length;
+  }, [multiDayEnabled]);
+  const totalSteps = steps.length || 1;
   const finalStep = totalSteps;
-  const currentStepKey = steps[Math.min(Math.max(step, 1), totalSteps) - 1] ?? "info";
+  const currentStepKey = steps.length > 0 ? steps[Math.min(Math.max(step, 1), totalSteps) - 1] ?? "info" : "info";
   const accentColor = colorHex ?? "#111827";
 
   React.useEffect(() => {
@@ -599,7 +611,6 @@ export default function CreateCellDialog({
   React.useEffect(() => {
     if (!open) return;
     setErr(null);
-    setLoading(true);
     setStep(1);
     setName("");
     setDescription("");
@@ -676,9 +687,8 @@ export default function CreateCellDialog({
         } catch {}
 
       } catch (e: any) {
-        setErr(e?.message || "Failed to load data");
+        setErr(e?.message || t("create_cell.failed_load_data"));
       } finally {
-        setLoading(false);
       }
     })();
   }, [open, gridId]);
@@ -689,7 +699,7 @@ export default function CreateCellDialog({
       (maxDurationCellsAllowed == null || durationCellsSafe <= maxDurationCellsAllowed)
   );
   const unitsStepReady = !bundleSetsError;
-  const staffingError = buildStaffingError(gridTierEnabled, tierCounts, tierPools, staffGroups, participantMap, participants);
+  const staffingError = buildStaffingError(t, gridTierEnabled, tierCounts, tierPools, staffGroups, participantMap, participants);
   const canSubmit = stepOneReady && splitStepReady && unitsStepReady && !staffingError && !bundleSetsError;
   const canAdvanceFromCurrentStep =
     currentStepKey === "info"
@@ -796,7 +806,11 @@ export default function CreateCellDialog({
     const key = normalized.join(",");
     const overlap = overlappingUnitIds([...bundleUnitSets, normalized]);
     if (overlap.length > 0) {
-      setErr(`Bundle sets cannot share units: ${overlap.map((id) => unitNameById[id] || `Unit ${id}`).join(", ")}.`);
+      setErr(
+        t("create_cell.bundle_sets_overlap", {
+          units: overlap.map((id) => unitNameById[id] || t("format.unit_with_id", { id })).join(", "),
+        })
+      );
       return;
     }
     setBundleUnitSets((prev) => {
@@ -829,7 +843,7 @@ export default function CreateCellDialog({
     if (existing?.id != null) return Number(existing.id);
 
     const inferredName = normalizeUnitSet(unitSet)
-      .map((unitId) => unitNameById[String(unitId)] || `Unit ${unitId}`)
+      .map((unitId) => unitNameById[String(unitId)] || t("format.unit_with_id", { id: unitId }))
       .sort((a, b) => a.localeCompare(b))
       .join(" + ");
     const payloads = [
@@ -960,10 +974,11 @@ export default function CreateCellDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[880px] z-[1801]" data-onboarding-target="cell-dialog">
-          <DialogHeader className="relative min-h-9 pr-8">
+        <DialogContent className="max-w-[900px] p-0 z-[1801]" data-onboarding-target="cell-dialog">
+          <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
+          <DialogHeader className="relative min-h-[72px] shrink-0 border-b px-6 py-4 pr-12">
             <DialogTitle>{t("create_cell.title")}</DialogTitle>
-            <div className="absolute left-1/2 top-0 -translate-x-1/2 flex items-center gap-2 select-none">
+            <div className="absolute left-1/2 top-4 -translate-x-1/2 flex items-center gap-2 select-none">
               {Array.from({ length: totalSteps }, (_, index) => {
                 const idx = index + 1;
                 const isActive = step === idx;
@@ -997,9 +1012,9 @@ export default function CreateCellDialog({
             </div>
           </DialogHeader>
 
-          {err && <div className="text-sm text-red-600 mb-2 whitespace-pre-wrap">{err}</div>}
-
-          <form onSubmit={submit} className="space-y-4">
+          <form onSubmit={submit} className="contents">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            {err && <div className="text-sm text-red-600 whitespace-pre-wrap">{err}</div>}
             {currentStepKey === "info" ? (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
@@ -1115,7 +1130,11 @@ export default function CreateCellDialog({
                     </button>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {units.map((u) => {
+                    {units.length === 0 ? (
+                      <div className="rounded border border-dashed px-3 py-4 text-xs text-gray-500">
+                        {t("create_cell.no_units_available")}
+                      </div>
+                    ) : units.map((u) => {
                       const id = String(u.id);
                       const isSelected = unitIds.includes(id);
                       const isDisabled = usedUnitIds.has(id) && !isSelected;
@@ -1158,14 +1177,16 @@ export default function CreateCellDialog({
                       {bundleUnitSets.map((set, index) => (
                         <div key={set.join(",")} className="flex items-center justify-between gap-3 rounded border px-3 py-2 text-sm">
                           <div className="min-w-0">
-                            <span className="font-medium">{`Bundle ${index + 1}:`}</span>{" "}
-                            <span className="break-words">{set.map((id) => unitNameById[id] || `Unit ${id}`).join(" + ")}</span>
+                            <span className="font-medium">{t("create_cell.bundle_label", { index: index + 1 })}</span>{" "}
+                            <span className="break-words">
+                              {set.map((id) => unitNameById[id] || t("format.unit_with_id", { id })).join(" + ")}
+                            </span>
                           </div>
                           <button
                             type="button"
                             onClick={() => setBundleUnitSets((prev) => prev.filter((_, i) => i !== index))}
                             className="text-gray-500 hover:text-black"
-                            aria-label={`Remove bundle ${index + 1}`}
+                            aria-label={t("create_cell.remove_bundle", { index: index + 1 })}
                           >
                             <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
                               <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -1363,46 +1384,45 @@ export default function CreateCellDialog({
               </>
             )}
 
-            <div className="flex justify-between gap-2">
-              <div className="flex gap-2">
+            </div>
+            <DialogFooter className="shrink-0 items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setStep((prev) => (prev > 1 ? prev - 1 : prev))}
-                  disabled={step === 1}
-                  className="h-9 w-9 rounded-full border text-sm flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
-                  aria-label={t("create_cell.previous_step")}
+                  disabled={step <= 1}
+                  aria-label={t("common.previous_step")}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border text-2xl leading-none hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-35"
                 >
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-                    <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+                  {"<"}
                 </button>
-
                 {step < finalStep && (
                   <button
                     type="button"
                     onClick={() => setStep((prev) => (prev < finalStep ? prev + 1 : prev))}
                     disabled={!canAdvanceFromCurrentStep}
-                    className="h-9 w-9 rounded-full border text-sm flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
-                    aria-label={t("create_cell.next_step")}
+                    aria-label={t("common.next_step")}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-black text-2xl leading-none text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-35"
                   >
-                    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-                      <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+                    {">"}
                   </button>
                 )}
               </div>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <DialogClose asChild>
-                  <button type="button" className="px-3 py-2 rounded border text-sm">{t("common.cancel")}</button>
+                  <button type="button" className="px-3 py-2 rounded border text-sm hover:bg-gray-50">
+                    {t("common.cancel")}
+                  </button>
                 </DialogClose>
-                {showStaffingStep && (
-                  <button type="submit" className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50" disabled={saving || !canSubmit || loading}>
+                {step === finalStep && (
+                  <button type="submit" className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50" disabled={saving || !canSubmit}>
                     {saving ? t("create_cell.creating") : t("common.create")}
                   </button>
                 )}
               </div>
-            </div>
+            </DialogFooter>
           </form>
+          </div>
         </DialogContent>
     </Dialog>
   );
