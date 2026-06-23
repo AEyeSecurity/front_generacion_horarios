@@ -42,6 +42,7 @@ import RightSideDock from "@/components/layout/RightSideDock";
 import GlassSurface from "@/components/ui/GlassSurface";
 import ScheduleErrorCard from "@/components/grid/ScheduleErrorCard";
 import PlacementCommentBubble from "@/components/grid/PlacementCommentBubble";
+import ShiftSpinner from "@/components/ui/ShiftSpinner";
 import type { ScheduleViewMode } from "@/lib/schedule-view";
 import { useI18n } from "@/lib/use-i18n";
 import { authFetch } from "@/lib/client-auth";
@@ -109,11 +110,20 @@ const getContextListIfPresent = <T,>(payload: unknown): T[] | null => {
 type ScheduleRow = {
   cell_id: string;
   cell_name?: string;
+  source_cell_name?: string | null;
   placement_id?: string | number;
   schedule_placement_id?: string | number;
   published_placement_id?: string | number | null;
   snapshot_placement_id?: string | number | null;
   source_cell_id?: string | number;
+  color_hex?: string | null;
+  source_cell_color_hex?: string | null;
+  cell_color_hex?: string | null;
+  color?: string | null;
+  unit_names?: string[];
+  bundle_name?: string | null;
+  participant_names?: string[];
+  assigned_participant_names?: string[];
   bundle_id?: string | number;
   bundle?: string | number;
   day_index: number;
@@ -125,6 +135,28 @@ type ScheduleRow = {
   locked?: boolean;
   breaks?: Array<{ offset_min: number; duration_min: number }>;
 };
+
+const normalizeMetadataStringArray = (value: unknown): string[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const names = value
+    .map((entry) => {
+      if (typeof entry === "string") return entry.trim();
+      if (entry && typeof entry === "object") {
+        const record = entry as Record<string, unknown>;
+        const name = record.name ?? record.full_name ?? record.label ?? record.display_name;
+        if (typeof name === "string") return name.trim();
+      }
+      return "";
+    })
+    .filter(Boolean);
+  return names.length > 0 ? names : undefined;
+};
+
+const readMetadataString = (value: unknown): string | undefined => {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+};
+
+const isHexColor = (value: string) => /^#[0-9a-f]{6}$/i.test(value.trim());
 
 type BreakEntry = {
   offset_min: number;
@@ -605,6 +637,7 @@ type Props = {
     hasNoUnitCells: boolean;
     blockageGlobalModeActive: boolean;
   }) => void;
+  onScheduleLoadingChange?: (loading: boolean, ready: boolean) => void;
   historyMode?: boolean;
   historyGridCode?: string | null;
 };
@@ -805,6 +838,12 @@ type PlacementPreviewRegion = {
 };
 
 type BlockageDeleteScope = "GLOBAL" | "CURRENT_UNIT_ONLY";
+type ScheduleActionLoadingKind =
+  | "deleting"
+  | "placing"
+  | "assigning"
+  | "validating"
+  | "updating_blockages";
 
 type PreviewCacheKey = string;
 
@@ -819,6 +858,9 @@ const normalizePreviewCachePart = (value: string | number | null | undefined) =>
   const text = String(value).trim();
   return text || "none";
 };
+
+const isConfirmedPlacementId = (value: string | number | null | undefined) =>
+  value != null && /^\d+$/.test(String(value).trim());
 
 const getVisibleCandidateHash = (candidatePlacements: CandidatePlacementRequest[]) =>
   candidatePlacements
@@ -967,6 +1009,7 @@ export default function SolveOverlay({
   commentsPanelOpen = false,
   onCommentsPanelOpenChange,
   onGlobalScopeMetaChange,
+  onScheduleLoadingChange,
   historyMode = false,
   historyGridCode = null,
 }: Props) {
@@ -1076,6 +1119,8 @@ export default function SolveOverlay({
   const [breakDragState, setBreakDragState] = useState<BreakDragState | null>(null);
   const [scheduleBlockages, setScheduleBlockages] = useState<ScheduleBlockage[]>([]);
   const [blockagesBusy, setBlockagesBusy] = useState(false);
+  const [hasBlockagesResolved, setHasBlockagesResolved] = useState(false);
+  const [hasScheduleContextResolved, setHasScheduleContextResolved] = useState(false);
   const [blockagesRefreshTick, setBlockagesRefreshTick] = useState(0);
   const [blockageDraft, setBlockageDraft] = useState<BlockageDraft | null>(null);
   const [blockageDragState, setBlockageDragState] = useState<BlockageDragState | null>(null);
@@ -1107,6 +1152,8 @@ export default function SolveOverlay({
   const [placementPreviewDurationSlots, setPlacementPreviewDurationSlots] = useState<number | null>(null);
   const [backendPreviewActive, setBackendPreviewActive] = useState(false);
   const [placementPreviewBusy, setPlacementPreviewBusy] = useState(false);
+  const [scheduleActionLoading, setScheduleActionLoading] = useState<ScheduleActionLoadingKind | null>(null);
+  const [pendingPlacementIds, setPendingPlacementIds] = useState<Set<string>>(() => new Set());
   const [blockageMutationBusy, setBlockageMutationBusy] = useState(false);
   const [pendingDropWhilePreviewLoading, setPendingDropWhilePreviewLoading] =
     useState<PendingDropWhilePreviewLoading | null>(null);
@@ -1134,6 +1181,13 @@ export default function SolveOverlay({
   const [restoringHistoryVersion, setRestoringHistoryVersion] = useState(false);
   const [exportingHistoryVersion, setExportingHistoryVersion] = useState(false);
   const [blockagesBusyAnchor, setBlockagesBusyAnchor] = useState<{ left: number; top: number } | null>(null);
+
+  useEffect(() => {
+    const hasScheduleId = Boolean(currentSchedule?.id);
+    const blockagesReady = !hasScheduleId || (hasBlockagesResolved && !blockagesBusy);
+    const ready = hasScheduleContextResolved && blockagesReady;
+    onScheduleLoadingChange?.(!ready, ready);
+  }, [blockagesBusy, currentSchedule?.id, hasBlockagesResolved, hasScheduleContextResolved, onScheduleLoadingChange]);
   const longPressTimerRef = useRef<number | null>(null);
   const participantDropGhostTimersRef = useRef<number[]>([]);
   const participantDropGhostTokenRef = useRef(0);
@@ -1160,6 +1214,47 @@ export default function SolveOverlay({
     rightDockCloseSignalRef.current += 1;
     setRightDockCloseSignal(rightDockCloseSignalRef.current);
   }, []);
+
+  const addPendingPlacementIds = useCallback((ids: Array<string | number | null | undefined>) => {
+    const normalized = ids
+      .filter((id): id is string | number => id != null)
+      .map((id) => String(id))
+      .filter(Boolean);
+    if (normalized.length === 0) return;
+    setPendingPlacementIds((prev) => {
+      const next = new Set(prev);
+      for (const id of normalized) next.add(id);
+      return next;
+    });
+  }, []);
+
+  const removePendingPlacementIds = useCallback((ids: Array<string | number | null | undefined>) => {
+    const normalized = ids
+      .filter((id): id is string | number => id != null)
+      .map((id) => String(id))
+      .filter(Boolean);
+    if (normalized.length === 0) return;
+    setPendingPlacementIds((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const id of normalized) {
+        if (next.delete(id)) changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, []);
+
+  const withScheduleActionLoading = useCallback(
+    async <T,>(kind: ScheduleActionLoadingKind, task: () => Promise<T>): Promise<T> => {
+      setScheduleActionLoading(kind);
+      try {
+        return await task();
+      } finally {
+        setScheduleActionLoading((prev) => (prev === kind ? null : prev));
+      }
+    },
+    [],
+  );
 
   const canSolve = role === "supervisor" && !historyMode;
   const notifyDraftMutation = useCallback(() => {
@@ -1689,6 +1784,27 @@ export default function SolveOverlay({
         : typeof source.name === "string"
         ? source.name
         : undefined;
+    const sourceCellName = readMetadataString(source.source_cell_name);
+    const colorHex =
+      readMetadataString(source.color_hex) ??
+      (isObjectRecord(source.cell) ? readMetadataString(source.cell.color_hex ?? source.cell.colorHex ?? source.cell.color) : undefined);
+    const sourceCellColorHex =
+      readMetadataString(source.source_cell_color_hex) ??
+      (isObjectRecord(source.source_cell)
+        ? readMetadataString(source.source_cell.color_hex ?? source.source_cell.colorHex ?? source.source_cell.color)
+        : undefined);
+    const cellColorHex = readMetadataString(source.cell_color_hex);
+    const color = readMetadataString(source.color);
+    const unitNames = normalizeMetadataStringArray(source.unit_names);
+    const participantNames =
+      normalizeMetadataStringArray(source.participant_names) ??
+      normalizeMetadataStringArray(source.assigned_participants);
+    const assignedParticipantNames =
+      normalizeMetadataStringArray(source.assigned_participant_names) ??
+      normalizeMetadataStringArray(source.assigned_participants);
+    const bundleName =
+      readMetadataString(source.bundle_name) ??
+      (isObjectRecord(source.bundle) ? readMetadataString(source.bundle.name) : undefined);
     const assignedParticipants = normalizeIdArray(
       source.assigned_participants ?? source.participants,
     );
@@ -1711,9 +1827,18 @@ export default function SolveOverlay({
     return {
       cell_id: String(placementId),
       cell_name: cellName,
+      source_cell_name: sourceCellName ?? null,
       placement_id: placementId,
       schedule_placement_id: placementId,
       source_cell_id: sourceCellId,
+      color_hex: colorHex ?? null,
+      source_cell_color_hex: sourceCellColorHex ?? null,
+      cell_color_hex: cellColorHex ?? null,
+      color: color ?? null,
+      unit_names: unitNames,
+      bundle_name: bundleName ?? null,
+      participant_names: participantNames,
+      assigned_participant_names: assignedParticipantNames,
       bundle_id: bundleId,
       bundle: bundleId,
       day_index: Math.max(0, Math.round(dayIndex)),
@@ -2045,6 +2170,7 @@ export default function SolveOverlay({
     setPlacementPreviewDurationSlots(null);
     setBackendPreviewActive(false);
     setPlacementPreviewBusy(false);
+    setScheduleActionLoading((prev) => (prev === "validating" ? null : prev));
     setPlacementPreviewError(null);
   }, []);
 
@@ -2295,10 +2421,16 @@ export default function SolveOverlay({
       replacement?: NonNullable<ScheduleResource["placements"]>[number] | null;
     }): NonNullable<ScheduleResource["placements"]>[number] => {
       const optimisticId = `optimistic-${args.sourceCellId}-${Date.now()}-${optimisticPlacementCounterRef.current++}`;
+      const replacementPlacementId =
+        readEntityId((args.replacement as { placement_id?: unknown } | null | undefined)?.placement_id) ??
+        readEntityId((args.replacement as { schedule_placement_id?: unknown } | null | undefined)?.schedule_placement_id) ??
+        readEntityId((args.replacement as { id?: unknown } | null | undefined)?.id);
+      const rowId = replacementPlacementId ?? optimisticId;
       return {
         ...(args.replacement ?? {}),
-        id: optimisticId,
-        placement_id: optimisticId,
+        id: rowId,
+        placement_id: rowId,
+        schedule_placement_id: rowId,
         source_cell_id:
           readEntityId((args.replacement as { source_cell_id?: unknown } | null | undefined)?.source_cell_id) ??
           readEntityId((args.replacement as { source_cell?: unknown } | null | undefined)?.source_cell) ??
@@ -2331,6 +2463,7 @@ export default function SolveOverlay({
     placementPreviewVisibleRequestRef.current = null;
     placementPreviewCache.clear();
     clearPlacementPreviewState();
+    setHasScheduleContextResolved(false);
     if (!historyMode) {
       setCurrentSchedule(null);
       setScheduleBlockages([]);
@@ -2462,6 +2595,7 @@ export default function SolveOverlay({
         }
 
         setPlacementPreviewBusy(true);
+        setScheduleActionLoading("validating");
         setPlacementPreviewError(null);
         setPlacementPreviewBySlot({});
         setPlacementPreviewDurationSlots(null);
@@ -2514,6 +2648,7 @@ export default function SolveOverlay({
           placementPreviewVisibleRequestRef.current === requestId
         ) {
           setPlacementPreviewBusy(false);
+          setScheduleActionLoading((prev) => (prev === "validating" ? null : prev));
           placementPreviewVisibleRequestRef.current = null;
         }
       }
@@ -2753,9 +2888,11 @@ export default function SolveOverlay({
     if (!scheduleId) {
       setScheduleBlockages([]);
       setBlockagesBusy(false);
+      setHasBlockagesResolved(true);
       return;
     }
 
+    setHasBlockagesResolved(false);
     if (scheduleViewMode === "published" || historyMode) {
       const snapshotBlockages = Array.isArray(currentSchedule?.blockages)
         ? currentSchedule.blockages
@@ -2767,6 +2904,7 @@ export default function SolveOverlay({
         .filter((entry): entry is ScheduleBlockage => Boolean(entry));
       setScheduleBlockages(normalized);
       setBlockagesBusy(false);
+      setHasBlockagesResolved(true);
       return;
     }
 
@@ -2808,7 +2946,10 @@ export default function SolveOverlay({
       } catch {
         if (active) setScheduleBlockages([]);
       } finally {
-        if (active) setBlockagesBusy(false);
+        if (active) {
+          setBlockagesBusy(false);
+          setHasBlockagesResolved(true);
+        }
       }
     })();
     return () => {
@@ -3262,7 +3403,11 @@ export default function SolveOverlay({
           setParticipantNameById(pmap);
           setParticipantTierById(ptier);
         }
-      } catch {}
+      } catch {
+        // A resolved empty/failed context must not leave the schedule bootstrap pending forever.
+      } finally {
+        if (active) setHasScheduleContextResolved(true);
+      }
     })();
     return () => { active = false; };
   }, [dayStartMin, externalRefreshTick, gridId, historyMode, normalizeScheduleResource, renderModel, scheduleViewMode, slotMin]);
@@ -3673,6 +3818,37 @@ export default function SolveOverlay({
             typeof ((placement as { source_cell?: { name?: unknown } }).source_cell?.name) === "string"
           ? String((placement as { source_cell?: { name?: unknown } }).source_cell?.name)
           : undefined;
+      const sourceCellName =
+        typeof (placement as { source_cell_name?: unknown }).source_cell_name === "string"
+          ? String((placement as { source_cell_name?: unknown }).source_cell_name).trim()
+          : undefined;
+      const placementRecord = placement as Record<string, unknown>;
+      const participantNames =
+        normalizeMetadataStringArray(placementRecord.participant_names) ??
+        normalizeMetadataStringArray(placementRecord.assigned_participants);
+      const assignedParticipantNames =
+        normalizeMetadataStringArray(placementRecord.assigned_participant_names) ??
+        normalizeMetadataStringArray(placementRecord.assigned_participants);
+      const unitNames = normalizeMetadataStringArray(placementRecord.unit_names);
+      const bundleName =
+        readMetadataString(placementRecord.bundle_name) ??
+        (isObjectRecord(placementRecord.bundle) ? readMetadataString(placementRecord.bundle.name) : undefined);
+      const colorHex =
+        readMetadataString(placementRecord.color_hex) ??
+        (isObjectRecord(placementRecord.cell)
+          ? readMetadataString(placementRecord.cell.color_hex ?? placementRecord.cell.colorHex ?? placementRecord.cell.color)
+          : undefined);
+      const sourceCellColorHex =
+        readMetadataString(placementRecord.source_cell_color_hex) ??
+        (isObjectRecord(placementRecord.source_cell)
+          ? readMetadataString(
+              placementRecord.source_cell.color_hex ??
+                placementRecord.source_cell.colorHex ??
+                placementRecord.source_cell.color,
+            )
+          : undefined);
+      const cellColorHex = readMetadataString(placementRecord.cell_color_hex);
+      const color = readMetadataString(placementRecord.color);
       const placementUnitIds = normalizeIdArray(
         (placement as { unit_ids?: unknown; units?: unknown }).unit_ids ??
           (placement as { unit_ids?: unknown; units?: unknown }).units,
@@ -3704,6 +3880,7 @@ export default function SolveOverlay({
       return {
         cell_id: placementIdentity,
         cell_name: cellName,
+        source_cell_name: sourceCellName ?? null,
         placement_id: placementIdentity,
         schedule_placement_id: placementIdentity,
         published_placement_id:
@@ -3715,6 +3892,14 @@ export default function SolveOverlay({
           readEntityId((placement as { snapshotPlacementId?: unknown }).snapshotPlacementId) ??
           null,
         source_cell_id: sourceCellId,
+        color_hex: colorHex ?? null,
+        source_cell_color_hex: sourceCellColorHex ?? null,
+        cell_color_hex: cellColorHex ?? null,
+        color: color ?? null,
+        unit_names: unitNames,
+        bundle_name: bundleName ?? null,
+        participant_names: participantNames,
+        assigned_participant_names: assignedParticipantNames,
         bundle_id: bundleId,
         bundle: bundleId,
         day_index: Number(placement.day_index),
@@ -5288,7 +5473,18 @@ export default function SolveOverlay({
     placementPreviewBusy &&
     !hasUsablePlacementPreviewMap &&
     (pendingDropWhilePreviewLoading != null || dragState?.dragType !== "participant-tool");
-  const scheduleValidationMaskActive = placementPreviewLoadingWithoutCache || blockageMutationBusy;
+  const scheduleValidationMaskActive =
+    placementPreviewLoadingWithoutCache || blockageMutationBusy || scheduleActionLoading != null;
+  const scheduleActionLoadingLabel =
+    scheduleActionLoading === "deleting"
+      ? t("solve_overlay.action_deleting")
+      : scheduleActionLoading === "placing"
+      ? t("solve_overlay.action_placing")
+      : scheduleActionLoading === "assigning"
+      ? t("solve_overlay.action_assigning")
+      : scheduleActionLoading === "updating_blockages"
+      ? t("solve_overlay.action_updating_blockages")
+      : t("solve_overlay.placement_preview_validating_positions");
 
   useEffect(() => {
     if (!scheduleValidationMaskActive) {
@@ -5429,7 +5625,11 @@ export default function SolveOverlay({
       const placementId = String(s.cell_id ?? "");
       const publishedPlacementId = getPublishedPlacementIdForCard(s);
       const resolvedBundleId = resolveBundleIdForCard(s);
-      const cellName = cellNameById[sourceCellId] || s.cell_name || `Cell ${sourceCellId}`;
+      const cellName =
+        s.source_cell_name ||
+        s.cell_name ||
+        cellNameById[sourceCellId] ||
+        `Cell ${sourceCellId}`;
       const timeLabel = formatSlotRange(dayStartMin, slotMin, s.start_slot, s.end_slot);
       const key = buildPlacementKey(
         activePublishedScheduleId,
@@ -5804,16 +6004,18 @@ export default function SolveOverlay({
   const upsertBlockage = useCallback(
     async (id: string, dayIndex: number, startSlot: number, endSlot: number, unitScopeIds: string[] = []) => {
       const { startSlot: safeStart, endSlot: safeEnd } = clampSlotRange(startSlot, endSlot);
-      const res = await authFetch(`/api/schedule-blockages/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          day_index: dayIndex,
-          start_slot: safeStart,
-          end_slot: safeEnd,
-          unit_ids: unitScopeIds.map(toApiId),
+      const res = await withScheduleActionLoading("updating_blockages", () =>
+        authFetch(`/api/schedule-blockages/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            day_index: dayIndex,
+            start_slot: safeStart,
+            end_slot: safeEnd,
+            unit_ids: unitScopeIds.map(toApiId),
+          }),
         }),
-      });
+      );
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
         throw new Error(parseApiErrorMessage(txt, `Failed to update blockage (${res.status})`));
@@ -5822,7 +6024,7 @@ export default function SolveOverlay({
       setBlockagesRefreshTick((prev) => prev + 1);
       setPrecheckRefreshTick((prev) => prev + 1);
     },
-    [clampSlotRange, notifyDraftMutation],
+    [clampSlotRange, notifyDraftMutation, withScheduleActionLoading],
   );
 
   const createBlockage = useCallback(
@@ -5835,18 +6037,20 @@ export default function SolveOverlay({
       }
       const { startSlot: safeStart, endSlot: safeEnd } = clampSlotRange(startSlot, endSlot);
       const scopeIds = selectedBlockageUnitScopeIds.map(toApiId);
-      const res = await authFetch("/api/schedule-blockages/", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          schedule: scheduleForBlockage.id,
-          day_index: dayIndex,
-          start_slot: safeStart,
-          end_slot: safeEnd,
-          note: "",
-          unit_ids: scopeIds,
+      const res = await withScheduleActionLoading("updating_blockages", () =>
+        authFetch("/api/schedule-blockages/", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            schedule: scheduleForBlockage.id,
+            day_index: dayIndex,
+            start_slot: safeStart,
+            end_slot: safeEnd,
+            note: "",
+            unit_ids: scopeIds,
+          }),
         }),
-      });
+      );
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
         throw new Error(parseApiErrorMessage(txt, `Failed to create blockage (${res.status})`));
@@ -5856,7 +6060,15 @@ export default function SolveOverlay({
       setBlockagesRefreshTick((prev) => prev + 1);
       setPrecheckRefreshTick((prev) => prev + 1);
     },
-    [clampSlotRange, currentSchedule, ensureDraftSchedule, notifyDraftMutation, selectedBlockageUnitScopeIds, t],
+    [
+      clampSlotRange,
+      currentSchedule,
+      ensureDraftSchedule,
+      notifyDraftMutation,
+      selectedBlockageUnitScopeIds,
+      t,
+      withScheduleActionLoading,
+    ],
   );
 
   const executeDeleteBlockage = useCallback(
@@ -5867,9 +6079,11 @@ export default function SolveOverlay({
         const apiUnitId = toApiEntityId(unitId);
         const params = new URLSearchParams({ delete_scope: deleteScope });
         if (apiUnitId != null) params.set("unit_id", String(apiUnitId));
-        const res = await authFetch(`/api/schedule-blockages/${encodeURIComponent(blockage.id)}/?${params.toString()}`, {
-          method: "DELETE",
-        });
+        const res = await withScheduleActionLoading("deleting", () =>
+          authFetch(`/api/schedule-blockages/${encodeURIComponent(blockage.id)}/?${params.toString()}`, {
+            method: "DELETE",
+          }),
+        );
         if (!res.ok && res.status !== 204) {
           const txt = await res.text().catch(() => "");
           throw new Error(parseApiErrorMessage(txt, `Failed to delete blockage (${res.status})`));
@@ -5901,7 +6115,7 @@ export default function SolveOverlay({
         throw error;
       }
     },
-    [currentSchedule?.id, gridId, notifyDraftMutation, scheduleBlockages],
+    [currentSchedule?.id, gridId, notifyDraftMutation, scheduleBlockages, withScheduleActionLoading],
   );
 
   const deleteBlockage = useCallback(
@@ -5936,9 +6150,14 @@ export default function SolveOverlay({
   const deleteSchedulePlacement = useCallback(
     async (placementId: string) => {
       if (!currentSchedule?.placements) return;
+      if (!isConfirmedPlacementId(placementId) || pendingPlacementIds.size > 0) {
+        setPinError(t("solve_overlay.placement_pending_wait"));
+        return;
+      }
       const previousPlacements = currentSchedule.placements;
-      const targetPlacement = previousPlacements.find((placement) => String(placement.id) === placementId);
+      const targetPlacement = previousPlacements.find((placement) => getPlacementIdentity(placement) === placementId);
       if (!targetPlacement) return;
+      addPendingPlacementIds([placementId]);
 
       const participantIdToRemove =
         previewMode === "participant" && previewParticipantId ? String(previewParticipantId) : null;
@@ -5953,9 +6172,9 @@ export default function SolveOverlay({
         const nextAssignedApi = nextAssigned.map((pid) => (/^\d+$/.test(pid) ? Number(pid) : pid));
         const nextPlacements =
           nextAssigned.length === 0
-            ? previousPlacements.filter((placement) => String(placement.id) !== placementId)
+            ? previousPlacements.filter((placement) => getPlacementIdentity(placement) !== placementId)
             : previousPlacements.map((placement) =>
-                String(placement.id) === placementId
+                getPlacementIdentity(placement) === placementId
                   ? {
                       ...placement,
                       assigned_participants: nextAssigned,
@@ -5974,27 +6193,32 @@ export default function SolveOverlay({
 
         try {
           if (nextAssigned.length === 0) {
-            const deleteRes = await authFetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
-              method: "DELETE",
-            });
+            const deleteRes = await withScheduleActionLoading("deleting", () =>
+              authFetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+                method: "DELETE",
+              }),
+            );
             if (!deleteRes.ok) {
               const txt = await deleteRes.text().catch(() => "");
               throw new Error(txt || `${t("solve_overlay.could_not_remove_placement")} (${deleteRes.status})`);
             }
           } else {
-            const patchRes = await authFetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
-              method: "PATCH",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({
-                assigned_participants: nextAssignedApi,
+            const patchRes = await withScheduleActionLoading("assigning", () =>
+              authFetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+                method: "PATCH",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                  assigned_participants: nextAssignedApi,
+                }),
               }),
-            });
+            );
             if (!patchRes.ok) {
               const txt = await patchRes.text().catch(() => "");
               throw new Error(txt || `${t("solve_overlay.could_not_update_placement")} (${patchRes.status})`);
             }
           }
           notifyDraftMutation();
+          removePendingPlacementIds([placementId]);
         } catch (error: unknown) {
           setCurrentSchedule((prev) =>
             prev
@@ -6004,12 +6228,13 @@ export default function SolveOverlay({
                 }
               : prev,
           );
+          removePendingPlacementIds([placementId]);
           setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_remove_participant"));
         }
         return;
       }
 
-      const nextPlacements = previousPlacements.filter((placement) => String(placement.id) !== placementId);
+      const nextPlacements = previousPlacements.filter((placement) => getPlacementIdentity(placement) !== placementId);
 
       setCurrentSchedule((prev) =>
         prev
@@ -6020,14 +6245,17 @@ export default function SolveOverlay({
           : prev,
       );
       try {
-        const res = await authFetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
-          method: "DELETE",
-        });
+        const res = await withScheduleActionLoading("deleting", () =>
+          authFetch(`/api/schedule-placements/${encodeURIComponent(placementId)}`, {
+            method: "DELETE",
+          }),
+        );
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
           throw new Error(txt || `${t("solve_overlay.could_not_remove_placement")} (${res.status})`);
         }
         notifyDraftMutation();
+        removePendingPlacementIds([placementId]);
       } catch (error: unknown) {
         setCurrentSchedule((prev) =>
           prev
@@ -6035,12 +6263,24 @@ export default function SolveOverlay({
                 ...prev,
                 placements: previousPlacements,
               }
-            : prev,
+          : prev,
         );
+        removePendingPlacementIds([placementId]);
         setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_remove_placement"));
       }
     },
-    [currentSchedule, normalizeIdArray, notifyDraftMutation, previewMode, previewParticipantId],
+    [
+      addPendingPlacementIds,
+      currentSchedule,
+      normalizeIdArray,
+      notifyDraftMutation,
+      pendingPlacementIds,
+      previewMode,
+      previewParticipantId,
+      removePendingPlacementIds,
+      t,
+      withScheduleActionLoading,
+    ],
   );
 
   const requestUnassignedPlacement = useCallback(
@@ -6081,6 +6321,7 @@ export default function SolveOverlay({
       }
 
       let rollbackPlacements: NonNullable<ScheduleResource["placements"]> | null = null;
+      let pendingOptimisticPlacementId: string | number | null = null;
       try {
         const scheduleForPlacement = await ensureDraftSchedule();
         if (!scheduleForPlacement?.id) {
@@ -6141,6 +6382,9 @@ export default function SolveOverlay({
           durationSlots,
           assignedParticipants: recommendedParticipantIds,
         });
+        const optimisticPlacementId = getPlacementIdentity(optimisticPlacement) ?? optimisticPlacement.id;
+        pendingOptimisticPlacementId = optimisticPlacementId;
+        addPendingPlacementIds([optimisticPlacementId]);
         setCurrentSchedule((prev) =>
           prev
             ? {
@@ -6153,11 +6397,12 @@ export default function SolveOverlay({
               },
         );
         clearPlacementPreviewState();
-        const result = await confirmCellPlacement(sourceCellId, payload);
+        const result = await withScheduleActionLoading("placing", () => confirmCellPlacement(sourceCellId, payload));
         applyConfirmedPlacementResponse(result, scheduleForPlacement.id, {
           replacementPlacementId: optimisticPlacement.id,
         });
         notifyDraftMutation();
+        removePendingPlacementIds([pendingOptimisticPlacementId]);
       } catch (error: unknown) {
         clearPlacementPreviewState();
         if (rollbackPlacements) {
@@ -6171,10 +6416,12 @@ export default function SolveOverlay({
               : prev,
           );
         }
+        removePendingPlacementIds([pendingOptimisticPlacementId]);
         setPinError(error instanceof Error ? error.message : t("grid_schedule.could_not_place_cell"));
       }
     },
     [
+      addPendingPlacementIds,
       applyConfirmedPlacementResponse,
       buildOptimisticPlacement,
       clearPlacementPreviewState,
@@ -6185,7 +6432,9 @@ export default function SolveOverlay({
       notifyDraftMutation,
       placementPreviewBusy,
       placementPreviewBySlot,
+      removePendingPlacementIds,
       t,
+      withScheduleActionLoading,
     ],
   );
 
@@ -6213,7 +6462,9 @@ export default function SolveOverlay({
         };
         const bundleApiId = toApiEntityId(pendingPlacementRequest.bundleId);
         if (bundleApiId != null) payload.bundle_id = bundleApiId;
-        const result = await confirmCellPlacement(pendingPlacementRequest.sourceCellId, payload);
+        const result = await withScheduleActionLoading("assigning", () =>
+          confirmCellPlacement(pendingPlacementRequest.sourceCellId, payload),
+        );
         applyConfirmedPlacementResponse(result, scheduleForPlacement.id);
         notifyDraftMutation();
       } catch (error: unknown) {
@@ -6229,6 +6480,7 @@ export default function SolveOverlay({
     pendingPlacementRequest,
     selectedAssignmentOptionId,
     t,
+    withScheduleActionLoading,
   ]);
 
   const confirmPendingPlacementWithAutoSelection = useCallback(() => {
@@ -6254,18 +6506,33 @@ export default function SolveOverlay({
         };
         const bundleApiId = toApiEntityId(request.bundleId);
         if (bundleApiId != null) payload.bundle_id = bundleApiId;
-        const result = await confirmCellPlacement(request.sourceCellId, payload);
+        const result = await withScheduleActionLoading("assigning", () =>
+          confirmCellPlacement(request.sourceCellId, payload),
+        );
         applyConfirmedPlacementResponse(result, scheduleForPlacement.id);
         notifyDraftMutation();
       } catch (error: unknown) {
         setPinError(error instanceof Error ? error.message : t("grid_schedule.could_not_place_cell"));
       }
     })();
-  }, [applyConfirmedPlacementResponse, confirmCellPlacement, ensureDraftSchedule, notifyDraftMutation, pendingPlacementRequest, t]);
+  }, [
+    applyConfirmedPlacementResponse,
+    confirmCellPlacement,
+    ensureDraftSchedule,
+    notifyDraftMutation,
+    pendingPlacementRequest,
+    t,
+    withScheduleActionLoading,
+  ]);
 
   const patchPlacementPosition = useCallback(
     async (placementId: string, nextDayIndex: number, nextStartSlot: number, durationSlots: number) => {
       if (!currentSchedule?.placements) return;
+      if (!isConfirmedPlacementId(placementId) || pendingPlacementIds.size > 0) {
+        setPinError(t("solve_overlay.placement_pending_wait"));
+        clearPlacementPreviewState();
+        return;
+      }
       const targetPlacement = currentSchedule.placements.find(
         (placement) => getPlacementIdentity(placement) === String(placementId),
       );
@@ -6320,6 +6587,8 @@ export default function SolveOverlay({
         durationSlots,
         replacement: targetPlacement,
       });
+      const optimisticPlacementId = getPlacementIdentity(optimisticPlacement) ?? optimisticPlacement.id;
+      addPendingPlacementIds([placementId, optimisticPlacementId]);
       setCurrentSchedule((prev) =>
         prev
           ? {
@@ -6344,8 +6613,10 @@ export default function SolveOverlay({
         const result = await confirmCellPlacement(targetSourceCellId, payload);
         applyConfirmedPlacementResponse(result, scheduleId, { replacementPlacementId: optimisticPlacement.id });
         notifyDraftMutation();
+        removePendingPlacementIds([placementId, optimisticPlacementId]);
       } catch (error: unknown) {
         clearPlacementPreviewState();
+        removePendingPlacementIds([placementId, optimisticPlacementId]);
         setCurrentSchedule((prev) =>
           prev
             ? {
@@ -6362,6 +6633,7 @@ export default function SolveOverlay({
       }
     },
     [
+      addPendingPlacementIds,
       applyConfirmedPlacementResponse,
       buildOptimisticPlacement,
       clearPlacementPreviewState,
@@ -6370,8 +6642,10 @@ export default function SolveOverlay({
       formatPlacementPreviewMessage,
       normalizeIdArray,
       notifyDraftMutation,
+      pendingPlacementIds,
       placementPreviewBusy,
       placementPreviewBySlot,
+      removePendingPlacementIds,
       t,
     ],
   );
@@ -6642,14 +6916,17 @@ export default function SolveOverlay({
         participantDropGhostTimersRef.current.push(safetyGhostCleanupTimer);
 
         const placementId = String(target.placementId);
-        const targetPlacement = target.placement;
+        if (!isConfirmedPlacementId(placementId) || pendingPlacementIds.size > 0) {
+          setPinError(t("solve_overlay.placement_pending_wait"));
+          return;
+        }
         const existingAssigned = target.existingAssigned;
         const mergedAssigned = Array.from(new Set([...existingAssigned, participantId]));
         const mergedAssignedApi = mergedAssigned.map((id) => (/^\d+$/.test(id) ? Number(id) : id));
         const previousPlacements = currentSchedule?.placements ?? [];
         if (!Array.isArray(previousPlacements) || previousPlacements.length === 0) return;
         const optimisticPlacements = previousPlacements.map((placement) =>
-          String(placement.id) === String(placementId)
+          getPlacementIdentity(placement) === String(placementId)
             ? {
                 ...placement,
                 assigned_participants: mergedAssigned,
@@ -6665,17 +6942,21 @@ export default function SolveOverlay({
               }
             : prev,
         );
+        addPendingPlacementIds([placementId]);
         void (async () => {
           try {
-            const res = await authFetch(`/api/schedule-placements/${encodeURIComponent(String(placementId))}`, {
-              method: "PATCH",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ assigned_participants: mergedAssignedApi }),
-            });
+            const res = await withScheduleActionLoading("assigning", () =>
+              authFetch(`/api/schedule-placements/${encodeURIComponent(String(placementId))}`, {
+                method: "PATCH",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ assigned_participants: mergedAssignedApi }),
+              }),
+            );
             if (!res.ok) {
               throw new Error("Could not assign participant");
             }
             notifyDraftMutation();
+            removePendingPlacementIds([placementId]);
           } catch (error: unknown) {
             setCurrentSchedule((prev) =>
               prev
@@ -6685,6 +6966,7 @@ export default function SolveOverlay({
                   }
                 : prev,
             );
+            removePendingPlacementIds([placementId]);
             setPinError(error instanceof Error ? error.message : "Could not assign participant");
           }
         })();
@@ -6775,6 +7057,7 @@ export default function SolveOverlay({
     };
   }, [
     bodyHeight,
+    addPendingPlacementIds,
     clearPlacementPreviewState,
     currentSchedule,
     daysCount,
@@ -6790,8 +7073,11 @@ export default function SolveOverlay({
     rowPx,
     isNoUnitScopeSelected,
     t,
+    pendingPlacementIds,
+    removePendingPlacementIds,
     timeColPx,
     triggerParticipantDropGhost,
+    withScheduleActionLoading,
   ]);
 
   useEffect(() => {
@@ -6943,6 +7229,12 @@ export default function SolveOverlay({
 
   const getPreviewBundleLabel = useCallback(
     (row: ScheduleRow): string => {
+      if ((scheduleViewMode === "published" || historyMode) && row.bundle_name) {
+        return row.bundle_name;
+      }
+      if ((scheduleViewMode === "published" || historyMode) && Array.isArray(row.unit_names) && row.unit_names.length > 0) {
+        return row.unit_names.join(" + ");
+      }
       const directBundle = (row as { bundle_id?: string | number; bundle?: string | number }).bundle_id
         ?? (row as { bundle_id?: string | number; bundle?: string | number }).bundle;
       if (directBundle != null) return previewBundleLabelById(directBundle);
@@ -6951,7 +7243,7 @@ export default function SolveOverlay({
       if (cellBundles.length === 0) return "";
       return cellBundles.map((bundleId) => previewBundleLabelById(bundleId)).join(" + ");
     },
-    [cellPinMetaById, previewBundleLabelById],
+    [cellPinMetaById, historyMode, previewBundleLabelById, scheduleViewMode],
   );
 
   const previewUnitTabs = useMemo(() => {
@@ -7432,18 +7724,6 @@ export default function SolveOverlay({
         />
       )}
       {isClientReady &&
-        blockagesBusy &&
-        blockagesBusyAnchor &&
-        createPortal(
-          <div
-            className="pointer-events-none fixed z-[160] rounded border border-gray-200 bg-white/95 px-2.5 py-1 text-xs text-gray-600 shadow-sm backdrop-blur-sm"
-            style={{ left: blockagesBusyAnchor.left, top: blockagesBusyAnchor.top }}
-          >
-            {t("solve_overlay.loading_blockages")}
-          </div>,
-          document.body,
-        )}
-      {isClientReady &&
         scheduleValidationMaskActive &&
         placementPreviewMaskRect &&
         placementPreviewMaskRect.width > 0 &&
@@ -7470,8 +7750,8 @@ export default function SolveOverlay({
               event.stopPropagation();
             }}
           >
-            <div className="rounded-md border border-gray-200 bg-white/95 px-4 py-2 text-xs font-medium text-gray-700 shadow-sm">
-              {t("solve_overlay.placement_preview_validating_positions")}
+            <div className="rounded-xl border border-gray-200 bg-white/95 px-5 py-4 shadow-sm">
+              <ShiftSpinner size="sm" label={scheduleActionLoadingLabel} />
             </div>
           </div>,
           document.body,
@@ -7723,17 +8003,34 @@ export default function SolveOverlay({
             const height = Math.max(6, (s.end_slot - s.start_slot) * rowPx);
             const left = `calc(${timeColPx}px + ${col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
             const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`;
-            const cellName = cellNameById[sourceCellId] || s.cell_name || `Cell ${sourceCellId}`;
+            const preferSnapshotMetadata = scheduleViewMode === "published" || historyMode;
+            const cellName = preferSnapshotMetadata
+              ? s.source_cell_name || s.cell_name || cellNameById[sourceCellId] || `Cell ${sourceCellId}`
+              : cellNameById[sourceCellId] || s.cell_name || s.source_cell_name || `Cell ${sourceCellId}`;
             const timeLabel = formatSlotRange(dayStartMin, slotMin, s.start_slot, s.end_slot);
             const staffIds = cellStaffsById[sourceCellId] || [];
-            const bg = cellColorById[sourceCellId] || "";
+            const bg = preferSnapshotMetadata
+              ? s.color_hex ||
+                s.source_cell_color_hex ||
+                s.cell_color_hex ||
+                s.color ||
+                cellColorById[sourceCellId] ||
+                ""
+              : cellColorById[sourceCellId] ||
+                s.color_hex ||
+                s.source_cell_color_hex ||
+                s.cell_color_hex ||
+                s.color ||
+                "";
             const colorIdx = CELL_COLOR_OPTIONS.findIndex((c) => c.toLowerCase() === bg.toLowerCase());
-            const useColor = Boolean(bg && colorIdx >= 0);
-            const textDark = useColor ? CELL_TEXT_DARK[colorIdx] : "#1f2937";
-            const textLight = useColor ? CELL_TEXT_LIGHT[colorIdx] : "#111827";
+            const useColor = Boolean(bg && (colorIdx >= 0 || isHexColor(bg)));
+            const textDark = useColor && colorIdx >= 0 ? CELL_TEXT_DARK[colorIdx] : "#1f2937";
+            const textLight = useColor && colorIdx >= 0 ? CELL_TEXT_LIGHT[colorIdx] : "#111827";
             const border = useColor ? shadeHex(bg, -0.35) : "#e5e7eb";
             const isPlacementLocked = Boolean(s.locked);
-            const isCardBusy = pinBusyKey === cardKey;
+            const isPendingPlacement =
+              Boolean(placementId) && (!isConfirmedPlacementId(placementId) || pendingPlacementIds.has(placementId));
+            const isCardBusy = pinBusyKey === cardKey || isPendingPlacement || pendingPlacementIds.size > 0;
             const optimisticPinned = pinOptimisticByCard[cardKey];
             const isPinnedVisual =
               typeof optimisticPinned === "boolean" ? optimisticPinned : isPlacementLocked;
@@ -7794,10 +8091,19 @@ export default function SolveOverlay({
               : Array.isArray(s.participants)
               ? s.participants.map(String).sort()
               : [];
-            let assignmentLabel = assignedParticipantIds
-              .map((pid) => participantNameById[pid] || `#${pid}`)
-              .join(assignedParticipantIds.length > 2 ? " + " : ", ");
-            if (assignedParticipantIds.length > 0) {
+            const publishedParticipantNames = preferSnapshotMetadata
+              ? s.participant_names && s.participant_names.length > 0
+                ? s.participant_names
+                : s.assigned_participant_names && s.assigned_participant_names.length > 0
+                ? s.assigned_participant_names
+                : null
+              : null;
+            let assignmentLabel = publishedParticipantNames
+              ? publishedParticipantNames.join(publishedParticipantNames.length > 2 ? " + " : ", ")
+              : assignedParticipantIds
+                  .map((pid) => participantNameById[pid] || `#${pid}`)
+                  .join(assignedParticipantIds.length > 2 ? " + " : ", ");
+            if (!publishedParticipantNames && assignedParticipantIds.length > 0) {
               const matchedStaffId = staffIds.find((sid) => {
                 const members = (staffMembersByStaffId[sid] || []).map(String).sort();
                 return members.length === assignedParticipantIds.length && members.every((id, index) => id === assignedParticipantIds[index]);
@@ -7858,6 +8164,8 @@ export default function SolveOverlay({
                 ? "cursor-default"
                 : isBreakToolActive
                 ? "cursor-pointer"
+                : isCardBusy
+                ? "cursor-default"
                 : canManualEditCards
                 ? isPlacementLocked
                   ? "cursor-not-allowed"
@@ -9270,14 +9578,29 @@ export default function SolveOverlay({
                       const height = previewIsParticipantMode ? Math.max(6, rawHeight * 0.9) : rawHeight;
                       const left = `calc(${timeColPx}px + ${col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
                       const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`;
-                      const cellName = cellNameById[sourceCellId] || s.cell_name || t("format.cell_with_id", { id: sourceCellId });
+                      const preferSnapshotMetadata = scheduleViewMode === "published" || historyMode;
+                      const cellName = preferSnapshotMetadata
+                        ? s.source_cell_name || s.cell_name || cellNameById[sourceCellId] || t("format.cell_with_id", { id: sourceCellId })
+                        : cellNameById[sourceCellId] || s.cell_name || s.source_cell_name || t("format.cell_with_id", { id: sourceCellId });
                       const timeLabel = formatSlotRange(dayStartMin, slotMin, s.start_slot, s.end_slot);
                       const staffIds = cellStaffsById[sourceCellId] || [];
-                      const bg = cellColorById[sourceCellId] || "";
+                      const bg = preferSnapshotMetadata
+                        ? s.color_hex ||
+                          s.source_cell_color_hex ||
+                          s.cell_color_hex ||
+                          s.color ||
+                          cellColorById[sourceCellId] ||
+                          ""
+                        : cellColorById[sourceCellId] ||
+                          s.color_hex ||
+                          s.source_cell_color_hex ||
+                          s.cell_color_hex ||
+                          s.color ||
+                          "";
                       const colorIdx = CELL_COLOR_OPTIONS.findIndex((c) => c.toLowerCase() === bg.toLowerCase());
-                      const useColor = Boolean(bg && colorIdx >= 0);
-                      const textDark = useColor ? CELL_TEXT_DARK[colorIdx] : "#1f2937";
-                      const textLight = useColor ? CELL_TEXT_LIGHT[colorIdx] : "#111827";
+                      const useColor = Boolean(bg && (colorIdx >= 0 || isHexColor(bg)));
+                      const textDark = useColor && colorIdx >= 0 ? CELL_TEXT_DARK[colorIdx] : "#1f2937";
+                      const textLight = useColor && colorIdx >= 0 ? CELL_TEXT_LIGHT[colorIdx] : "#111827";
                       const border = useColor ? shadeHex(bg, -0.35) : "#e5e7eb";
                       const bundleLabel = getPreviewBundleLabel(s);
                       const assignedParticipantIds = Array.isArray(s.assigned_participants)
@@ -9285,10 +9608,19 @@ export default function SolveOverlay({
                         : Array.isArray(s.participants)
                         ? s.participants.map(String).sort()
                         : [];
-                      let assignmentLabel = assignedParticipantIds
-                        .map((pid) => participantNameById[pid] || `#${pid}`)
-                        .join(assignedParticipantIds.length > 2 ? " + " : ", ");
-                      if (assignedParticipantIds.length > 0) {
+                      const publishedParticipantNames = preferSnapshotMetadata
+                        ? s.participant_names && s.participant_names.length > 0
+                          ? s.participant_names
+                          : s.assigned_participant_names && s.assigned_participant_names.length > 0
+                          ? s.assigned_participant_names
+                          : null
+                        : null;
+                      let assignmentLabel = publishedParticipantNames
+                        ? publishedParticipantNames.join(publishedParticipantNames.length > 2 ? " + " : ", ")
+                        : assignedParticipantIds
+                            .map((pid) => participantNameById[pid] || `#${pid}`)
+                            .join(assignedParticipantIds.length > 2 ? " + " : ", ");
+                      if (!publishedParticipantNames && assignedParticipantIds.length > 0) {
                         const matchedStaffId = staffIds.find((sid) => {
                           const members = (staffMembersByStaffId[sid] || []).map(String).sort();
                           return (
@@ -9368,8 +9700,16 @@ export default function SolveOverlay({
                       const height = previewIsParticipantMode ? Math.max(6, rawHeight * 0.9) : rawHeight;
                       const left = `calc(${timeColPx}px + ${col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
                       const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`;
-                      const cellName =
-                        cellNameById[sourceCellId] || t("format.cell_with_id", { id: sourceCellId });
+                      const preferSnapshotMetadata = scheduleViewMode === "published" || historyMode;
+                      const cellName = preferSnapshotMetadata
+                        ? lockedPlacement.source_cell_name ||
+                          lockedPlacement.cell_name ||
+                          cellNameById[sourceCellId] ||
+                          t("format.cell_with_id", { id: sourceCellId })
+                        : cellNameById[sourceCellId] ||
+                          lockedPlacement.cell_name ||
+                          lockedPlacement.source_cell_name ||
+                          t("format.cell_with_id", { id: sourceCellId });
                       const timeLabel = formatSlotRange(
                         dayStartMin,
                         slotMin,
@@ -9377,11 +9717,23 @@ export default function SolveOverlay({
                         lockedPlacement.end_slot,
                       );
                       const staffIds = cellStaffsById[sourceCellId] || [];
-                      const bg = cellColorById[sourceCellId] || "";
+                      const bg = preferSnapshotMetadata
+                        ? lockedPlacement.color_hex ||
+                          lockedPlacement.source_cell_color_hex ||
+                          lockedPlacement.cell_color_hex ||
+                          lockedPlacement.color ||
+                          cellColorById[sourceCellId] ||
+                          ""
+                        : cellColorById[sourceCellId] ||
+                          lockedPlacement.color_hex ||
+                          lockedPlacement.source_cell_color_hex ||
+                          lockedPlacement.cell_color_hex ||
+                          lockedPlacement.color ||
+                          "";
                       const colorIdx = CELL_COLOR_OPTIONS.findIndex((c) => c.toLowerCase() === bg.toLowerCase());
-                      const useColor = Boolean(bg && colorIdx >= 0);
-                      const textDark = useColor ? CELL_TEXT_DARK[colorIdx] : "#1f2937";
-                      const textLight = useColor ? CELL_TEXT_LIGHT[colorIdx] : "#111827";
+                      const useColor = Boolean(bg && (colorIdx >= 0 || isHexColor(bg)));
+                      const textDark = useColor && colorIdx >= 0 ? CELL_TEXT_DARK[colorIdx] : "#1f2937";
+                      const textLight = useColor && colorIdx >= 0 ? CELL_TEXT_LIGHT[colorIdx] : "#111827";
                       const border = useColor ? shadeHex(bg, -0.35) : "#e5e7eb";
                       const pinTrackBg = useColor ? shadeHex(bg, 0.28) : "#cfd4dc";
                       const pinTrackBorder = useColor ? shadeHex(bg, -0.12) : "#8f96a3";
@@ -9397,10 +9749,19 @@ export default function SolveOverlay({
                         : Array.isArray(lockedPlacement.participants)
                         ? lockedPlacement.participants.map(String).sort()
                         : [];
-                      let assignmentLabel = assignedParticipantIds
-                        .map((pid) => participantNameById[pid] || `#${pid}`)
-                        .join(assignedParticipantIds.length > 2 ? " + " : ", ");
-                      if (assignedParticipantIds.length > 0) {
+                      const publishedParticipantNames = preferSnapshotMetadata
+                        ? lockedPlacement.participant_names && lockedPlacement.participant_names.length > 0
+                          ? lockedPlacement.participant_names
+                          : lockedPlacement.assigned_participant_names && lockedPlacement.assigned_participant_names.length > 0
+                          ? lockedPlacement.assigned_participant_names
+                          : null
+                        : null;
+                      let assignmentLabel = publishedParticipantNames
+                        ? publishedParticipantNames.join(publishedParticipantNames.length > 2 ? " + " : ", ")
+                        : assignedParticipantIds
+                            .map((pid) => participantNameById[pid] || `#${pid}`)
+                            .join(assignedParticipantIds.length > 2 ? " + " : ", ");
+                      if (!publishedParticipantNames && assignedParticipantIds.length > 0) {
                         const matchedStaffId = staffIds.find((sid) => {
                           const members = (staffMembersByStaffId[sid] || []).map(String).sort();
                           return (

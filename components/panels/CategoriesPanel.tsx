@@ -78,7 +78,7 @@ export default function CategoriesPanel({
         <PanelScrollArea loading={loading}
         empty={filtered.length === 0}
         loadingLabel={t("common.loading")}
-        emptyLabel={t("category_panel.no_participants_found")}
+        emptyLabel={t("category_panel.no_categories_found")}
       >
           <ul className="grid gap-2">
             {filtered.map((c) => (

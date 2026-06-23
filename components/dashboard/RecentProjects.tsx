@@ -6,6 +6,7 @@ import { List as ListIcon, Grid as GridIcon, ArrowDownAZ, Clock4, Search, User }
 import type { Grid } from "@/lib/types";
 import { getAvatarInitials, getAvatarPalette, getAvatarSeed } from "@/lib/avatar";
 import { useI18n } from "@/lib/use-i18n";
+import EmptyState from "@/components/ui/EmptyState";
 
 type View = "grid" | "list";
 type Sort = "chrono" | "alpha";
@@ -372,9 +373,12 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
       </div>
 
       {items.length === 0 ? (
-        <div className="rounded-xl border bg-white px-4 py-8 text-center text-sm text-gray-600">
-          {hasAnyGrid ? t("recent_projects.no_grids_match_filters") : t("recent_projects.no_grids_created")}
-        </div>
+        <EmptyState
+          mode="plain"
+          size="md"
+          className="min-h-[220px]"
+          message={hasAnyGrid ? t("recent_projects.no_grids_match_filters") : t("recent_projects.no_grids_created")}
+        />
       ) : effectiveView === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {items.map((g) => (

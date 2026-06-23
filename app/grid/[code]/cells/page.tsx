@@ -4,6 +4,8 @@ import type { Role } from "@/lib/types";
 import CellsCardSwap from "@/components/grid/CellsCardSwap";
 import OnboardingGuide from "@/components/grid/OnboardingGuide";
 import { CellsHeader } from "@/components/grid/headers";
+import EmptyState from "@/components/ui/EmptyState";
+import { getTranslation } from "@/lib/i18n";
 import { resolveGridByCode } from "../_helpers";
 import { redirect } from "next/navigation";
 
@@ -24,6 +26,7 @@ export default async function GridCellsPage({
   const id = String(grid.id);
   const nextPath = `/grid/${encodeURIComponent(grid.grid_code || code)}/cells`;
   const me = await requireUserOrRedirect(nextPath);
+  const t = (key: Parameters<typeof getTranslation>[1]) => getTranslation(me.preferred_language, key);
   const gridBase = `/grid/${encodeURIComponent(grid.grid_code || code)}`;
 
   let bundles: { id: number | string; name?: string }[] = [];
@@ -84,8 +87,8 @@ export default async function GridCellsPage({
           <CellsHeader gridId={Number(grid.id)} backHref={gridBase} canCreate={role === "supervisor"} />
 
           {cells.length === 0 ? (
-            <div className="text-sm text-gray-600 border rounded-lg p-6 bg-white">
-              No cells yet. Create one with the Create button above.
+            <div className="flex min-h-[520px] items-center justify-center">
+              <EmptyState mode="plain" size="lg" message={t("cells_page.no_cells")} />
             </div>
           ) : (
             <div className="relative h-[640px] overflow-hidden">

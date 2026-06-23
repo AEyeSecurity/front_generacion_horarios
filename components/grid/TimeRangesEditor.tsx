@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/use-i18n";
+import PanelAsyncState from "@/components/ui/PanelAsyncState";
 
 const TIME_RANGE_STATS_EVENT = "shift:time-range-stats";
 const TIME_RANGE_SAVED_EVENT = "shift:onboarding-time-range-saved";
@@ -563,12 +564,17 @@ export default function TimeRangesEditor({
           <div className="flex h-full min-h-0 flex-col">
             {error ? <div className="mb-2 whitespace-pre-line text-sm text-red-600">{error}</div> : null}
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden pr-1">
-              {loading ? (
-                <div className="text-sm text-gray-500 py-2">{t("common.loading")}</div>
-              ) : ranges.length === 0 ? (
-                <div className="text-sm text-gray-500 py-2">{t("time_ranges.no_items")}</div>
-              ) : (
-                ranges.map((row) => {
+              <PanelAsyncState
+                isLoading={loading}
+                isEmpty={ranges.length === 0}
+                loadingLabel={t("common.loading")}
+                emptyMessage={t("time_ranges.no_items")}
+                mode="panel"
+                spinnerSize="sm"
+                emptySize="sm"
+                className="min-h-[140px]"
+              >
+                {ranges.map((row) => {
                   const busy = Boolean(busyById[row.id]);
                   const dirty = isDirty(row);
                   const startPercent = (row.startOffsetMin / horizonSpanMin) * 100;
@@ -657,8 +663,8 @@ export default function TimeRangesEditor({
                       ) : null}
                     </div>
                   );
-                })
-              )}
+                })}
+              </PanelAsyncState>
             </div>
 
             <div

@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-// Usamos el alias oficial para asegurarnos de que Next.js encuentre el archivo
 import RecentProjects from "@/components/dashboard/RecentProjects";
+import PanelAsyncState from "@/components/ui/PanelAsyncState";
+import { useI18n } from "@/lib/use-i18n";
 
 interface ClientRecentProjectsProps {
-  meId: any; // Cambiado a any para evitar que explote si es un número
+  meId: any;
 }
 
 export default function ClientRecentProjects({ meId }: ClientRecentProjectsProps) {
+  const { t } = useI18n();
   const [grids, setGrids] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,11 +33,32 @@ export default function ClientRecentProjects({ meId }: ClientRecentProjectsProps
   }, []);
 
   if (loading) {
-    return <div className="max-w-6xl mx-auto px-6 py-8 text-gray-500">Cargando proyectos recientes...</div>;
+    return (
+      <div className="space-y-6">
+        <div className="text-base font-semibold whitespace-nowrap">{t("recent_projects.title")}</div>
+        <PanelAsyncState
+          isLoading
+          isEmpty={false}
+          loadingLabel={t("recent_projects.loading")}
+          mode="plain"
+          spinnerSize="md"
+          className="min-h-[220px]"
+        >
+          {null}
+        </PanelAsyncState>
+      </div>
+    );
   }
 
   if (error) {
-    return <div className="max-w-6xl mx-auto px-6 py-8 text-red-500">Error al cargar proyectos (Código: {error})</div>;
+    return (
+      <div className="space-y-6">
+        <div className="text-base font-semibold whitespace-nowrap">{t("recent_projects.title")}</div>
+        <div className="min-h-[220px] rounded-lg border border-red-200 bg-red-50 px-4 py-6 text-sm text-red-600">
+          {t("recent_projects.error_loading", { code: error })}
+        </div>
+      </div>
+    );
   }
 
   return <RecentProjects meId={meId} initialItems={grids} />;

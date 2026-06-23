@@ -29,6 +29,7 @@ export default function UnitTabs({
   scheduleViewMode = "draft",
   externalRefreshTick = 0,
   onDraftMutated,
+  onScheduleLoadingChange,
   commentsPanelOpen = false,
   onCommentsPanelOpenChange,
   historyMode = false,
@@ -50,6 +51,7 @@ export default function UnitTabs({
   scheduleViewMode?: ScheduleViewMode;
   externalRefreshTick?: number;
   onDraftMutated?: () => void;
+  onScheduleLoadingChange?: (loading: boolean, ready: boolean) => void;
   commentsPanelOpen?: boolean;
   onCommentsPanelOpenChange?: (open: boolean) => void;
   historyMode?: boolean;
@@ -191,6 +193,7 @@ export default function UnitTabs({
         scheduleViewMode={scheduleViewMode}
         externalRefreshTick={externalRefreshTick}
         onDraftMutated={onDraftMutated}
+        onScheduleLoadingChange={onScheduleLoadingChange}
         commentsPanelOpen={commentsPanelOpen}
         onCommentsPanelOpenChange={onCommentsPanelOpenChange}
         onGlobalScopeMetaChange={({ hasUnitlessPlacements, hasNoUnitCells, blockageGlobalModeActive }) => {

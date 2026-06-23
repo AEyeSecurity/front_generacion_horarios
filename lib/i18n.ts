@@ -47,6 +47,7 @@ const EN_US = {
   "category_panel.title": "Categories",
   "category_panel.parent": "Parent: ",
   "category_panel.no_participants_found": "No categories found.",
+  "category_panel.no_categories_found": "No categories found.",
 
   "format.unit_with_id": "Unit {id}",
   "format.bundle_with_id": "Bundle {id}",
@@ -311,6 +312,11 @@ const EN_US = {
   "solve_overlay.placement_preview_missing_or_blocked":
     "This target was not validated by the backend preview. Try dragging again.",
   "solve_overlay.placement_preview_wait": "Placement preview is still loading.",
+  "solve_overlay.action_deleting": "Deleting...",
+  "solve_overlay.action_placing": "Placing...",
+  "solve_overlay.action_assigning": "Assigning...",
+  "solve_overlay.action_updating_blockages": "Updating blockages...",
+  "solve_overlay.placement_pending_wait": "This placement is still being saved. Try again in a moment.",
   "solve_overlay.placement_status_blocked": "Blocked",
   "solve_overlay.placement_status_invalid": "Invalid",
   "solve_overlay.placement_status_neutral": "Valid",
@@ -372,6 +378,8 @@ const EN_US = {
   "day.sun_short": "Sun",
 
   "recent_projects.title": "Recent Projects",
+  "recent_projects.loading": "Loading recent projects...",
+  "recent_projects.error_loading": "Could not load recent projects (code: {code}).",
   "recent_projects.search_placeholder": "Search",
   "recent_projects.show_all_projects": "Show all projects",
   "recent_projects.show_my_projects_only": "Show my projects only",
@@ -959,6 +967,7 @@ const EN_US = {
   "add_rule.saving": "Saving...",
 
   "participants_page.no_participants": "No participants yet. Create one with the Create button above.",
+  "cells_page.no_cells": "No cells yet. Create one with the Create button above.",
   "participants_page.linked_user": "Linked user",
   "participants_panel.no_participants_found": "No participants found",
   "participants_panel.filter_by_tier": "Filter by tier",
@@ -1260,6 +1269,7 @@ const ES_AR: Dictionary = {
 
   "category_panel.title": "Categorías",
   "category_panel.parent": "Padre: ",
+  "category_panel.no_categories_found": "No se encontraron categorias",
   "category_panel.no_participants_found": "No se encontraron categorías",
 
   "format.unit_with_id": "Unidad {id}",
@@ -1607,6 +1617,8 @@ const ES_AR: Dictionary = {
   "day.sun_short": "Dom",
 
   "recent_projects.title": "Proyectos recientes",
+  "recent_projects.loading": "Cargando proyectos recientes...",
+  "recent_projects.error_loading": "No se pudieron cargar los proyectos recientes (codigo: {code}).",
   "recent_projects.search_placeholder": "Buscar",
   "recent_projects.show_all_projects": "Mostrar todos los proyectos",
   "recent_projects.show_my_projects_only": "Mostrar solo mis proyectos",
@@ -2008,6 +2020,7 @@ const ES_AR: Dictionary = {
   "break_dialog.update_failed": "No se pudieron actualizar los descansos.",
 
   "participants_page.no_participants": "Todavia no hay participantes. Crea uno con el boton Crear.",
+  "cells_page.no_cells": "Todavia no hay celdas. Crea una con el boton Crear de arriba.",
   "participants_page.linked_user": "Usuario vinculado",
   "participants_panel.no_participants_found": "No se encontraron participantes",
   "participants_panel.filter_by_tier": "Filtrar por categoria",
@@ -2147,6 +2160,11 @@ const ES_AR: Dictionary = {
   "solve_overlay.placement_preview_missing_or_blocked":
     "Este destino no fue validado por la vista previa del backend. Intenta arrastrar de nuevo.",
   "solve_overlay.placement_preview_wait": "La vista previa de asignacion sigue cargando.",
+  "solve_overlay.action_deleting": "Borrando...",
+  "solve_overlay.action_placing": "Colocando...",
+  "solve_overlay.action_assigning": "Asignando...",
+  "solve_overlay.action_updating_blockages": "Actualizando bloqueos...",
+  "solve_overlay.placement_pending_wait": "Esta asignacion todavia se esta guardando. Intenta de nuevo en un momento.",
   "solve_overlay.placement_status_blocked": "Bloqueado",
   "solve_overlay.placement_status_invalid": "Invalido",
   "solve_overlay.placement_status_neutral": "Valido",

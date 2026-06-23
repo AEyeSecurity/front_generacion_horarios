@@ -5,6 +5,8 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, MessageSquare, X } from "lucide-react";
 import { formatSlotRange } from "@/lib/schedule";
+import EmptyState from "@/components/ui/EmptyState";
+import PanelAsyncState from "@/components/ui/PanelAsyncState";
 import {
   getGridScheduleViewModeKey,
   readGridScheduleViewMode,
@@ -30,6 +32,15 @@ const shadeHex = (hex: string, amt: number) => {
 
 type SchedulePlacement = {
   id: number | string;
+  cell_name?: string | null;
+  source_cell_name?: string | null;
+  color_hex?: string | null;
+  source_cell_color_hex?: string | null;
+  cell_color_hex?: string | null;
+  color?: string | null;
+  participant_names?: string[] | null;
+  assigned_participant_names?: string[] | null;
+  bundle_name?: string | null;
   placement_id?: string | number | null;
   placementId?: string | number | null;
   published_placement_id?: string | number | null;
@@ -48,6 +59,23 @@ type SchedulePlacement = {
   end_slot: number;
   assigned_participants?: Array<string | number>;
 };
+
+const readStringList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (typeof entry === "string") return entry.trim();
+      if (entry && typeof entry === "object") {
+        const source = entry as Record<string, unknown>;
+        const name = source.name ?? source.full_name ?? source.label ?? source.display_name;
+        if (typeof name === "string") return name.trim();
+      }
+      return "";
+    })
+    .filter(Boolean);
+};
+
+const isHexColor = (value: string) => /^#[0-9a-f]{6}$/i.test(value.trim());
 
 type PlacementComment = {
   id: number | string;
@@ -159,6 +187,12 @@ function schedulePlacementsSignature(placements: SchedulePlacement[]): string {
         Array.isArray(placement.assigned_participants)
           ? placement.assigned_participants.map(String).sort().join(",")
           : "",
+        Array.isArray(placement.participant_names)
+          ? placement.participant_names.map(String).sort().join(",")
+          : "",
+        Array.isArray(placement.assigned_participant_names)
+          ? placement.assigned_participant_names.map(String).sort().join(",")
+          : "",
       ].join(":"),
     )
     .join("|");
@@ -208,12 +242,14 @@ export default function ParticipantScheduleOverlay({
   const { t, locale } = useI18n();
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [schedulePlacements, setSchedulePlacements] = useState<SchedulePlacement[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(true);
   const [scheduleId, setScheduleId] = useState<number | null>(null);
   const [publishedScheduleId, setPublishedScheduleId] = useState<number | string | null>(null);
   const [cellNameById, setCellNameById] = useState<Record<string, string>>({});
   const [cellColorById, setCellColorById] = useState<Record<string, string>>({});
   const [bundleNameById, setBundleNameById] = useState<Record<string, string>>({});
   const [participants, setParticipants] = useState<ParticipantLite[]>([]);
+  const [metadataLoading, setMetadataLoading] = useState(true);
   const [scheduleViewMode, setScheduleViewMode] = useState<ScheduleViewMode>("draft");
   const [placementComments, setPlacementComments] = useState<PlacementComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -279,6 +315,7 @@ export default function ParticipantScheduleOverlay({
   useEffect(() => {
     let active = true;
     (async () => {
+      setScheduleLoading(true);
       try {
         const screenContextRes = await fetch(
           `/api/grids/${gridId}/screen-context/?view=${scheduleViewMode}`,
@@ -358,7 +395,10 @@ export default function ParticipantScheduleOverlay({
             String(prev ?? "") === String(resolvedPublishedScheduleId ?? "") ? prev : resolvedPublishedScheduleId,
           );
         }
-      } catch {}
+      } catch {
+      } finally {
+        if (active) setScheduleLoading(false);
+      }
     })();
     return () => {
       active = false;
@@ -368,6 +408,7 @@ export default function ParticipantScheduleOverlay({
   useEffect(() => {
     let active = true;
     (async () => {
+      setMetadataLoading(true);
       try {
         const fetchCollection = async (urls: string[]) => {
           for (const url of urls) {
@@ -440,7 +481,10 @@ export default function ParticipantScheduleOverlay({
             return same ? prev : pitems;
           });
         }
-      } catch {}
+      } catch {
+      } finally {
+        if (active) setMetadataLoading(false);
+      }
     })();
     return () => {
       active = false;
@@ -451,6 +495,7 @@ export default function ParticipantScheduleOverlay({
     const assigned = Array.isArray(s.assigned_participants) ? s.assigned_participants : [];
     return assigned.map(String).includes(String(participantId));
   }), [participantId, schedulePlacements]);
+  const isParticipantScheduleLoading = scheduleLoading || metadataLoading;
 
   const getPlacementId = useCallback((placement: SchedulePlacement) =>
     readEntityId(
@@ -883,17 +928,36 @@ export default function ParticipantScheduleOverlay({
           className="pointer-events-none absolute inset-x-0 z-[5]"
           style={{ top: topOffset, height: bodyHeight }}
         >
-          {filteredSchedule.length === 0 && (
+          {isParticipantScheduleLoading ? (
             <div
               className="sticky z-[6] flex justify-center"
-              style={{ top: "calc(50% - 1rem)", marginLeft: timeColPx, width: `calc(100% - ${timeColPx}px)` }}
+              style={{ top: "calc(50% - 4rem)", marginLeft: timeColPx, width: `calc(100% - ${timeColPx}px)` }}
             >
-              <span className="rounded-full border border-gray-200 bg-white/85 px-3 py-1 text-xs font-medium text-gray-500 shadow-sm backdrop-blur">
-                {t("participant_detail.no_schedule_placements")}
-              </span>
+              <PanelAsyncState
+                isLoading
+                isEmpty={false}
+                loadingLabel={t("common.loading")}
+                mode="plain"
+                spinnerSize="md"
+                className="min-h-[160px]"
+              >
+                {null}
+              </PanelAsyncState>
             </div>
-          )}
-          {filteredSchedule.map((s, idx) => {
+          ) : filteredSchedule.length === 0 ? (
+            <div
+              className="sticky z-[6] flex justify-center"
+              style={{ top: "calc(50% - 6rem)", marginLeft: timeColPx, width: `calc(100% - ${timeColPx}px)` }}
+            >
+              <EmptyState
+                mode="plain"
+                size="sm"
+                className="min-h-[160px]"
+                message={t("participant_detail.no_schedule_placements")}
+              />
+            </div>
+          ) : null}
+          {!isParticipantScheduleLoading && filteredSchedule.map((s, idx) => {
             const col = s.day_index;
             if (col < 0 || col >= daysCount) return null;
             const sourceCellId = String(s.source_cell_id ?? s.source_cell ?? s.id);
@@ -902,17 +966,42 @@ export default function ParticipantScheduleOverlay({
             const height = Math.max(6, (s.end_slot - s.start_slot) * rowPx);
             const left = `calc(${timeColPx}px + ${col} * ((100% - ${timeColPx}px) / ${daysCount}) + 6px)`;
             const width = `calc(((100% - ${timeColPx}px) / ${daysCount}) - 12px)`;
-            const cellName = cellNameById[sourceCellId] || `Cell ${sourceCellId}`;
+            const preferSnapshotMetadata = scheduleViewMode === "published";
+            const cellName = preferSnapshotMetadata
+              ? s.source_cell_name || s.cell_name || cellNameById[sourceCellId] || `Cell ${sourceCellId}`
+              : cellNameById[sourceCellId] || s.cell_name || s.source_cell_name || `Cell ${sourceCellId}`;
             const timeLabel = formatSlotRange(dayStartMin, slotMin, s.start_slot, s.end_slot);
             const bundleId = s.bundle ?? s.bundle_id ?? null;
             const bundleIds = bundleId != null ? [bundleId] : [];
-            const bundleNames = bundleIds.map((b) => bundleNameById[String(b)] || `Bundle ${b}`);
+            const bundleNames = preferSnapshotMetadata && s.bundle_name
+              ? [s.bundle_name]
+              : bundleIds.map((b) => bundleNameById[String(b)] || `Bundle ${b}`);
             const bundlesLabel = bundleNames.join(" + ");
-            const bg = cellColorById[sourceCellId] || "";
+            const participantLabel =
+              preferSnapshotMetadata && Array.isArray(s.participant_names) && s.participant_names.length > 0
+                ? s.participant_names.join(", ")
+                : preferSnapshotMetadata &&
+                  Array.isArray(s.assigned_participant_names) &&
+                  s.assigned_participant_names.length > 0
+                ? s.assigned_participant_names.join(", ")
+                : "";
+            const bg = preferSnapshotMetadata
+              ? s.color_hex ||
+                s.source_cell_color_hex ||
+                s.cell_color_hex ||
+                s.color ||
+                cellColorById[sourceCellId] ||
+                ""
+              : cellColorById[sourceCellId] ||
+                s.color_hex ||
+                s.source_cell_color_hex ||
+                s.cell_color_hex ||
+                s.color ||
+                "";
             const colorIdx = CELL_COLOR_OPTIONS.findIndex((c) => c.toLowerCase() === bg.toLowerCase());
-            const useColor = Boolean(bg && colorIdx >= 0);
-            const textDark = useColor ? CELL_TEXT_DARK[colorIdx] : "#1f2937";
-            const textLight = useColor ? CELL_TEXT_LIGHT[colorIdx] : "#111827";
+            const useColor = Boolean(bg && (colorIdx >= 0 || isHexColor(bg)));
+            const textDark = useColor && colorIdx >= 0 ? CELL_TEXT_DARK[colorIdx] : "#1f2937";
+            const textLight = useColor && colorIdx >= 0 ? CELL_TEXT_LIGHT[colorIdx] : "#111827";
             const border = useColor ? shadeHex(bg, -0.35) : "#e5e7eb";
             const publishedPlacementId = getPublishedPlacementId(s);
             const commentKey =
@@ -1001,6 +1090,7 @@ export default function ParticipantScheduleOverlay({
                   )}
                   <div className="flex h-full flex-col items-center justify-center text-center leading-tight">
                     <div className="font-semibold" style={{ color: textLight }}>{cellName}</div>
+                    {participantLabel && <div className="px-1">{participantLabel}</div>}
                     {bundlesLabel && <div className="px-1">{bundlesLabel}</div>}
                     <div className="h-2" />
                     <div className="text-[10px] font-medium" style={{ color: textDark }}>{timeLabel}</div>

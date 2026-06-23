@@ -6,6 +6,7 @@ import UnitTabs from "@/components/grid/UnitTabs";
 import SolveOverlay from "@/components/grid/SolveOverlay";
 import ScheduleErrorCard from "@/components/grid/ScheduleErrorCard";
 import GradualBlur from "@/components/animations/GradualBlur";
+import PanelAsyncState from "@/components/ui/PanelAsyncState";
 import { formatSlotRange } from "@/lib/schedule";
 import {
   getGridScheduleViewModeKey,
@@ -98,6 +99,14 @@ type SchedulePlacement = {
   id: number | string;
   cell_name?: string | null;
   source_cell_name?: string | null;
+  color_hex?: string | null;
+  source_cell_color_hex?: string | null;
+  cell_color_hex?: string | null;
+  color?: string | null;
+  unit_names?: string[] | null;
+  bundle_name?: string | null;
+  participant_names?: string[] | null;
+  assigned_participant_names?: string[] | null;
   cell_id?: string | number | null;
   source_cell?: string | number | null;
   source_cell_id?: string | number | null;
@@ -790,9 +799,14 @@ const derivePublishedUnitsForTabs = (renderModel: ScheduleRenderModel): Unit[] =
     const placementUnitIds = readEntityIdArray(
       placementRecord.unit_ids ?? placementRecord.units,
     );
+    const placementUnitNames = Array.isArray(placementRecord.unit_names)
+      ? placementRecord.unit_names
+          .map((name) => (typeof name === "string" ? name.trim() : ""))
+          .filter(Boolean)
+      : [];
 
-    for (const unitId of placementUnitIds) {
-      upsertUnit(unitId);
+    for (const [index, unitId] of placementUnitIds.entries()) {
+      upsertUnit(unitId, placementUnitNames[index]);
     }
 
     const bundleId =
@@ -803,7 +817,7 @@ const derivePublishedUnitsForTabs = (renderModel: ScheduleRenderModel): Unit[] =
     if (placementUnitIds.length === 0 && bundleId) {
       // Same compatibility fallback used elsewhere:
       // if only bundle_id exists, use it as a tab/filter id.
-      upsertUnit(bundleId);
+      upsertUnit(bundleId, placementRecord.bundle_name);
     }
   }
 
@@ -910,6 +924,8 @@ export default function GridSchedulePanel({
   const [unitList, setUnitList] = useState<Unit[]>(units);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [participantsLoading, setParticipantsLoading] = useState(true);
+  const [scheduleOverlayLoading, setScheduleOverlayLoading] = useState(true);
+  const [hasScheduleOverlayReportedReady, setHasScheduleOverlayReportedReady] = useState(false);
   const [cellById, setCellById] = useState<Record<string, Cell>>({});
   const [bundleNameById, setBundleNameById] = useState<Record<string, string>>({});
   const [bundleUnitsById, setBundleUnitsById] = useState<Record<string, string[]>>({});
@@ -950,6 +966,7 @@ export default function GridSchedulePanel({
   const syncingHorizontalScrollRef = useRef<"header" | "body" | null>(null);
   const commentsOpenShellWidthPercent = 82;
   const commentsOpenShellLeftShiftPx = 50;
+  const scheduleBootstrapKeyRef = useRef<string | null>(null);
   const scheduleShellBaseStyleRef = useRef<{
     maxWidth: string;
     marginLeft: string;
@@ -1299,7 +1316,15 @@ export default function GridSchedulePanel({
 
   useEffect(() => {
     let active = true;
-    setParticipantsLoading(true);
+    const bootstrapKey = `${gridId}:${scheduleViewMode}:${historyMode ? "history" : "live"}`;
+    const shouldBlockSchedule =
+      scheduleBootstrapKeyRef.current !== bootstrapKey || !hasScheduleOverlayReportedReady;
+    scheduleBootstrapKeyRef.current = bootstrapKey;
+    setParticipantsLoading(shouldBlockSchedule);
+    setScheduleOverlayLoading(shouldBlockSchedule);
+    if (shouldBlockSchedule) {
+      setHasScheduleOverlayReportedReady(false);
+    }
     (async () => {
       try {
         const contextJson = (await fetchGridScreenContext(gridId, scheduleViewMode)) as Record<string, unknown> | null;
@@ -1867,11 +1892,24 @@ export default function GridSchedulePanel({
   const canUndoDraft = canUseDraftHistory && !historyBusy && draftHistory.can_undo;
   const canRedoDraft = canUseDraftHistory && !historyBusy && draftHistory.can_redo;
   const canRestoreDraft = canUseDraftHistory && !historyBusy && hasLatestPublishedSchedule;
+  const isScheduleLoading = participantsLoading || scheduleOverlayLoading || !hasScheduleOverlayReportedReady;
 
   const refreshAfterDraftMutation = useCallback(() => {
     invalidateGridScreenContext(gridId, "draft");
     setContextRefreshTick((prev) => prev + 1);
   }, [gridId]);
+
+  const handleScheduleOverlayLoadingChange = useCallback(
+    (loading: boolean, ready: boolean) => {
+      if (ready) {
+        setHasScheduleOverlayReportedReady(true);
+        setScheduleOverlayLoading(false);
+        return;
+      }
+      setScheduleOverlayLoading(hasScheduleOverlayReportedReady ? false : loading);
+    },
+    [hasScheduleOverlayReportedReady],
+  );
 
   const loadDraftHistory = useCallback(async () => {
     if (!canUseDraftHistory) {
@@ -2597,17 +2635,32 @@ export default function GridSchedulePanel({
               </div>
             </div>
 
-            <div
-              ref={scheduleScrollRef}
-              data-schedule-scroll
-              className={`relative ${compactHorizontal ? "overflow-auto" : "overflow-y-auto overflow-x-hidden"} hide-scrollbar select-none`}
-              style={{ height: scheduleViewportHeight, maxHeight: scheduleViewportHeight }}
-              onScroll={(event) => {
-                if (syncingHorizontalScrollRef.current === "header") return;
-                syncScheduleHorizontalScroll("body", event.currentTarget.scrollLeft);
-              }}
-            >
-              <div className="relative" style={scheduleContentStyle}>
+            <div className="relative" style={{ height: scheduleViewportHeight, maxHeight: scheduleViewportHeight }}>
+              {isScheduleLoading ? (
+                <div className="pointer-events-auto absolute inset-0 z-[80] flex items-center justify-center bg-white/85 backdrop-blur-[1px]">
+                  <PanelAsyncState
+                    isLoading
+                    isEmpty={false}
+                    loadingLabel={t("common.loading")}
+                    mode="plain"
+                    spinnerSize="lg"
+                  >
+                    {null}
+                  </PanelAsyncState>
+                </div>
+              ) : null}
+              <div
+                ref={scheduleScrollRef}
+                data-schedule-scroll
+                className={`relative h-full ${compactHorizontal ? "overflow-auto" : "overflow-y-auto overflow-x-hidden"} hide-scrollbar select-none`}
+                style={{ height: scheduleViewportHeight, maxHeight: scheduleViewportHeight }}
+                onScroll={(event) => {
+                  if (syncingHorizontalScrollRef.current === "header") return;
+                  syncScheduleHorizontalScroll("body", event.currentTarget.scrollLeft);
+                }}
+              >
+                <div className="relative" style={scheduleContentStyle}>
+                  <div className={isScheduleLoading ? "pointer-events-none invisible" : undefined}>
             {rows.map((time, rowIndex) => (
               <div key={time} className="grid" style={{ gridTemplateColumns: scheduleGridTemplateColumns }}>
                 <div
@@ -2655,8 +2708,11 @@ export default function GridSchedulePanel({
               onCommentsPanelOpenChange={historyMode ? undefined : setCommentsPanelOpen}
               historyMode={historyMode}
               historyGridCode={historyGridCode}
+              onScheduleLoadingChange={handleScheduleOverlayLoadingChange}
 
             />
+                  </div>
+                </div>
               </div>
             </div>
           </>
