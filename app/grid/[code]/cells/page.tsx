@@ -6,10 +6,32 @@ import OnboardingGuide from "@/components/grid/OnboardingGuide";
 import { CellsHeader } from "@/components/grid/headers";
 import EmptyState from "@/components/ui/EmptyState";
 import { getTranslation } from "@/lib/i18n";
+import { gridCellCardsPath } from "@/lib/cell-api";
 import { resolveGridByCode } from "../_helpers";
 import { redirect } from "next/navigation";
 
 const EN_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+const readBundleLabel = (value: unknown): string | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  for (const key of ["label", "name", "display_name"] as const) {
+    const candidate = record[key];
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  if (Array.isArray(record.units)) {
+    const labels = record.units
+      .map((unit) => {
+        if (!unit || typeof unit !== "object" || Array.isArray(unit)) return null;
+        const entry = unit as Record<string, unknown>;
+        const label = entry.label ?? entry.name ?? entry.display_name;
+        return typeof label === "string" && label.trim() ? label.trim() : null;
+      })
+      .filter((label): label is string => Boolean(label));
+    if (labels.length > 0) return labels.join(" + ");
+  }
+  return null;
+};
 
 export default async function GridCellsPage({
   params,
@@ -29,17 +51,20 @@ export default async function GridCellsPage({
   const t = (key: Parameters<typeof getTranslation>[1]) => getTranslation(me.preferred_language, key);
   const gridBase = `/grid/${encodeURIComponent(grid.grid_code || code)}`;
 
+  let cells: any[] = [];
   let bundles: { id: number | string; name?: string }[] = [];
   try {
-    const bdata = await backendFetchJSON<any>(`/api/bundles/?grid=${id}`);
-    const list = Array.isArray(bdata) ? bdata : bdata.results ?? [];
-    bundles = list.map((b: any) => ({ id: b.id, name: b.name || `Bundle ${b.id}` }));
-  } catch {}
-
-  let cells: any[] = [];
-  try {
-    const cdata = await backendFetchJSON<any>(`/api/cells?grid=${id}`);
-    cells = Array.isArray(cdata) ? cdata : cdata.results ?? [];
+    const payload = await backendFetchJSON<any>(gridCellCardsPath(id));
+    cells = Array.isArray(payload)
+      ? payload
+      : payload.cards ?? payload.cells ?? payload.results ?? [];
+    const bundleList = Array.isArray(payload?.bundles) ? payload.bundles : [];
+    bundles = bundleList
+      .filter((bundle: any) => bundle?.id != null)
+      .map((bundle: any) => ({
+        id: bundle.id,
+        name: readBundleLabel(bundle) || `Bundle ${bundle.id}`,
+      }));
   } catch {}
 
   // Resolve my role and (if editor) my participant id in this grid
@@ -92,7 +117,11 @@ export default async function GridCellsPage({
             </div>
           ) : (
             <div className="relative h-[640px] overflow-hidden">
-              <CellsCardSwap cells={cells} bundles={bundles} gridId={Number(grid.id)} />
+              <CellsCardSwap
+                cells={cells}
+                bundles={bundles}
+                gridId={Number(grid.id)}
+              />
             </div>
           )}
         </div>

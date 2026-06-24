@@ -6,10 +6,16 @@ import { useI18n } from "@/lib/use-i18n";
 export type Tier = "PRIMARY" | "SECONDARY" | "TERTIARY";
 export type TierCounts = Record<Tier, number>;
 export type TierPools = Record<Tier, string[]>;
-export type StaffOption = { members: string[] };
+export type StaffOption = {
+  staff?: string;
+  members: string[];
+  name?: string;
+  display_name?: string;
+};
 export type Participant = {
   id: number | string;
   name: string;
+  display_name?: string;
   surname?: string;
   tier?: Tier | null;
   hours_week_mode?: "default" | "custom" | "not_available" | null;
@@ -32,16 +38,34 @@ export const EMPTY_TIER_POOLS: TierPools = {
 };
 
 export function participantLabel(p: Participant) {
+  if (p.display_name?.trim()) return p.display_name.trim();
   return `${p.name}${p.surname ? ` ${p.surname}` : ""}`;
 }
 
-export function normalizeStaffGroups(groups?: Array<{ members?: Array<string | number> } | null> | null): StaffOption[] {
+export function normalizeStaffGroups(
+  groups?: Array<{
+    id?: string | number;
+    staff?: string | number;
+    members?: Array<string | number | { id?: string | number }>;
+    name?: string;
+    display_name?: string;
+  } | null> | null,
+): StaffOption[] {
   if (!groups) return [];
   return groups
-    .map((group) => ({
-      members: Array.from(new Set((group?.members ?? []).map((id) => String(id)))).sort(),
-    }))
-    .filter((group) => group.members.length > 0);
+    .map((group) => {
+      const staffId = group?.staff ?? group?.id;
+      return {
+        ...(staffId != null ? { staff: String(staffId) } : {}),
+        ...(group?.name ? { name: group.name } : {}),
+        ...(group?.display_name ? { display_name: group.display_name } : {}),
+        members: Array.from(new Set((group?.members ?? []).map((member) => {
+          if (typeof member === "string" || typeof member === "number") return String(member);
+          return member?.id != null ? String(member.id) : "";
+        }).filter(Boolean))).sort(),
+      };
+    })
+    .filter((group) => group.members.length > 0 || Boolean(group.staff));
 }
 
 export function normalizeTierPools(pools?: Partial<Record<Tier, Array<string | number>>> | null): TierPools {
@@ -55,8 +79,8 @@ export function normalizeTierPools(pools?: Partial<Record<Tier, Array<string | n
 export function serializeStaffGroups(groups: StaffOption[]) {
   return JSON.stringify(
     groups
-      .map((group) => ({ members: [...group.members].sort() }))
-      .sort((a, b) => a.members.join(",").localeCompare(b.members.join(",")))
+      .map((group) => ({ staff: group.staff ?? null, members: [...group.members].sort() }))
+      .sort((a, b) => `${a.staff}:${a.members.join(",")}`.localeCompare(`${b.staff}:${b.members.join(",")}`))
   );
 }
 
@@ -77,6 +101,7 @@ type StaffingEditorProps = {
   onTierPoolsChange: (value: TierPools) => void;
   staffGroups: StaffOption[];
   onStaffGroupsChange: (value: StaffOption[]) => void;
+  availableStaffGroups?: StaffOption[];
 };
 
 function countMembersByTier(ids: string[], participantMap: Record<string, Participant>): TierCounts {
@@ -183,13 +208,28 @@ export function CellStaffingEditor({
   onTierPoolsChange,
   staffGroups,
   onStaffGroupsChange,
+  availableStaffGroups = [],
 }: StaffingEditorProps) {
   const { t } = useI18n();
   const usingTiers = tierEnabled !== false;
-  const participantsByTier = React.useMemo(() => buildParticipantsByTier(participants), [participants]);
   const participantMap = React.useMemo(
     () => Object.fromEntries(participants.map((p) => [String(p.id), p])) as Record<string, Participant>,
     [participants]
+  );
+  const [participantSearch, setParticipantSearch] = React.useState("");
+  const normalizedParticipantSearch = participantSearch.trim().toLowerCase();
+  const filteredParticipants = React.useMemo(
+    () =>
+      normalizedParticipantSearch
+        ? participants.filter((participant) =>
+            participantLabel(participant).toLowerCase().includes(normalizedParticipantSearch),
+          )
+        : participants,
+    [normalizedParticipantSearch, participants],
+  );
+  const filteredParticipantsByTier = React.useMemo(
+    () => buildParticipantsByTier(filteredParticipants),
+    [filteredParticipants],
   );
 
   const lockedIds = React.useMemo(() => {
@@ -199,6 +239,17 @@ export function CellStaffingEditor({
     }
     return out;
   }, [staffGroups]);
+
+  React.useEffect(() => {
+    if (lockedIds.size === 0) return;
+    const nextPools: TierPools = {
+      PRIMARY: tierPools.PRIMARY.filter((id) => !lockedIds.has(String(id))),
+      SECONDARY: tierPools.SECONDARY.filter((id) => !lockedIds.has(String(id))),
+      TERTIARY: tierPools.TERTIARY.filter((id) => !lockedIds.has(String(id))),
+    };
+    const changed = TIERS.some((tier) => nextPools[tier].length !== tierPools[tier].length);
+    if (changed) onTierPoolsChange(nextPools);
+  }, [lockedIds, onTierPoolsChange, tierPools]);
 
   const [groupMode, setGroupMode] = React.useState(false);
   const [groupDraft, setGroupDraft] = React.useState<string[]>([]);
@@ -326,6 +377,16 @@ export function CellStaffingEditor({
     onStaffGroupsChange(staffGroups.filter((_, idx) => idx !== index));
   };
 
+  const toggleAvailableStaffGroup = (group: StaffOption) => {
+    if (!group.staff) return;
+    const selectedIndex = staffGroups.findIndex((selected) => selected.staff === group.staff);
+    if (selectedIndex >= 0) {
+      onStaffGroupsChange(staffGroups.filter((_, index) => index !== selectedIndex));
+      return;
+    }
+    onStaffGroupsChange([...staffGroups, group]);
+  };
+
   const cancelGroupMode = () => {
     setGroupMode(false);
     setGroupDraft([]);
@@ -412,6 +473,13 @@ export function CellStaffingEditor({
         <div className="flex items-start justify-between gap-4">
             <div className="text-sm font-medium">{t("cell_staffing.participants_board")}</div>
         </div>
+        <input
+          type="search"
+          value={participantSearch}
+          onChange={(event) => setParticipantSearch(event.target.value)}
+          placeholder={t("common.search")}
+          className="w-full rounded border px-3 py-2 text-sm"
+        />
         {headcount > 1 && !groupMode && (
           <div className="text-xs text-gray-500">
             {t("cell_staffing.long_press_chip")}
@@ -463,7 +531,7 @@ export function CellStaffingEditor({
                   {tier === "PRIMARY" ? t("tier.primary") : tier === "SECONDARY" ? t("tier.secondary") : t("tier.tertiary")}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {participantsByTier[tier].map((participant) => {
+                  {filteredParticipantsByTier[tier].map((participant) => {
                     const id = String(participant.id);
                     const locked = memberGroupIndex.has(id);
                     const inDraft = groupDraft.includes(id);
@@ -506,7 +574,7 @@ export function CellStaffingEditor({
                       </button>
                     );
                   })}
-                  {participantsByTier[tier].length === 0 && (
+                  {filteredParticipantsByTier[tier].length === 0 && (
                     <div className="text-xs text-gray-500">{t("cell_staffing.no_participants_tier")}</div>
                   )}
                 </div>
@@ -517,7 +585,7 @@ export function CellStaffingEditor({
           <div className="rounded border bg-white p-3">
             <div className="text-sm font-medium mb-3">Eligible participants</div>
             <div className="flex flex-wrap gap-2">
-              {participants.map((participant) => {
+              {filteredParticipants.map((participant) => {
                 const id = String(participant.id);
                 const locked = memberGroupIndex.has(id);
                 const inDraft = groupDraft.includes(id);
@@ -549,9 +617,34 @@ export function CellStaffingEditor({
                   </button>
                 );
               })}
-              {participants.length === 0 && (
+              {filteredParticipants.length === 0 && (
                 <div className="text-xs text-gray-500">{t("cell_staffing.no_participants_tier")}</div>
               )}
+            </div>
+          </div>
+        )}
+
+        {headcount > 1 && availableStaffGroups.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-sm font-medium">{t("cell_staffing.staff_groups")}</div>
+            <div className="flex flex-wrap gap-2">
+              {availableStaffGroups.map((group, index) => {
+                const selected = Boolean(group.staff && staffGroups.some((entry) => entry.staff === group.staff));
+                const label = group.display_name || group.name || group.members
+                  .map((id) => participantLabel(participantMap[id] || { id, name: "" }))
+                  .filter(Boolean)
+                  .join(" + ");
+                return (
+                  <button
+                    key={group.staff || `${label}-${index}`}
+                    type="button"
+                    onClick={() => toggleAvailableStaffGroup(group)}
+                    className={`rounded-full border px-3 py-1.5 text-sm ${selected ? "border-gray-900 bg-gray-900 text-white" : "bg-white"}`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -567,7 +660,7 @@ export function CellStaffingEditor({
                 >
                   <span className="text-xs font-medium text-gray-500">G{index + 1}</span>
                   <span>
-                    {group.members
+                    {group.display_name || group.name || group.members
                       .map((id) => participantLabel(participantMap[id] || { id, name: id }))
                       .join(" + ")}
                   </span>

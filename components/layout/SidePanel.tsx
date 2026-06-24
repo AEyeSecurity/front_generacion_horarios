@@ -29,6 +29,8 @@ export default function SidePanel({
   tab,
   open,
   onOpenChange,
+  onParticipantCreated,
+  onParticipantCountChange,
 }: {
   gridId: number;
   gridCode?: string | null;
@@ -42,6 +44,8 @@ export default function SidePanel({
   tab: "participants" | "categories" | "time-ranges";
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  onParticipantCreated?: () => void;
+  onParticipantCountChange?: (count: number) => void;
 }) {
   const { t } = useI18n();
   const toClock = (value?: number) => {
@@ -114,6 +118,7 @@ export default function SidePanel({
                 role={role}
                 refreshKey={participantsKey}
                 tiersEnabled={tiersEnabled}
+                onCountChange={onParticipantCountChange}
               />
             ) : tab === "time-ranges" ? (
               <TimeRangesEditor
@@ -149,7 +154,10 @@ export default function SidePanel({
                     gridId={gridId}
                     open={showPerson}
                     onOpenChange={setShowPerson}
-                    onCreated={() => setParticipantsKey((k) => k + 1)}
+                    onCreated={() => {
+                      onParticipantCreated?.();
+                      setParticipantsKey((k) => k + 1);
+                    }}
                     tiersEnabled={tiersEnabled}
                   />
                 </>

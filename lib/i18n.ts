@@ -1084,6 +1084,7 @@ const EN_US = {
   "create_cell.title": "Create Cell",
   "create_cell.name_required": "Name *",
   "create_cell.duration_cells_required": "Duration (in cells) *",
+  "create_cell.quantity": "Quantity",
   "create_cell.total_minutes": "Total minutes: {minutes}",
   "create_cell.division_days": "Division in days",
   "create_cell.more_than_day": "More than a day",
@@ -1122,6 +1123,7 @@ const EN_US = {
   "create_cell.save_bundle_help":
     "Select one or many units. Save each set you want created. Bundle sets cannot share units.",
   "create_cell.saved_bundles": "Saved bundles",
+  "create_cell.duplicate_bundle_set": "This bundle has already been saved.",
   "create_cell.no_bundle_sets_saved": "No bundle sets saved yet.",
   "create_cell.bundle_label": "Bundle {index}:",
   "create_cell.remove_bundle": "Remove bundle {index}",
@@ -1495,7 +1497,7 @@ const ES_AR: Dictionary = {
   "grid_settings.delete_grid_button": "Eliminar grilla",
   "grid_settings.delete_grid_dialog_title": "Eliminar grilla",
   "grid_settings.delete_grid_dialog_description":
-    "Esta accion es permanente. Escribi el nombre de la grilla para confirmar la eliminacion.",
+    "Esta acción es permanente. Escribi el nombre de la grilla para confirmar la eliminacion.",
   "grid_settings.delete_grid_name_label": "Confirmacion por nombre de grilla",
   "grid_settings.delete_grid_name_placeholder": "Escribi el nombre de la grilla para confirmar",
   "grid_settings.delete_grid_confirm_button": "Eliminar grilla",
@@ -1595,7 +1597,7 @@ const ES_AR: Dictionary = {
   "grid_actions.draft_schedule": "Horario borrador",
   "grid_actions.published_schedule": "Horario publicado",
   "grid_actions.delete_grid": "Eliminar grilla",
-  "grid_actions.delete_grid_confirm": "Eliminar esta grilla? Esta accion no se puede deshacer.",
+  "grid_actions.delete_grid_confirm": "Eliminar esta grilla? Esta acción no se puede deshacer.",
   "grid_actions.missing_grid_id_delete": "No se pudo resolver el id de la grilla - eliminacion cancelada.",
   "grid_actions.missing_grid_id_export": "No se pudo resolver el id de la grilla - exportacion cancelada.",
   "grid_actions.export_failed": "No se pudo exportar el horario {view} ({status}). {details}",
@@ -1954,6 +1956,7 @@ const ES_AR: Dictionary = {
   "create_cell.title": "Crear celda",
   "create_cell.name_required": "Nombre *",
   "create_cell.duration_cells_required": "Duracion (en celdas) *",
+  "create_cell.quantity": "Cantidad",
   "create_cell.total_minutes": "Minutos totales: {minutes}",
   "create_cell.division_days": "Division en dias",
   "create_cell.more_than_day": "Mas de un dia",
@@ -1992,6 +1995,7 @@ const ES_AR: Dictionary = {
   "create_cell.save_bundle_help":
     "Selecciona una o varias unidades. Guarda cada conjunto que quieras crear. Los conjuntos no pueden compartir unidades.",
   "create_cell.saved_bundles": "Conjuntos guardados",
+  "create_cell.duplicate_bundle_set": "Este conjunto ya fue guardado.",
   "create_cell.no_bundle_sets_saved": "Todavia no hay conjuntos guardados.",
   "create_cell.bundle_label": "Conjunto {index}:",
   "create_cell.remove_bundle": "Eliminar conjunto {index}",
@@ -2059,7 +2063,7 @@ const ES_AR: Dictionary = {
     "Las celdas divididas en varios dias no pueden superponerse consigo mismas.",
   "grid_schedule.drop_to_remove_participant": "Solta aqui para quitar este participante de la asignacion",
 
-  "cells.title":"Cells",
+  "cells.title":"Celdas",
 
   "grid_solver_settings.day_heatmap_title": "Heatmap diario",
   "grid_solver_settings.day_heatmap_help":
@@ -2079,6 +2083,7 @@ const ES_AR: Dictionary = {
   "grid_solver_settings.time_ranges_create_failed": "No se pudo crear el rango horario.",
   "grid_solver_settings.time_ranges_save_failed": "No se pudo guardar el rango horario.",
   "grid_solver_settings.time_ranges_delete_failed": "No se pudo eliminar el rango horario.",
+
 
   "solve_overlay.comments": "Comentarios",
   "solve_overlay.loading_blockages": "Cargando...",

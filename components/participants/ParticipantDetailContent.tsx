@@ -1598,8 +1598,6 @@ export default function ParticipantDetailContent({
                 const e = draftBounds?.endMin ?? originalEndMin;
                 const GUTTER_X = 12;
                 const GUTTER_Y = 16;
-                const TOP_BAR = 4;
-                const ROW_BORDER = 1;
                 const RESIZE_EDGE_PX = 10;
 
                 const slot = cellSizeMin;
@@ -1609,12 +1607,9 @@ export default function ParticipantDetailContent({
 
                 const baseTop = startSlot * slotHeight;
                 const rawHeight = (endSlot - startSlot) * slotHeight;
-
-                const borderBefore = Math.max(0, Math.floor(startSlot)) * ROW_BORDER;
-                const borderWithin = Math.max(0, Math.floor(endSlot - startSlot)) * ROW_BORDER;
-
-                const top = baseTop + borderBefore + GUTTER_Y / 2 - TOP_BAR / 2;
-                const height = Math.max(6, rawHeight + borderWithin - GUTTER_Y - TOP_BAR);
+                const height = Math.min(BODY_H, Math.max(6, rawHeight - GUTTER_Y));
+                const idealTop = baseTop + rawHeight / 2 - height / 2;
+                const top = Math.max(0, Math.min(idealTop, BODY_H - height));
                 const left = `calc(var(--time-col) + ${cIdx} * ((100% - var(--time-col)) / ${days.length}) + ${GUTTER_X / 2}px)`;
                 const width = `calc(((100% - var(--time-col)) / ${days.length}) - ${GUTTER_X}px)`;
                 const c = colorFor(r.preference);

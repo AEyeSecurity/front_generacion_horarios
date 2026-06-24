@@ -94,11 +94,16 @@ export default function LeftSideDock({
   const [deleteDropActive, setDeleteDropActive] = useState(false);
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [isNarrowMobile, setIsNarrowMobile] = useState(false);
+  const [liveParticipantCount, setLiveParticipantCount] = useState(participantCount);
   const lockRef = useRef(false);
   const pendingTabRef = useRef<Tab | null>(null);
   const router = useRouter();
   const gridBase = `/grid/${encodeURIComponent(gridCode || String(gridId))}`;
   const feedbackCooldownRef = useRef(0);
+
+  useEffect(() => {
+    setLiveParticipantCount(participantCount);
+  }, [participantCount]);
 
   const switchTo = useCallback(
     (next: Tab) => {
@@ -137,7 +142,7 @@ export default function LeftSideDock({
   );
 
   const gotoCells = () => {
-    if (participantCount <= 0) {
+    if (liveParticipantCount <= 0) {
       triggerParticipantsFeedback(t("dock.create_participants_first"));
       return;
     }
@@ -278,9 +283,9 @@ export default function LeftSideDock({
         }`}
       >
         <DockButton
-          title={participantCount <= 0 ? t("dock.create_participants_first") : t("side_dock.cells")}
+          title={liveParticipantCount <= 0 ? t("dock.create_participants_first") : t("side_dock.cells")}
           onboardingTarget="left-dock-cells"
-          locked={participantCount <= 0}
+          locked={liveParticipantCount <= 0}
           highlighted={highlightCells}
           onClick={gotoCells}
         >
@@ -328,6 +333,8 @@ export default function LeftSideDock({
         tab={tab}
         open={open}
         onOpenChange={(v) => setOpen(v)}
+        onParticipantCreated={() => setLiveParticipantCount((count) => Math.max(1, count + 1))}
+        onParticipantCountChange={setLiveParticipantCount}
       />
       {showDeleteDrop && (
         <div className="fixed left-4 top-1/2 -translate-y-1/2 z-[165] pointer-events-none">

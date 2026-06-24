@@ -34,12 +34,14 @@ export default function ParticipantsPanel({
   role,
   refreshKey = 0,
   tiersEnabled,
+  onCountChange,
 }: {
   gridId: number;
   gridCode?: string | null;
   role: Role;
   refreshKey?: number;
   tiersEnabled?: boolean;
+  onCountChange?: (count: number) => void;
 }) {
   const [list, setList] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(false);
@@ -50,6 +52,7 @@ export default function ParticipantsPanel({
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Participant | null>(null);
   const rowClickTimerRef = useRef<number | null>(null);
+  const loadRequestRef = useRef(0);
   const router = useRouter();
   const { t } = useI18n();
 
@@ -61,6 +64,7 @@ export default function ParticipantsPanel({
   };
 
   async function load() {
+    const requestId = ++loadRequestRef.current;
     setLoading(true);
     setErr(null);
     try {
@@ -71,6 +75,7 @@ export default function ParticipantsPanel({
       if (!participantsRes.ok) throw new Error(`Failed (${participantsRes.status})`);
       const data = await participantsRes.json();
       const items = Array.isArray(data) ? data : data.results ?? [];
+      if (requestId !== loadRequestRef.current) return;
       if (tiersEnabled != null) {
         setTierEnabled(Boolean(tiersEnabled));
       } else if (gridRes?.ok) {
@@ -78,10 +83,12 @@ export default function ParticipantsPanel({
         setTierEnabled(readGridTierEnabled(gridData, false));
       }
       setList(items);
+      onCountChange?.(items.length);
     } catch (e: unknown) {
+      if (requestId !== loadRequestRef.current) return;
       setErr(e instanceof Error ? e.message : "Error");
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
   }
 

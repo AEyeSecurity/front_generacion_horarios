@@ -13,6 +13,7 @@ import {
   CellStaffingEditor,
   EMPTY_TIER_COUNTS,
   EMPTY_TIER_POOLS,
+  normalizeStaffGroups,
   TIERS,
   type Participant,
   type StaffOption,
@@ -20,8 +21,12 @@ import {
   type TierPools,
 } from "@/components/dialogs/cell-staffing";
 import { CELL_COLOR_OPTIONS_NO_RED as COLOR_OPTIONS } from "@/lib/cell-colors";
-import { readGridTierEnabled } from "@/lib/grid-tier";
 import { useI18n } from "@/lib/use-i18n";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import PanelAsyncState from "@/components/ui/PanelAsyncState";
+import { normalizeCellFormBootstrap } from "@/lib/cell-form-bootstrap";
+import { gridCellFormOptionsPath } from "@/lib/cell-api";
+import { authFetch } from "@/lib/client-auth";
 
 type DialogTranslate = ReturnType<typeof useI18n>["t"];
 
@@ -29,6 +34,8 @@ type TimeRange = { id: number; name: string; start_time: string; end_time: strin
 type Unit = { id: number; name: string };
 type GridConfig = {
   cell_size_min?: number | null;
+  cell_size_minutes?: number | null;
+  slot_min?: number | null;
   days_enabled?: number[] | null;
   allow_overstaffing?: boolean | null;
   default_unit_mode?: string | null;
@@ -37,6 +44,7 @@ type GridConfig = {
   tier_enable?: boolean | null;
   tier_enabled?: boolean | null;
   tiers_enabled?: boolean | null;
+  participant_tiers_enabled?: boolean | null;
   solve_preference?: {
     default_unit_mode?: string | null;
   } | null;
@@ -191,6 +199,7 @@ function buildStaffingError(
     const poolIds = new Set((tierPools.PRIMARY || []).map(String));
     const groupIds = new Set<string>();
     for (const group of staffGroups) {
+      if (group.staff && group.members.length === 0) continue;
       if (group.members.length !== headcount) {
         return t("cell_staffing.staff_group_exact_headcount_error");
       }
@@ -237,6 +246,7 @@ function buildStaffingError(
 
   const groupIds = new Set<string>();
   for (const group of staffGroups) {
+    if (group.staff && group.members.length === 0) continue;
     if (group.members.length !== headcount) {
       return t("cell_staffing.staff_group_exact_headcount_error");
     }
@@ -315,6 +325,7 @@ export default function CreateCellDialog({
   const [step, setStep] = React.useState<number>(1);
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
+  const [quantity, setQuantity] = React.useState(1);
   const [durationCells, setDurationCells] = React.useState<number>(1);
   const [multiDayEnabled, setMultiDayEnabled] = React.useState(false);
   const [splitDays, setSplitDays] = React.useState<number>(2);
@@ -337,12 +348,16 @@ export default function CreateCellDialog({
   const [tierCounts, setTierCounts] = React.useState<TierCounts>({ PRIMARY: 1, SECONDARY: 0, TERTIARY: 0 });
   const [tierPools, setTierPools] = React.useState<TierPools>({ ...EMPTY_TIER_POOLS });
   const [staffGroups, setStaffGroups] = React.useState<StaffOption[]>([]);
+  const [availableStaffGroups, setAvailableStaffGroups] = React.useState<StaffOption[]>([]);
   const [allowOverstaffing, setAllowOverstaffing] = React.useState(false);
   const [gridAllowsOverstaffing, setGridAllowsOverstaffing] = React.useState(true);
   const [gridTierEnabled, setGridTierEnabled] = React.useState(true);
   const [globalUnitMode, setGlobalUnitMode] = React.useState<"AND" | "OR">("AND");
   const [unitModeOverride, setUnitModeOverride] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [optionsLoading, setOptionsLoading] = React.useState(false);
+  const [loadedOptionsGridId, setLoadedOptionsGridId] = React.useState<number | null>(null);
+  const [optionsLoadError, setOptionsLoadError] = React.useState<string | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
   const splitSliderRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -597,7 +612,7 @@ export default function CreateCellDialog({
     if (hasUnitsStep) flow.push("units");
     flow.push("staffing");
     return flow;
-  }, [multiDayEnabled]);
+  }, [hasUnitsStep, multiDayEnabled]);
   const totalSteps = steps.length || 1;
   const finalStep = totalSteps;
   const currentStepKey = steps.length > 0 ? steps[Math.min(Math.max(step, 1), totalSteps) - 1] ?? "info" : "info";
@@ -609,11 +624,16 @@ export default function CreateCellDialog({
   }, [step, totalSteps]);
 
   React.useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setLoadedOptionsGridId(null);
+      setOptionsLoadError(null);
+      return;
+    }
     setErr(null);
     setStep(1);
     setName("");
     setDescription("");
+    setQuantity(1);
     setDurationCells(1);
     setMultiDayEnabled(false);
     setSplitDays(2);
@@ -632,24 +652,33 @@ export default function CreateCellDialog({
     setTierCounts({ PRIMARY: 1, SECONDARY: 0, TERTIARY: 0 });
     setTierPools({ ...EMPTY_TIER_POOLS });
     setStaffGroups([]);
+    setAvailableStaffGroups([]);
     setGridAllowsOverstaffing(true);
     setGridTierEnabled(true);
     setGlobalUnitMode("AND");
     setUnitModeOverride(false);
     setAllowOverstaffing(false);
+    setLoadedOptionsGridId(null);
+    setOptionsLoadError(null);
+    setOptionsLoading(true);
     (async () => {
       try {
-        try {
-          let g: GridConfig | null = null;
-          try {
-            g = await fetch(`/api/grids/${gridId}/`, { cache: "no-store" }).then((r) => r.json());
-          } catch {
-            g = await fetch(`/api/grids/${gridId}`, { cache: "no-store" }).then((r) => r.json());
-          }
-          if (g?.cell_size_min) setCellMin(Number(g.cell_size_min));
+        const response = await authFetch(gridCellFormOptionsPath(gridId), { cache: "no-store" });
+        if (!response.ok) throw new Error(`${t("create_cell.failed_load_data")} (${response.status})`);
+        const bootstrap = normalizeCellFormBootstrap(await response.json());
+        const g = { ...bootstrap.options, ...bootstrap.grid } as GridConfig;
+          const configuredCellMinutes = Number(g?.cell_size_min ?? g?.cell_size_minutes ?? g?.slot_min);
+          if (configuredCellMinutes > 0) setCellMin(configuredCellMinutes);
           if (Array.isArray(g?.days_enabled)) {
             const dayCount = Math.max(1, Math.min(7, g.days_enabled.length));
-            setMaxSplitDays(dayCount);
+            const configuredMaxDays = Number(
+              bootstrap.divisionConfig.max_days ?? bootstrap.divisionConfig.max_split_days,
+            );
+            setMaxSplitDays(
+              Number.isFinite(configuredMaxDays) && configuredMaxDays > 0
+                ? Math.min(dayCount, Math.floor(configuredMaxDays))
+                : dayCount,
+            );
             setEnabledDaysCount(dayCount);
           }
           const startMin = parseClockToMin(g?.day_start);
@@ -659,36 +688,26 @@ export default function CreateCellDialog({
           } else {
             setHorizonDayMinutes(null);
           }
-          const overstaffingEnabled = g?.allow_overstaffing !== false;
+          const overstaffingEnabled =
+            (bootstrap.featureFlags.allow_overstaffing ?? g?.allow_overstaffing) !== false;
           setGridAllowsOverstaffing(overstaffingEnabled);
-          setGridTierEnabled(readGridTierEnabled(g, true));
+          setGridTierEnabled(bootstrap.participantTiersEnabled);
           setGlobalUnitMode(readDefaultUnitMode(g));
           if (!overstaffingEnabled) {
             setAllowOverstaffing(false);
           }
-        } catch {}
-
-        try {
-          const rp = await fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" });
-          const pdata = await rp.json().catch(() => ([]));
-          setParticipants(Array.isArray(pdata) ? pdata : pdata.results ?? []);
-        } catch {}
-
-        try {
-          const rt = await fetch(`/api/time_ranges?grid=${gridId}`, { cache: "no-store" });
-          const tdata = await rt.json().catch(() => ([]));
-          setTimeRanges(Array.isArray(tdata) ? tdata : tdata.results ?? []);
-        } catch {}
-
-        try {
-          const ru = await fetch(`/api/units?grid=${gridId}`, { cache: "no-store" });
-          const udata = await ru.json().catch(() => ([]));
-          setUnits(Array.isArray(udata) ? udata : udata.results ?? []);
-        } catch {}
+        setParticipants(bootstrap.participants as Participant[]);
+        setTimeRanges(bootstrap.timeRanges as TimeRange[]);
+        setUnits(bootstrap.units as Unit[]);
+        setAvailableStaffGroups(normalizeStaffGroups(
+          (bootstrap.staffGroups.length > 0 ? bootstrap.staffGroups : bootstrap.staffs) as Parameters<typeof normalizeStaffGroups>[0],
+        ));
+        setLoadedOptionsGridId(gridId);
 
       } catch (e: any) {
-        setErr(e?.message || t("create_cell.failed_load_data"));
+        setOptionsLoadError(e?.message || t("create_cell.failed_load_data"));
       } finally {
+        setOptionsLoading(false);
       }
     })();
   }, [open, gridId]);
@@ -700,7 +719,16 @@ export default function CreateCellDialog({
   );
   const unitsStepReady = !bundleSetsError;
   const staffingError = buildStaffingError(t, gridTierEnabled, tierCounts, tierPools, staffGroups, participantMap, participants);
-  const canSubmit = stepOneReady && splitStepReady && unitsStepReady && !staffingError && !bundleSetsError;
+  const individualEligibleParticipantIds = React.useMemo(
+    () => Array.from(new Set(
+      Object.values(tierPools).flatMap((ids) => ids || []).map(String),
+    )).sort(),
+    [tierPools],
+  );
+  const participantsReady = staffGroups.length > 0 ||
+    (participants.length > 0 && individualEligibleParticipantIds.length > 0);
+  const optionsReady = !optionsLoading && loadedOptionsGridId === gridId;
+  const canSubmit = optionsReady && stepOneReady && splitStepReady && unitsStepReady && participantsReady && !staffingError && !bundleSetsError;
   const canAdvanceFromCurrentStep =
     currentStepKey === "info"
       ? stepOneReady
@@ -709,7 +737,6 @@ export default function CreateCellDialog({
       : currentStepKey === "units"
       ? unitsStepReady
       : false;
-  const showStaffingStep = currentStepKey === "staffing";
   const canOpenStep = (targetStep: number) => {
     if (targetStep <= 1) return true;
     for (let index = 1; index < targetStep; index += 1) {
@@ -800,10 +827,14 @@ export default function CreateCellDialog({
     setSplitBoundaries((prev) => normalizeBoundaries(prev, Math.max(2, durationCellsSafe), targetDays));
   };
 
-  const saveCurrentUnitSet = () => {
+  const saveCurrentUnitSet = (): boolean => {
     const normalized = normalizeUnitSet(unitIds);
-    if (normalized.length === 0) return;
+    if (normalized.length === 0) return true;
     const key = normalized.join(",");
+    if (bundleUnitSets.some((set) => normalizeUnitSet(set).join(",") === key)) {
+      setErr(t("create_cell.duplicate_bundle_set"));
+      return false;
+    }
     const overlap = overlappingUnitIds([...bundleUnitSets, normalized]);
     if (overlap.length > 0) {
       setErr(
@@ -811,7 +842,7 @@ export default function CreateCellDialog({
           units: overlap.map((id) => unitNameById[id] || t("format.unit_with_id", { id })).join(", "),
         })
       );
-      return;
+      return false;
     }
     setBundleUnitSets((prev) => {
       if (prev.some((set) => set.join(",") === key)) return prev;
@@ -819,6 +850,12 @@ export default function CreateCellDialog({
     });
     setUnitIds([]);
     setErr(null);
+    return true;
+  };
+
+  const goToNextStep = () => {
+    if (currentStepKey === "units" && unitIds.length > 0 && !saveCurrentUnitSet()) return;
+    setStep((prev) => (prev < finalStep ? prev + 1 : prev));
   };
 
   async function fetchBundlesSnapshot() {
@@ -907,38 +944,47 @@ export default function CreateCellDialog({
             SECONDARY: [],
             TERTIARY: [],
           };
-      const normalizedEligibleParticipants = Array.from(
-        new Set(
-          Object.values(normalizedTierPools)
-            .flatMap((ids) => (Array.isArray(ids) ? ids : []))
-            .map(String),
-        ),
-      ).sort();
-
       const template: any = {
         grid: gridId,
         name: name.trim(),
         description: description.trim() || undefined,
+        duration_minutes: splitPartsMin.reduce((sum, part) => sum + part, 0),
+        quantity: Math.max(1, Math.round(quantity)),
         split_parts_min: splitPartsMin,
         split_order_flexible: multiDayEnabled ? splitOrderFlexible : false,
         duration_min: splitPartsMin.reduce((sum, part) => sum + part, 0),
         division_days: splitPartsMin.length,
+        div_days: splitPartsMin.length,
+        division_days_config: {
+          days: splitPartsMin.length,
+          parts_min: splitPartsMin,
+          flexible_order: multiDayEnabled ? splitOrderFlexible : false,
+        },
         locked_day_index: null,
         locked_start_slot: null,
         locked_duration_min: null,
         time_range: timeRangeId ? Number(timeRangeId) : null,
+        time_range_config: timeRangeId ? { id: Number(timeRangeId) } : null,
         colorHex: colorHex ?? undefined,
         headcount: inferredHeadcount,
-        tier_counts: normalizedTierCounts,
-        tier_pools: normalizedTierPools,
         allow_overstaffing: gridAllowsOverstaffing ? allowOverstaffing : null,
         unit_mode_override: unitModeOverride,
+        bundle_mode: effectiveUnitMode,
       };
-      if (!gridTierEnabled) {
-        template.eligible_participants = normalizedEligibleParticipants;
+      if (gridTierEnabled) {
+        template.tier_counts = normalizedTierCounts;
+        template.tier_pools = normalizedTierPools;
+        template.participant_tier_config = { counts: normalizedTierCounts, pools: normalizedTierPools };
+      } else {
+        template.eligible_participant_ids = individualEligibleParticipantIds.map((id) => (/^\d+$/.test(id) ? Number(id) : id));
       }
 
-      if (staffGroups.length > 0) template.staff_options = staffGroups;
+      if (staffGroups.length > 0) {
+        template.staff_options = staffGroups.map((group) => ({
+          ...(group.staff ? { staff: group.staff } : {}),
+          members: group.members,
+        }));
+      }
 
       const selectedSets = activeBundleSets.map((set) => set.map(Number));
       const isBulk = selectedSets.length > 1;
@@ -946,6 +992,7 @@ export default function CreateCellDialog({
         ? {
             template,
             bundle_unit_sets: selectedSets,
+            bundles: selectedSets.map((units) => ({ units })),
           }
         : {
             ...template,
@@ -978,6 +1025,7 @@ export default function CreateCellDialog({
           <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
           <DialogHeader className="relative min-h-[72px] shrink-0 border-b px-6 py-4 pr-12">
             <DialogTitle>{t("create_cell.title")}</DialogTitle>
+            {optionsReady ? (
             <div className="absolute left-1/2 top-4 -translate-x-1/2 flex items-center gap-2 select-none">
               {Array.from({ length: totalSteps }, (_, index) => {
                 const idx = index + 1;
@@ -1010,10 +1058,23 @@ export default function CreateCellDialog({
                 );
               })}
             </div>
+            ) : null}
           </DialogHeader>
 
           <form onSubmit={submit} className="contents">
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            {!optionsReady ? (
+              optionsLoading || !optionsLoadError ? (
+                <PanelAsyncState isLoading isEmpty={false} loadingLabel={t("common.loading")} mode="plain">
+                  {null}
+                </PanelAsyncState>
+              ) : (
+                <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                  {optionsLoadError}
+                </div>
+              )
+            ) : (
+            <>
             {err && <div className="text-sm text-red-600 whitespace-pre-wrap">{err}</div>}
             {currentStepKey === "info" ? (
               <>
@@ -1119,15 +1180,6 @@ export default function CreateCellDialog({
                       <div className="text-sm font-medium">{t("create_cell.units_required")}</div>
                       <div className="text-xs text-gray-500 mt-1">{t("create_cell.unit_mode_toggle_help")}</div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setUnitModeOverride((prev) => !prev)}
-                      className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 shadow-sm transition hover:border-gray-900 hover:bg-gray-50"
-                      aria-label={t("create_cell.unit_mode_toggle_label")}
-                    >
-                      <span className="text-xs font-medium text-gray-500">{t("create_cell.unit_mode_toggle_label")}</span>
-                      <span>{effectiveUnitMode}</span>
-                    </button>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {units.length === 0 ? (
@@ -1171,7 +1223,14 @@ export default function CreateCellDialog({
                   {bundleSetsError && <div className="text-xs text-red-600 mt-2">{bundleSetsError}</div>}
                 </div>
                 <div>
-                  <label className="block text-sm mb-1">{t("create_cell.saved_bundles")}</label>
+                  <div className="mb-1 flex items-center justify-between gap-3">
+                    <label className="block text-sm">{t("create_cell.saved_bundles")}</label>
+                    {bundleUnitSets.length > 1 && (
+                      <button type="button" onClick={() => setUnitModeOverride((prev) => !prev)} className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold" aria-label={t("create_cell.unit_mode_toggle_label")}>
+                        <span>{effectiveUnitMode}</span>
+                      </button>
+                    )}
+                  </div>
                   {bundleUnitSets.length > 0 && (
                     <div className="space-y-2">
                       {bundleUnitSets.map((set, index) => (
@@ -1377,37 +1436,18 @@ export default function CreateCellDialog({
                   onTierPoolsChange={setTierPools}
                   staffGroups={staffGroups}
                   onStaffGroupsChange={setStaffGroups}
+                  availableStaffGroups={availableStaffGroups}
                 />
                 {staffingError && (
                   <div className="text-sm text-red-600">{staffingError}</div>
                 )}
               </>
             )}
+            </>
+            )}
 
             </div>
             <DialogFooter className="shrink-0 items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setStep((prev) => (prev > 1 ? prev - 1 : prev))}
-                  disabled={step <= 1}
-                  aria-label={t("common.previous_step")}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border text-2xl leading-none hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-35"
-                >
-                  {"<"}
-                </button>
-                {step < finalStep && (
-                  <button
-                    type="button"
-                    onClick={() => setStep((prev) => (prev < finalStep ? prev + 1 : prev))}
-                    disabled={!canAdvanceFromCurrentStep}
-                    aria-label={t("common.next_step")}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-black text-2xl leading-none text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-35"
-                  >
-                    {">"}
-                  </button>
-                )}
-              </div>
               <div className="flex items-center gap-2">
                 <DialogClose asChild>
                   <button type="button" className="px-3 py-2 rounded border text-sm hover:bg-gray-50">
@@ -1416,7 +1456,19 @@ export default function CreateCellDialog({
                 </DialogClose>
                 {step === finalStep && (
                   <button type="submit" className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50" disabled={saving || !canSubmit}>
-                    {saving ? t("create_cell.creating") : t("common.create")}
+                    {saving ? t("create_cell.creating") : t("common.finish")}
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {step > 1 && (
+                  <button type="button" onClick={() => setStep((prev) => Math.max(1, prev - 1))} className="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm">
+                    <ChevronLeft className="h-4 w-4" /> {t("common.previous_step")}
+                  </button>
+                )}
+                {step < finalStep && (
+                  <button type="button" onClick={goToNextStep} disabled={!canAdvanceFromCurrentStep || !optionsReady} className="inline-flex items-center gap-2 rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-35">
+                    {t("common.next_step")} <ChevronRight className="h-4 w-4" />
                   </button>
                 )}
               </div>

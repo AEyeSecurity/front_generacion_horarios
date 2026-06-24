@@ -13,7 +13,6 @@ import {
   EMPTY_TIER_COUNTS,
   EMPTY_TIER_POOLS,
   normalizeStaffGroups,
-  normalizeTierPools,
   serializeStaffGroups,
   TIERS,
   type Participant,
@@ -22,16 +21,32 @@ import {
   type TierPools,
 } from "@/components/dialogs/cell-staffing";
 import { CELL_COLOR_OPTIONS_NO_RED as COLOR_OPTIONS } from "@/lib/cell-colors";
-import { readGridTierEnabled } from "@/lib/grid-tier";
 import { useI18n } from "@/lib/use-i18n";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import PanelAsyncState from "@/components/ui/PanelAsyncState";
+import {
+  normalizeCellFormBootstrap,
+  readBootstrapEntityId,
+  readBootstrapEntityIds,
+} from "@/lib/cell-form-bootstrap";
+import { cellFormBootstrapPath } from "@/lib/cell-api";
+import { authFetch } from "@/lib/client-auth";
 
 type DialogTranslate = ReturnType<typeof useI18n>["t"];
 
 type TimeRange = { id: number; name: string; start_time: string; end_time: string };
-type Unit = { id: number; name: string };
-type Bundle = { id: number | string; name?: string; units?: Array<number | string> };
+type Unit = { id: number | string; name: string };
+type Bundle = {
+  id: number | string;
+  name?: string;
+  label?: string;
+  display_name?: string;
+  units?: unknown[];
+};
 type GridConfig = {
   cell_size_min?: number | null;
+  cell_size_minutes?: number | null;
+  slot_min?: number | null;
   days_enabled?: number[] | null;
   allow_overstaffing?: boolean | null;
   default_unit_mode?: string | null;
@@ -40,6 +55,7 @@ type GridConfig = {
   tier_enable?: boolean | null;
   tier_enabled?: boolean | null;
   tiers_enabled?: boolean | null;
+  participant_tiers_enabled?: boolean | null;
   solve_preference?: {
     default_unit_mode?: string | null;
   } | null;
@@ -50,14 +66,18 @@ type Cell = {
   name?: string;
   description?: string;
   duration_min?: number;
+  duration_minutes?: number;
+  quantity?: number;
   division_days?: number;
   split_parts_min?: Array<number | string>;
   allow_overstaffing?: boolean | null;
   split_order_flexible?: boolean | null;
   time_range?: number | string;
   unit_mode_override?: boolean | null;
-  bundles?: Array<number | string>;
-  staffs?: Array<number | string>;
+  bundle_mode?: "AND" | "OR" | string | null;
+  bundles?: unknown[];
+  staffs?: unknown[];
+  staff_groups?: unknown[] | null;
   colorHex?: string | null;
   color_hex?: string | null;
   locked_day_index?: number | string | null;
@@ -66,7 +86,17 @@ type Cell = {
   headcount?: number | null;
   tier_counts?: Partial<TierCounts> | null;
   tier_pools?: Partial<Record<"PRIMARY" | "SECONDARY" | "TERTIARY", Array<string | number>>> | null;
-  eligible_participants?: Array<string | number> | null;
+  eligible_participants?: unknown[] | null;
+  eligible_participant_ids?: Array<string | number> | null;
+  participants?: unknown[] | null;
+  selected_participants?: unknown[] | null;
+  participant_tier_config?: {
+    counts?: Partial<TierCounts> | null;
+    tier_counts?: Partial<TierCounts> | null;
+    pools?: Partial<Record<"PRIMARY" | "SECONDARY" | "TERTIARY", Array<string | number>>> | null;
+    tier_pools?: Partial<Record<"PRIMARY" | "SECONDARY" | "TERTIARY", Array<string | number>>> | null;
+  } | null;
+  participant_tiers_enabled?: boolean | null;
   staff_options?: Array<{ staff?: string | number; members?: Array<string | number> }> | null;
   staff_options_resolved?: Array<{ staff?: string | number; members?: Array<string | number> }> | null;
   series_id?: string | null;
@@ -249,7 +279,8 @@ function parseSplitPartsCells(cell: Cell, cellMin: number): number[] {
 
   if (partsFromSplit.length > 0) return partsFromSplit;
 
-  const totalCells = Math.max(1, Math.round((Number(cell.duration_min) || normalizedCellMin) / normalizedCellMin));
+  const durationMinutes = Number(cell.duration_minutes ?? cell.duration_min) || normalizedCellMin;
+  const totalCells = Math.max(1, Math.round(durationMinutes / normalizedCellMin));
   const legacyDays = Math.max(1, Math.round(Number(cell.division_days) || 1));
   if (legacyDays <= 1) return [totalCells];
   return buildBalancedParts(totalCells, legacyDays);
@@ -270,6 +301,7 @@ function buildStaffingError(
     const poolIds = new Set((tierPools.PRIMARY || []).map(String));
     const groupIds = new Set<string>();
     for (const group of staffGroups) {
+      if (group.staff && group.members.length === 0) continue;
       if (group.members.length !== headcount) return t("cell_staffing.staff_group_exact_headcount_error");
       for (const id of group.members) {
         if (poolIds.has(id)) return t("cell_staffing.participant_in_pool_and_staff_error");
@@ -312,6 +344,7 @@ function buildStaffingError(
 
   const groupIds = new Set<string>();
   for (const group of staffGroups) {
+    if (group.staff && group.members.length === 0) continue;
     if (group.members.length !== headcount) return t("cell_staffing.staff_group_exact_headcount_error");
     const composition: TierCounts = { ...EMPTY_TIER_COUNTS };
     for (const id of group.members) {
@@ -333,8 +366,9 @@ function buildStaffingError(
   return null;
 }
 
-function normalizeUnitSet(ids: Array<string | number>) {
-  return Array.from(new Set(ids.map(String))).sort((a, b) => Number(a) - Number(b));
+function normalizeUnitSet(ids: unknown[]) {
+  return Array.from(new Set(ids.map(readBootstrapEntityId).filter((id): id is string => Boolean(id))))
+    .sort((a, b) => Number(a) - Number(b));
 }
 
 function serializeUnitSets(sets: string[][]) {
@@ -357,7 +391,7 @@ function stripBundleSuffix(name?: string) {
   return (name || "").replace(/\s*\[[^\]]+\]\s*$/, "").trim();
 }
 
-function bundleKeyFromUnitIds(ids: Array<string | number>) {
+function bundleKeyFromUnitIds(ids: unknown[]) {
   return normalizeUnitSet(ids).join(",");
 }
 
@@ -430,6 +464,7 @@ export default function EditCellDialog({
   const [step, setStep] = React.useState<number>(1);
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
+  const [quantity, setQuantity] = React.useState(1);
   const [durationCells, setDurationCells] = React.useState<number>(1);
   const [multiDayEnabled, setMultiDayEnabled] = React.useState(false);
   const [splitDays, setSplitDays] = React.useState<number>(2);
@@ -444,7 +479,6 @@ export default function EditCellDialog({
   const [unitIds, setUnitIds] = React.useState<string[]>([]);
   const [bundleUnitSets, setBundleUnitSets] = React.useState<string[][]>([]);
   const [editingBundleIndex, setEditingBundleIndex] = React.useState<number | null>(null);
-  const [initialBundleSetsSerialized, setInitialBundleSetsSerialized] = React.useState("[]");
   const [seriesCellsSnapshot, setSeriesCellsSnapshot] = React.useState<Cell[]>([]);
   const [participants, setParticipants] = React.useState<Participant[]>([]);
   const [timeRanges, setTimeRanges] = React.useState<TimeRange[]>([]);
@@ -456,6 +490,7 @@ export default function EditCellDialog({
   const [tierCounts, setTierCounts] = React.useState<TierCounts>({ ...EMPTY_TIER_COUNTS });
   const [tierPools, setTierPools] = React.useState<TierPools>({ ...EMPTY_TIER_POOLS });
   const [staffGroups, setStaffGroups] = React.useState<StaffOption[]>([]);
+  const [availableStaffGroups, setAvailableStaffGroups] = React.useState<StaffOption[]>([]);
   const [allowOverstaffing, setAllowOverstaffing] = React.useState(false);
   const [gridAllowsOverstaffing, setGridAllowsOverstaffing] = React.useState(true);
   const [gridTierEnabled, setGridTierEnabled] = React.useState(true);
@@ -463,6 +498,9 @@ export default function EditCellDialog({
   const [unitModeOverride, setUnitModeOverride] = React.useState(false);
   const [initialStaffGroupsSerialized, setInitialStaffGroupsSerialized] = React.useState("[]");
   const [saving, setSaving] = React.useState(false);
+  const [formLoading, setFormLoading] = React.useState(false);
+  const [loadedBootstrapCellId, setLoadedBootstrapCellId] = React.useState<string | null>(null);
+  const [formLoadError, setFormLoadError] = React.useState<string | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
   const splitSliderRef = React.useRef<HTMLDivElement | null>(null);
   const inferredHeadcount = React.useMemo(
@@ -727,7 +765,7 @@ export default function EditCellDialog({
     if (hasUnitsStep) flow.push("units");
     flow.push("staffing");
     return flow;
-  }, [multiDayEnabled]);
+  }, [hasUnitsStep, multiDayEnabled]);
   const totalSteps = steps.length || 1;
   const finalStep = totalSteps;
   const currentStepKey = steps.length > 0 ? steps[Math.min(Math.max(step, 1), totalSteps) - 1] ?? "info" : "info";
@@ -739,260 +777,250 @@ export default function EditCellDialog({
   }, [step, totalSteps]);
 
   React.useEffect(() => {
-    if (!open || !cell) return;
+    if (!open || !cell) {
+      setLoadedBootstrapCellId(null);
+      setFormLoadError(null);
+      return;
+    }
+    let active = true;
+    setLoadedBootstrapCellId(null);
+    setFormLoadError(null);
+    setFormLoading(true);
     setErr(null);
     setStep(1);
     setName(stripBundleSuffix(cell.name) || "");
     setDescription(cell.description || "");
-    setDurationCells(1);
-    setMultiDayEnabled(false);
-    setSplitDays(2);
-    setEqualSplit(false);
-    setSplitOrderFlexible(false);
-    setSplitBoundaries([1]);
-    setDragBoundaryIndex(null);
-    setMaxSplitDays(7);
-    setEnabledDaysCount(7);
-    setHorizonDayMinutes(null);
-    setTimeRangeId(cell.time_range != null ? String(cell.time_range) : "");
-    setColorHex((cell.colorHex || cell.color_hex || null) as string | null);
-    setColorMenuOpen(false);
-    setGridAllowsOverstaffing(true);
-    setGridTierEnabled(true);
-    setGlobalUnitMode("AND");
-    setUnitModeOverride(Boolean(cell.unit_mode_override));
-    setAllowOverstaffing(Boolean(cell.allow_overstaffing));
+    setQuantity(Math.max(1, Number(cell.quantity) || 1));
     setUnitIds([]);
     setEditingBundleIndex(null);
-    setSeriesCellsSnapshot([]);
+    setAvailableStaffGroups([]);
 
     (async () => {
       try {
-        let latestCellById: Cell | null = null;
-        try {
-          const rCell = await fetch(`/api/cells/${cell.id}`, { cache: "no-store" });
-          if (rCell.ok) {
-            latestCellById = (await rCell.json().catch(() => null)) as Cell | null;
-          }
-        } catch {}
+        const response = await authFetch(cellFormBootstrapPath(cell.id), { cache: "no-store" });
+        if (!response.ok) throw new Error(`${t("create_cell.failed_load_data")} (${response.status})`);
+        const bootstrap = normalizeCellFormBootstrap(await response.json());
+        if (!active) return;
 
-        let latestCellsById = new Map<string, Cell>();
-        try {
-          const rc = await fetch(`/api/cells?grid=${gridId}`, { cache: "no-store" });
-          const cdata = await rc.json().catch(() => []);
-          const list = Array.isArray(cdata) ? cdata : cdata.results ?? [];
-          latestCellsById = new Map<string, Cell>(
-            list
-              .filter((entry: any) => entry?.id != null)
-              .map((entry: any) => [String(entry.id), entry as Cell])
-          );
-        } catch {}
+        const baseCell = (bootstrap.cell ?? cell) as Cell;
+        const seriesCells = bootstrap.seriesCells.length > 0
+          ? (bootstrap.seriesCells as Cell[])
+          : baseCell.seriesCells?.length
+          ? baseCell.seriesCells
+          : cell.seriesCells?.length
+          ? cell.seriesCells
+          : [baseCell];
+        const gridConfig = { ...bootstrap.options, ...bootstrap.grid } as GridConfig;
+        const gridCellMin = Math.max(
+          1,
+          Number(gridConfig.cell_size_min ?? gridConfig.cell_size_minutes ?? gridConfig.slot_min ?? 1),
+        );
+        const enabledDays = Array.isArray(gridConfig.days_enabled) ? gridConfig.days_enabled : [];
+        const enabledDayCount = Math.max(1, Math.min(7, enabledDays.length || 7));
+        const configuredMaxDays = Number(
+          bootstrap.divisionConfig.max_days ?? bootstrap.divisionConfig.max_split_days,
+        );
+        const gridMaxDays = Number.isFinite(configuredMaxDays) && configuredMaxDays > 0
+          ? Math.min(enabledDayCount, Math.floor(configuredMaxDays))
+          : enabledDayCount;
 
-        const sourceSeriesCells = cell.seriesCells?.length ? cell.seriesCells : [cell];
-        const seriesCells = sourceSeriesCells.map((seriesCell) => latestCellsById.get(String(seriesCell.id)) ?? seriesCell);
-        const baseCell = latestCellById ?? latestCellsById.get(String(cell.id)) ?? cell;
         setSeriesCellsSnapshot(seriesCells);
-
         setName(stripBundleSuffix(baseCell.name) || "");
         setDescription(baseCell.description || "");
+        setQuantity(Math.max(1, Number(baseCell.quantity) || 1));
         setTimeRangeId(baseCell.time_range != null ? String(baseCell.time_range) : "");
         setColorHex((baseCell.colorHex || baseCell.color_hex || null) as string | null);
-        setUnitModeOverride(Boolean(baseCell.unit_mode_override));
         setAllowOverstaffing(Boolean(baseCell.allow_overstaffing));
+        setCellMin(gridCellMin);
+        setMaxSplitDays(gridMaxDays);
+        setEnabledDaysCount(enabledDayCount);
 
-        let gridCellMin = 1;
-        let gridMaxDays = 7;
-        let tierEnabledFromGrid = true;
-        let bundlesList: Bundle[] = [];
-        let staffMembersById: Record<string, string[]> = {};
+        const startMin = parseClockToMin(gridConfig.day_start);
+        const endMin = parseClockToMin(gridConfig.day_end);
+        setHorizonDayMinutes(endMin > startMin ? endMin - startMin : null);
 
-        try {
-          let g: GridConfig | null = null;
-          try {
-            g = await fetch(`/api/grids/${gridId}/`, { cache: "no-store" }).then((r) => r.json());
-          } catch {
-            g = await fetch(`/api/grids/${gridId}`, { cache: "no-store" }).then((r) => r.json());
-          }
-          if (g?.cell_size_min) {
-            gridCellMin = Number(g.cell_size_min);
-            setCellMin(gridCellMin);
-          }
-          if (Array.isArray(g?.days_enabled)) {
-            gridMaxDays = Math.max(1, Math.min(7, g.days_enabled.length));
-            setMaxSplitDays(gridMaxDays);
-            setEnabledDaysCount(gridMaxDays);
-          }
-          const startMin = parseClockToMin(g?.day_start);
-          const endMin = parseClockToMin(g?.day_end);
-          if (endMin > startMin) {
-            setHorizonDayMinutes(endMin - startMin);
-          } else {
-            setHorizonDayMinutes(null);
-          }
-          const overstaffingEnabled = g?.allow_overstaffing !== false;
-          setGridAllowsOverstaffing(overstaffingEnabled);
-          tierEnabledFromGrid = readGridTierEnabled(g, true);
-          setGridTierEnabled(tierEnabledFromGrid);
-          setGlobalUnitMode(readDefaultUnitMode(g));
-          if (!overstaffingEnabled) {
-            setAllowOverstaffing(false);
-          }
-        } catch {}
+        const overstaffingEnabled =
+          (bootstrap.featureFlags.allow_overstaffing ?? gridConfig.allow_overstaffing) !== false;
+        const tierEnabled = bootstrap.participantTiersEnabled || baseCell.participant_tiers_enabled === true;
+        setGridAllowsOverstaffing(overstaffingEnabled);
+        setGridTierEnabled(tierEnabled);
+        const defaultUnitMode = readDefaultUnitMode(gridConfig);
+        const savedBundleMode = String(
+          baseCell.bundle_mode ?? bootstrap.raw.bundle_mode ?? bootstrap.options.bundle_mode ?? "",
+        ).toUpperCase();
+        setGlobalUnitMode(defaultUnitMode);
+        setUnitModeOverride(
+          savedBundleMode === "AND" || savedBundleMode === "OR"
+            ? savedBundleMode !== defaultUnitMode
+            : Boolean(baseCell.unit_mode_override),
+        );
+        if (!overstaffingEnabled) setAllowOverstaffing(false);
 
         const initialSplitParts = parseSplitPartsCells(baseCell, gridCellMin);
         const initialDurationCells = Math.max(1, initialSplitParts.reduce((sum, part) => sum + part, 0));
         const cappedDays = Math.max(1, Math.min(initialSplitParts.length, initialDurationCells, gridMaxDays));
-        const initialParts =
-          initialSplitParts.length === cappedDays
-            ? initialSplitParts
-            : buildBalancedParts(initialDurationCells, cappedDays);
-        const initialBoundaries = boundariesFromParts(initialParts);
-
+        const initialParts = initialSplitParts.length === cappedDays
+          ? initialSplitParts
+          : buildBalancedParts(initialDurationCells, cappedDays);
         setDurationCells(initialDurationCells);
         setMultiDayEnabled(cappedDays > 1);
         setSplitDays(cappedDays > 1 ? cappedDays : 2);
-        setSplitBoundaries(initialBoundaries);
+        setSplitBoundaries(boundariesFromParts(initialParts));
         setSplitOrderFlexible(Boolean(baseCell.split_order_flexible));
-        const initialAllEqual =
-          initialParts.length > 1 && initialParts.every((part) => part === initialParts[0]);
-        setEqualSplit(initialAllEqual);
+        setEqualSplit(initialParts.length > 1 && initialParts.every((part) => part === initialParts[0]));
 
-        try {
-          const rp = await fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" });
-          const pdata = await rp.json().catch(() => []);
-          setParticipants(Array.isArray(pdata) ? pdata : pdata.results ?? []);
-        } catch {}
-
-        try {
-          const rt = await fetch(`/api/time_ranges?grid=${gridId}`, { cache: "no-store" });
-          const tdata = await rt.json().catch(() => []);
-          setTimeRanges(Array.isArray(tdata) ? tdata : tdata.results ?? []);
-        } catch {}
-
-        try {
-          const ru = await fetch(`/api/units?grid=${gridId}`, { cache: "no-store" });
-          const udata = await ru.json().catch(() => []);
-          setUnits(Array.isArray(udata) ? udata : udata.results ?? []);
-        } catch {}
-
-        try {
-          const rb = await fetch(`/api/bundles?grid=${gridId}`, { cache: "no-store" });
-          const bdata = await rb.json().catch(() => []);
-          bundlesList = Array.isArray(bdata) ? bdata : bdata.results ?? [];
-          setBundles(bundlesList);
-        } catch {}
-
-        try {
-          const rsm = await fetch(`/api/staff-members?grid=${gridId}`, { cache: "no-store" });
-          const smdata = await rsm.json().catch(() => []);
-          const staffMembersList = Array.isArray(smdata) ? smdata : smdata.results ?? [];
-          const byStaff: Record<string, string[]> = {};
-          for (const row of staffMembersList) {
-            const sid = row?.staff != null ? String(row.staff) : "";
-            const pid = row?.participant != null ? String(row.participant) : "";
-            if (!sid || !pid) continue;
-            if (!byStaff[sid]) byStaff[sid] = [];
-            byStaff[sid].push(pid);
-          }
-          for (const sid of Object.keys(byStaff)) {
-            byStaff[sid] = Array.from(new Set(byStaff[sid])).sort();
-          }
-          staffMembersById = byStaff;
-        } catch {}
-
-        try {
-          const rs = await fetch(`/api/staffs?grid=${gridId}`, { cache: "no-store" });
-          const sdata = await rs.json().catch(() => []);
-          const staffList = Array.isArray(sdata) ? sdata : sdata.results ?? [];
-          for (const staff of staffList) {
-            if (staff?.id == null) continue;
-            const sid = String(staff.id);
-            if (Array.isArray(staffMembersById[sid]) && staffMembersById[sid].length > 0) continue;
-            const extracted = extractStaffMemberIds(staff);
-            if (extracted.length > 0) staffMembersById[sid] = extracted;
-          }
-        } catch {}
-
-        const bundlesById = new Map<string, Bundle>(
-          bundlesList.map((bundle) => [String(bundle.id), bundle])
-        );
-        const initialSets = seriesCells
-          .map((seriesCell) => {
-            const unitSet = new Set<string>();
-            const bundleIds = Array.isArray(seriesCell.bundles) ? seriesCell.bundles.map(String) : [];
-            bundleIds.forEach((bundleId) => {
-              const bundle = bundlesById.get(bundleId);
-              if (Array.isArray(bundle?.units)) {
-                bundle.units.forEach((unitId) => unitSet.add(String(unitId)));
-              }
-            });
-            return normalizeUnitSet(Array.from(unitSet));
+        setParticipants(bootstrap.participants as Participant[]);
+        setTimeRanges(bootstrap.timeRanges as TimeRange[]);
+        const selectedBundleObjects = seriesCells
+          .flatMap((seriesCell) => Array.isArray(seriesCell.bundles) ? seriesCell.bundles : [])
+          .filter((bundle): bundle is Record<string, unknown> => Boolean(bundle && typeof bundle === "object" && !Array.isArray(bundle)));
+        const bundleOptions = [...(bootstrap.bundles as Bundle[]), ...(selectedBundleObjects as Bundle[])]
+          .filter((bundle, index, all) => bundle?.id != null && all.findIndex((entry) => String(entry.id) === String(bundle.id)) === index);
+        const bundleUnits = bundleOptions.flatMap((bundle) => Array.isArray(bundle.units) ? bundle.units : []);
+        const resolvedBundleUnits = bundleUnits
+          .filter((unit): unit is Record<string, unknown> => Boolean(unit && typeof unit === "object" && !Array.isArray(unit)))
+          .map((unit) => {
+            const id = readBootstrapEntityId(unit);
+            const label = unit.display_name ?? unit.label ?? unit.name;
+            return id && typeof label === "string" ? { id, name: label } : null;
           })
-          .filter((set) => set.length > 0);
+          .filter((unit): unit is { id: string; name: string } => Boolean(unit));
+        const unitOptions = [...(bootstrap.units as Unit[]), ...resolvedBundleUnits]
+          .filter((unit, index, all) => unit?.id != null && all.findIndex((entry) => String(entry.id) === String(unit.id)) === index);
+        setUnits(unitOptions);
+        setBundles(bundleOptions);
 
-        setBundleUnitSets(initialSets);
-        setInitialBundleSetsSerialized(serializeUnitSets(initialSets));
-        const nextTierCounts: TierCounts = {
-          PRIMARY: Number(baseCell.tier_counts?.PRIMARY || 0),
-          SECONDARY: Number(baseCell.tier_counts?.SECONDARY || 0),
-          TERTIARY: Number(baseCell.tier_counts?.TERTIARY || 0),
-        };
-        const nextTierTotal = TIERS.reduce((sum, tier) => sum + nextTierCounts[tier], 0);
-        if (tierEnabledFromGrid) {
-          if (nextTierTotal < 1) {
-            nextTierCounts.PRIMARY = Math.max(1, Number(baseCell.headcount) || 1);
+        const bundlesById = new Map(bundleOptions.map((bundle) => [String(bundle.id), bundle]));
+        const unitsForBundleEntry = (entry: unknown): unknown[] => {
+          if (Array.isArray(entry)) return entry;
+          if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+            const bundle = entry as Record<string, unknown>;
+            if (Array.isArray(bundle.units)) return bundle.units;
+            const bundleId = readBootstrapEntityId(bundle);
+            return bundleId ? bundlesById.get(bundleId)?.units ?? [] : [];
           }
+          const bundleId = readBootstrapEntityId(entry);
+          return bundleId ? bundlesById.get(bundleId)?.units ?? [] : [];
+        };
+        const rawBundleSets = bootstrap.raw.bundle_unit_sets ??
+          bootstrap.options.bundle_unit_sets ??
+          bootstrap.raw.bundles_config ??
+          (baseCell as Cell & { bundle_unit_sets?: unknown[] }).bundle_unit_sets;
+        let initialSets: string[][] = Array.isArray(rawBundleSets)
+          ? rawBundleSets.map((entry) => normalizeUnitSet(unitsForBundleEntry(entry))).filter((set) => set.length > 0)
+          : [];
+        if (initialSets.length === 0) {
+          initialSets = seriesCells.map((seriesCell) => {
+            const unitSet = new Set<string>();
+            for (const bundleEntry of seriesCell.bundles ?? []) {
+              for (const unitId of normalizeUnitSet(unitsForBundleEntry(bundleEntry))) unitSet.add(unitId);
+            }
+            return normalizeUnitSet(Array.from(unitSet));
+          }).filter((set) => set.length > 0);
+        }
+        setBundleUnitSets(initialSets);
+
+        const participantTierConfig = (
+          baseCell.participant_tier_config ??
+          bootstrap.raw.participant_tier_config ??
+          bootstrap.options.participant_tier_config
+        ) as Cell["participant_tier_config"];
+        const configuredTierCounts = participantTierConfig?.counts ??
+          participantTierConfig?.tier_counts ??
+          baseCell.tier_counts ??
+          (bootstrap.raw.tier_counts as Partial<TierCounts> | undefined) ??
+          (bootstrap.options.tier_counts as Partial<TierCounts> | undefined);
+        const configuredTierPools = participantTierConfig?.pools ??
+          participantTierConfig?.tier_pools ??
+          baseCell.tier_pools ??
+          (bootstrap.raw.tier_pools as Cell["tier_pools"]) ??
+          (bootstrap.options.tier_pools as Cell["tier_pools"]);
+        const nextTierCounts: TierCounts = {
+          PRIMARY: Number(configuredTierCounts?.PRIMARY || 0),
+          SECONDARY: Number(configuredTierCounts?.SECONDARY || 0),
+          TERTIARY: Number(configuredTierCounts?.TERTIARY || 0),
+        };
+        const resolvedHeadcount = Math.max(1, Number(
+          baseCell.headcount ?? bootstrap.raw.headcount ?? bootstrap.options.headcount ?? 1,
+        ) || 1);
+        const nextTierTotal = TIERS.reduce((sum, tier) => sum + nextTierCounts[tier], 0);
+        if (tierEnabled) {
+          if (nextTierTotal < 1) nextTierCounts.PRIMARY = resolvedHeadcount;
           setTierCounts(nextTierCounts);
-          const normalizedPools = normalizeTierPools(baseCell.tier_pools);
-          const eligibleFallback = normalizeTierPools({
-            PRIMARY: Array.isArray(baseCell.eligible_participants) ? baseCell.eligible_participants : [],
-          });
           setTierPools({
-            PRIMARY:
-              normalizedPools.PRIMARY.length > 0
-                ? normalizedPools.PRIMARY
-                : eligibleFallback.PRIMARY,
-            SECONDARY: normalizedPools.SECONDARY,
-            TERTIARY: normalizedPools.TERTIARY,
+            PRIMARY: readBootstrapEntityIds(configuredTierPools?.PRIMARY ?? []),
+            SECONDARY: readBootstrapEntityIds(configuredTierPools?.SECONDARY ?? []),
+            TERTIARY: readBootstrapEntityIds(configuredTierPools?.TERTIARY ?? []),
           });
         } else {
-          const headcount = Math.max(1, Number(baseCell.headcount) || nextTierTotal || 1);
-          const mergedEligible = Array.from(
-            new Set(
-              [
-                ...Object.values(baseCell.tier_pools || {}).flatMap((value) => (Array.isArray(value) ? value : [])),
-                ...(Array.isArray(baseCell.eligible_participants) ? baseCell.eligible_participants : []),
-              ]
-                .map(String)
-            )
-          ).sort();
-          setTierCounts({ PRIMARY: headcount, SECONDARY: 0, TERTIARY: 0 });
-          setTierPools({ PRIMARY: mergedEligible, SECONDARY: [], TERTIARY: [] });
+          const eligible = readBootstrapEntityIds(
+            baseCell.eligible_participant_ids ??
+              baseCell.eligible_participants ??
+              baseCell.selected_participants ??
+              baseCell.participants ??
+              bootstrap.raw.eligible_participant_ids ??
+              bootstrap.raw.selected_participants ??
+              bootstrap.raw.eligible_participants ??
+              bootstrap.options.selected_participants ??
+              bootstrap.options.eligible_participant_ids ??
+              bootstrap.options.eligible_participants ??
+              [],
+          );
+          setTierCounts({ PRIMARY: Math.max(1, resolvedHeadcount || nextTierTotal), SECONDARY: 0, TERTIARY: 0 });
+          setTierPools({ PRIMARY: eligible, SECONDARY: [], TERTIARY: [] });
         }
-        let resolvedGroups = normalizeStaffGroups(baseCell.staff_options_resolved || baseCell.staff_options);
-        if (resolvedGroups.length === 0) {
-          for (const seriesCell of [baseCell, ...seriesCells]) {
-            const staffIds = Array.isArray(seriesCell.staffs) ? seriesCell.staffs.map(String) : [];
-            if (staffIds.length === 0) continue;
-            const fromStaffs = normalizeStaffGroups(
-              staffIds.map((staffId) => ({
-                members: staffMembersById[staffId] ?? [],
-              }))
-            );
-            if (fromStaffs.length > 0) {
-              resolvedGroups = fromStaffs;
-              break;
-            }
-          }
+
+        const staffMembersById: Record<string, string[]> = {};
+        for (const row of bootstrap.staffMembers) {
+          const staffId = row.staff != null ? String(row.staff) : "";
+          const participantId = row.participant != null ? String(row.participant) : "";
+          if (!staffId || !participantId) continue;
+          if (!staffMembersById[staffId]) staffMembersById[staffId] = [];
+          staffMembersById[staffId].push(participantId);
         }
-        setStaffGroups(resolvedGroups);
-        setInitialStaffGroupsSerialized(serializeStaffGroups(resolvedGroups));
-      } catch (e: any) {
-        setErr(e?.message || t("create_cell.failed_load_data"));
+        for (const staff of bootstrap.staffs) {
+          if (staff.id == null) continue;
+          const staffId = String(staff.id);
+          if (!staffMembersById[staffId]?.length) staffMembersById[staffId] = extractStaffMemberIds(staff);
+        }
+        const availableGroups = normalizeStaffGroups(
+          bootstrap.staffs as Parameters<typeof normalizeStaffGroups>[0],
+        ).map((group) => group.members.length > 0 || !group.staff
+          ? group
+          : { ...group, members: staffMembersById[group.staff] ?? [] });
+        setAvailableStaffGroups(availableGroups);
+
+        const resolvedStaffGroups = (
+          baseCell.staff_groups ??
+          bootstrap.raw.selected_staff_groups ??
+          bootstrap.raw.staff_groups ??
+          bootstrap.options.selected_staff_groups
+        ) as Parameters<typeof normalizeStaffGroups>[0];
+        let groups = normalizeStaffGroups(
+          resolvedStaffGroups || baseCell.staff_options_resolved || baseCell.staff_options,
+        ).map((group) => group.members.length > 0 || !group.staff
+          ? group
+          : { ...group, members: staffMembersById[group.staff] ?? [] });
+        if (groups.length === 0) {
+          const staffIds = Array.from(new Set(seriesCells.flatMap((seriesCell) => readBootstrapEntityIds(seriesCell.staffs ?? []))));
+          groups = normalizeStaffGroups(staffIds.map((staffId) => ({ staff: staffId, members: staffMembersById[staffId] ?? [] })));
+        }
+        setStaffGroups(groups);
+        setInitialStaffGroupsSerialized(serializeStaffGroups(groups));
+        setLoadedBootstrapCellId(String(cell.id));
+      } catch (error: unknown) {
+        if (active) setFormLoadError(error instanceof Error ? error.message : t("create_cell.failed_load_data"));
       } finally {
+        if (active) {
+          setFormLoading(false);
+        }
       }
     })();
-  }, [open, gridId, cell]);
+
+    return () => {
+      active = false;
+    };
+  }, [open, gridId, cell, t]);
 
   const stepOneReady = Boolean(
     name.trim() &&
@@ -1001,7 +1029,16 @@ export default function EditCellDialog({
   );
   const unitsStepReady = !bundleSetsError;
   const staffingError = buildStaffingError(t, gridTierEnabled, tierCounts, tierPools, staffGroups, participantMap, participants);
-  const canSubmit = stepOneReady && splitStepReady && unitsStepReady && !staffingError && !bundleSetsError;
+  const individualEligibleParticipantIds = React.useMemo(
+    () => Array.from(new Set(
+      Object.values(tierPools).flatMap((ids) => ids || []).map(String),
+    )).sort(),
+    [tierPools],
+  );
+  const participantsReady = staffGroups.length > 0 ||
+    (participants.length > 0 && individualEligibleParticipantIds.length > 0);
+  const formReady = !formLoading && loadedBootstrapCellId === String(cell?.id ?? "");
+  const canSubmit = formReady && stepOneReady && splitStepReady && unitsStepReady && participantsReady && !staffingError && !bundleSetsError;
   const canAdvanceFromCurrentStep =
     currentStepKey === "info"
       ? stepOneReady
@@ -1010,7 +1047,6 @@ export default function EditCellDialog({
       : currentStepKey === "units"
       ? unitsStepReady
       : false;
-  const showStaffingStep = currentStepKey === "staffing";
   const canOpenStep = (targetStep: number) => {
     if (targetStep <= 1) return true;
     for (let index = 1; index < targetStep; index += 1) {
@@ -1101,9 +1137,17 @@ export default function EditCellDialog({
     setSplitBoundaries((prev) => normalizeBoundaries(prev, Math.max(2, durationCellsSafe), targetDays));
   };
 
-  const saveCurrentUnitSet = () => {
+  const saveCurrentUnitSet = (): boolean => {
     const normalized = normalizeUnitSet(unitIds);
-    if (normalized.length === 0) return;
+    if (normalized.length === 0) return true;
+    const normalizedKey = normalized.join(",");
+    const duplicate = bundleUnitSets.some(
+      (set, index) => index !== editingBundleIndex && normalizeUnitSet(set).join(",") === normalizedKey,
+    );
+    if (duplicate) {
+      setErr(t("create_cell.duplicate_bundle_set"));
+      return false;
+    }
     const nextSets =
       editingBundleIndex == null
         ? [...bundleUnitSets, normalized]
@@ -1115,12 +1159,18 @@ export default function EditCellDialog({
           units: overlap.map((id) => unitNameById[id] || t("format.unit_with_id", { id })).join(", "),
         })
       );
-      return;
+      return false;
     }
     setBundleUnitSets(nextSets);
     setUnitIds([]);
     setEditingBundleIndex(null);
     setErr(null);
+    return true;
+  };
+
+  const goToNextStep = () => {
+    if (currentStepKey === "units" && unitIds.length > 0 && !saveCurrentUnitSet()) return;
+    setStep((prev) => Math.min(finalStep, prev + 1));
   };
 
   async function patchCell(targetCellId: number | string, payload: any) {
@@ -1254,38 +1304,43 @@ export default function EditCellDialog({
             SECONDARY: [],
             TERTIARY: [],
           };
-      const normalizedEligibleParticipants = Array.from(
-        new Set(
-          Object.values(normalizedTierPools)
-            .flatMap((ids) => (Array.isArray(ids) ? ids : []))
-            .map(String),
-        ),
-      ).sort();
       const basePayload: any = {
         name: name.trim(),
         description: description.trim() || undefined,
+        duration_minutes: splitPartsMin.reduce((sum, part) => sum + part, 0),
+        quantity: Math.max(1, Math.round(quantity)),
         split_parts_min: splitPartsMin,
         split_order_flexible: splitOrderFlexibleValue,
         duration_min: splitPartsMin.reduce((sum, part) => sum + part, 0),
         division_days: splitPartsMin.length,
+        div_days: splitPartsMin.length,
+        division_days_config: { days: splitPartsMin.length, parts_min: splitPartsMin, flexible_order: splitOrderFlexibleValue },
         time_range: timeRangeId ? Number(timeRangeId) : null,
+        time_range_config: timeRangeId ? { id: Number(timeRangeId) } : null,
         colorHex: colorHex ?? null,
         headcount: inferredHeadcount,
-        tier_counts: normalizedTierCounts,
-        tier_pools: normalizedTierPools,
         allow_overstaffing: gridAllowsOverstaffing ? allowOverstaffing : null,
         unit_mode_override: unitModeOverride,
+        bundle_mode: effectiveUnitMode,
       };
-      if (!gridTierEnabled) {
-        basePayload.eligible_participants = normalizedEligibleParticipants;
+      if (gridTierEnabled) {
+        basePayload.tier_counts = normalizedTierCounts;
+        basePayload.tier_pools = normalizedTierPools;
+        basePayload.participant_tier_config = { counts: normalizedTierCounts, pools: normalizedTierPools };
+      } else {
+        basePayload.eligible_participant_ids = individualEligibleParticipantIds.map((id) => (/^\d+$/.test(id) ? Number(id) : id));
       }
 
       const serializedCurrentStaff = serializeStaffGroups(staffGroups);
+      const staffOptionsPayload = staffGroups.map((group) => ({
+        ...(group.staff ? { staff: group.staff } : {}),
+        members: group.members,
+      }));
       const sharedPayload: any = { ...basePayload };
       if (!gridTierEnabled && staffGroups.length > 0) {
-        sharedPayload.staff_options = staffGroups;
+        sharedPayload.staff_options = staffOptionsPayload;
       } else if (serializedCurrentStaff !== initialStaffGroupsSerialized) {
-        sharedPayload.staff_options = staffGroups;
+        sharedPayload.staff_options = staffOptionsPayload;
       }
 
       const desiredSets = activeBundleSets.map((set) => set.map(Number));
@@ -1378,6 +1433,7 @@ export default function EditCellDialog({
         </button>
         <DialogHeader className="relative min-h-[72px] shrink-0 border-b px-6 py-4 pr-12">
           <DialogTitle>{isSeriesEdit ? t("edit_cell.edit_cell_series") : t("edit_cell.edit_cell")}</DialogTitle>
+          {formReady ? (
           <div className="absolute left-1/2 top-4 -translate-x-1/2 flex items-center gap-2 select-none">
             {Array.from({ length: totalSteps }, (_, index) => {
               const idx = index + 1;
@@ -1410,10 +1466,23 @@ export default function EditCellDialog({
               );
             })}
           </div>
+          ) : null}
         </DialogHeader>
 
         <form onSubmit={submit} className="contents">
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          {!formReady ? (
+            formLoading || !formLoadError ? (
+              <PanelAsyncState isLoading isEmpty={false} loadingLabel={t("common.loading")}>
+                {null}
+              </PanelAsyncState>
+            ) : (
+              <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                {formLoadError}
+              </div>
+            )
+          ) : (
+          <>
           {err && <div className="text-sm text-red-600 whitespace-pre-wrap">{err}</div>}
           {currentStepKey === "info" ? (
             <>
@@ -1514,20 +1583,11 @@ export default function EditCellDialog({
           ) : currentStepKey === "units" ? (
             <>
               <div className="rounded border p-3 space-y-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex flex-wrap items-start gap-3">
                   <div>
                     <div className="text-sm font-medium">{t("create_cell.units_required")}</div>
                     <div className="text-xs text-gray-500 mt-1">{t("create_cell.unit_mode_toggle_help")}</div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setUnitModeOverride((prev) => !prev)}
-                    className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 shadow-sm transition hover:border-gray-900 hover:bg-gray-50"
-                    aria-label={t("create_cell.unit_mode_toggle_label")}
-                  >
-                    <span className="text-xs font-medium text-gray-500">{t("create_cell.unit_mode_toggle_label")}</span>
-                    <span>{effectiveUnitMode}</span>
-                  </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {units.length === 0 ? (
@@ -1583,7 +1643,19 @@ export default function EditCellDialog({
                 {bundleSetsError && <div className="text-xs text-red-600 mt-2">{bundleSetsError}</div>}
               </div>
               <div>
-                <label className="block text-sm mb-1">{t("create_cell.saved_bundles")}</label>
+                <div className="mb-1 flex items-center justify-between gap-3">
+                  <label className="block text-sm">{t("create_cell.saved_bundles")}</label>
+                  {bundleUnitSets.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => setUnitModeOverride((prev) => !prev)}
+                      className="inline-flex items-center rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 shadow-sm transition hover:border-gray-900 hover:bg-gray-50"
+                      aria-label={t("create_cell.unit_mode_toggle_label")}
+                    >
+                      {effectiveUnitMode}
+                    </button>
+                  ) : null}
+                </div>
                 {bundleUnitSets.length > 0 && (
                   <div className="space-y-2">
                     {bundleUnitSets.map((set, index) => (
@@ -1821,46 +1893,53 @@ export default function EditCellDialog({
                   onTierPoolsChange={setTierPools}
                   staffGroups={staffGroups}
                 onStaffGroupsChange={setStaffGroups}
+                availableStaffGroups={availableStaffGroups}
               />
               {staffingError && (
                 <div className="text-sm text-red-600">{staffingError}</div>
               )}
             </>
           )}
-
+          </>
+          )}
           </div>
           <DialogFooter className="shrink-0 items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setStep((prev) => (prev > 1 ? prev - 1 : prev))}
-                disabled={step <= 1}
-                aria-label={t("common.previous_step")}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border text-2xl leading-none hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-35"
+                className="px-3 py-2 rounded border text-sm hover:bg-gray-50"
+                onClick={requestClose}
               >
-                {"<"}
-              </button>
-              {step < finalStep && (
-                <button
-                  type="button"
-                  onClick={() => setStep((prev) => (prev < finalStep ? prev + 1 : prev))}
-                  disabled={!canAdvanceFromCurrentStep}
-                  aria-label={t("common.next_step")}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-black text-2xl leading-none text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-35"
-                >
-                  {">"}
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <button type="button" className="px-3 py-2 rounded border text-sm hover:bg-gray-50" onClick={requestClose}>
                 {t("common.cancel")}
               </button>
-              {step === finalStep && (
-                <button type="submit" className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50" disabled={saving || !canSubmit}>
-                  {saving ? t("common.saving") : t("common.save")}
+              <button type="submit" className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50" disabled={saving || !canSubmit || !formReady}>
+                {saving ? t("common.saving") : t("common.save")}
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              {step > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setStep((prev) => (prev > 1 ? prev - 1 : prev))}
+                  aria-label={t("common.previous_step")}
+                  className="inline-flex items-center gap-1 rounded border px-3 py-2 text-sm hover:bg-gray-50"
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  {t("common.previous_step")}
                 </button>
-              )}
+              ) : null}
+              {step < finalStep ? (
+                <button
+                  type="button"
+                  onClick={goToNextStep}
+                  disabled={!canAdvanceFromCurrentStep || !formReady}
+                  aria-label={t("common.next_step")}
+                  className="inline-flex items-center gap-1 rounded bg-black px-3 py-2 text-sm text-white hover:bg-gray-900 disabled:opacity-35"
+                >
+                  {t("common.next_step")}
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </button>
+              ) : null}
             </div>
           </DialogFooter>
           </form>
