@@ -12,7 +12,10 @@ import {
   CellStaffingEditor,
   EMPTY_TIER_COUNTS,
   EMPTY_TIER_POOLS,
+  buildStaffOptionsPayload,
+  getCoveredParticipantIds,
   normalizeStaffGroups,
+  resolveStaffGroupMembers,
   serializeStaffGroups,
   TIERS,
   type Participant,
@@ -292,15 +295,17 @@ function buildStaffingError(
   tierCounts: TierCounts,
   tierPools: TierPools,
   staffGroups: StaffOption[],
+  availableStaffGroups: StaffOption[],
   participantMap: Record<string, Participant>,
   participants: Participant[]
 ) {
+  const resolvedStaffGroups = resolveStaffGroupMembers(staffGroups, availableStaffGroups);
   if (!tierEnabled) {
     const headcount = Math.max(0, Number(tierCounts.PRIMARY || 0));
     if (headcount < 1) return t("cell_staffing.headcount_min_error");
     const poolIds = new Set((tierPools.PRIMARY || []).map(String));
     const groupIds = new Set<string>();
-    for (const group of staffGroups) {
+    for (const group of resolvedStaffGroups) {
       if (group.staff && group.members.length === 0) continue;
       if (group.members.length !== headcount) return t("cell_staffing.staff_group_exact_headcount_error");
       for (const id of group.members) {
@@ -343,7 +348,7 @@ function buildStaffingError(
   }
 
   const groupIds = new Set<string>();
-  for (const group of staffGroups) {
+  for (const group of resolvedStaffGroups) {
     if (group.staff && group.members.length === 0) continue;
     if (group.members.length !== headcount) return t("cell_staffing.staff_group_exact_headcount_error");
     const composition: TierCounts = { ...EMPTY_TIER_COUNTS };
@@ -978,13 +983,14 @@ export default function EditCellDialog({
           if (!staffMembersById[staffId]) staffMembersById[staffId] = [];
           staffMembersById[staffId].push(participantId);
         }
-        for (const staff of bootstrap.staffs) {
+        const bootstrapStaffGroups = [...bootstrap.staffGroups, ...bootstrap.staffs];
+        for (const staff of bootstrapStaffGroups) {
           if (staff.id == null) continue;
           const staffId = String(staff.id);
           if (!staffMembersById[staffId]?.length) staffMembersById[staffId] = extractStaffMemberIds(staff);
         }
         const availableGroups = normalizeStaffGroups(
-          bootstrap.staffs as Parameters<typeof normalizeStaffGroups>[0],
+          bootstrapStaffGroups as Parameters<typeof normalizeStaffGroups>[0],
         ).map((group) => group.members.length > 0 || !group.staff
           ? group
           : { ...group, members: staffMembersById[group.staff] ?? [] });
@@ -992,8 +998,12 @@ export default function EditCellDialog({
 
         const resolvedStaffGroups = (
           baseCell.staff_groups ??
+          baseCell.staffs ??
           bootstrap.raw.selected_staff_groups ??
           bootstrap.raw.staff_groups ??
+          bootstrap.raw.staffs ??
+          bootstrap.options.staff_groups ??
+          bootstrap.options.staffs ??
           bootstrap.options.selected_staff_groups
         ) as Parameters<typeof normalizeStaffGroups>[0];
         let groups = normalizeStaffGroups(
@@ -1028,13 +1038,37 @@ export default function EditCellDialog({
       (maxDurationCellsAllowed == null || durationCellsSafe <= maxDurationCellsAllowed)
   );
   const unitsStepReady = !bundleSetsError;
-  const staffingError = buildStaffingError(t, gridTierEnabled, tierCounts, tierPools, staffGroups, participantMap, participants);
+  const staffingError = buildStaffingError(
+    t,
+    gridTierEnabled,
+    tierCounts,
+    tierPools,
+    staffGroups,
+    availableStaffGroups,
+    participantMap,
+    participants,
+  );
   const individualEligibleParticipantIds = React.useMemo(
     () => Array.from(new Set(
       Object.values(tierPools).flatMap((ids) => ids || []).map(String),
     )).sort(),
     [tierPools],
   );
+  const coveredParticipantIds = React.useMemo(
+    () => getCoveredParticipantIds(staffGroups, availableStaffGroups),
+    [availableStaffGroups, staffGroups],
+  );
+  React.useEffect(() => {
+    if (coveredParticipantIds.size === 0) return;
+    setTierPools((current) => {
+      const next: TierPools = {
+        PRIMARY: current.PRIMARY.filter((id) => !coveredParticipantIds.has(String(id))),
+        SECONDARY: current.SECONDARY.filter((id) => !coveredParticipantIds.has(String(id))),
+        TERTIARY: current.TERTIARY.filter((id) => !coveredParticipantIds.has(String(id))),
+      };
+      return TIERS.some((tier) => next[tier].length !== current[tier].length) ? next : current;
+    });
+  }, [coveredParticipantIds]);
   const participantsReady = staffGroups.length > 0 ||
     (participants.length > 0 && individualEligibleParticipantIds.length > 0);
   const formReady = !formLoading && loadedBootstrapCellId === String(cell?.id ?? "");
@@ -1332,14 +1366,9 @@ export default function EditCellDialog({
       }
 
       const serializedCurrentStaff = serializeStaffGroups(staffGroups);
-      const staffOptionsPayload = staffGroups.map((group) => ({
-        ...(group.staff ? { staff: group.staff } : {}),
-        members: group.members,
-      }));
+      const staffOptionsPayload = buildStaffOptionsPayload(staffGroups, availableStaffGroups);
       const sharedPayload: any = { ...basePayload };
-      if (!gridTierEnabled && staffGroups.length > 0) {
-        sharedPayload.staff_options = staffOptionsPayload;
-      } else if (serializedCurrentStaff !== initialStaffGroupsSerialized) {
+      if (staffOptionsPayload.length > 0 || serializedCurrentStaff !== initialStaffGroupsSerialized) {
         sharedPayload.staff_options = staffOptionsPayload;
       }
 

@@ -50,6 +50,11 @@ function overlapsOrTouches(aStart: number, aEnd: number, bStart: number, bEnd: n
   return aStart <= bEnd && bStart <= aEnd;
 }
 
+function isAlignedToSlot(valueMin: number, originMin: number, slotMin: number) {
+  const safeSlot = Math.max(1, Math.round(slotMin || 1));
+  return Math.abs((valueMin - originMin) % safeSlot) === 0;
+}
+
 type ExistingRule = {
   id: number;
   day: number;
@@ -199,6 +204,9 @@ export default function AddAvailabilityRuleDialog({
       return t("add_rule.validation_duration_at_least", { minutes: minMinutes });
     }
     if (s < gs || e > ge) return t("add_rule.validation_within_bounds", { start: gridStart, end: gridEnd });
+    if (!isAlignedToSlot(s, gs, minMinutes ?? 5) || !isAlignedToSlot(e, gs, minMinutes ?? 5)) {
+      return t("add_rule.validation_slot_aligned", { minutes: minMinutes ?? 5 });
+    }
     if (allowedDays && !allowedDays.includes(day)) return t("add_rule.validation_day_not_enabled");
     return null;
   };

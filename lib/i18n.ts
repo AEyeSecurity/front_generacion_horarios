@@ -957,6 +957,7 @@ const EN_US = {
   "add_rule.validation_end_greater_than_start": "End time must be greater than start time.",
   "add_rule.validation_duration_at_least": "Duration must be at least {minutes} minutes.",
   "add_rule.validation_within_bounds": "Rule must be within grid bounds ({start}-{end}).",
+  "add_rule.validation_slot_aligned": "Times must align with the grid slot size ({minutes} minutes).",
   "add_rule.validation_day_not_enabled": "Selected day is not enabled in this grid.",
   "add_rule.error_creating_with_status": "Error creating rule ({status})",
   "add_rule.error_could_not_create": "Could not create rule.",
@@ -1225,6 +1226,7 @@ type Dictionary = Record<I18nKey, string>;
 
 const ES_AR: Dictionary = {
   ...EN_US,
+  "add_rule.validation_slot_aligned": "Los horarios deben coincidir con el tamano de celda ({minutes} minutos).",
   "common.language": "Idioma",
   "common.english": "Ingles",
   "common.spanish": "Español",

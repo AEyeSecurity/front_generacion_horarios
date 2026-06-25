@@ -47,6 +47,8 @@ export function normalizeStaffGroups(
     id?: string | number;
     staff?: string | number;
     members?: Array<string | number | { id?: string | number }>;
+    participant_ids?: Array<string | number | { id?: string | number }>;
+    participants?: Array<string | number | { id?: string | number }>;
     name?: string;
     display_name?: string;
   } | null> | null,
@@ -55,11 +57,12 @@ export function normalizeStaffGroups(
   return groups
     .map((group) => {
       const staffId = group?.staff ?? group?.id;
+      const members = group?.members ?? group?.participant_ids ?? group?.participants ?? [];
       return {
         ...(staffId != null ? { staff: String(staffId) } : {}),
         ...(group?.name ? { name: group.name } : {}),
         ...(group?.display_name ? { display_name: group.display_name } : {}),
-        members: Array.from(new Set((group?.members ?? []).map((member) => {
+        members: Array.from(new Set(members.map((member) => {
           if (typeof member === "string" || typeof member === "number") return String(member);
           return member?.id != null ? String(member.id) : "";
         }).filter(Boolean))).sort(),
@@ -82,6 +85,57 @@ export function serializeStaffGroups(groups: StaffOption[]) {
       .map((group) => ({ staff: group.staff ?? null, members: [...group.members].sort() }))
       .sort((a, b) => `${a.staff}:${a.members.join(",")}`.localeCompare(`${b.staff}:${b.members.join(",")}`))
   );
+}
+
+export function resolveStaffGroupMembers(
+  staffGroups: StaffOption[],
+  availableStaffGroups: StaffOption[] = [],
+): StaffOption[] {
+  const availableByStaffId = new Map(
+    availableStaffGroups
+      .filter((group) => group.staff)
+      .map((group) => [String(group.staff), group]),
+  );
+
+  return staffGroups.map((group) => {
+    if (group.members.length > 0) return group;
+    const available = group.staff ? availableByStaffId.get(String(group.staff)) : undefined;
+    if (!available || available.members.length === 0) return group;
+    return {
+      ...available,
+      ...group,
+      members: [...available.members],
+    };
+  });
+}
+
+export function getCoveredParticipantIds(
+  staffGroups: StaffOption[],
+  availableStaffGroups: StaffOption[] = [],
+) {
+  const covered = new Set<string>();
+  for (const group of resolveStaffGroupMembers(staffGroups, availableStaffGroups)) {
+    for (const id of group.members) covered.add(String(id));
+  }
+  return covered;
+}
+
+export function getSelectedStaffGroupIds(staffGroups: StaffOption[]) {
+  return Array.from(new Set(staffGroups.map((group) => group.staff).filter((id): id is string => Boolean(id)))).sort();
+}
+
+export function buildStaffOptionsPayload(
+  staffGroups: StaffOption[],
+  availableStaffGroups: StaffOption[] = [],
+) {
+  return resolveStaffGroupMembers(staffGroups, availableStaffGroups).map((group) => {
+    const payload: { staff?: number | string; members?: Array<number | string> } = {};
+    if (group.staff) payload.staff = /^\d+$/.test(group.staff) ? Number(group.staff) : group.staff;
+    if (!group.staff) {
+      payload.members = group.members.map((id) => (/^\d+$/.test(id) ? Number(id) : id));
+    }
+    return payload;
+  });
 }
 
 export function buildParticipantsByTier(participants: Participant[]) {
@@ -231,14 +285,14 @@ export function CellStaffingEditor({
     () => buildParticipantsByTier(filteredParticipants),
     [filteredParticipants],
   );
+  const resolvedStaffGroups = React.useMemo(
+    () => resolveStaffGroupMembers(staffGroups, availableStaffGroups),
+    [availableStaffGroups, staffGroups],
+  );
 
   const lockedIds = React.useMemo(() => {
-    const out = new Set<string>();
-    for (const group of staffGroups) {
-      for (const id of group.members) out.add(String(id));
-    }
-    return out;
-  }, [staffGroups]);
+    return getCoveredParticipantIds(staffGroups, availableStaffGroups);
+  }, [availableStaffGroups, staffGroups]);
 
   React.useEffect(() => {
     if (lockedIds.size === 0) return;
@@ -272,11 +326,11 @@ export function CellStaffingEditor({
   const draftCounts = React.useMemo(() => countMembersByTier(groupDraft, participantMap), [groupDraft, participantMap]);
   const memberGroupIndex = React.useMemo(() => {
     const out = new Map<string, number>();
-    staffGroups.forEach((group, index) => {
+    resolvedStaffGroups.forEach((group, index) => {
       group.members.forEach((id) => out.set(String(id), index));
     });
     return out;
-  }, [staffGroups]);
+  }, [resolvedStaffGroups]);
 
   const canStartGroupWithParticipant = React.useCallback(
     (participant: Participant) => {
@@ -653,7 +707,7 @@ export function CellStaffingEditor({
           <div className="space-y-2">
             <div className="text-sm font-medium">{t("cell_staffing.staff_groups")}</div>
             <div className="flex flex-wrap gap-2">
-              {staffGroups.map((group, index) => (
+              {resolvedStaffGroups.map((group, index) => (
                 <div
                   key={`${group.members.join("-")}-${index}`}
                   className="inline-flex items-center gap-2 rounded-full border bg-white px-3 py-1 text-sm"

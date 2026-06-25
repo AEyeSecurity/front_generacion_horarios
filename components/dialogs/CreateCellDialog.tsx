@@ -13,7 +13,10 @@ import {
   CellStaffingEditor,
   EMPTY_TIER_COUNTS,
   EMPTY_TIER_POOLS,
+  buildStaffOptionsPayload,
+  getCoveredParticipantIds,
   normalizeStaffGroups,
+  resolveStaffGroupMembers,
   TIERS,
   type Participant,
   type StaffOption,
@@ -190,15 +193,17 @@ function buildStaffingError(
   tierCounts: TierCounts,
   tierPools: TierPools,
   staffGroups: StaffOption[],
+  availableStaffGroups: StaffOption[],
   participantMap: Record<string, Participant>,
   participants: Participant[]
 ) {
+  const resolvedStaffGroups = resolveStaffGroupMembers(staffGroups, availableStaffGroups);
   if (!tierEnabled) {
     const headcount = Math.max(0, Number(tierCounts.PRIMARY || 0));
     if (headcount < 1) return t("cell_staffing.headcount_min_error");
     const poolIds = new Set((tierPools.PRIMARY || []).map(String));
     const groupIds = new Set<string>();
-    for (const group of staffGroups) {
+    for (const group of resolvedStaffGroups) {
       if (group.staff && group.members.length === 0) continue;
       if (group.members.length !== headcount) {
         return t("cell_staffing.staff_group_exact_headcount_error");
@@ -245,7 +250,7 @@ function buildStaffingError(
   }
 
   const groupIds = new Set<string>();
-  for (const group of staffGroups) {
+  for (const group of resolvedStaffGroups) {
     if (group.staff && group.members.length === 0) continue;
     if (group.members.length !== headcount) {
       return t("cell_staffing.staff_group_exact_headcount_error");
@@ -700,7 +705,7 @@ export default function CreateCellDialog({
         setTimeRanges(bootstrap.timeRanges as TimeRange[]);
         setUnits(bootstrap.units as Unit[]);
         setAvailableStaffGroups(normalizeStaffGroups(
-          (bootstrap.staffGroups.length > 0 ? bootstrap.staffGroups : bootstrap.staffs) as Parameters<typeof normalizeStaffGroups>[0],
+          [...bootstrap.staffGroups, ...bootstrap.staffs] as Parameters<typeof normalizeStaffGroups>[0],
         ));
         setLoadedOptionsGridId(gridId);
 
@@ -718,13 +723,37 @@ export default function CreateCellDialog({
       (maxDurationCellsAllowed == null || durationCellsSafe <= maxDurationCellsAllowed)
   );
   const unitsStepReady = !bundleSetsError;
-  const staffingError = buildStaffingError(t, gridTierEnabled, tierCounts, tierPools, staffGroups, participantMap, participants);
+  const staffingError = buildStaffingError(
+    t,
+    gridTierEnabled,
+    tierCounts,
+    tierPools,
+    staffGroups,
+    availableStaffGroups,
+    participantMap,
+    participants,
+  );
   const individualEligibleParticipantIds = React.useMemo(
     () => Array.from(new Set(
       Object.values(tierPools).flatMap((ids) => ids || []).map(String),
     )).sort(),
     [tierPools],
   );
+  const coveredParticipantIds = React.useMemo(
+    () => getCoveredParticipantIds(staffGroups, availableStaffGroups),
+    [availableStaffGroups, staffGroups],
+  );
+  React.useEffect(() => {
+    if (coveredParticipantIds.size === 0) return;
+    setTierPools((current) => {
+      const next: TierPools = {
+        PRIMARY: current.PRIMARY.filter((id) => !coveredParticipantIds.has(String(id))),
+        SECONDARY: current.SECONDARY.filter((id) => !coveredParticipantIds.has(String(id))),
+        TERTIARY: current.TERTIARY.filter((id) => !coveredParticipantIds.has(String(id))),
+      };
+      return TIERS.some((tier) => next[tier].length !== current[tier].length) ? next : current;
+    });
+  }, [coveredParticipantIds]);
   const participantsReady = staffGroups.length > 0 ||
     (participants.length > 0 && individualEligibleParticipantIds.length > 0);
   const optionsReady = !optionsLoading && loadedOptionsGridId === gridId;
@@ -979,11 +1008,9 @@ export default function CreateCellDialog({
         template.eligible_participant_ids = individualEligibleParticipantIds.map((id) => (/^\d+$/.test(id) ? Number(id) : id));
       }
 
-      if (staffGroups.length > 0) {
-        template.staff_options = staffGroups.map((group) => ({
-          ...(group.staff ? { staff: group.staff } : {}),
-          members: group.members,
-        }));
+      const staffOptionsPayload = buildStaffOptionsPayload(staffGroups, availableStaffGroups);
+      if (staffOptionsPayload.length > 0) {
+        template.staff_options = staffOptionsPayload;
       }
 
       const selectedSets = activeBundleSets.map((set) => set.map(Number));
