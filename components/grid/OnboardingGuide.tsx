@@ -56,7 +56,7 @@ const GRID_ONBOARDING_RIGHT_FAN_REQUEST_EVENT = "shift:onboarding-right-fan-requ
 const GRID_ONBOARDING_RIGHT_TOOL_REQUEST_EVENT = "shift:onboarding-right-tool-request";
 const TIME_RANGE_SAVED_EVENT = "shift:onboarding-time-range-saved";
 const AVAILABILITY_RULE_CREATED_EVENT = "shift:onboarding-availability-rule-created";
-const ONBOARDING_GUIDE_DISABLED = true;
+const ONBOARDING_GUIDE_DISABLED = false;
 
 const SELECTORS = {
   leftDock: "#sidedock",

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { backendFetchJSON } from "@/lib/backend";
 import { isAuthApiError, requireUserOrRedirect } from "@/lib/auth";
 import type { Grid, Role } from "@/lib/types";
+import OnboardingGuide from "@/components/grid/OnboardingGuide";
 import ParticipantDetailContent from "@/components/participants/ParticipantDetailContent";
 import { ParticipantsHeader } from "@/components/grid/headers";
 import { resolveGridByCode } from "../_helpers";
@@ -200,7 +201,13 @@ export default async function ParticipantsPage({
   const days = daysIdx.map((i) => EN_DAY[i] ?? String(i));
 
   return (
-    <div className="px-4 pb-4">
+    <div className="relative px-4 pb-4">
+      <OnboardingGuide
+        gridId={Number(grid.id)}
+        gridCode={gridCode}
+        show={onboarding === "1" || onboarding === "true"}
+        unitNature={grid.unit_nature ?? null}
+      />
       <ParticipantDetailContent
         gridId={Number(grid.id)}
         gridCode={gridCode}
