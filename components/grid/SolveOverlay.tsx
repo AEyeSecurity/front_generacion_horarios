@@ -84,6 +84,10 @@ type ScheduleResource = {
     day_index: number;
     start_slot: number;
     end_slot: number;
+    participant_names?: string[];
+    assigned_participant_names?: string[];
+    staff_names?: string[];
+    assigned_staff_names?: string[];
     assigned_participants?: Array<string | number>;
     participants?: Array<string | number>;
     breaks?: Array<{ offset_min: number; duration_min: number }>;
@@ -150,6 +154,11 @@ const normalizeMetadataStringArray = (value: unknown): string[] | undefined => {
     })
     .filter(Boolean);
   return names.length > 0 ? names : undefined;
+};
+
+const normalizeParticipantDisplayNames = (value: unknown): string[] | undefined => {
+  const names = normalizeMetadataStringArray(value)?.filter((name) => !/^\d+$/.test(name.trim()));
+  return names && names.length > 0 ? names : undefined;
 };
 
 const readMetadataString = (value: unknown): string | undefined => {
@@ -793,6 +802,28 @@ type PlacementPreviewItem = {
   assignment_preview: AssignmentPreview | null;
 };
 
+const MOVE_ASSIGNMENT_SCOPED_REASON_TYPES = new Set([
+  "PARTICIPANT_UNAVAILABLE",
+  "STAFF_GROUP_MEMBER_UNAVAILABLE",
+  "PARTICIPANT_OVERLAP",
+  "STAFF_GROUP_MEMBER_OVERLAP",
+  "NON_PREFERRED_AVAILABILITY",
+  "PREFERRED_AVAILABILITY",
+]);
+
+const MOVE_CELL_LEVEL_REASON_TYPES = new Set(["HEADCOUNT_NOT_REACHABLE"]);
+
+const HARD_PREVIEW_REASON_TYPES = new Set([
+  "BLOCKED_RANGE",
+  "UNIT_OVERLAP",
+  "PARTICIPANT_OVERLAP",
+  "STAFF_GROUP_MEMBER_OVERLAP",
+  "PARTICIPANT_UNAVAILABLE",
+  "STAFF_GROUP_MEMBER_UNAVAILABLE",
+  "OUTSIDE_HARD_TIME_RANGE",
+  "OUT_OF_BOUNDS",
+]);
+
 type PlacementPreviewResponse = {
   cell_id: number | string;
   mode: PlacementMode;
@@ -825,6 +856,8 @@ type ConfirmPlacementResponse = {
   schedule_revision: string;
   placement: NonNullable<ScheduleResource["placements"]>[number];
 };
+
+type SchedulePlacementRow = NonNullable<ScheduleResource["placements"]>[number];
 
 type PlacementPreviewRegion = {
   day_index: number;
@@ -1653,6 +1686,82 @@ export default function SolveOverlay({
     return fallback;
   };
 
+  const getPreviewReasonParticipantId = (reason: PlacementReason): string | null => {
+    const candidate =
+      reason.participant_id ??
+      reason.participant ??
+      reason.member_id ??
+      reason.member ??
+      reason.staff_group_member_id ??
+      reason.staff_member_id;
+    const id = readEntityId(candidate);
+    return id == null ? null : String(id);
+  };
+
+  const reasonTypeText = (reason: PlacementReason) =>
+    typeof reason.type === "string" ? reason.type.trim().toUpperCase() : "";
+
+  const scopeMovePreviewToAssignedParticipants = useCallback(
+    (
+      response: PlacementPreviewResponse,
+      assignedParticipantIds: Array<string | number> | null | undefined,
+    ): PlacementPreviewResponse => {
+      const assigned = new Set((assignedParticipantIds ?? []).map((id) => String(id)));
+      if (assigned.size === 0) return response;
+
+      const scopedSlotMap = response.slot_map.map((item) => {
+        const keptReasons = item.reasons.filter((reason) => {
+          const type = reasonTypeText(reason);
+          if (MOVE_CELL_LEVEL_REASON_TYPES.has(type)) return false;
+          if (!MOVE_ASSIGNMENT_SCOPED_REASON_TYPES.has(type)) return true;
+
+          const participantId = getPreviewReasonParticipantId(reason);
+          if (!participantId) {
+            return type === "PARTICIPANT_OVERLAP" || type === "STAFF_GROUP_MEMBER_OVERLAP";
+          }
+          return assigned.has(participantId);
+        });
+        const hasBlockedReason = keptReasons.some((reason) => reasonTypeText(reason) === "BLOCKED_RANGE");
+        const visualKind = hasBlockedReason ? "BLOCKED" : item.visual_kind;
+        const hasHardReason = keptReasons.some((reason) => HARD_PREVIEW_REASON_TYPES.has(reasonTypeText(reason)));
+
+        if (visualKind === "BLOCKED" || hasHardReason) {
+          return {
+            ...item,
+            visual_kind: visualKind,
+            status: "INVALID" as PlacementStatus,
+            drop_allowed: false,
+            reasons: keptReasons,
+          };
+        }
+
+        const hasSoftWarning =
+          item.time_range.kind === "SOFT_OUTSIDE" ||
+          keptReasons.some((reason) => reasonTypeText(reason) === "OUTSIDE_SOFT_TIME_RANGE");
+
+        return {
+          ...item,
+          visual_kind: visualKind,
+          status: hasSoftWarning ? ("WARNING" as PlacementStatus) : ("VALID" as PlacementStatus),
+          drop_allowed: true,
+          hard_conflict: false,
+          reasons: keptReasons,
+          classification: {
+            ...item.classification,
+            has_hard_conflict: false,
+          },
+        };
+      });
+
+      return {
+        ...response,
+        slot_map: scopedSlotMap,
+        placements: scopedSlotMap,
+      };
+    },
+    [],
+  );
+
   const getBundleUnitIds = (bundle: unknown): string[] => {
     if (!bundle || typeof bundle !== "object") return [];
     const source = bundle as Record<string, unknown>;
@@ -1796,12 +1905,10 @@ export default function SolveOverlay({
     const cellColorHex = readMetadataString(source.cell_color_hex);
     const color = readMetadataString(source.color);
     const unitNames = normalizeMetadataStringArray(source.unit_names);
-    const participantNames =
-      normalizeMetadataStringArray(source.participant_names) ??
-      normalizeMetadataStringArray(source.assigned_participants);
-    const assignedParticipantNames =
-      normalizeMetadataStringArray(source.assigned_participant_names) ??
-      normalizeMetadataStringArray(source.assigned_participants);
+    const participantNames = normalizeParticipantDisplayNames(source.participant_names);
+    const assignedParticipantNames = normalizeParticipantDisplayNames(
+      source.assigned_participant_names,
+    );
     const bundleName =
       readMetadataString(source.bundle_name) ??
       (isObjectRecord(source.bundle) ? readMetadataString(source.bundle.name) : undefined);
@@ -2347,9 +2454,69 @@ export default function SolveOverlay({
     [gridId, normalizeConfirmedPlacement, t],
   );
 
+  const preservePlacementAssignmentMetadata = useCallback(
+    (nextPlacement: SchedulePlacementRow, previousPlacement: SchedulePlacementRow): SchedulePlacementRow => {
+      const nextAssigned = normalizeIdArray(
+        (nextPlacement as { assigned_participants?: unknown; participants?: unknown }).assigned_participants ??
+          (nextPlacement as { participants?: unknown }).participants,
+      );
+      const previousAssigned = normalizeIdArray(
+        (previousPlacement as { assigned_participants?: unknown; participants?: unknown }).assigned_participants ??
+          (previousPlacement as { participants?: unknown }).participants,
+      );
+      const nextParticipantNames =
+        normalizeParticipantDisplayNames((nextPlacement as { participant_names?: unknown }).participant_names) ??
+        normalizeParticipantDisplayNames((nextPlacement as { assigned_participant_names?: unknown }).assigned_participant_names);
+      const previousParticipantNames =
+        normalizeParticipantDisplayNames((previousPlacement as { participant_names?: unknown }).participant_names) ??
+        normalizeParticipantDisplayNames(
+          (previousPlacement as { assigned_participant_names?: unknown }).assigned_participant_names,
+        );
+      const nextStaffNames =
+        normalizeMetadataStringArray((nextPlacement as { staff_names?: unknown }).staff_names) ??
+        normalizeMetadataStringArray((nextPlacement as { assigned_staff_names?: unknown }).assigned_staff_names);
+      const previousStaffNames =
+        normalizeMetadataStringArray((previousPlacement as { staff_names?: unknown }).staff_names) ??
+        normalizeMetadataStringArray((previousPlacement as { assigned_staff_names?: unknown }).assigned_staff_names);
+
+      if (
+        nextAssigned.length > 0 &&
+        nextParticipantNames &&
+        nextParticipantNames.length > 0 &&
+        nextStaffNames &&
+        nextStaffNames.length > 0
+      ) {
+        return nextPlacement;
+      }
+
+      return {
+        ...nextPlacement,
+        assigned_participants: nextAssigned.length > 0 ? nextAssigned : previousAssigned,
+        participants: nextAssigned.length > 0 ? nextAssigned : previousAssigned,
+        participant_names:
+          nextParticipantNames && nextParticipantNames.length > 0
+            ? nextParticipantNames
+            : previousParticipantNames,
+        assigned_participant_names:
+          normalizeParticipantDisplayNames(
+            (nextPlacement as { assigned_participant_names?: unknown }).assigned_participant_names,
+          ) ??
+          previousParticipantNames,
+        staff_names:
+          nextStaffNames && nextStaffNames.length > 0
+            ? nextStaffNames
+            : previousStaffNames,
+        assigned_staff_names:
+          normalizeMetadataStringArray((nextPlacement as { assigned_staff_names?: unknown }).assigned_staff_names) ??
+          previousStaffNames,
+      };
+    },
+    [normalizeIdArray],
+  );
+
   const applyConfirmedPlacement = useCallback(
     (
-      confirmedPlacement: NonNullable<ScheduleResource["placements"]>[number],
+      confirmedPlacement: SchedulePlacementRow,
       options: { replacementPlacementId?: string | number | null } = {},
     ) => {
       const confirmedId = getPlacementIdentity(confirmedPlacement);
@@ -2560,6 +2727,7 @@ export default function SolveOverlay({
       durationSlots: number;
       placementId?: string | number | null;
       bundleId?: string | number | null;
+      assignedParticipantIds?: Array<string | number> | null;
     }) => {
       const requestId = placementPreviewRequestRef.current + 1;
       placementPreviewRequestRef.current = requestId;
@@ -2602,18 +2770,25 @@ export default function SolveOverlay({
         setBackendPreviewActive(false);
         const bundleApiId = toApiEntityId(args.bundleId ?? null);
         const placementApiId = toApiEntityId(args.placementId ?? null);
+        if (args.mode === "MOVE_ASSIGNED_CELL" && !isConfirmedPlacementId(placementApiId)) {
+          throw new Error(t("solve_overlay.placement_pending_wait"));
+        }
         const payload: PlacementPreviewRequest = {
           mode: args.mode,
           schedule_id: scheduleId,
           candidate_placements: candidatePlacements,
         };
-        if (args.mode === "MOVE_ASSIGNED_CELL" && placementApiId != null) {
+        if (args.mode === "MOVE_ASSIGNED_CELL") {
           payload.placement_id = placementApiId;
         }
         if (bundleApiId != null) {
           payload.bundle_id = bundleApiId;
         }
-        const preview = await previewCellPlacement(args.sourceCellId, payload);
+        const rawPreview = await previewCellPlacement(args.sourceCellId, payload);
+        const preview =
+          args.mode === "MOVE_ASSIGNED_CELL"
+            ? scopeMovePreviewToAssignedParticipants(rawPreview, args.assignedParticipantIds)
+            : rawPreview;
         if (placementPreviewRequestRef.current !== requestId) return;
         if (preview.schedule_revision && preview.schedule_revision !== "unknown") {
           lastKnownScheduleRevisionBySchedule.set(scheduleRevisionCacheId, preview.schedule_revision);
@@ -2661,6 +2836,7 @@ export default function SolveOverlay({
       gridId,
       previewCellPlacement,
       scheduleViewMode,
+      scopeMovePreviewToAssignedParticipants,
       t,
     ],
   );
@@ -3232,7 +3408,28 @@ export default function SolveOverlay({
             );
             if (c?.colorHex) ccolors[cid] = c.colorHex;
             else if (c?.color_hex) ccolors[cid] = c.color_hex;
-            if (Array.isArray(c.staffs)) cstaffs[cid] = normalizeIdArray(c.staffs);
+            const rawStaffRefs: unknown[] = Array.isArray(c.staffs)
+              ? c.staffs
+              : Array.isArray(c.staff_groups)
+              ? c.staff_groups
+              : Array.isArray(c.staff_options)
+              ? c.staff_options
+              : Array.isArray(c.staff_options_resolved)
+              ? c.staff_options_resolved
+              : [];
+            const staffRefs = rawStaffRefs
+              .map((entry: unknown): string | number | undefined => {
+                const directId = readEntityId(entry);
+                if (directId != null) return directId;
+                if (entry && typeof entry === "object") {
+                  const record = entry as Record<string, unknown>;
+                  return readEntityId(record.staff) ?? readEntityId(record.staff_group);
+                }
+                return undefined;
+              })
+              .filter((id: string | number | undefined): id is string | number => id != null)
+              .map((id: string | number) => String(id));
+            if (staffRefs.length > 0) cstaffs[cid] = staffRefs;
             const rawTierCounts = (c?.tier_counts ?? {}) as Partial<Record<TierKey, unknown>>;
             const computedTierCounts = {
               PRIMARY: Math.max(0, Number(rawTierCounts.PRIMARY ?? 0) || 0),
@@ -3823,12 +4020,10 @@ export default function SolveOverlay({
           ? String((placement as { source_cell_name?: unknown }).source_cell_name).trim()
           : undefined;
       const placementRecord = placement as Record<string, unknown>;
-      const participantNames =
-        normalizeMetadataStringArray(placementRecord.participant_names) ??
-        normalizeMetadataStringArray(placementRecord.assigned_participants);
-      const assignedParticipantNames =
-        normalizeMetadataStringArray(placementRecord.assigned_participant_names) ??
-        normalizeMetadataStringArray(placementRecord.assigned_participants);
+      const participantNames = normalizeParticipantDisplayNames(placementRecord.participant_names);
+      const assignedParticipantNames = normalizeParticipantDisplayNames(
+        placementRecord.assigned_participant_names,
+      );
       const unitNames = normalizeMetadataStringArray(placementRecord.unit_names);
       const bundleName =
         readMetadataString(placementRecord.bundle_name) ??
@@ -3982,7 +4177,7 @@ export default function SolveOverlay({
   const schedulePlacementById = useMemo(() => {
     const map: Record<string, ScheduleRow> = {};
     for (const row of schedule) {
-      const placementId = String(row.cell_id ?? "");
+      const placementId = String(row.placement_id ?? row.schedule_placement_id ?? row.cell_id ?? "");
       if (!placementId) continue;
       map[placementId] = row;
     }
@@ -4019,7 +4214,7 @@ export default function SolveOverlay({
         const participantId = rawParticipantIds[0] || "";
         const participantLabel =
           (participantId && participantNameById[participantId]) ||
-          (participantId ? t("format.participant_with_id", { id: participantId }) : t("entity.participant"));
+          t("entity.participant");
         const row = collidedPlacementId ? schedulePlacementById[collidedPlacementId] : null;
         if (row) {
           const sourceCellId = String(row.source_cell_id ?? row.cell_id ?? collidedPlacementId);
@@ -4052,7 +4247,7 @@ export default function SolveOverlay({
         const dayIndex = DAY_LABEL_TO_INDEX[dayToken];
         const dayLabel = Number.isFinite(dayIndex) ? formatDayLabel(Number(dayIndex)) : dayToken;
         const participantLabel =
-          participantNameById[participantId] || t("format.participant_with_id", { id: participantId });
+          participantNameById[participantId] || t("entity.participant");
         return t("solve_overlay.participant_unavailable_in_placement", {
           participant: participantLabel,
           day: dayLabel,
@@ -4205,7 +4400,7 @@ export default function SolveOverlay({
 
     const rowsByDay = new Map<number, PlacementEntry[]>();
     for (const row of filteredSchedule) {
-      const placementId = String(row.cell_id ?? "");
+      const placementId = String(row.placement_id ?? row.schedule_placement_id ?? row.cell_id ?? "");
       const dayIndex = Number(row.day_index);
       const startSlot = Number(row.start_slot);
       const endSlot = Number(row.end_slot);
@@ -4646,7 +4841,7 @@ export default function SolveOverlay({
       const allParticipants = Object.entries(participantNameById)
         .map(([id, name]) => ({
           id,
-          name: name || `#${id}`,
+          name: name || t("entity.participant"),
           tier: gridTierEnabled ? participantTierById[id] ?? null : null,
         }));
 
@@ -5622,7 +5817,7 @@ export default function SolveOverlay({
     const deduped = new Map<string, CommentPlacementOption>();
     for (const s of filteredSchedule) {
       const sourceCellId = String(s.source_cell_id ?? s.cell_id);
-      const placementId = String(s.cell_id ?? "");
+      const placementId = String(s.placement_id ?? s.schedule_placement_id ?? s.cell_id ?? "");
       const publishedPlacementId = getPublishedPlacementIdForCard(s);
       const resolvedBundleId = resolveBundleIdForCard(s);
       const cellName =
@@ -6331,7 +6526,10 @@ export default function SolveOverlay({
         }
         const assignmentPreview = previewItem?.assignment_preview;
         const recommendedParticipantIds = (assignmentPreview?.recommended_participant_ids || []).map(String);
-        if (assignmentPreview?.requires_user_selection) {
+        const usesAtomicStaffGroups =
+          (cellStaffsById[String(sourceCellId)] || []).length > 0 ||
+          (assignmentPreview?.available_staff_group_ids || []).length > 0;
+        if (assignmentPreview?.requires_user_selection && !usesAtomicStaffGroups) {
           const recommendedOptions: PlacementAssignmentOption[] =
             recommendedParticipantIds.length > 0
               ? [
@@ -6367,13 +6565,22 @@ export default function SolveOverlay({
         };
         const bundleApiId = toApiEntityId(bundleId);
         if (bundleApiId != null) payload.bundle_id = bundleApiId;
-        if (recommendedParticipantIds.length > 0) {
+        if (!usesAtomicStaffGroups && recommendedParticipantIds.length > 0) {
           payload.selected_participant_ids = recommendedParticipantIds.map((id) => toApiEntityId(id) ?? id);
         } else {
           payload.auto_select_participants = true;
         }
         const previousPlacements = Array.isArray(scheduleForPlacement.placements) ? scheduleForPlacement.placements : [];
         rollbackPlacements = previousPlacements;
+
+        if (usesAtomicStaffGroups) {
+          clearPlacementPreviewState();
+          const result = await withScheduleActionLoading("placing", () => confirmCellPlacement(sourceCellId, payload));
+          applyConfirmedPlacementResponse(result, scheduleForPlacement.id);
+          notifyDraftMutation();
+          return;
+        }
+
         const optimisticPlacement = buildOptimisticPlacement({
           sourceCellId,
           bundleId,
@@ -6424,6 +6631,7 @@ export default function SolveOverlay({
       addPendingPlacementIds,
       applyConfirmedPlacementResponse,
       buildOptimisticPlacement,
+      cellStaffsById,
       clearPlacementPreviewState,
       confirmCellPlacement,
       ensureDraftSchedule,
@@ -6611,7 +6819,14 @@ export default function SolveOverlay({
         const bundleApiId = toApiEntityId(normalizedBundleId);
         if (bundleApiId != null) payload.bundle_id = bundleApiId;
         const result = await confirmCellPlacement(targetSourceCellId, payload);
-        applyConfirmedPlacementResponse(result, scheduleId, { replacementPlacementId: optimisticPlacement.id });
+        applyConfirmedPlacementResponse(
+          {
+            ...result,
+            placement: preservePlacementAssignmentMetadata(result.placement, targetPlacement),
+          },
+          scheduleId,
+          { replacementPlacementId: optimisticPlacement.id },
+        );
         notifyDraftMutation();
         removePendingPlacementIds([placementId, optimisticPlacementId]);
       } catch (error: unknown) {
@@ -6645,6 +6860,7 @@ export default function SolveOverlay({
       pendingPlacementIds,
       placementPreviewBusy,
       placementPreviewBySlot,
+      preservePlacementAssignmentMetadata,
       removePendingPlacementIds,
       t,
     ],
@@ -7278,7 +7494,7 @@ export default function SolveOverlay({
       for (const pid of assigned) ids.add(String(pid));
     }
     return Array.from(ids).sort((a, b) =>
-      (participantNameById[a] || a).localeCompare(participantNameById[b] || b),
+      (participantNameById[a] || "").localeCompare(participantNameById[b] || ""),
     );
   }, [previewSchedule, participantNameById]);
 
@@ -7314,7 +7530,7 @@ export default function SolveOverlay({
 
     const rowsByDay = new Map<number, PlacementEntry[]>();
     for (const row of previewScheduleForCards) {
-      const placementId = String(row.cell_id ?? "");
+      const placementId = String(row.placement_id ?? row.schedule_placement_id ?? row.cell_id ?? "");
       const dayIndex = Number(row.day_index);
       const startSlot = Number(row.start_slot);
       const endSlot = Number(row.end_slot);
@@ -7460,13 +7676,14 @@ export default function SolveOverlay({
   }, [previewContextBlockages, previewIsParticipantMode, previewSelectedUnitId]);
 
   const previewParticipantName = previewParticipantId
-    ? (participantNameById[previewParticipantId] || `#${previewParticipantId}`)
+    ? participantNameById[previewParticipantId] || ""
     : "";
 
   const previewParticipantOptions = useMemo(() => {
     const q = previewParticipantsQuery.trim().toLowerCase();
     return previewParticipantIds
-      .map((pid) => ({ id: pid, name: participantNameById[pid] || `#${pid}` }))
+      .map((pid) => ({ id: pid, name: participantNameById[pid] || "" }))
+      .filter((p) => p.name.length > 0)
       .filter((p) => !q || p.name.toLowerCase().includes(q));
   }, [previewParticipantIds, participantNameById, previewParticipantsQuery]);
 
@@ -7994,7 +8211,7 @@ export default function SolveOverlay({
             if (col < 0 || col >= daysCount) return null;
             const sourceCellId = String(s.source_cell_id ?? s.cell_id);
             const cardKey = `${sourceCellId}-${s.day_index}-${s.start_slot}-${idx}`;
-            const placementId = String(s.cell_id ?? "");
+            const placementId = String(s.placement_id ?? s.schedule_placement_id ?? s.cell_id ?? "");
             const overlapCarouselMeta = placementId
               ? overlapCarouselDisplayByPlacementId[placementId]
               : undefined;
@@ -8091,25 +8308,31 @@ export default function SolveOverlay({
               : Array.isArray(s.participants)
               ? s.participants.map(String).sort()
               : [];
-            const publishedParticipantNames = preferSnapshotMetadata
-              ? s.participant_names && s.participant_names.length > 0
-                ? s.participant_names
-                : s.assigned_participant_names && s.assigned_participant_names.length > 0
-                ? s.assigned_participant_names
-                : null
-              : null;
-            let assignmentLabel = publishedParticipantNames
-              ? publishedParticipantNames.join(publishedParticipantNames.length > 2 ? " + " : ", ")
-              : assignedParticipantIds
-                  .map((pid) => participantNameById[pid] || `#${pid}`)
-                  .join(assignedParticipantIds.length > 2 ? " + " : ", ");
-            if (!publishedParticipantNames && assignedParticipantIds.length > 0) {
+            const placementStaffNames =
+              normalizeMetadataStringArray((s as { staff_names?: unknown }).staff_names) ??
+              normalizeMetadataStringArray((s as { assigned_staff_names?: unknown }).assigned_staff_names);
+            const placementParticipantNames =
+              normalizeParticipantDisplayNames((s as { participant_names?: unknown }).participant_names) ??
+              normalizeParticipantDisplayNames((s as { assigned_participant_names?: unknown }).assigned_participant_names);
+            const resolvedAssignedParticipantNames = assignedParticipantIds
+              .map((pid) => participantNameById[pid])
+              .filter((name): name is string => Boolean(name && name.trim()));
+            let assignmentLabel = placementStaffNames && placementStaffNames.length > 0
+              ? placementStaffNames.join(placementStaffNames.length > 2 ? " + " : ", ")
+              : placementParticipantNames && placementParticipantNames.length > 0
+              ? placementParticipantNames.join(placementParticipantNames.length > 2 ? " + " : ", ")
+              : resolvedAssignedParticipantNames.join(resolvedAssignedParticipantNames.length > 2 ? " + " : ", ");
+            if (
+              (!placementStaffNames || placementStaffNames.length === 0) &&
+              (!placementParticipantNames || placementParticipantNames.length === 0) &&
+              assignedParticipantIds.length > 0
+            ) {
               const matchedStaffId = staffIds.find((sid) => {
                 const members = (staffMembersByStaffId[sid] || []).map(String).sort();
                 return members.length === assignedParticipantIds.length && members.every((id, index) => id === assignedParticipantIds[index]);
               });
               if (matchedStaffId) {
-                assignmentLabel = staffNameById[matchedStaffId] || `Staff ${matchedStaffId}`;
+                assignmentLabel = staffNameById[matchedStaffId] || "";
               }
             }
             const isDraggingCard = dragState?.cardKey === cardKey;
@@ -8261,6 +8484,7 @@ export default function SolveOverlay({
                       bundleId: resolvedBundleId ?? null,
                       placementId,
                       durationSlots,
+                      assignedParticipantIds: assignedParticipantIds,
                     });
                   };
                   if (!isJiggleMode) {
@@ -8773,7 +8997,8 @@ export default function SolveOverlay({
             {assignmentOptions.map((option) => {
               const selected = selectedAssignmentOptionId === option.id;
               const participantLabel = option.participantIds
-                .map((participantId) => participantNameById[participantId] || `#${participantId}`)
+                .map((participantId) => participantNameById[participantId])
+                .filter((name): name is string => Boolean(name && name.trim()))
                 .join(", ");
               return (
                 <button
@@ -9566,7 +9791,7 @@ export default function SolveOverlay({
                       const col = s.day_index;
                       if (col < 0 || col >= daysCount) return null;
                       const sourceCellId = String(s.source_cell_id ?? s.cell_id);
-                      const placementId = String(s.cell_id ?? "");
+                      const placementId = String(s.placement_id ?? s.schedule_placement_id ?? s.cell_id ?? "");
                       const overlapMeta = placementId
                         ? previewOverlapDisplayByPlacementId[placementId]
                         : undefined;
@@ -9608,19 +9833,25 @@ export default function SolveOverlay({
                         : Array.isArray(s.participants)
                         ? s.participants.map(String).sort()
                         : [];
-                      const publishedParticipantNames = preferSnapshotMetadata
-                        ? s.participant_names && s.participant_names.length > 0
-                          ? s.participant_names
-                          : s.assigned_participant_names && s.assigned_participant_names.length > 0
-                          ? s.assigned_participant_names
-                          : null
-                        : null;
-                      let assignmentLabel = publishedParticipantNames
-                        ? publishedParticipantNames.join(publishedParticipantNames.length > 2 ? " + " : ", ")
-                        : assignedParticipantIds
-                            .map((pid) => participantNameById[pid] || `#${pid}`)
-                            .join(assignedParticipantIds.length > 2 ? " + " : ", ");
-                      if (!publishedParticipantNames && assignedParticipantIds.length > 0) {
+                      const placementStaffNames =
+                        normalizeMetadataStringArray((s as { staff_names?: unknown }).staff_names) ??
+                        normalizeMetadataStringArray((s as { assigned_staff_names?: unknown }).assigned_staff_names);
+                      const placementParticipantNames =
+                        normalizeParticipantDisplayNames((s as { participant_names?: unknown }).participant_names) ??
+                        normalizeParticipantDisplayNames((s as { assigned_participant_names?: unknown }).assigned_participant_names);
+                      const resolvedAssignedParticipantNames = assignedParticipantIds
+                        .map((pid) => participantNameById[pid])
+                        .filter((name): name is string => Boolean(name && name.trim()));
+                      let assignmentLabel = placementStaffNames && placementStaffNames.length > 0
+                        ? placementStaffNames.join(placementStaffNames.length > 2 ? " + " : ", ")
+                        : placementParticipantNames && placementParticipantNames.length > 0
+                        ? placementParticipantNames.join(placementParticipantNames.length > 2 ? " + " : ", ")
+                        : resolvedAssignedParticipantNames.join(resolvedAssignedParticipantNames.length > 2 ? " + " : ", ");
+                      if (
+                        (!placementStaffNames || placementStaffNames.length === 0) &&
+                        (!placementParticipantNames || placementParticipantNames.length === 0) &&
+                        assignedParticipantIds.length > 0
+                      ) {
                         const matchedStaffId = staffIds.find((sid) => {
                           const members = (staffMembersByStaffId[sid] || []).map(String).sort();
                           return (
@@ -9629,7 +9860,7 @@ export default function SolveOverlay({
                           );
                         });
                         if (matchedStaffId) {
-                          assignmentLabel = staffNameById[matchedStaffId] || t("format.staff_with_id", { id: matchedStaffId });
+                          assignmentLabel = staffNameById[matchedStaffId] || "";
                         }
                       }
                       const secondaryLabel = previewIsParticipantMode ? bundleLabel : assignmentLabel;
@@ -9749,19 +9980,27 @@ export default function SolveOverlay({
                         : Array.isArray(lockedPlacement.participants)
                         ? lockedPlacement.participants.map(String).sort()
                         : [];
-                      const publishedParticipantNames = preferSnapshotMetadata
-                        ? lockedPlacement.participant_names && lockedPlacement.participant_names.length > 0
-                          ? lockedPlacement.participant_names
-                          : lockedPlacement.assigned_participant_names && lockedPlacement.assigned_participant_names.length > 0
-                          ? lockedPlacement.assigned_participant_names
-                          : null
-                        : null;
-                      let assignmentLabel = publishedParticipantNames
-                        ? publishedParticipantNames.join(publishedParticipantNames.length > 2 ? " + " : ", ")
-                        : assignedParticipantIds
-                            .map((pid) => participantNameById[pid] || `#${pid}`)
-                            .join(assignedParticipantIds.length > 2 ? " + " : ", ");
-                      if (!publishedParticipantNames && assignedParticipantIds.length > 0) {
+                      const placementStaffNames =
+                        normalizeMetadataStringArray((lockedPlacement as { staff_names?: unknown }).staff_names) ??
+                        normalizeMetadataStringArray((lockedPlacement as { assigned_staff_names?: unknown }).assigned_staff_names);
+                      const placementParticipantNames =
+                        normalizeParticipantDisplayNames((lockedPlacement as { participant_names?: unknown }).participant_names) ??
+                        normalizeParticipantDisplayNames(
+                          (lockedPlacement as { assigned_participant_names?: unknown }).assigned_participant_names,
+                        );
+                      const resolvedAssignedParticipantNames = assignedParticipantIds
+                        .map((pid) => participantNameById[pid])
+                        .filter((name): name is string => Boolean(name && name.trim()));
+                      let assignmentLabel = placementStaffNames && placementStaffNames.length > 0
+                        ? placementStaffNames.join(placementStaffNames.length > 2 ? " + " : ", ")
+                        : placementParticipantNames && placementParticipantNames.length > 0
+                        ? placementParticipantNames.join(placementParticipantNames.length > 2 ? " + " : ", ")
+                        : resolvedAssignedParticipantNames.join(resolvedAssignedParticipantNames.length > 2 ? " + " : ", ");
+                      if (
+                        (!placementStaffNames || placementStaffNames.length === 0) &&
+                        (!placementParticipantNames || placementParticipantNames.length === 0) &&
+                        assignedParticipantIds.length > 0
+                      ) {
                         const matchedStaffId = staffIds.find((sid) => {
                           const members = (staffMembersByStaffId[sid] || []).map(String).sort();
                           return (
@@ -9770,7 +10009,7 @@ export default function SolveOverlay({
                           );
                         });
                         if (matchedStaffId) {
-                          assignmentLabel = staffNameById[matchedStaffId] || t("format.staff_with_id", { id: matchedStaffId });
+                          assignmentLabel = staffNameById[matchedStaffId] || "";
                         }
                       }
                       const secondaryLabel = previewIsParticipantMode ? bundleLabel : assignmentLabel;

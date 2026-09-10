@@ -1200,14 +1200,21 @@ const EN_US = {
   "cell_staffing.long_press_chip": "Long-press any eligible chip to start.",
   "cell_staffing.no_participants_tier": "No participants in this tier.",
   "cell_staffing.staff_groups": "Staff groups",
+  "cell_staffing.available_staff_groups": "Available",
+  "cell_staffing.selected_staff_groups": "Selected",
+  "cell_staffing.draft_staff_group": "Draft staff group: {count} / {total}",
+  "cell_staffing.save_group": "Save group",
   "cell_staffing.headcount_min_error": "Headcount must be at least 1.",
   "cell_staffing.staff_group_exact_headcount_error": "Each staff group must contain exactly headcount participants.",
   "cell_staffing.participant_in_pool_and_staff_error":
     "A participant cannot be in both eligible participants and a staff group.",
-  "cell_staffing.participant_multiple_staff_groups_error": "A participant cannot appear in more than one staff group.",
   "cell_staffing.staff_members_invalid_error": "Staff group members must be valid participants.",
   "cell_staffing.staff_source_required_error":
     "At least one staffing source is required: eligible participants or explicit staff groups.",
+  "cell_staffing.eligible_pool_headcount_error":
+    "Eligible participants must include at least {count} people, or use staff groups only.",
+  "cell_staffing.eligible_tier_pool_count_error":
+    "The {tier} eligible pool must include at least {count} participants, or use staff groups only.",
   "cell_staffing.headcount_exceeds_available_error":
     "Headcount cannot exceed available participants ({count}).",
   "cell_staffing.tier_count_exceeds_available_error":
@@ -2260,16 +2267,22 @@ const ES_AR: Dictionary = {
   "cell_staffing.long_press_chip": "Mantén presionado cualquier usuario elegible para empezar.",
   "cell_staffing.no_participants_tier": "No hay participantes en este nivel.",
   "cell_staffing.staff_groups": "Grupos de Staff",
+  "cell_staffing.available_staff_groups": "Disponibles",
+  "cell_staffing.selected_staff_groups": "Seleccionados",
+  "cell_staffing.draft_staff_group": "Grupo de Staff en borrador: {count} / {total}",
+  "cell_staffing.save_group": "Guardar grupo",
   "cell_staffing.headcount_min_error": "La cantidad de participantes debe ser al menos 1.",
   "cell_staffing.staff_group_exact_headcount_error":
     "Cada grupo debe contener exactamente la cantidad requerida de participantes.",
   "cell_staffing.participant_in_pool_and_staff_error":
     "Un participante no puede estar en participantes elegibles y en un grupo al mismo tiempo.",
-  "cell_staffing.participant_multiple_staff_groups_error":
-    "Un participante no puede aparecer en mas de un grupo.",
   "cell_staffing.staff_members_invalid_error": "Los miembros del grupo deben ser participantes validos.",
   "cell_staffing.staff_source_required_error":
     "Se necesita al menos una fuente: participantes elegibles o grupos explicitos.",
+  "cell_staffing.eligible_pool_headcount_error":
+    "Los participantes elegibles deben incluir al menos {count} personas, o usa solo grupos de Staff.",
+  "cell_staffing.eligible_tier_pool_count_error":
+    "El pool elegible {tier} debe incluir al menos {count} participantes, o usa solo grupos de Staff.",
   "cell_staffing.headcount_exceeds_available_error":
     "La cantidad no puede superar los participantes disponibles ({count}).",
   "cell_staffing.tier_count_exceeds_available_error":
@@ -2289,9 +2302,19 @@ const DICTIONARIES: Record<PreferredLanguage, Dictionary> = {
   "es-AR": ES_AR,
 };
 
+function formatMissingTranslationKey(key: string): string {
+  const readable = key
+    .split(".")
+    .at(-1)
+    ?.replace(/_/g, " ")
+    .trim();
+  if (!readable) return key;
+  return readable.charAt(0).toUpperCase() + readable.slice(1);
+}
+
 export function getTranslation(language: unknown, key: I18nKey): string {
   const locale = normalizePreferredLanguage(language);
-  return DICTIONARIES[locale][key] ?? EN_US[key] ?? String(key);
+  return DICTIONARIES[locale][key] ?? EN_US[key] ?? formatMissingTranslationKey(String(key));
 }
 
 export function t(language: unknown, key: I18nKey, params?: Record<string, string | number>): string {

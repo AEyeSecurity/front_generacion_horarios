@@ -1650,7 +1650,7 @@ export default function GridSchedulePanel({
         ...p,
         displayName:
           `${p.name || ""}${p.surname ? ` ${p.surname}` : ""}`.trim() ||
-          t("format.participant_with_id", { id: p.id }),
+          t("entity.participant"),
       }));
   }, [participants, t]);
 

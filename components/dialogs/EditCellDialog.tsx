@@ -304,19 +304,19 @@ function buildStaffingError(
     const headcount = Math.max(0, Number(tierCounts.PRIMARY || 0));
     if (headcount < 1) return t("cell_staffing.headcount_min_error");
     const poolIds = new Set((tierPools.PRIMARY || []).map(String));
-    const groupIds = new Set<string>();
     for (const group of resolvedStaffGroups) {
       if (group.staff && group.members.length === 0) continue;
       if (group.members.length !== headcount) return t("cell_staffing.staff_group_exact_headcount_error");
       for (const id of group.members) {
         if (poolIds.has(id)) return t("cell_staffing.participant_in_pool_and_staff_error");
-        if (groupIds.has(id)) return t("cell_staffing.participant_multiple_staff_groups_error");
-        groupIds.add(id);
         if (!participantMap[id]) return t("cell_staffing.staff_members_invalid_error");
       }
     }
     const hasPools = poolIds.size > 0;
     const hasGroups = staffGroups.length > 0;
+    if (hasPools && poolIds.size < headcount) {
+      return t("cell_staffing.eligible_pool_headcount_error", { count: headcount });
+    }
     if (!hasPools && !hasGroups) return t("cell_staffing.staff_source_required_error");
     if (participants.length > 0 && headcount > participants.length) {
       return t("cell_staffing.headcount_exceeds_available_error", { count: participants.length });
@@ -347,15 +347,12 @@ function buildStaffingError(
     for (const id of tierPools[tier]) poolIds.add(id);
   }
 
-  const groupIds = new Set<string>();
   for (const group of resolvedStaffGroups) {
     if (group.staff && group.members.length === 0) continue;
     if (group.members.length !== headcount) return t("cell_staffing.staff_group_exact_headcount_error");
     const composition: TierCounts = { ...EMPTY_TIER_COUNTS };
     for (const id of group.members) {
       if (poolIds.has(id)) return t("cell_staffing.participant_in_tier_pool_and_staff_error");
-      if (groupIds.has(id)) return t("cell_staffing.participant_multiple_staff_groups_error");
-      groupIds.add(id);
       const tier = participantMap[id]?.tier;
       if (!tier) return t("cell_staffing.staff_members_tier_required_error");
       composition[tier] += 1;
@@ -367,6 +364,16 @@ function buildStaffingError(
 
   const hasPools = TIERS.some((tier) => tierPools[tier].length > 0);
   const hasGroups = staffGroups.length > 0;
+  if (hasPools) {
+    for (const tier of TIERS) {
+      if (tierCounts[tier] > 0 && tierPools[tier].length < tierCounts[tier]) {
+        return t("cell_staffing.eligible_tier_pool_count_error", {
+          tier,
+          count: tierCounts[tier],
+        });
+      }
+    }
+  }
   if (!hasPools && !hasGroups) return t("cell_staffing.tier_staff_source_required_error");
   return null;
 }

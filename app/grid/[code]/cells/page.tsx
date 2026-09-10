@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { backendFetchJSON } from "@/lib/backend";
 import { requireUserOrRedirect } from "@/lib/auth";
 import type { Role } from "@/lib/types";
@@ -7,10 +8,9 @@ import { CellsHeader } from "@/components/grid/headers";
 import EmptyState from "@/components/ui/EmptyState";
 import { getTranslation } from "@/lib/i18n";
 import { gridCellCardsPath } from "@/lib/cell-api";
+import { ApiError } from "@/lib/errors";
 import { resolveGridByCode } from "../_helpers";
 import { redirect } from "next/navigation";
-
-const EN_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const readBundleLabel = (value: unknown): string | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -33,6 +33,48 @@ const readBundleLabel = (value: unknown): string | null => {
   return null;
 };
 
+const readCells = (payload: any): any[] =>
+  Array.isArray(payload) ? payload : payload?.cards ?? payload?.cells ?? payload?.results ?? [];
+
+async function readCellsFallback(gridId: string): Promise<any[]> {
+  const queries = [
+    `/api/cells/?grid=${encodeURIComponent(gridId)}`,
+    `/api/cells?grid=${encodeURIComponent(gridId)}`,
+    `/api/cells/?grid_id=${encodeURIComponent(gridId)}`,
+    `/api/cells?grid_id=${encodeURIComponent(gridId)}`,
+  ];
+
+  for (const query of queries) {
+    try {
+      const cells = readCells(await backendFetchJSON<any>(query));
+      if (cells.length > 0) return cells;
+    } catch {
+      // Try the next legacy filter shape.
+    }
+  }
+  return [];
+}
+
+const resolveFallbackParticipantNames = (cells: any[], participants: any[]): any[] => {
+  const participantsById = new Map(
+    participants
+      .filter((participant) => participant?.id != null)
+      .map((participant) => [String(participant.id), participant]),
+  );
+
+  return cells.map((cell) => {
+    if (!Array.isArray(cell?.eligible_participants)) return cell;
+    return {
+      ...cell,
+      eligible_participants: cell.eligible_participants.map((participant: unknown) =>
+        typeof participant === "number" || typeof participant === "string"
+          ? participantsById.get(String(participant)) ?? participant
+          : participant,
+      ),
+    };
+  });
+};
+
 export default async function GridCellsPage({
   params,
   searchParams,
@@ -53,11 +95,10 @@ export default async function GridCellsPage({
 
   let cells: any[] = [];
   let bundles: { id: number | string; name?: string }[] = [];
+  let usedCellsFallback = false;
   try {
     const payload = await backendFetchJSON<any>(gridCellCardsPath(id));
-    cells = Array.isArray(payload)
-      ? payload
-      : payload.cards ?? payload.cells ?? payload.results ?? [];
+    cells = readCells(payload);
     const bundleList = Array.isArray(payload?.bundles) ? payload.bundles : [];
     bundles = bundleList
       .filter((bundle: any) => bundle?.id != null)
@@ -65,11 +106,15 @@ export default async function GridCellsPage({
         id: bundle.id,
         name: readBundleLabel(bundle) || `Bundle ${bundle.id}`,
       }));
-  } catch {}
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      cells = await readCellsFallback(id);
+      usedCellsFallback = true;
+    }
+  }
 
   // Resolve my role and (if editor) my participant id in this grid
   let role: Role = "viewer";
-  let selfPid: number | null = null;
   let participants: any[] = [];
   try {
     const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
@@ -87,17 +132,15 @@ export default async function GridCellsPage({
       const pdata = await backendFetchJSON<any>(`/api/participants?grid=${id}`);
       participants = Array.isArray(pdata) ? pdata : pdata.results ?? [];
     }
-    const myp = participants.find(
-      (p: any) => (p.user_id ?? (typeof p.user === "number" ? p.user : p.user?.id)) === me.id
-    );
-    if (myp?.id != null) selfPid = Number(myp.id);
   } catch {}
+
+  if (usedCellsFallback) {
+    cells = resolveFallbackParticipantNames(cells, participants);
+  }
 
   if (participants.length === 0) {
     redirect(`${gridBase}?dock=participants&dock_feedback=participants_before_cells`);
   }
-
-  const days = (grid.days_enabled || []).map((i) => EN_DAY[i] ?? String(i));
 
   return (
     <div className="relative">

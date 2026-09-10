@@ -54,7 +54,7 @@ export function normalizeStaffGroups(
   } | null> | null,
 ): StaffOption[] {
   if (!groups) return [];
-  return groups
+  const normalized = groups
     .map((group) => {
       const staffId = group?.staff ?? group?.id;
       const members = group?.members ?? group?.participant_ids ?? group?.participants ?? [];
@@ -69,6 +69,27 @@ export function normalizeStaffGroups(
       };
     })
     .filter((group) => group.members.length > 0 || Boolean(group.staff));
+  return dedupeStaffGroups(normalized);
+}
+
+function staffGroupIdentity(group: StaffOption): string {
+  return group.staff ? `staff:${group.staff}` : `members:${[...group.members].sort().join(",")}`;
+}
+
+function staffGroupMembersKey(members: string[]) {
+  return Array.from(new Set(members.map(String))).sort().join(",");
+}
+
+function dedupeStaffGroups(groups: StaffOption[]): StaffOption[] {
+  const seen = new Set<string>();
+  const out: StaffOption[] = [];
+  for (const group of groups) {
+    const key = staffGroupIdentity(group);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(group);
+  }
+  return out;
 }
 
 export function normalizeTierPools(pools?: Partial<Record<Tier, Array<string | number>>> | null): TierPools {
@@ -165,6 +186,23 @@ function countMembersByTier(ids: string[], participantMap: Record<string, Partic
     if (tier) counts[tier] += 1;
   }
   return counts;
+}
+
+function staffGroupMatchesRequirements(
+  group: StaffOption,
+  participantMap: Record<string, Participant>,
+  usingTiers: boolean,
+  tierCounts: TierCounts,
+  headcount: number,
+) {
+  const uniqueMembers = Array.from(new Set(group.members.map(String)));
+  if (headcount <= 1 || uniqueMembers.length !== headcount) return false;
+  for (const id of uniqueMembers) {
+    if (!participantMap[id]) return false;
+  }
+  if (!usingTiers) return true;
+  const counts = countMembersByTier(uniqueMembers, participantMap);
+  return TIERS.every((tier) => counts[tier] === tierCounts[tier]);
 }
 
 function TierCountControls({
@@ -266,6 +304,20 @@ export function CellStaffingEditor({
 }: StaffingEditorProps) {
   const { t } = useI18n();
   const usingTiers = tierEnabled !== false;
+  const labelOrFallback = React.useCallback(
+    (key: Parameters<typeof t>[0], fallback: string) => {
+      const value = t(key);
+      return value === key ? fallback : value;
+    },
+    [t],
+  );
+  const labelOrFallbackWithParams = React.useCallback(
+    (key: Parameters<typeof t>[0], params: Record<string, string | number>, fallback: string) => {
+      const value = t(key, params);
+      return value === key ? fallback : value;
+    },
+    [t],
+  );
   const participantMap = React.useMemo(
     () => Object.fromEntries(participants.map((p) => [String(p.id), p])) as Record<string, Participant>,
     [participants]
@@ -286,24 +338,28 @@ export function CellStaffingEditor({
     [filteredParticipants],
   );
   const resolvedStaffGroups = React.useMemo(
-    () => resolveStaffGroupMembers(staffGroups, availableStaffGroups),
+    () => dedupeStaffGroups(resolveStaffGroupMembers(staffGroups, availableStaffGroups)),
     [availableStaffGroups, staffGroups],
   );
+  const resolvedAvailableStaffGroups = React.useMemo(
+    () => dedupeStaffGroups(resolveStaffGroupMembers(availableStaffGroups, availableStaffGroups)),
+    [availableStaffGroups],
+  );
 
-  const lockedIds = React.useMemo(() => {
+  const staffCoveredIds = React.useMemo(() => {
     return getCoveredParticipantIds(staffGroups, availableStaffGroups);
   }, [availableStaffGroups, staffGroups]);
 
   React.useEffect(() => {
-    if (lockedIds.size === 0) return;
+    if (staffCoveredIds.size === 0) return;
     const nextPools: TierPools = {
-      PRIMARY: tierPools.PRIMARY.filter((id) => !lockedIds.has(String(id))),
-      SECONDARY: tierPools.SECONDARY.filter((id) => !lockedIds.has(String(id))),
-      TERTIARY: tierPools.TERTIARY.filter((id) => !lockedIds.has(String(id))),
+      PRIMARY: tierPools.PRIMARY.filter((id) => !staffCoveredIds.has(String(id))),
+      SECONDARY: tierPools.SECONDARY.filter((id) => !staffCoveredIds.has(String(id))),
+      TERTIARY: tierPools.TERTIARY.filter((id) => !staffCoveredIds.has(String(id))),
     };
     const changed = TIERS.some((tier) => nextPools[tier].length !== tierPools[tier].length);
     if (changed) onTierPoolsChange(nextPools);
-  }, [lockedIds, onTierPoolsChange, tierPools]);
+  }, [staffCoveredIds, onTierPoolsChange, tierPools]);
 
   const [groupMode, setGroupMode] = React.useState(false);
   const [groupDraft, setGroupDraft] = React.useState<string[]>([]);
@@ -331,24 +387,39 @@ export function CellStaffingEditor({
     });
     return out;
   }, [resolvedStaffGroups]);
+  const selectedStaffGroupKeys = React.useMemo(
+    () => new Set(resolvedStaffGroups.map(staffGroupIdentity)),
+    [resolvedStaffGroups],
+  );
+  const selectedStaffGroupMemberKeys = React.useMemo(
+    () => new Set(resolvedStaffGroups.map((group) => staffGroupMembersKey(group.members))),
+    [resolvedStaffGroups],
+  );
+  const eligibleAvailableStaffGroups = React.useMemo(
+    () =>
+      resolvedAvailableStaffGroups.filter(
+        (group) =>
+          !selectedStaffGroupKeys.has(staffGroupIdentity(group)) &&
+          staffGroupMatchesRequirements(group, participantMap, usingTiers, tierCounts, headcount),
+      ),
+    [headcount, participantMap, resolvedAvailableStaffGroups, selectedStaffGroupKeys, tierCounts, usingTiers],
+  );
 
   const canStartGroupWithParticipant = React.useCallback(
     (participant: Participant) => {
-      const id = String(participant.id);
       if (!canBuildGroups) return false;
-      if (lockedIds.has(id)) return false;
       if (usingTiers) {
         if (!participant.tier) return false;
         if (tierCounts[participant.tier] <= 0) return false;
       }
       return true;
     },
-    [canBuildGroups, lockedIds, tierCounts, usingTiers]
+    [canBuildGroups, tierCounts, usingTiers]
   );
 
   React.useEffect(() => {
-    setGroupDraft((current) => current.filter((id) => !lockedIds.has(id) && Boolean(participantMap[id])));
-  }, [lockedIds, participantMap]);
+    setGroupDraft((current) => current.filter((id) => Boolean(participantMap[id])));
+  }, [participantMap]);
 
   React.useEffect(() => {
     if (!canBuildGroups) {
@@ -358,11 +429,18 @@ export function CellStaffingEditor({
   }, [canBuildGroups]);
 
   React.useEffect(() => {
+    const deduped = dedupeStaffGroups(staffGroups);
+    if (deduped.length !== staffGroups.length) {
+      onStaffGroupsChange(deduped);
+    }
+  }, [onStaffGroupsChange, staffGroups]);
+
+  React.useEffect(() => {
     return () => clearLongPress();
   }, [clearLongPress]);
 
   const togglePool = (tier: Tier, id: string) => {
-    if (lockedIds.has(id)) return;
+    if (staffCoveredIds.has(id)) return;
     const targetTier: Tier = usingTiers ? tier : "PRIMARY";
     const set = new Set(tierPools[targetTier]);
     if (set.has(id)) set.delete(id);
@@ -377,7 +455,6 @@ export function CellStaffingEditor({
   const canToggleDraftMember = React.useCallback(
     (participant: Participant) => {
       const id = String(participant.id);
-      if (lockedIds.has(id)) return false;
       if (groupDraft.includes(id)) return true;
       if (!canBuildGroups || !groupMode) return false;
       if (usingTiers && !participant.tier) return false;
@@ -385,7 +462,7 @@ export function CellStaffingEditor({
       if (usingTiers && participant.tier && draftCounts[participant.tier] >= tierCounts[participant.tier]) return false;
       return true;
     },
-    [lockedIds, groupDraft, canBuildGroups, groupMode, headcount, draftCounts, tierCounts, usingTiers]
+    [groupDraft, canBuildGroups, groupMode, headcount, draftCounts, tierCounts, usingTiers]
   );
 
   const toggleDraftMember = (participant: Participant) => {
@@ -409,7 +486,16 @@ export function CellStaffingEditor({
       }
       if (TIERS.some((tier) => counts[tier] !== tierCounts[tier])) return;
     }
-    onStaffGroupsChange([...staffGroups, { members: normalized }]);
+    const normalizedKey = staffGroupMembersKey(normalized);
+    const existingGroup = resolvedAvailableStaffGroups.find(
+      (group) => staffGroupMembersKey(group.members) === normalizedKey,
+    );
+    const nextStaffGroups = existingGroup
+      ? selectedStaffGroupMemberKeys.has(normalizedKey)
+        ? staffGroups
+        : [...staffGroups, existingGroup]
+      : [...staffGroups, { members: normalized }];
+    onStaffGroupsChange(dedupeStaffGroups(nextStaffGroups));
     if (usingTiers) {
       onTierPoolsChange({
         PRIMARY: tierPools.PRIMARY.filter((id) => !normalized.includes(id)),
@@ -438,7 +524,7 @@ export function CellStaffingEditor({
       onStaffGroupsChange(staffGroups.filter((_, index) => index !== selectedIndex));
       return;
     }
-    onStaffGroupsChange([...staffGroups, group]);
+    onStaffGroupsChange(dedupeStaffGroups([...staffGroups, group]));
   };
 
   const cancelGroupMode = () => {
@@ -484,7 +570,7 @@ export function CellStaffingEditor({
   const chipClassName = (participant: Participant) => {
     const id = String(participant.id);
     const inDraft = groupDraft.includes(id);
-    const locked = memberGroupIndex.has(id);
+    const coveredByStaffGroup = memberGroupIndex.has(id);
     const inPool = usingTiers
       ? participant.tier
         ? tierPools[participant.tier].includes(id)
@@ -493,7 +579,7 @@ export function CellStaffingEditor({
     if (inDraft) {
       return "border-black bg-black text-white shadow-sm";
     }
-    if (locked) {
+    if (coveredByStaffGroup && !groupMode) {
       return "border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed";
     }
     if (usingTiers && participant.tier && tierCounts[participant.tier] === 0 && !inPool) {
@@ -539,43 +625,6 @@ export function CellStaffingEditor({
             {t("cell_staffing.long_press_chip")}
           </div>
         )}
-        {groupMode && headcount > 1 && (
-          <div className="rounded border bg-gray-50 p-3 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-sm font-medium">
-                Draft staff group: {groupDraft.length} / {headcount}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="px-3 py-1.5 rounded border text-sm"
-                  onClick={cancelGroupMode}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="px-3 py-1.5 rounded bg-black text-white text-sm disabled:opacity-50"
-                  disabled={groupDraft.length !== headcount}
-                  onClick={addGroup}
-                >
-                  Save group
-                </button>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {groupDraft.length === 0 ? (
-                <span className="text-xs text-gray-500">{t("cell_staffing.long_press_chip")}</span>
-              ) : (
-                groupDraft.map((id) => (
-                  <span key={id} className="rounded-full border bg-white px-3 py-1 text-sm">
-                    {participantLabel(participantMap[id] || { id, name: id })}
-                  </span>
-                ))
-              )}
-            </div>
-          </div>
-        )}
 
         {usingTiers ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -587,11 +636,11 @@ export function CellStaffingEditor({
                 <div className="flex flex-wrap gap-2">
                   {filteredParticipantsByTier[tier].map((participant) => {
                     const id = String(participant.id);
-                    const locked = memberGroupIndex.has(id);
+                    const coveredByStaffGroup = memberGroupIndex.has(id);
                     const inDraft = groupDraft.includes(id);
                     const draftDisabled = groupMode && !canToggleDraftMember(participant);
                     const inPool = tierPools[tier].includes(id);
-                    const poolDisabled = !groupMode && (locked || (tierCounts[tier] === 0 && !inPool));
+                    const poolDisabled = !groupMode && (coveredByStaffGroup || (tierCounts[tier] === 0 && !inPool));
                     return (
                       <button
                         key={id}
@@ -608,8 +657,8 @@ export function CellStaffingEditor({
                         onClick={() => handleChipClick(participant)}
                         disabled={groupMode ? !canToggleDraftMember(participant) && !inDraft : poolDisabled}
                         title={
-                          locked
-                            ? `Locked in group ${Number(memberGroupIndex.get(id)) + 1}`
+                          coveredByStaffGroup
+                            ? `Already in staff group ${Number(memberGroupIndex.get(id)) + 1}`
                             : inDraft
                             ? "In current draft group"
                             : tierCounts[tier] === 0 && !inPool
@@ -620,7 +669,7 @@ export function CellStaffingEditor({
                         }
                       >
                         <span>{participantLabel(participant)}</span>
-                        {locked && (
+                        {coveredByStaffGroup && (
                           <span className="ml-2 text-[10px] uppercase tracking-wide">
                             G{Number(memberGroupIndex.get(id)) + 1}
                           </span>
@@ -641,10 +690,10 @@ export function CellStaffingEditor({
             <div className="flex flex-wrap gap-2">
               {filteredParticipants.map((participant) => {
                 const id = String(participant.id);
-                const locked = memberGroupIndex.has(id);
+                const coveredByStaffGroup = memberGroupIndex.has(id);
                 const inDraft = groupDraft.includes(id);
                 const draftDisabled = groupMode && !canToggleDraftMember(participant);
-                const poolDisabled = !groupMode && locked;
+                const poolDisabled = !groupMode && coveredByStaffGroup;
                 return (
                   <button
                     key={id}
@@ -660,10 +709,10 @@ export function CellStaffingEditor({
                     onPointerCancel={clearLongPress}
                     onClick={() => handleChipClick(participant)}
                     disabled={groupMode ? !canToggleDraftMember(participant) && !inDraft : poolDisabled}
-                    title={locked ? `Locked in group ${Number(memberGroupIndex.get(id)) + 1}` : undefined}
+                    title={coveredByStaffGroup ? `Already in staff group ${Number(memberGroupIndex.get(id)) + 1}` : undefined}
                   >
                     <span>{participantLabel(participant)}</span>
-                    {locked && (
+                    {coveredByStaffGroup && (
                       <span className="ml-2 text-[10px] uppercase tracking-wide">
                         G{Number(memberGroupIndex.get(id)) + 1}
                       </span>
@@ -678,52 +727,106 @@ export function CellStaffingEditor({
           </div>
         )}
 
-        {headcount > 1 && availableStaffGroups.length > 0 && (
-          <div className="space-y-2">
+        {headcount > 1 && (eligibleAvailableStaffGroups.length > 0 || groupMode || staffGroups.length > 0) && (
+          <div className="space-y-4">
             <div className="text-sm font-medium">{t("cell_staffing.staff_groups")}</div>
-            <div className="flex flex-wrap gap-2">
-              {availableStaffGroups.map((group, index) => {
-                const selected = Boolean(group.staff && staffGroups.some((entry) => entry.staff === group.staff));
-                const label = group.display_name || group.name || group.members
-                  .map((id) => participantLabel(participantMap[id] || { id, name: "" }))
-                  .filter(Boolean)
-                  .join(" + ");
-                return (
-                  <button
-                    key={group.staff || `${label}-${index}`}
-                    type="button"
-                    onClick={() => toggleAvailableStaffGroup(group)}
-                    className={`rounded-full border px-3 py-1.5 text-sm ${selected ? "border-gray-900 bg-gray-900 text-white" : "bg-white"}`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
-        {headcount > 1 && staffGroups.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-sm font-medium">{t("cell_staffing.staff_groups")}</div>
-            <div className="flex flex-wrap gap-2">
-              {resolvedStaffGroups.map((group, index) => (
-                <div
-                  key={`${group.members.join("-")}-${index}`}
-                  className="inline-flex items-center gap-2 rounded-full border bg-white px-3 py-1 text-sm"
-                >
-                  <span className="text-xs font-medium text-gray-500">G{index + 1}</span>
-                  <span>
-                    {group.display_name || group.name || group.members
-                      .map((id) => participantLabel(participantMap[id] || { id, name: id }))
-                      .join(" + ")}
-                  </span>
-                  <button type="button" className="text-gray-500" onClick={() => removeGroup(index)}>
-                    x
-                  </button>
+            {eligibleAvailableStaffGroups.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                  {labelOrFallback("cell_staffing.available_staff_groups", "Available")}
                 </div>
-              ))}
-            </div>
+                <div className="flex flex-wrap gap-2">
+                  {eligibleAvailableStaffGroups.map((group, index) => {
+                    const label = group.display_name || group.name || group.members
+                      .map((id) => participantLabel(participantMap[id] || { id, name: "" }))
+                      .filter(Boolean)
+                      .join(" + ");
+                    return (
+                      <button
+                        key={group.staff || `${label}-${index}`}
+                        type="button"
+                        onClick={() => toggleAvailableStaffGroup(group)}
+                        className="rounded-full border bg-white px-3 py-1.5 text-sm hover:bg-gray-50"
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {(groupMode || staffGroups.length > 0) && (
+              <div className="space-y-2">
+                <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                  {labelOrFallback("cell_staffing.selected_staff_groups", "Selected")}
+                </div>
+
+                {groupMode && (
+                  <div className="rounded border bg-gray-50 p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-medium">
+                        {labelOrFallbackWithParams(
+                          "cell_staffing.draft_staff_group",
+                          { count: groupDraft.length, total: headcount },
+                          `Draft staff group: ${groupDraft.length} / ${headcount}`,
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          className="px-3 py-1.5 rounded border text-sm"
+                          onClick={cancelGroupMode}
+                        >
+                          {t("common.cancel")}
+                        </button>
+                        <button
+                          type="button"
+                          className="px-3 py-1.5 rounded bg-black text-white text-sm disabled:opacity-50"
+                          disabled={groupDraft.length !== headcount}
+                          onClick={addGroup}
+                        >
+                          {labelOrFallback("cell_staffing.save_group", "Save group")}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {groupDraft.length === 0 ? (
+                        <span className="text-xs text-gray-500">{t("cell_staffing.long_press_chip")}</span>
+                      ) : (
+                        groupDraft.map((id) => (
+                          <span key={id} className="rounded-full border bg-white px-3 py-1 text-sm">
+                            {participantLabel(participantMap[id] || { id, name: id })}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {staffGroups.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {resolvedStaffGroups.map((group, index) => (
+                      <div
+                        key={`${group.members.join("-")}-${index}`}
+                        className="inline-flex items-center gap-2 rounded-full border bg-white px-3 py-1 text-sm"
+                      >
+                        <span className="text-xs font-medium text-gray-500">G{index + 1}</span>
+                        <span>
+                          {group.display_name || group.name || group.members
+                            .map((id) => participantLabel(participantMap[id] || { id, name: id }))
+                            .join(" + ")}
+                        </span>
+                        <button type="button" className="text-gray-500" onClick={() => removeGroup(index)}>
+                          x
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

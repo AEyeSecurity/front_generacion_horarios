@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { gridCellFormOptionsPath } from "@/lib/cell-api";
+import { buildLegacyCellFormOptions } from "@/lib/cell-legacy-bootstrap";
 import { getAccessToken } from "@/lib/cookies";
 
 const API_BASE = getApiBaseUrlNormalized();
@@ -25,6 +26,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     cache: "no-store",
   });
   const body = await response.text().catch(() => "");
+
+  if (response.status === 404) {
+    const fallback = await buildLegacyCellFormOptions(API_BASE, id, {
+      Authorization: `Bearer ${access}`,
+      cookie: req.headers.get("cookie") || "",
+    });
+    return NextResponse.json(fallback, { status: 200 });
+  }
+
   return new NextResponse(body, {
     status: response.status,
     headers: { "content-type": response.headers.get("content-type") ?? "application/json" },
