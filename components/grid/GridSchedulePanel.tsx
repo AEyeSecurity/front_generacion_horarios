@@ -21,6 +21,20 @@ import { authFetch } from "@/lib/client-auth";
 
 type Unit = { id: number | string; name: string };
 
+export type ScheduleTabScope = {
+  id: string;
+  label: string;
+  unit_ids: Array<number | string>;
+  is_virtual: boolean;
+  category_value_path?: Array<{
+    category_id: number | string;
+    category_name: string;
+    value_id: number | string;
+    value_name: string;
+  }>;
+  hidden_category_ids?: Array<number | string>;
+};
+
 type Participant = {
   id: number | string;
   name?: string;
@@ -177,6 +191,7 @@ export type ScheduleRenderModel = {
   units: Unit[];
   blockages: ScheduleBlockage[];
   timeRanges: TimeRange[];
+  scheduleTabScopes: ScheduleTabScope[];
 
   missingReason?: "no_published_schedule" | "missing_published_structure";
 };
@@ -185,6 +200,7 @@ type Props = {
   gridId: number;
   role: "viewer" | "editor" | "supervisor";
   selfParticipantId?: number | null;
+  unitNature?: "audience" | "space" | "internal" | "none" | null;
   units: Unit[];
   days: string[];
   dayStartMin: number;
@@ -607,6 +623,78 @@ const getPublishedCandidateList = <T,>(
   return null;
 };
 
+const normalizeScheduleTabScope = (source: unknown): ScheduleTabScope | null => {
+  if (!isObjectRecord(source)) return null;
+  const rawId = source.id ?? source.scope_id ?? source.key;
+  const rawLabel = source.label ?? source.name ?? source.title;
+  const unitIds = readEntityIdArray(source.unit_ids ?? source.unitIds ?? source.units);
+  const id =
+    typeof rawId === "string" || typeof rawId === "number"
+      ? String(rawId)
+      : unitIds.length === 1
+      ? `unit:${unitIds[0]}`
+      : "";
+  const label =
+    typeof rawLabel === "string" && rawLabel.trim()
+      ? rawLabel.trim()
+      : unitIds.length === 1
+      ? `Unit ${unitIds[0]}`
+      : id;
+  if (!id || !label) return null;
+  const categoryPath = Array.isArray(source.category_value_path)
+    ? source.category_value_path
+        .filter(isObjectRecord)
+        .map((entry) => ({
+          category_id: readEntityId(entry.category_id) ?? String(entry.category_id ?? ""),
+          category_name: typeof entry.category_name === "string" ? entry.category_name : "",
+          value_id: readEntityId(entry.value_id) ?? String(entry.value_id ?? ""),
+          value_name: typeof entry.value_name === "string" ? entry.value_name : "",
+        }))
+    : [];
+  return {
+    id,
+    label,
+    unit_ids: unitIds,
+    is_virtual: Boolean(source.is_virtual ?? source.virtual ?? unitIds.length > 1),
+    category_value_path: categoryPath,
+    hidden_category_ids: readEntityIdArray(source.hidden_category_ids ?? source.hiddenCategoryIds),
+  };
+};
+
+const normalizeScheduleTabScopes = (source: unknown): ScheduleTabScope[] => {
+  const list = getContextListIfPresent<unknown>(source);
+  if (!list) return [];
+  return list
+    .map(normalizeScheduleTabScope)
+    .filter((scope): scope is ScheduleTabScope => Boolean(scope))
+    .sort((a, b) =>
+      a.label.localeCompare(b.label, "es", {
+        numeric: true,
+        sensitivity: "base",
+      }),
+    );
+};
+
+const readDraftScheduleTabScopes = (contextJson: Record<string, unknown> | null): ScheduleTabScope[] => {
+  if (!contextJson) return [];
+  const scheduleCandidate = isObjectRecord(contextJson.schedule) ? contextJson.schedule : null;
+  const candidates = [
+    contextJson.schedule_tab_scopes,
+    contextJson.scheduleTabScopes,
+    contextJson.tab_scopes,
+    contextJson.tabScopes,
+    scheduleCandidate?.schedule_tab_scopes,
+    scheduleCandidate?.scheduleTabScopes,
+    scheduleCandidate?.tab_scopes,
+    scheduleCandidate?.tabScopes,
+  ];
+  for (const candidate of candidates) {
+    const scopes = normalizeScheduleTabScopes(candidate);
+    if (scopes.length > 0) return scopes;
+  }
+  return [];
+};
+
 const readCellIdentityKeys = (cell: unknown): string[] => {
   if (!isObjectRecord(cell)) return [];
   return Array.from(
@@ -677,10 +765,16 @@ const buildPublishedRenderModel = (
       units: [],
       blockages: [],
       timeRanges: [],
+      scheduleTabScopes: [],
       missingReason: "no_published_schedule",
     };
   }
   const structure = readPublishedStructure(scheduleCandidate);
+  const publishedTabScopes =
+    getPublishedCandidateList<unknown>(
+      scheduleCandidate,
+      ["schedule_tab_scopes", "scheduleTabScopes", "tab_scopes", "tabScopes", "snapshot_schedule_tab_scopes"],
+    ) ?? [];
   return {
     mode: "published",
     source: snapshotPayload(scheduleCandidate) ? "published_snapshot" : "legacy_published_snapshot",
@@ -701,6 +795,7 @@ const buildPublishedRenderModel = (
         scheduleCandidate,
         ["time_ranges", "timeRanges", "snapshot_time_ranges"],
       ) ?? [],
+    scheduleTabScopes: normalizeScheduleTabScopes(publishedTabScopes),
     missingReason: structure ? undefined : "missing_published_structure",
   };
 };
@@ -725,6 +820,7 @@ const buildDraftRenderModel = (
     units: getContextList<Unit>(contextJson?.units),
     blockages: getContextList<ScheduleBlockage>(contextJson?.blockages),
     timeRanges: getContextList<TimeRange>(contextJson?.time_ranges),
+    scheduleTabScopes: readDraftScheduleTabScopes(contextJson),
   };
 };
 
@@ -858,6 +954,7 @@ export default function GridSchedulePanel({
   gridId,
   role,
   selfParticipantId = null,
+  unitNature = null,
   units,
   days,
   dayStartMin,
@@ -1145,13 +1242,83 @@ export default function GridSchedulePanel({
 
   const sidePanelOpen = commentsPanelOpen || historyMode;
   const minDayColumnPx = compactHorizontal ? 180 : 0;
+  const scheduleDayWidthFactors = useMemo(() => {
+    const defaultFactors = Array.from({ length: activeDays.length }, () => 1);
+    if (!(unitNature == null || unitNature === "internal" || unitNature === "none")) return defaultFactors;
+
+    const columnByDayIndex = new Map<number, number>();
+    activeDayIndexes.forEach((dayIndex, columnIndex) => {
+      columnByDayIndex.set(dayIndex, columnIndex);
+    });
+
+    const rowsByColumn = new Map<number, Array<{ startSlot: number; endSlot: number }>>();
+    for (const placement of schedulePlacements) {
+      const rawDayIndex = Number(placement.day_index);
+      const columnIndex = columnByDayIndex.get(rawDayIndex) ?? rawDayIndex;
+      if (!Number.isFinite(columnIndex) || columnIndex < 0 || columnIndex >= activeDays.length) continue;
+      const startSlot = Number(placement.start_slot);
+      const endSlot = Number(placement.end_slot);
+      if (!Number.isFinite(startSlot) || !Number.isFinite(endSlot) || endSlot <= startSlot) continue;
+      const rows = rowsByColumn.get(columnIndex) ?? [];
+      rows.push({ startSlot, endSlot });
+      rowsByColumn.set(columnIndex, rows);
+    }
+
+    const perDayFactors = defaultFactors.map((factor, columnIndex) => {
+      const rows = rowsByColumn.get(columnIndex);
+      if (!rows || rows.length <= 1) return factor;
+      const orderedRows = [...rows].sort((a, b) => a.startSlot - b.startSlot || a.endSlot - b.endSlot);
+      let maxLaneCount = 1;
+      let clusterRows: Array<{ startSlot: number; endSlot: number }> = [];
+      let clusterEnd = Number.NEGATIVE_INFINITY;
+
+      const flushCluster = () => {
+        if (clusterRows.length === 0) return;
+        const laneEndByIndex: number[] = [];
+        for (const row of clusterRows) {
+          let laneIndex = -1;
+          for (let idx = 0; idx < laneEndByIndex.length; idx += 1) {
+            if (laneEndByIndex[idx] <= row.startSlot) {
+              laneIndex = idx;
+              break;
+            }
+          }
+          if (laneIndex < 0) {
+            laneEndByIndex.push(row.endSlot);
+          } else {
+            laneEndByIndex[laneIndex] = row.endSlot;
+          }
+        }
+        maxLaneCount = Math.max(maxLaneCount, laneEndByIndex.length);
+      };
+
+      for (const row of orderedRows) {
+        if (clusterRows.length === 0 || row.startSlot < clusterEnd) {
+          clusterRows.push(row);
+          clusterEnd = Math.max(clusterEnd, row.endSlot);
+          continue;
+        }
+        flushCluster();
+        clusterRows = [row];
+        clusterEnd = row.endSlot;
+      }
+      flushCluster();
+
+      return maxLaneCount > 1 ? 1.5 : 1;
+    });
+    const maxFactor = Math.max(1, ...perDayFactors);
+    return perDayFactors.map(() => maxFactor);
+  }, [activeDayIndexes, activeDays.length, schedulePlacements, unitNature]);
   const scheduleGridTemplateColumns = useMemo(
-    () => `${timeColPx}px repeat(${activeDays.length}, minmax(${minDayColumnPx}px, 1fr))`,
-    [activeDays.length, minDayColumnPx, timeColPx],
+    () =>
+      `${timeColPx}px ${scheduleDayWidthFactors
+        .map((factor) => `minmax(${Math.round(minDayColumnPx * factor)}px, ${factor}fr)`)
+        .join(" ")}`,
+    [minDayColumnPx, scheduleDayWidthFactors, timeColPx],
   );
   const scheduleMinWidthPx = useMemo(
-    () => timeColPx + activeDays.length * minDayColumnPx,
-    [activeDays.length, minDayColumnPx, timeColPx],
+    () => timeColPx + scheduleDayWidthFactors.reduce((sum, factor) => sum + factor * minDayColumnPx, 0),
+    [minDayColumnPx, scheduleDayWidthFactors, timeColPx],
   );
   const scheduleContentStyle = useMemo<React.CSSProperties | undefined>(
     () => (compactHorizontal ? { minWidth: scheduleMinWidthPx } : undefined),
@@ -2695,6 +2862,7 @@ export default function GridSchedulePanel({
               renderModel={scheduleRenderModel}
               daysCount={activeDays.length}
               dayLabels={activeDays}
+              dayWidthFactors={scheduleDayWidthFactors}
               rowPx={effectiveRowPx}
               timeColPx={timeColPx}
               bodyHeight={bodyHeight}
@@ -2709,6 +2877,7 @@ export default function GridSchedulePanel({
               historyMode={historyMode}
               historyGridCode={historyGridCode}
               onScheduleLoadingChange={handleScheduleOverlayLoadingChange}
+              unitNature={unitNature}
 
             />
                   </div>

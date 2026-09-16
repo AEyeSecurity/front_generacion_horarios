@@ -28,6 +28,7 @@ type UnassignedCellItem = {
   name: string;
   color: string;
   timeLabel: string;
+  bundleLabel?: string;
   durationSlots: number;
   remainingPlacements?: number;
   totalPlacements?: number;
@@ -85,6 +86,7 @@ type Props = {
     sourceCellId: string;
     sourceBundleId: string | null;
     cellName: string;
+    bundleLabel?: string;
     durationSlots: number;
     pointerId: number;
     clientX: number;
@@ -608,7 +610,8 @@ export default function RightSideDock({
               {unassignedCellItems.map((cell, index) => {
                 const distance = index - unassignedFocusIndex;
                 if (Math.abs(distance) > 2) return null;
-                const cardKey = `unassigned-${cell.id}`;
+                const bundleKey = cell.selectedBundleId != null ? String(cell.selectedBundleId) : "none";
+                const cardKey = `unassigned-${cell.id}-${bundleKey}`;
                 const colorIdx = CELL_COLOR_OPTIONS.findIndex(
                   (color) => color.toLowerCase() === (cell.color || "").toLowerCase(),
                 );
@@ -637,7 +640,7 @@ export default function RightSideDock({
                 const z = 120 - absDistance * 20;
                 return (
                   <div
-                    key={`unassigned-cell-${cell.id}`}
+                    key={`unassigned-cell-${cell.id}-${bundleKey}`}
                     className={`absolute left-0 right-2 rounded-xl border px-3 py-2 shadow-[0_12px_18px_-14px_rgba(0,0,0,0.55)] transition-transform duration-150 ${
                       cell.canGrab ? "cursor-grab" : "cursor-not-allowed"
                     }`}
@@ -661,6 +664,7 @@ export default function RightSideDock({
                         sourceCellId: String(cell.id),
                         sourceBundleId: cell.selectedBundleId != null ? String(cell.selectedBundleId) : null,
                         cellName: cell.name,
+                        bundleLabel: cell.bundleLabel,
                         durationSlots: Math.max(1, Number(cell.durationSlots) || 1),
                         pointerId: event.pointerId,
                         clientX: event.clientX,
@@ -691,9 +695,20 @@ export default function RightSideDock({
                           {cell.name}
                         </div>
                         {absDistance === 0 && (
-                          <div className="mt-1 text-[10px] font-medium" style={{ color: textDark }}>
-                            {cell.timeLabel}
-                          </div>
+                          <>
+                            {cell.bundleLabel && (
+                              <div
+                                className="mt-0.5 truncate text-[10px] font-semibold"
+                                style={{ color: textDark }}
+                                title={cell.bundleLabel}
+                              >
+                                {cell.bundleLabel}
+                              </div>
+                            )}
+                            <div className="mt-1 text-[10px] font-medium" style={{ color: textDark }}>
+                              {cell.timeLabel}
+                            </div>
+                          </>
                         )}
                       </div>
                     </div>
