@@ -182,6 +182,9 @@ const EN_US = {
   "grid_schedule.undo_title": "Undo (Ctrl+Z)",
   "grid_schedule.redo_title": "Redo (Ctrl+Y)",
   "grid_schedule.restore_draft_title": "Restore Draft From Last Published Version",
+  "grid_schedule.move_card_left": "Move card left",
+  "grid_schedule.move_card_right": "Move card right",
+  "grid_schedule.visual_order_save_failed": "Could not save the visual card order.",
   "grid_schedule.published_snapshot_missing_structure":
     "The published schedule snapshot is missing structure data, so it cannot be rendered safely.",
   "grid_schedule.placed_cards_same_row_error": "Placed cards can only be moved inside the same participant row.",
@@ -2070,6 +2073,9 @@ const ES_AR: Dictionary = {
   "grid_schedule.undo_title": "Deshacer (Ctrl+Z)",
   "grid_schedule.redo_title": "Rehacer (Ctrl+Y)",
   "grid_schedule.restore_draft_title": "Restaurar borrador desde la ultima version publicada",
+  "grid_schedule.move_card_left": "Mover tarjeta a la izquierda",
+  "grid_schedule.move_card_right": "Mover tarjeta a la derecha",
+  "grid_schedule.visual_order_save_failed": "No se pudo guardar el orden visual de las tarjetas.",
   "grid_schedule.published_snapshot_missing_structure":
     "La version publicada no tiene datos de estructura, por lo que no se puede renderizar de forma segura.",
   "grid_schedule.placed_cards_same_row_error":

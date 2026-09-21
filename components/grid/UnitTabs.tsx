@@ -35,6 +35,7 @@ export default function UnitTabs({
   externalRefreshTick = 0,
   onDraftMutated,
   onScheduleLoadingChange,
+  onSelectedScopeChange,
   commentsPanelOpen = false,
   onCommentsPanelOpenChange,
   historyMode = false,
@@ -59,6 +60,7 @@ export default function UnitTabs({
   externalRefreshTick?: number;
   onDraftMutated?: () => void;
   onScheduleLoadingChange?: (loading: boolean, ready: boolean) => void;
+  onSelectedScopeChange?: (unitIds: string[]) => void;
   commentsPanelOpen?: boolean;
   onCommentsPanelOpenChange?: (open: boolean) => void;
   historyMode?: boolean;
@@ -137,6 +139,10 @@ export default function UnitTabs({
   const effectiveSelected = selected ?? firstSelectableTab;
   const selectedTab = tabs.find((tab) => tab.id === effectiveSelected) ?? null;
   const hideTabBar = tabs.length === 1 && tabs[0].id === NO_UNIT_TAB_ID && !blockageGlobalModeActive;
+
+  useEffect(() => {
+    onSelectedScopeChange?.(selectedTab?.unitIds ?? []);
+  }, [onSelectedScopeChange, selectedTab]);
 
   useEffect(() => {
     if (selected && !tabs.some((tab) => tab.id === selected)) {

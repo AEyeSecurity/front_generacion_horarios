@@ -84,6 +84,7 @@ type ScheduleResource = {
     day_index: number;
     start_slot: number;
     end_slot: number;
+    visual_order?: number | null;
     participant_names?: string[];
     assigned_participant_names?: string[];
     staff_names?: string[];
@@ -133,6 +134,7 @@ type ScheduleRow = {
   day_index: number;
   start_slot: number;
   end_slot: number;
+  visual_order?: number | null;
   assigned_participants?: Array<string | number>;
   participants?: Array<string | number>;
   units?: Array<string | number>;
@@ -301,8 +303,10 @@ type OverlapGroupMeta = {
   dayIndex: number;
   groupSize: number;
   groupPosition: number;
-  laneStartRatio?: number;
-  laneWidthRatio?: number;
+  startUnit: number;
+  spanUnits: number;
+  clusterPlacementIds: string[];
+  concurrentPlacementIds: string[];
 };
 
 type UnitNature = "audience" | "space" | "internal" | "none";
@@ -313,6 +317,7 @@ type OverlapPlacementEntry = {
   startSlot: number;
   endSlot: number;
   spanWeight?: number;
+  visualOrder?: number | null;
 };
 
 type PrecheckDialogState = {
@@ -337,47 +342,69 @@ function buildPlacementKey(
   return `published|${publishedScheduleId}|${sourceCellId}|${bundleId == null ? "__no_bundle__" : bundleId}|${dayIndex}|${startSlot}`;
 }
 
-function buildOverlapGroupMeta(rowsByDay: Map<number, OverlapPlacementEntry[]>): Record<string, OverlapGroupMeta> {
+function buildOverlapGroupMeta(
+  rowsByDay: Map<number, OverlapPlacementEntry[]>,
+  availableUnits = 1,
+): Record<string, OverlapGroupMeta> {
   const nextMeta: Record<string, OverlapGroupMeta> = {};
+  const capacityUnits = Math.max(1, Math.round(availableUnits));
+
+  const compareVisualOrder = (a: OverlapPlacementEntry, b: OverlapPlacementEntry) => {
+    const aOrder = typeof a.visualOrder === "number" && Number.isFinite(a.visualOrder) ? a.visualOrder : null;
+    const bOrder = typeof b.visualOrder === "number" && Number.isFinite(b.visualOrder) ? b.visualOrder : null;
+    if (aOrder != null || bOrder != null) {
+      if (aOrder == null) return 1;
+      if (bOrder == null) return -1;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+    }
+    return (
+      a.startSlot - b.startSlot ||
+      a.endSlot - b.endSlot ||
+      a.placementId.localeCompare(b.placementId, undefined, { numeric: true })
+    );
+  };
 
   const assignCluster = (dayIndex: number, clusterRows: OverlapPlacementEntry[]) => {
     if (clusterRows.length === 0) return;
+    const orderedRows = [...clusterRows].sort(compareVisualOrder);
+    const placed: Array<OverlapPlacementEntry & { startUnit: number; spanUnits: number }> = [];
 
-    const laneEndByIndex: number[] = [];
-    const placementLaneAssignments: Array<{ placementId: string; laneIndex: number }> = [];
-    const laneWeights: number[] = [];
-
-    for (const row of clusterRows) {
-      let laneIndex = -1;
-      for (let idx = 0; idx < laneEndByIndex.length; idx += 1) {
-        if (laneEndByIndex[idx] <= row.startSlot) {
-          laneIndex = idx;
-          break;
-        }
-      }
-      if (laneIndex < 0) {
-        laneIndex = laneEndByIndex.length;
-        laneEndByIndex.push(row.endSlot);
-        laneWeights.push(Math.max(1, Number(row.spanWeight) || 1));
-      } else {
-        laneEndByIndex[laneIndex] = row.endSlot;
-        laneWeights[laneIndex] = Math.max(laneWeights[laneIndex] || 1, Math.max(1, Number(row.spanWeight) || 1));
-      }
-      placementLaneAssignments.push({ placementId: row.placementId, laneIndex });
+    for (const row of orderedRows) {
+      const spanUnits = Math.max(1, Math.min(capacityUnits, Math.round(Number(row.spanWeight) || 1)));
+      const candidateStarts = new Set<number>([0]);
+      for (const existing of placed) candidateStarts.add(existing.startUnit + existing.spanUnits);
+      const starts = Array.from(candidateStarts).sort((a, b) => a - b);
+      const startUnit =
+        starts.find((candidateStart) =>
+          placed.every((existing) => {
+            const overlapsInTime = row.startSlot < existing.endSlot && row.endSlot > existing.startSlot;
+            if (!overlapsInTime) return true;
+            return (
+              candidateStart + spanUnits <= existing.startUnit ||
+              candidateStart >= existing.startUnit + existing.spanUnits
+            );
+          }),
+        ) ?? 0;
+      placed.push({ ...row, startUnit, spanUnits });
     }
 
-    const laneCount = Math.max(1, laneEndByIndex.length);
-    const totalLaneWeight = Math.max(1, laneWeights.reduce((sum, weight) => sum + weight, 0));
-    for (const assignment of placementLaneAssignments) {
-      const precedingLaneWeight = laneWeights
-        .slice(0, assignment.laneIndex)
-        .reduce((sum, weight) => sum + weight, 0);
-      nextMeta[assignment.placementId] = {
+    const usedUnits = Math.max(1, ...placed.map((row) => row.startUnit + row.spanUnits));
+    const centeredOffset = usedUnits < capacityUnits ? (capacityUnits - usedUnits) / 2 : 0;
+    const clusterPlacementIds = orderedRows.map((row) => row.placementId);
+
+    for (const row of placed) {
+      const concurrentRows = placed
+        .filter((candidate) => row.startSlot < candidate.endSlot && row.endSlot > candidate.startSlot)
+        .sort((a, b) => a.startUnit - b.startUnit || compareVisualOrder(a, b));
+      const concurrentPlacementIds = concurrentRows.map((candidate) => candidate.placementId);
+      nextMeta[row.placementId] = {
         dayIndex,
-        groupSize: laneCount,
-        groupPosition: assignment.laneIndex,
-        laneStartRatio: precedingLaneWeight / totalLaneWeight,
-        laneWidthRatio: (laneWeights[assignment.laneIndex] || 1) / totalLaneWeight,
+        groupSize: concurrentPlacementIds.length,
+        groupPosition: Math.max(0, concurrentPlacementIds.indexOf(row.placementId)),
+        startUnit: centeredOffset + row.startUnit,
+        spanUnits: row.spanUnits,
+        clusterPlacementIds,
+        concurrentPlacementIds,
       };
     }
   };
@@ -416,7 +443,7 @@ function getColumnOverlapCardLayout(
   timeColPx: number,
   dayWidthFactors: number[],
   meta?: OverlapGroupMeta,
-  insetPx = 6,
+  insetPx = 0,
 ) {
   const safeFactors = dayWidthFactors.length > 0 ? dayWidthFactors : [1];
   const safeCol = Math.max(0, Math.min(safeFactors.length - 1, col));
@@ -428,22 +455,17 @@ function getColumnOverlapCardLayout(
   const prefixFactor = safeFactors
     .slice(0, safeCol)
     .reduce((sum, factor) => sum + Math.max(0.1, Number(factor) || 1), 0);
-  const groupSize = Math.max(1, Number(meta?.groupSize) || 1);
-  const groupPosition = Math.max(0, Math.min(groupSize - 1, Number(meta?.groupPosition) || 0));
-  if (groupSize <= 1) {
-    return {
-      left: `calc(${timeColPx}px + ${prefixFactor} * ((100% - ${timeColPx}px) / ${totalFactor}) + ${insetPx}px)`,
-      width: `calc(${dayFactor} * ((100% - ${timeColPx}px) / ${totalFactor}) - ${insetPx * 2}px)`,
-    };
-  }
-
-  const laneFactor = dayFactor / groupSize;
-  const leftFactor = prefixFactor + laneFactor * groupPosition;
-  const leadingInsetPx = groupPosition === 0 ? insetPx : 0;
-  const trailingInsetPx = groupPosition === groupSize - 1 ? insetPx : 0;
+  const scopeCount = Math.max(1, Math.round(dayFactor));
+  const spanUnits = Math.max(1, Math.min(scopeCount, Math.round(meta?.spanUnits ?? scopeCount)));
+  const maxStartUnit = Math.max(0, scopeCount - spanUnits);
+  const startUnit = meta
+    ? Math.max(0, Math.min(maxStartUnit, meta.startUnit))
+    : maxStartUnit / 2;
+  const startFactor = prefixFactor + dayFactor * (startUnit / scopeCount);
+  const widthFactor = dayFactor * (spanUnits / scopeCount);
   return {
-    left: `calc(${timeColPx}px + ${leftFactor} * ((100% - ${timeColPx}px) / ${totalFactor}) + ${leadingInsetPx}px)`,
-    width: `calc(${laneFactor} * ((100% - ${timeColPx}px) / ${totalFactor}) - ${leadingInsetPx + trailingInsetPx}px)`,
+    left: `calc(${timeColPx}px + ${startFactor} * ((100% - ${timeColPx}px) / ${totalFactor}) + ${insetPx}px)`,
+    width: `calc(${widthFactor} * ((100% - ${timeColPx}px) / ${totalFactor}) - ${insetPx * 2}px)`,
   };
 }
 
@@ -453,9 +475,9 @@ function getGroupedUnitCardLayout(
   dayWidthFactors: number[],
   scopeUnitIds: string[],
   placementUnitIds: string[],
-  pointerUnitIndex?: number | null,
+  _pointerUnitIndex?: number | null,
   meta?: OverlapGroupMeta,
-  insetPx = 6,
+  insetPx = 0,
 ) {
   const safeFactors = dayWidthFactors.length > 0 ? dayWidthFactors : [1];
   const safeCol = Math.max(0, Math.min(safeFactors.length - 1, col));
@@ -481,32 +503,12 @@ function getGroupedUnitCardLayout(
   let startUnit = 0;
   if (indexes.length > 0) {
     spanUnits = Math.min(scopeCount, Math.max(1, indexes.length));
-  } else if (typeof pointerUnitIndex === "number" && Number.isFinite(pointerUnitIndex)) {
-    spanUnits = 1;
   }
 
   const maxStartUnit = Math.max(0, scopeCount - spanUnits);
-  if (typeof pointerUnitIndex === "number" && Number.isFinite(pointerUnitIndex)) {
-    startUnit = Math.max(0, Math.min(maxStartUnit, pointerUnitIndex + 0.5 - spanUnits / 2));
-  } else if (meta && Math.max(1, Number(meta.groupSize) || 1) > 1) {
-    const groupSize = Math.max(1, Number(meta.groupSize) || 1);
-    const groupPosition = Math.max(0, Math.min(groupSize - 1, Number(meta.groupPosition) || 0));
-    if (typeof meta.laneStartRatio === "number" && typeof meta.laneWidthRatio === "number") {
-      const laneStartRatio = Math.max(0, Math.min(1, meta.laneStartRatio));
-      const laneWidthRatio = Math.max(0, Math.min(1 - laneStartRatio, meta.laneWidthRatio));
-      const startFactor = prefixFactor + dayFactor * laneStartRatio;
-      const widthFactor = dayFactor * laneWidthRatio;
-      const leadingInsetPx = laneStartRatio <= 0.001 ? insetPx : 0;
-      const trailingInsetPx = laneStartRatio + laneWidthRatio >= 0.999 ? insetPx : 0;
-      return {
-        left: `calc(${timeColPx}px + ${startFactor} * ((100% - ${timeColPx}px) / ${totalFactor}) + ${leadingInsetPx}px)`,
-        width: `calc(${widthFactor} * ((100% - ${timeColPx}px) / ${totalFactor}) - ${leadingInsetPx + trailingInsetPx}px)`,
-      };
-    }
-    startUnit = groupSize > 1 ? Math.max(0, Math.min(maxStartUnit, (maxStartUnit * groupPosition) / (groupSize - 1))) : 0;
-  } else {
-    startUnit = maxStartUnit / 2;
-  }
+  startUnit = meta
+    ? Math.max(0, Math.min(maxStartUnit, meta.startUnit))
+    : maxStartUnit / 2;
 
   const startFactor = prefixFactor + dayFactor * (startUnit / scopeCount);
   const widthFactor = dayFactor * (spanUnits / scopeCount);
@@ -536,33 +538,6 @@ function getDayIndexFromContentX(x: number, contentWidth: number, dayWidthFactor
   return x >= 0 && x <= contentWidth ? safeFactors.length - 1 : null;
 }
 
-function getScopedUnitIndexFromContentX(
-  x: number,
-  contentWidth: number,
-  dayWidthFactors: number[],
-  dayIndex: number,
-  scopeCount: number,
-) {
-  if (scopeCount <= 0) return null;
-  const safeFactors = dayWidthFactors.length > 0 ? dayWidthFactors : [1];
-  const safeDayIndex = Math.max(0, Math.min(safeFactors.length - 1, dayIndex));
-  const totalFactor = Math.max(
-    1,
-    safeFactors.reduce((sum, factor) => sum + Math.max(0.1, Number(factor) || 1), 0),
-  );
-  const unitWidth = contentWidth / totalFactor;
-  if (!Number.isFinite(unitWidth) || unitWidth <= 0) return null;
-  const prefixFactor = safeFactors
-    .slice(0, safeDayIndex)
-    .reduce((sum, factor) => sum + Math.max(0.1, Number(factor) || 1), 0);
-  const dayFactor = Math.max(0.1, Number(safeFactors[safeDayIndex]) || 1);
-  const dayStartX = prefixFactor * unitWidth;
-  const dayWidth = dayFactor * unitWidth;
-  if (!Number.isFinite(dayWidth) || dayWidth <= 0) return null;
-  const ratio = Math.max(0, Math.min(0.999999, (x - dayStartX) / dayWidth));
-  return Math.max(0, Math.min(scopeCount - 1, Math.floor(ratio * scopeCount)));
-}
-
 function getGroupedUnitSpanCount(scopeUnitIds: string[], placementUnitIds: string[]) {
   const scopeCount = Math.max(1, scopeUnitIds.length);
   const indexByUnitId = new Map(scopeUnitIds.map((unitId, index) => [String(unitId), index]));
@@ -572,12 +547,6 @@ function getGroupedUnitSpanCount(scopeUnitIds: string[], placementUnitIds: strin
     if (typeof index === "number") matchedIndexes.add(index);
   }
   return matchedIndexes.size > 0 ? Math.min(scopeCount, Math.max(1, matchedIndexes.size)) : scopeCount;
-}
-
-function getGroupedStartUnitFromPointer(pointerUnitIndex: number | null | undefined, scopeCount: number, spanUnits: number) {
-  const maxStartUnit = Math.max(0, scopeCount - spanUnits);
-  if (typeof pointerUnitIndex !== "number" || !Number.isFinite(pointerUnitIndex)) return maxStartUnit / 2;
-  return Math.max(0, Math.min(maxStartUnit, pointerUnitIndex + 0.5 - spanUnits / 2));
 }
 
 const DAY_LABEL_TO_INDEX: Record<string, number> = {
@@ -928,6 +897,8 @@ type PlacementOrUnassignedDragState = {
   offsetY: number;
   grabOffsetX: number;
   grabOffsetY: number;
+  interactionIntent?: "pending" | "visual-order" | "placement-move";
+  assignedParticipantIds?: string[];
 };
 
 type ParticipantToolDragState = {
@@ -1349,6 +1320,7 @@ export default function SolveOverlay({
   >({});
   const [previewParticipantRules, setPreviewParticipantRules] = useState<AvailabilityRule[]>([]);
   const [pinBusyKey, setPinBusyKey] = useState<string | null>(null);
+  const [visualOrderBusy, setVisualOrderBusy] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinErrorCard, setPinErrorCard] = useState<PinErrorCardState | null>(null);
   const [pinErrorCardAnchor, setPinErrorCardAnchor] = useState<{ left: number; top: number } | null>(null);
@@ -1388,6 +1360,7 @@ export default function SolveOverlay({
   const [hoveredJiggleCardKey, setHoveredJiggleCardKey] = useState<string | null>(null);
   const [isJiggleMode, setIsJiggleMode] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const placementMovePreviewPointerRef = useRef<number | null>(null);
   const [participantDragHoverPlacementId, setParticipantDragHoverPlacementId] = useState<string | null>(null);
   const [participantDropGhost, setParticipantDropGhost] = useState<{
     token: number;
@@ -2189,6 +2162,13 @@ export default function SolveOverlay({
       source.assigned_participants ?? source.participants,
     );
     const unitIds = normalizeIdArray(source.units ?? source.unit_ids);
+    const rawVisualOrder = source.visual_order ?? source.visualOrder;
+    const visualOrder =
+      rawVisualOrder == null || rawVisualOrder === ""
+        ? null
+        : Number.isFinite(Number(rawVisualOrder))
+        ? Math.round(Number(rawVisualOrder))
+        : null;
     const breaks = Array.isArray(source.breaks)
       ? source.breaks
           .map((entry) => {
@@ -2224,6 +2204,7 @@ export default function SolveOverlay({
       day_index: Math.max(0, Math.round(dayIndex)),
       start_slot: Math.max(0, Math.round(startSlot)),
       end_slot: Math.max(1, Math.round(endSlot)),
+      visual_order: visualOrder,
       assigned_participants: assignedParticipants,
       participants: assignedParticipants,
       units: unitIds,
@@ -4373,6 +4354,12 @@ export default function SolveOverlay({
         day_index: Number(placement.day_index),
         start_slot: Number(placement.start_slot),
         end_slot: Number(placement.end_slot),
+        visual_order:
+          placementRecord.visual_order == null || placementRecord.visual_order === ""
+            ? null
+            : Number.isFinite(Number(placementRecord.visual_order))
+            ? Math.round(Number(placementRecord.visual_order))
+            : null,
         assigned_participants: assignedParticipants,
         participants: assignedParticipants,
         units: resolvedUnitIds,
@@ -4689,15 +4676,145 @@ export default function SolveOverlay({
       if (endSlot <= startSlot) continue;
       const dayRows = rowsByDay.get(dayIndex) ?? [];
       const placementUnitIds = Array.isArray(row.units) ? row.units.map(String) : [];
-      const spanWeight = isGroupedUnitScope
-        ? getGroupedUnitSpanCount(selectedScopeUnitIds, placementUnitIds)
-        : 1;
-      dayRows.push({ placementId, dayIndex, startSlot, endSlot, spanWeight });
+      const spanWeight = getGroupedUnitSpanCount(selectedScopeUnitIds, placementUnitIds);
+      dayRows.push({
+        placementId,
+        dayIndex,
+        startSlot,
+        endSlot,
+        spanWeight,
+        visualOrder: row.visual_order ?? null,
+      });
       rowsByDay.set(dayIndex, dayRows);
     }
 
-    return buildOverlapGroupMeta(rowsByDay);
-  }, [filteredSchedule, isGroupedUnitScope, selectedScopeUnitIds]);
+    return buildOverlapGroupMeta(rowsByDay, Math.max(1, selectedScopeUnitIds.length));
+  }, [filteredSchedule, selectedScopeUnitIds]);
+
+  const canReorderVisualPlacements =
+    scheduleViewMode === "draft" && !historyMode && role !== "viewer";
+
+  const reorderPlacementVisualOrder = useCallback(
+    async (placementId: string, targetConcurrentIndex: number) => {
+      if (!canReorderVisualPlacements || visualOrderBusy) return;
+      const meta = overlapGroupMetaByPlacementId[placementId];
+      if (!meta || meta.concurrentPlacementIds.length <= 1) return;
+      const concurrentIndex = meta.concurrentPlacementIds.indexOf(placementId);
+      const boundedTargetIndex = Math.max(
+        0,
+        Math.min(meta.concurrentPlacementIds.length - 1, targetConcurrentIndex),
+      );
+      if (concurrentIndex < 0 || concurrentIndex === boundedTargetIndex) return;
+
+      const targetId = meta.concurrentPlacementIds[boundedTargetIndex];
+      if (!targetId || targetId === placementId) return;
+
+      const nextClusterOrder = [...meta.clusterPlacementIds];
+      const placementIndex = nextClusterOrder.indexOf(placementId);
+      if (placementIndex < 0) return;
+      nextClusterOrder.splice(placementIndex, 1);
+      const targetIndexAfterRemoval = nextClusterOrder.indexOf(targetId);
+      if (targetIndexAfterRemoval < 0) return;
+      nextClusterOrder.splice(
+        boundedTargetIndex > concurrentIndex ? targetIndexAfterRemoval + 1 : targetIndexAfterRemoval,
+        0,
+        placementId,
+      );
+
+      const nextOrderByPlacementId = new Map(
+        nextClusterOrder.map((id, index) => [id, index]),
+      );
+      const previousOrderByPlacementId = new Map(
+        schedule
+          .filter((row) => nextOrderByPlacementId.has(String(row.placement_id ?? row.schedule_placement_id ?? row.cell_id)))
+          .map((row) => [
+            String(row.placement_id ?? row.schedule_placement_id ?? row.cell_id),
+            row.visual_order ?? null,
+          ]),
+      );
+
+      const applyOrders = (orders: Map<string, number | null>) => {
+        setCurrentSchedule((current) => {
+          if (!current || !Array.isArray(current.placements)) return current;
+          return {
+            ...current,
+            placements: current.placements.map((placement) => {
+              const id = getPlacementIdentity(placement);
+              if (!id || !orders.has(id)) return placement;
+              return { ...placement, visual_order: orders.get(id) ?? null };
+            }),
+          };
+        });
+      };
+
+      applyOrders(nextOrderByPlacementId);
+      setVisualOrderBusy(true);
+      setPinError(null);
+      try {
+        const placements = nextClusterOrder.map((id, index) => ({
+          placement_id: toApiEntityId(id) ?? id,
+          visual_order: index,
+        }));
+        const response = await authFetch(
+          `/api/grids/${encodeURIComponent(String(gridId))}/schedule/visual-order/`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ placements }),
+          },
+        );
+        if (!response.ok) {
+          const detail = await response.text().catch(() => "");
+          throw new Error(detail || t("grid_schedule.visual_order_save_failed"));
+        }
+        invalidateGridScreenContext(gridId, "draft");
+      } catch (error: unknown) {
+        applyOrders(previousOrderByPlacementId);
+        setPinError(
+          error instanceof Error && error.message
+            ? error.message
+            : t("grid_schedule.visual_order_save_failed"),
+        );
+      } finally {
+        setVisualOrderBusy(false);
+      }
+    },
+    [
+      canReorderVisualPlacements,
+      getPlacementIdentity,
+      gridId,
+      overlapGroupMetaByPlacementId,
+      schedule,
+      t,
+      visualOrderBusy,
+    ],
+  );
+
+  const getVisualOrderTargetIndex = useCallback(
+    (placementId: string, clientX: number, grabOffsetX: number) => {
+      const meta = overlapGroupMetaByPlacementId[placementId];
+      if (!meta || meta.concurrentPlacementIds.length <= 1) return null;
+      const selectorPlacementId = placementId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      const activeCard = document.querySelector<HTMLElement>(
+        `[data-placement-id="${selectorPlacementId}"]`,
+      );
+      const activeWidth = activeCard?.getBoundingClientRect().width ?? 0;
+      const draggedCenterX = clientX - grabOffsetX + activeWidth / 2;
+      const peerCenters = meta.concurrentPlacementIds
+        .filter((id) => id !== placementId)
+        .map((id) => {
+          const selectorId = id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+          const card = document.querySelector<HTMLElement>(`[data-placement-id="${selectorId}"]`);
+          const rect = card?.getBoundingClientRect();
+          return rect ? rect.left + rect.width / 2 : null;
+        })
+        .filter((center): center is number => center != null)
+        .sort((a, b) => a - b);
+      if (peerCenters.length !== meta.concurrentPlacementIds.length - 1) return null;
+      return peerCenters.filter((center) => center < draggedCenterX).length;
+    },
+    [overlapGroupMetaByPlacementId],
+  );
 
   const overlapCarouselTotalPages = 1;
 
@@ -5698,6 +5815,9 @@ export default function SolveOverlay({
   const dragPreview = useMemo(() => {
     if (!dragState) return null;
     if (dragState.dragType === "participant-tool") return null;
+    if (dragState.dragType === "placement" && dragState.interactionIntent !== "placement-move") {
+      return null;
+    }
     const overlay = overlayRef.current;
     if (!overlay) return null;
     const rect = overlay.getBoundingClientRect();
@@ -5713,64 +5833,58 @@ export default function SolveOverlay({
     const rawStart = Math.round(cardTop / rowPx);
     const maxStart = Math.max(0, slotCount - dragState.durationSlots);
     const startSlot = Math.max(0, Math.min(maxStart, rawStart));
-    const rawPointerUnitIndex = isGroupedUnitScope
-      ? getScopedUnitIndexFromContentX(
-          pointerX,
-          contentWidth,
-          effectiveDayWidthFactors,
-          dayIndex,
-          selectedScopeUnitIds.length,
-        )
-      : null;
     const dragUnitIds =
       dragState.sourceBundleId != null
         ? (bundleUnitsById[String(dragState.sourceBundleId)] || []).map(String)
         : [];
-    const previewOverlapsVisiblePlacement = filteredSchedule.some((row) => {
+    const scopeCount = Math.max(1, selectedScopeUnitIds.length);
+    const previewSpanUnits = getGroupedUnitSpanCount(selectedScopeUnitIds, dragUnitIds);
+    const previewPlacementId = "__drag_preview__";
+    const draggedRow = filteredSchedule.find((row) => {
       const placementId = String(row.placement_id ?? row.schedule_placement_id ?? row.cell_id ?? "");
-      if (!placementId || placementId === dragState.placementId) return false;
-      if (Number(row.day_index) !== dayIndex) return false;
-      return Number(row.start_slot) < startSlot + dragState.durationSlots && Number(row.end_slot) > startSlot;
+      return placementId === dragState.placementId;
     });
-    const pointerUnitIndex = previewOverlapsVisiblePlacement ? rawPointerUnitIndex : null;
-    const previewSpanUnits = isGroupedUnitScope
-      ? getGroupedUnitSpanCount(selectedScopeUnitIds, dragUnitIds)
-      : 1;
-    const previewStartUnit = isGroupedUnitScope
-      ? getGroupedStartUnitFromPointer(pointerUnitIndex, selectedScopeUnitIds.length, previewSpanUnits)
-      : 0;
-    let previewLayout =
-      isGroupedUnitScope
-        ? getGroupedUnitCardLayout(
-            dayIndex,
-            timeColPx,
-            effectiveDayWidthFactors,
-            selectedScopeUnitIds,
-            dragUnitIds,
-            pointerUnitIndex,
-          )
-        : getColumnOverlapCardLayout(dayIndex, timeColPx, effectiveDayWidthFactors);
-    if (!isGroupedUnitScope && useColumnOverlapLayout) {
-      const previewPlacementId = "__drag_preview__";
-      const dayRows: OverlapPlacementEntry[] = filteredSchedule.flatMap((row) => {
-        const placementId = String(row.placement_id ?? row.schedule_placement_id ?? row.cell_id ?? "");
-        if (!placementId || placementId === dragState.placementId) return [];
-        const rowDayIndex = Number(row.day_index);
-        if (rowDayIndex !== dayIndex) return [];
-        const rowStartSlot = Number(row.start_slot);
-        const rowEndSlot = Number(row.end_slot);
-        if (!Number.isFinite(rowStartSlot) || !Number.isFinite(rowEndSlot) || rowEndSlot <= rowStartSlot) return [];
-        return [{ placementId, dayIndex, startSlot: rowStartSlot, endSlot: rowEndSlot }];
-      });
-      dayRows.push({
-        placementId: previewPlacementId,
+    const dayRows: OverlapPlacementEntry[] = filteredSchedule.flatMap((row) => {
+      const placementId = String(row.placement_id ?? row.schedule_placement_id ?? row.cell_id ?? "");
+      if (!placementId || placementId === dragState.placementId) return [];
+      if (Number(row.day_index) !== dayIndex) return [];
+      const rowStartSlot = Number(row.start_slot);
+      const rowEndSlot = Number(row.end_slot);
+      if (!Number.isFinite(rowStartSlot) || !Number.isFinite(rowEndSlot) || rowEndSlot <= rowStartSlot) return [];
+      const rowUnitIds = Array.isArray(row.units) ? row.units.map(String) : [];
+      return [{
+        placementId,
         dayIndex,
-        startSlot,
-        endSlot: startSlot + dragState.durationSlots,
-      });
-      const previewOverlapMeta = buildOverlapGroupMeta(new Map([[dayIndex, dayRows]]))[previewPlacementId];
-      previewLayout = getColumnOverlapCardLayout(dayIndex, timeColPx, effectiveDayWidthFactors, previewOverlapMeta);
-    }
+        startSlot: rowStartSlot,
+        endSlot: rowEndSlot,
+        spanWeight: getGroupedUnitSpanCount(selectedScopeUnitIds, rowUnitIds),
+        visualOrder: row.visual_order ?? null,
+      }];
+    });
+    dayRows.push({
+      placementId: previewPlacementId,
+      dayIndex,
+      startSlot,
+      endSlot: startSlot + dragState.durationSlots,
+      spanWeight: previewSpanUnits,
+      visualOrder: draggedRow?.visual_order ?? Number.MAX_SAFE_INTEGER,
+    });
+    const visualLayoutMetaByPlacementId = buildOverlapGroupMeta(
+      new Map([[dayIndex, dayRows]]),
+      scopeCount,
+    );
+    const previewMeta = visualLayoutMetaByPlacementId[previewPlacementId];
+    const previewLayout = isGroupedUnitScope
+      ? getGroupedUnitCardLayout(
+          dayIndex,
+          timeColPx,
+          effectiveDayWidthFactors,
+          selectedScopeUnitIds,
+          dragUnitIds,
+          null,
+          previewMeta,
+        )
+      : getColumnOverlapCardLayout(dayIndex, timeColPx, effectiveDayWidthFactors, previewMeta);
     return {
       dayIndex,
       startSlot,
@@ -5780,9 +5894,10 @@ export default function SolveOverlay({
       width: previewLayout.width,
       cellName: dragState.cellName,
       bundleLabel: dragState.bundleLabel,
-      groupedStartUnit: previewStartUnit,
+      groupedStartUnit: previewMeta?.startUnit ?? 0,
       groupedSpanUnits: previewSpanUnits,
       sourceCellId: dragState.sourceCellId,
+      visualLayoutMetaByPlacementId,
     };
   }, [
     bodyHeight,
@@ -5794,7 +5909,6 @@ export default function SolveOverlay({
     rowPx,
     selectedScopeUnitIds,
     timeColPx,
-    useColumnOverlapLayout,
   ]);
 
   const activeDragPreviewItem = useMemo(() => {
@@ -5811,7 +5925,6 @@ export default function SolveOverlay({
 
   const dragGroupedOverlapMetaByPlacementId = useMemo<Record<string, OverlapGroupMeta>>(() => {
     if (
-      !isGroupedUnitScope ||
       !dragPreview ||
       !dragState ||
       dragState.dragType === "participant-tool" ||
@@ -5820,58 +5933,8 @@ export default function SolveOverlay({
       return {};
     }
 
-    const scopeCount = Math.max(1, selectedScopeUnitIds.length);
-    const previewStartUnit = Math.max(0, Math.min(scopeCount - 1, Math.round(dragPreview.groupedStartUnit ?? 0)));
-    const previewSpanUnits = Math.max(1, Math.min(scopeCount, Math.round(dragPreview.groupedSpanUnits ?? 1)));
-    const previewEndUnit = previewStartUnit + previewSpanUnits;
-    const previewEndSlot = dragPreview.startSlot + dragState.durationSlots;
-    const occupiedByPreview = new Set<number>();
-    for (let index = previewStartUnit; index < previewEndUnit; index += 1) occupiedByPreview.add(index);
-
-    const rows = filteredSchedule
-      .flatMap((row) => {
-        const placementId = String(row.placement_id ?? row.schedule_placement_id ?? row.cell_id ?? "");
-        if (!placementId || placementId === dragState.placementId) return [];
-        if (Number(row.day_index) !== dragPreview.dayIndex) return [];
-        if (Number(row.end_slot) <= dragPreview.startSlot || Number(row.start_slot) >= previewEndSlot) return [];
-        const rowUnitIds = Array.isArray(row.units) ? row.units.map(String) : [];
-        const spanUnits = getGroupedUnitSpanCount(selectedScopeUnitIds, rowUnitIds);
-        return [{ placementId, spanUnits, startSlot: Number(row.start_slot), endSlot: Number(row.end_slot) }];
-      })
-      .sort((a, b) => a.startSlot - b.startSlot || b.spanUnits - a.spanUnits || a.placementId.localeCompare(b.placementId));
-
-    const next: Record<string, OverlapGroupMeta> = {};
-    const occupied = new Set(occupiedByPreview);
-
-    for (const row of rows) {
-      const spanUnits = Math.max(1, Math.min(scopeCount, row.spanUnits));
-      const maxStartUnit = Math.max(0, scopeCount - spanUnits);
-      if (maxStartUnit === 0) continue;
-      const candidateStarts = Array.from({ length: maxStartUnit + 1 }, (_, index) => index);
-      const fits = (start: number) => {
-        for (let index = start; index < start + spanUnits; index += 1) {
-          if (occupied.has(index)) return false;
-        }
-        return true;
-      };
-      const nonColliding = candidateStarts.filter(fits);
-      const pool = nonColliding.length > 0
-        ? nonColliding
-        : candidateStarts.filter((start) => start + spanUnits <= previewStartUnit || start >= previewEndUnit);
-      const fallbackPool = pool.length > 0 ? pool : candidateStarts;
-      const chosenStart = fallbackPool.reduce((best, current) =>
-        Math.abs(current - previewStartUnit) > Math.abs(best - previewStartUnit) ? current : best,
-      );
-      for (let index = chosenStart; index < chosenStart + spanUnits; index += 1) occupied.add(index);
-      next[row.placementId] = {
-        dayIndex: dragPreview.dayIndex,
-        groupSize: maxStartUnit + 1,
-        groupPosition: chosenStart,
-      };
-    }
-
-    return next;
-  }, [activeDragPreviewItem?.drop_allowed, dragPreview, dragState, filteredSchedule, isGroupedUnitScope, selectedScopeUnitIds]);
+    return dragPreview.visualLayoutMetaByPlacementId;
+  }, [activeDragPreviewItem?.drop_allowed, dragPreview, dragState]);
 
   const backendPreviewRegions = useMemo(() => {
     const byDay = new Map<number, PlacementPreviewItem[]>();
@@ -7445,9 +7508,54 @@ export default function SolveOverlay({
     if (!dragState) return;
     const onPointerMove = (event: PointerEvent) => {
       if (event.pointerId !== dragState.pointerId) return;
-      if (placementPreviewLoadingWithoutCache) return;
       const isInsideDelete = isInsideDeleteDropTarget(event.clientX, event.clientY);
       setIsDeleteDropActive((prev) => (prev === isInsideDelete ? prev : isInsideDelete));
+      if (dragState.dragType === "placement") {
+        const deltaX = event.clientX - dragState.offsetX;
+        const deltaY = event.clientY - dragState.offsetY;
+        const currentIntent = dragState.interactionIntent ?? "pending";
+        let nextIntent = currentIntent;
+        if (currentIntent === "pending" && Math.max(Math.abs(deltaX), Math.abs(deltaY)) >= 8) {
+          const visualMeta = dragState.placementId
+            ? overlapGroupMetaByPlacementId[dragState.placementId]
+            : undefined;
+          const canUseVisualOrder =
+            canReorderVisualPlacements &&
+            !visualOrderBusy &&
+            Boolean(dragState.placementId && isConfirmedPlacementId(dragState.placementId)) &&
+            pendingPlacementIds.size === 0 &&
+            (visualMeta?.concurrentPlacementIds.length ?? 0) > 1;
+          nextIntent = canUseVisualOrder && Math.abs(deltaX) > Math.abs(deltaY)
+            ? "visual-order"
+            : "placement-move";
+          if (
+            nextIntent === "placement-move" &&
+            placementMovePreviewPointerRef.current !== event.pointerId
+          ) {
+            placementMovePreviewPointerRef.current = event.pointerId;
+            void loadPlacementPreviewForDrag({
+              mode: "MOVE_ASSIGNED_CELL",
+              sourceCellId: dragState.sourceCellId,
+              bundleId: dragState.sourceBundleId ?? null,
+              placementId: dragState.placementId,
+              durationSlots: dragState.durationSlots,
+              assignedParticipantIds: dragState.assignedParticipantIds,
+            });
+          }
+        }
+        setDragState((prev) =>
+          prev && prev.pointerId === event.pointerId
+            ? {
+                ...prev,
+                interactionIntent: nextIntent,
+                clientX: event.clientX,
+                clientY: event.clientY,
+              }
+            : prev,
+        );
+        return;
+      }
+      if (placementPreviewLoadingWithoutCache) return;
       if (dragState.dragType === "participant-tool") {
         const target = evaluateParticipantDropTarget(event.clientX, event.clientY, String(dragState.participantId));
         const hoverValid = Boolean(target.canDrop && target.placementId);
@@ -7470,11 +7578,32 @@ export default function SolveOverlay({
       if (event.pointerId !== dragState.pointerId) return;
       const activeDrag = dragState;
       setDragState(null);
+      placementMovePreviewPointerRef.current = null;
       const droppedOnDelete = isInsideDeleteDropTarget(event.clientX, event.clientY);
       setIsDeleteDropActive(false);
       if (droppedOnDelete && activeDrag.dragType === "placement" && activeDrag.placementId) {
         clearPlacementPreviewState();
         void deleteSchedulePlacement(activeDrag.placementId);
+        return;
+      }
+      if (
+        activeDrag.dragType === "placement" &&
+        activeDrag.interactionIntent === "visual-order" &&
+        activeDrag.placementId
+      ) {
+        clearPlacementPreviewState();
+        const targetIndex = getVisualOrderTargetIndex(
+          activeDrag.placementId,
+          event.clientX,
+          activeDrag.grabOffsetX,
+        );
+        if (targetIndex != null) {
+          void reorderPlacementVisualOrder(activeDrag.placementId, targetIndex);
+        }
+        return;
+      }
+      if (activeDrag.dragType === "placement" && activeDrag.interactionIntent === "pending") {
+        clearPlacementPreviewState();
         return;
       }
       if (activeDrag.dragType === "participant-tool") {
@@ -7579,7 +7708,6 @@ export default function SolveOverlay({
 
       const rect = overlay.getBoundingClientRect();
       const contentWidth = rect.width - timeColPx;
-      const cardLeft = event.clientX - rect.left - timeColPx - activeDrag.grabOffsetX;
       const cardTop = event.clientY - rect.top - activeDrag.grabOffsetY;
       const pointerX = event.clientX - rect.left - timeColPx;
       if (
@@ -7643,6 +7771,7 @@ export default function SolveOverlay({
     const onPointerCancel = (event: PointerEvent) => {
       if (event.pointerId !== dragState.pointerId) return;
       setDragState(null);
+      placementMovePreviewPointerRef.current = null;
       setParticipantDragHoverPlacementId(null);
       setIsDeleteDropActive(false);
       clearPlacementPreviewState();
@@ -7665,12 +7794,17 @@ export default function SolveOverlay({
     deleteSchedulePlacement,
     dragState,
     evaluateParticipantDropTarget,
+    canReorderVisualPlacements,
+    getVisualOrderTargetIndex,
     isInsideDeleteDropTarget,
+    loadPlacementPreviewForDrag,
     notifyDraftMutation,
+    overlapGroupMetaByPlacementId,
     placementPreviewDurationSlots,
     placementPreviewLoadingWithoutCache,
     patchPlacementPosition,
     requestUnassignedPlacement,
+    reorderPlacementVisualOrder,
     rowPx,
     isNoUnitScopeSelected,
     t,
@@ -7678,6 +7812,7 @@ export default function SolveOverlay({
     removePendingPlacementIds,
     timeColPx,
     triggerParticipantDropGhost,
+    visualOrderBusy,
     withScheduleActionLoading,
   ]);
 
@@ -8597,8 +8732,11 @@ export default function SolveOverlay({
             const top = s.start_slot * rowPx;
             const height = Math.max(6, (s.end_slot - s.start_slot) * rowPx);
             const rowUnitIds = Array.isArray(s.units) ? s.units.map(String) : [];
+            const persistedVisualMeta = placementId
+              ? overlapGroupMetaByPlacementId[placementId]
+              : undefined;
             const groupedOverlapMeta =
-              placementId ? dragGroupedOverlapMetaByPlacementId[placementId] ?? overlapGroupMetaByPlacementId[placementId] : undefined;
+              placementId ? dragGroupedOverlapMetaByPlacementId[placementId] ?? persistedVisualMeta : undefined;
             const overlapLayout =
               isGroupedUnitScope
                 ? getGroupedUnitCardLayout(
@@ -8610,12 +8748,12 @@ export default function SolveOverlay({
                     null,
                     groupedOverlapMeta,
                   )
-                : useColumnOverlapLayout && placementId
+                : placementId
                 ? getColumnOverlapCardLayout(
                     col,
                     timeColPx,
                     effectiveDayWidthFactors,
-                    overlapGroupMetaByPlacementId[placementId],
+                    groupedOverlapMeta,
                   )
                 : getColumnOverlapCardLayout(col, timeColPx, effectiveDayWidthFactors);
             const { left, width } = overlapLayout;
@@ -8878,14 +9016,8 @@ export default function SolveOverlay({
                       offsetY: event.clientY,
                       grabOffsetX: event.clientX - cardRect.left,
                       grabOffsetY: event.clientY - cardRect.top,
-                    });
-                    void loadPlacementPreviewForDrag({
-                      mode: "MOVE_ASSIGNED_CELL",
-                      sourceCellId,
-                      bundleId: resolvedBundleId ?? null,
-                      placementId,
-                      durationSlots,
-                      assignedParticipantIds: assignedParticipantIds,
+                      interactionIntent: "pending",
+                      assignedParticipantIds,
                     });
                   };
                   if (!isJiggleMode) {

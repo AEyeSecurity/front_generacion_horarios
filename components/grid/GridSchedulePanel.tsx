@@ -21,6 +21,8 @@ import { authFetch } from "@/lib/client-auth";
 
 type Unit = { id: number | string; name: string };
 
+const MIN_CELL_WIDTH = 72;
+
 export type ScheduleTabScope = {
   id: string;
   label: string;
@@ -131,6 +133,7 @@ type SchedulePlacement = {
   day_index: number;
   start_slot: number;
   end_slot: number;
+  visual_order?: number | null;
   assigned_participants?: Array<string | number>;
 };
 
@@ -1035,6 +1038,7 @@ export default function GridSchedulePanel({
   const [scheduleId, setScheduleId] = useState<number | null>(null);
   const [schedulePlacements, setSchedulePlacements] = useState<SchedulePlacement[]>([]);
   const [scheduleRenderModel, setScheduleRenderModel] = useState<ScheduleRenderModel | null>(null);
+  const [activeScopeUnitIds, setActiveScopeUnitIds] = useState<string[]>([]);
   const [publishedRenderError, setPublishedRenderError] = useState<string | null>(null);
   const [participantEditMode, setParticipantEditMode] = useState(false);
   const [participantEditBusy, setParticipantEditBusy] = useState(false);
@@ -1052,7 +1056,6 @@ export default function GridSchedulePanel({
   const [isDeleteDropActive, setIsDeleteDropActive] = useState(false);
   const [catalogFocusIndex, setCatalogFocusIndex] = useState(0);
   const [participantBoardSelectedUnitId, setParticipantBoardSelectedUnitId] = useState<string | null>(null);
-  const [compactHorizontal, setCompactHorizontal] = useState(false);
   const longPressTimerRef = useRef<number | null>(null);
   const participantBoardRef = useRef<HTMLDivElement | null>(null);
   const deleteDropRef = useRef<HTMLDivElement | null>(null);
@@ -1241,89 +1244,35 @@ export default function GridSchedulePanel({
   }, [historyMode]);
 
   const sidePanelOpen = commentsPanelOpen || historyMode;
-  const minDayColumnPx = compactHorizontal ? 180 : 0;
-  const scheduleDayWidthFactors = useMemo(() => {
-    const defaultFactors = Array.from({ length: activeDays.length }, () => 1);
-    if (!(unitNature == null || unitNature === "internal" || unitNature === "none")) return defaultFactors;
-
-    const columnByDayIndex = new Map<number, number>();
-    activeDayIndexes.forEach((dayIndex, columnIndex) => {
-      columnByDayIndex.set(dayIndex, columnIndex);
-    });
-
-    const rowsByColumn = new Map<number, Array<{ startSlot: number; endSlot: number }>>();
-    for (const placement of schedulePlacements) {
-      const rawDayIndex = Number(placement.day_index);
-      const columnIndex = columnByDayIndex.get(rawDayIndex) ?? rawDayIndex;
-      if (!Number.isFinite(columnIndex) || columnIndex < 0 || columnIndex >= activeDays.length) continue;
-      const startSlot = Number(placement.start_slot);
-      const endSlot = Number(placement.end_slot);
-      if (!Number.isFinite(startSlot) || !Number.isFinite(endSlot) || endSlot <= startSlot) continue;
-      const rows = rowsByColumn.get(columnIndex) ?? [];
-      rows.push({ startSlot, endSlot });
-      rowsByColumn.set(columnIndex, rows);
-    }
-
-    const perDayFactors = defaultFactors.map((factor, columnIndex) => {
-      const rows = rowsByColumn.get(columnIndex);
-      if (!rows || rows.length <= 1) return factor;
-      const orderedRows = [...rows].sort((a, b) => a.startSlot - b.startSlot || a.endSlot - b.endSlot);
-      let maxLaneCount = 1;
-      let clusterRows: Array<{ startSlot: number; endSlot: number }> = [];
-      let clusterEnd = Number.NEGATIVE_INFINITY;
-
-      const flushCluster = () => {
-        if (clusterRows.length === 0) return;
-        const laneEndByIndex: number[] = [];
-        for (const row of clusterRows) {
-          let laneIndex = -1;
-          for (let idx = 0; idx < laneEndByIndex.length; idx += 1) {
-            if (laneEndByIndex[idx] <= row.startSlot) {
-              laneIndex = idx;
-              break;
-            }
-          }
-          if (laneIndex < 0) {
-            laneEndByIndex.push(row.endSlot);
-          } else {
-            laneEndByIndex[laneIndex] = row.endSlot;
-          }
-        }
-        maxLaneCount = Math.max(maxLaneCount, laneEndByIndex.length);
-      };
-
-      for (const row of orderedRows) {
-        if (clusterRows.length === 0 || row.startSlot < clusterEnd) {
-          clusterRows.push(row);
-          clusterEnd = Math.max(clusterEnd, row.endSlot);
-          continue;
-        }
-        flushCluster();
-        clusterRows = [row];
-        clusterEnd = row.endSlot;
-      }
-      flushCluster();
-
-      return maxLaneCount > 1 ? 1.5 : 1;
-    });
-    const maxFactor = Math.max(1, ...perDayFactors);
-    return perDayFactors.map(() => maxFactor);
-  }, [activeDayIndexes, activeDays.length, schedulePlacements, unitNature]);
+  const activeScopeUnitCount = Math.max(1, activeScopeUnitIds.length);
+  const minDayColumnPx = MIN_CELL_WIDTH * activeScopeUnitCount;
+  const scheduleDayWidthFactors = useMemo(
+    () => Array.from({ length: activeDays.length }, () => activeScopeUnitCount),
+    [activeDays.length, activeScopeUnitCount],
+  );
   const scheduleGridTemplateColumns = useMemo(
     () =>
-      `${timeColPx}px ${scheduleDayWidthFactors
-        .map((factor) => `minmax(${Math.round(minDayColumnPx * factor)}px, ${factor}fr)`)
+      `${timeColPx}px ${activeDays
+        .map(() => `minmax(${minDayColumnPx}px, ${activeScopeUnitCount}fr)`)
         .join(" ")}`,
-    [minDayColumnPx, scheduleDayWidthFactors, timeColPx],
+    [activeDays, activeScopeUnitCount, minDayColumnPx, timeColPx],
   );
   const scheduleMinWidthPx = useMemo(
-    () => timeColPx + scheduleDayWidthFactors.reduce((sum, factor) => sum + factor * minDayColumnPx, 0),
-    [minDayColumnPx, scheduleDayWidthFactors, timeColPx],
+    () => timeColPx + activeDays.length * minDayColumnPx,
+    [activeDays.length, minDayColumnPx, timeColPx],
   );
-  const scheduleContentStyle = useMemo<React.CSSProperties | undefined>(
-    () => (compactHorizontal ? { minWidth: scheduleMinWidthPx } : undefined),
-    [compactHorizontal, scheduleMinWidthPx],
+  const scheduleContentStyle = useMemo<React.CSSProperties>(
+    () => ({ minWidth: scheduleMinWidthPx }),
+    [scheduleMinWidthPx],
   );
+  const handleActiveScopeChange = useCallback((unitIds: string[]) => {
+    setActiveScopeUnitIds((current) => {
+      if (current.length === unitIds.length && current.every((unitId, index) => unitId === unitIds[index])) {
+        return current;
+      }
+      return unitIds;
+    });
+  }, []);
 
   const syncScheduleHorizontalScroll = useCallback((source: "header" | "body", nextScrollLeft: number) => {
     const headerEl = scheduleHeaderScrollRef.current;
@@ -1343,15 +1292,6 @@ export default function GridSchedulePanel({
   useEffect(() => {
     setEffectiveRowPx(rowPx);
   }, [rowPx]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mediaQuery = window.matchMedia("(max-width: 1024px)");
-    const apply = () => setCompactHorizontal(mediaQuery.matches);
-    apply();
-    mediaQuery.addEventListener("change", apply);
-    return () => mediaQuery.removeEventListener("change", apply);
-  }, []);
 
   useEffect(() => {
     setScheduleViewportHeight(baseBodyHeight);
@@ -2735,11 +2675,7 @@ export default function GridSchedulePanel({
           <>
             <div
               ref={scheduleHeaderScrollRef}
-              className={`${compactHorizontal ? "overflow-x-auto" : "overflow-x-hidden"} overflow-y-hidden hide-scrollbar`}
-              onScroll={(event) => {
-                if (syncingHorizontalScrollRef.current === "body") return;
-                syncScheduleHorizontalScroll("header", event.currentTarget.scrollLeft);
-              }}
+              className="overflow-hidden"
             >
               <div style={scheduleContentStyle}>
                 <div className="grid select-none" style={{ gridTemplateColumns: scheduleGridTemplateColumns }}>
@@ -2794,7 +2730,10 @@ export default function GridSchedulePanel({
                 )}
               </div>
               {activeDays.map((day, dayIndex) => (
-                <div key={`${dayIndex}-${day}`} className="bg-gray-50 border-b h-12 flex items-center justify-center font-medium">
+                <div
+                  key={`${dayIndex}-${day}`}
+                  className="flex h-12 items-center justify-center border-b bg-gray-50 font-medium"
+                >
                   {day}
                 </div>
               ))}
@@ -2819,7 +2758,7 @@ export default function GridSchedulePanel({
               <div
                 ref={scheduleScrollRef}
                 data-schedule-scroll
-                className={`relative h-full ${compactHorizontal ? "overflow-auto" : "overflow-y-auto overflow-x-hidden"} hide-scrollbar select-none`}
+                className="relative h-full overflow-auto select-none"
                 style={{ height: scheduleViewportHeight, maxHeight: scheduleViewportHeight }}
                 onScroll={(event) => {
                   if (syncingHorizontalScrollRef.current === "header") return;
@@ -2877,6 +2816,7 @@ export default function GridSchedulePanel({
               historyMode={historyMode}
               historyGridCode={historyGridCode}
               onScheduleLoadingChange={handleScheduleOverlayLoadingChange}
+              onSelectedScopeChange={handleActiveScopeChange}
               unitNature={unitNature}
 
             />
@@ -2907,7 +2847,13 @@ export default function GridSchedulePanel({
             exponential
             opacity={1}
             showWhen="not-at-start"
-            style={{ top: "3rem", left: `${timeColPx}px`, width: `calc(100% - ${timeColPx}px)` }}
+            zIndex={10}
+            style={{
+              top: "3rem",
+              left: `${timeColPx}px`,
+              right: "14px",
+              width: "auto",
+            }}
           />
           <GradualBlur
             target="parent"
@@ -2919,7 +2865,13 @@ export default function GridSchedulePanel({
             exponential
             opacity={1}
             showWhen="not-at-end"
-            style={{ left: `${timeColPx}px`, width: `calc(100% - ${timeColPx}px)` }}
+            zIndex={10}
+            style={{
+              bottom: "14px",
+              left: `${timeColPx}px`,
+              right: "14px",
+              width: "auto",
+            }}
           />
         </>
       )}
