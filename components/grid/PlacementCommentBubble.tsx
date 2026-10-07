@@ -1,5 +1,8 @@
 "use client";
 
+import Image from "next/image";
+import { useMemo, useState } from "react";
+import { getAvatarInitials, getAvatarPalette } from "@/lib/avatar";
 import type { PreferredLanguage } from "@/lib/language";
 
 type PlacementCommentBubbleProps = {
@@ -7,18 +10,14 @@ type PlacementCommentBubbleProps = {
   createdAt?: string | null;
   authorId?: string | number | null;
   authorName?: string | null;
+  authorAvatarUrl?: string | null;
   currentUserId?: string | number | null;
+  currentUserAvatarUrl?: string | null;
   locale: PreferredLanguage;
   youLabel: string;
   justNowLabel: string;
   fallbackAuthorLabel: string;
 };
-
-function getInitials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "?";
-}
 
 function formatRelativeTime(createdAt: string | null | undefined, locale: PreferredLanguage, justNowLabel: string) {
   if (!createdAt) return "";
@@ -43,12 +42,48 @@ function formatRelativeTime(createdAt: string | null | undefined, locale: Prefer
   return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(value, unit);
 }
 
+function CommentAvatar({
+  name,
+  src,
+}: {
+  name: string;
+  src?: string | null;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const palette = useMemo(() => getAvatarPalette(name || "comment-author"), [name]);
+
+  return (
+    <div
+      className="relative mt-5 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white text-[11px] font-semibold shadow-sm"
+      style={{ backgroundColor: palette.background, color: palette.text }}
+      aria-label={name}
+    >
+      {src && !imageFailed ? (
+        <Image
+          src={src}
+          alt=""
+          width={36}
+          height={36}
+          unoptimized
+          className="h-full w-full object-cover"
+          referrerPolicy="no-referrer"
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        getAvatarInitials(name)
+      )}
+    </div>
+  );
+}
+
 export default function PlacementCommentBubble({
   text,
   createdAt,
   authorId,
   authorName,
+  authorAvatarUrl,
   currentUserId,
+  currentUserAvatarUrl,
   locale,
   youLabel,
   justNowLabel,
@@ -59,33 +94,30 @@ export default function PlacementCommentBubble({
     authorId != null &&
     String(currentUserId) === String(authorId);
   const displayName = isMine ? youLabel : (authorName?.trim() || fallbackAuthorLabel);
+  const avatarUrl = authorAvatarUrl || (isMine ? currentUserAvatarUrl : null);
   const relativeTime = formatRelativeTime(createdAt, locale, justNowLabel);
 
   return (
-    <div className={`flex w-full items-start gap-2 ${isMine ? "justify-end" : "justify-start"}`}>
-      {!isMine && (
-        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-[11px] font-semibold text-gray-700 shadow-sm">
-          {getInitials(displayName)}
-        </div>
-      )}
-      <div className={`max-w-[82%] ${isMine ? "items-end" : "items-start"} flex flex-col`}>
-        <div className={`mb-1 flex items-center gap-2 text-[11px] ${isMine ? "justify-end text-gray-600" : "text-gray-500"}`}>
+    <div className={`flex w-full items-start gap-3 py-1 ${isMine ? "justify-end" : "justify-start"}`}>
+      {!isMine && <CommentAvatar name={displayName} src={avatarUrl} />}
+      <div className={`flex min-w-0 max-w-[78%] flex-col ${isMine ? "items-end" : "items-start"}`}>
+        <div className={`mb-1 flex items-center gap-2 px-1 text-[11px] ${isMine ? "justify-end text-gray-600" : "text-gray-500"}`}>
           <span className="font-semibold text-gray-700">{displayName}</span>
           {relativeTime && <span>{relativeTime}</span>}
         </div>
         <div
           className={[
-            "relative rounded-2xl px-3 py-2 text-sm shadow-sm",
+            "relative min-w-10 rounded-2xl px-3.5 py-2.5 text-sm shadow-sm",
             isMine
-              ? "rounded-tr-md bg-black text-white"
-              : "rounded-tl-md border border-gray-200 bg-white text-gray-900",
+              ? "bg-black text-white"
+              : "border border-gray-200 bg-white text-gray-900",
           ].join(" ")}
         >
           <span
             className={[
               "absolute top-3 h-3 w-3 rotate-45",
               isMine
-                ? "-left-1.5 bg-black"
+                ? "-right-1.5 bg-black"
                 : "-left-1.5 border-b border-l border-gray-200 bg-white",
             ].join(" ")}
             aria-hidden="true"
@@ -93,11 +125,7 @@ export default function PlacementCommentBubble({
           <div className="relative whitespace-pre-wrap leading-relaxed">{text}</div>
         </div>
       </div>
-      {isMine && (
-        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-800 bg-black text-[11px] font-semibold text-white shadow-sm">
-          {getInitials(displayName)}
-        </div>
-      )}
+      {isMine && <CommentAvatar name={authorName?.trim() || displayName} src={avatarUrl} />}
     </div>
   );
 }

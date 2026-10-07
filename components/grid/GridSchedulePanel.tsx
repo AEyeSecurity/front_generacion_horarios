@@ -752,11 +752,26 @@ const readScheduleIdFromCandidate = (scheduleCandidate: unknown): number | null 
   return Number.isFinite(numeric) ? numeric : null;
 };
 
+const readPublishedScheduleIdFromCandidate = (scheduleCandidate: unknown): number | null => {
+  if (!isObjectRecord(scheduleCandidate)) return null;
+  const raw =
+    scheduleCandidate.published_schedule_id ??
+    scheduleCandidate.publishedScheduleId ??
+    scheduleCandidate.id;
+  const numeric = Number(readEntityId(raw));
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+};
+
 const buildPublishedRenderModel = (
   contextJson: Record<string, unknown> | null,
+  expectedGridId: number,
 ): ScheduleRenderModel => {
   const scheduleCandidate = readPublishedScheduleCandidateFromContext(contextJson);
-  if (!scheduleCandidate) {
+  const publishedGridId = scheduleCandidate ? readEntityId(scheduleCandidate.grid) : null;
+  if (
+    !scheduleCandidate ||
+    (publishedGridId != null && String(publishedGridId) !== String(expectedGridId))
+  ) {
     return {
       mode: "published",
       source: "published_snapshot",
@@ -783,6 +798,7 @@ const buildPublishedRenderModel = (
     source: snapshotPayload(scheduleCandidate) ? "published_snapshot" : "legacy_published_snapshot",
     structure,
     scheduleId: readScheduleIdFromCandidate(scheduleCandidate),
+    publishedScheduleId: readPublishedScheduleIdFromCandidate(scheduleCandidate),
     placements:
       getPublishedCandidateList<SchedulePlacement>(
         scheduleCandidate,
@@ -1049,7 +1065,16 @@ export default function GridSchedulePanel({
   const [historyErrorAnchor, setHistoryErrorAnchor] = useState<{ left: number; top: number } | null>(null);
   const [contextRefreshTick, setContextRefreshTick] = useState(0);
   const [hasLatestPublishedSchedule, setHasLatestPublishedSchedule] = useState(false);
-  const [latestPublishedSchedule, setLatestPublishedSchedule] = useState<Record<string, unknown> | null>(null);
+  const [latestPublishedScheduleCache, setLatestPublishedScheduleCache] = useState<{
+    gridId: number;
+    refreshTick: number;
+    payload: Record<string, unknown> | null;
+  } | null>(null);
+  const latestPublishedSchedule =
+    latestPublishedScheduleCache?.gridId === gridId &&
+    latestPublishedScheduleCache.refreshTick === contextRefreshTick
+      ? latestPublishedScheduleCache.payload
+      : null;
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [dragPayload, setDragPayload] = useState<ParticipantDragPayload | null>(null);
   const [dragHoverCellKey, setDragHoverCellKey] = useState<string | null>(null);
@@ -1138,12 +1163,12 @@ export default function GridSchedulePanel({
         const published = await fetchLatestPublishedSchedulePayload(gridId);
         if (!active) return;
 
-        setLatestPublishedSchedule(published);
+        setLatestPublishedScheduleCache({ gridId, refreshTick: contextRefreshTick, payload: published });
         setHasLatestPublishedSchedule(Boolean(published));
       } catch {
         if (!active) return;
 
-        setLatestPublishedSchedule(null);
+        setLatestPublishedScheduleCache({ gridId, refreshTick: contextRefreshTick, payload: null });
         setHasLatestPublishedSchedule(false);
       }
     })();
@@ -1444,14 +1469,18 @@ export default function GridSchedulePanel({
             (await fetchLatestPublishedSchedulePayload(gridId));
 
           if (active) {
-            setLatestPublishedSchedule(publishedPayload);
+            setLatestPublishedScheduleCache({
+              gridId,
+              refreshTick: contextRefreshTick,
+              payload: publishedPayload,
+            });
             setHasLatestPublishedSchedule(Boolean(publishedPayload));
           }
         }
 
         const renderModel =
           scheduleViewMode === "published"
-            ? buildPublishedRenderModel(publishedPayload)
+            ? buildPublishedRenderModel(publishedPayload, gridId)
             : buildDraftRenderModel(contextJson, fallbackStructure);
         const participantsList = getContextList<Participant>(contextJson?.participants);
         let cellsList = renderModel.cells;

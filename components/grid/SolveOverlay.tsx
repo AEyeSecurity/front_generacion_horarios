@@ -276,6 +276,7 @@ type PlacementComment = {
   created_at?: string;
   author_id?: number | string;
   author_name?: string;
+  author_avatar_url?: string;
 };
 
 type CommentAnchor = {
@@ -808,7 +809,7 @@ const formatPrecheckViolation = (violation: PrecheckViolation) => {
   return "";
 };
 
-const extractAuthorId = (author: unknown): string | number | undefined => {
+const extractAuthorIdFromValue = (author: unknown): string | number | undefined => {
   if (author == null) return undefined;
   if (typeof author === "number" || typeof author === "string") return author;
   if (typeof author === "object" && "id" in author) {
@@ -819,23 +820,36 @@ const extractAuthorId = (author: unknown): string | number | undefined => {
 };
 
 const extractAuthorName = (raw: any): string | undefined => {
-  const direct = raw.author_name;
+  const direct = raw?.author_name ?? raw?.created_by_name ?? raw?.user_name;
   if (typeof direct === "string" && direct.trim()) return direct;
-  const author = raw.author;
+  const author = raw?.author ?? raw?.created_by ?? raw?.user;
   if (author && typeof author === "object") {
-    const candidate =
-      author.full_name ??
-      author.name ??
-      author.email;
+    const fullName = [author.first_name, author.last_name].filter(Boolean).join(" ").trim();
+    const candidate = author.full_name || author.name || fullName || author.email || author.username;
     if (typeof candidate === "string" && candidate.trim()) return candidate;
   }
   return undefined;
+};
+
+const extractAuthorId = (raw: any): string | number | undefined => {
+  const direct = raw?.author_id ?? raw?.created_by_id ?? raw?.user_id;
+  if (direct != null) return direct;
+  return extractAuthorIdFromValue(raw?.author ?? raw?.created_by ?? raw?.user);
+};
+
+const extractAuthorAvatarUrl = (raw: any): string | undefined => {
+  const direct = raw?.author_avatar_url ?? raw?.created_by_avatar_url ?? raw?.user_avatar_url;
+  if (typeof direct === "string" && direct.trim()) return direct;
+  const author = raw?.author ?? raw?.created_by ?? raw?.user;
+  const candidate = author?.avatar_url ?? author?.avatar ?? author?.image ?? author?.avatarUrl;
+  return typeof candidate === "string" && candidate.trim() ? candidate : undefined;
 };
 
 type OverlayScheduleRenderModel = {
   mode?: ScheduleViewMode;
   source?: string;
   scheduleId?: number | string | null;
+  publishedScheduleId?: number | string | null;
   placements?: unknown[];
   cells?: unknown[];
   bundles?: unknown[];
@@ -1333,6 +1347,7 @@ export default function SolveOverlay({
   const [commentBusy, setCommentBusy] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserAvatarUrl, setCurrentUserAvatarUrl] = useState<string | null>(null);
   const [leftPanelOpen, setLeftPanelOpen] = useState(false);
   const [isNarrowMobile, setIsNarrowMobile] = useState(false);
   const [inputSignature, setInputSignature] = useState<string | null>(null);
@@ -1561,9 +1576,15 @@ export default function SolveOverlay({
         if (!response.ok) return;
         const me = await response.json().catch(() => null);
         const id = me?.id;
-        if (active && id != null) setCurrentUserId(String(id));
+        if (active && id != null) {
+          setCurrentUserId(String(id));
+          setCurrentUserAvatarUrl(extractAuthorAvatarUrl({ created_by: me }) ?? null);
+        }
       } catch {
-        if (active) setCurrentUserId(null);
+        if (active) {
+          setCurrentUserId(null);
+          setCurrentUserAvatarUrl(null);
+        }
       }
     })();
     return () => {
@@ -3296,8 +3317,9 @@ export default function SolveOverlay({
               end_slot: raw.end_slot == null ? null : Number(raw.end_slot),
               text: String(message),
               created_at: raw.created_at,
-              author_id: raw.author_id ?? extractAuthorId(raw.author),
+              author_id: extractAuthorId(raw),
               author_name: extractAuthorName(raw),
+              author_avatar_url: extractAuthorAvatarUrl(raw),
             } as PlacementComment;
           })
           .filter(Boolean) as PlacementComment[];
@@ -3412,7 +3434,8 @@ export default function SolveOverlay({
           const blockages = Array.isArray(renderModel.blockages) ? renderModel.blockages : [];
 
           scheduleCandidate = {
-            id: renderModel.scheduleId ?? 0,
+            id: renderModel.publishedScheduleId ?? 0,
+            published_schedule_id: renderModel.publishedScheduleId ?? null,
             schedule_id: renderModel.scheduleId ?? null,
             placements,
             blockages,
@@ -6215,15 +6238,13 @@ export default function SolveOverlay({
         readEntityId((entry as { snapshotPlacementId?: unknown }).snapshotPlacementId);
       if (explicit != null) return explicit;
       if (scheduleViewMode !== "published") return null;
-
-      const rowId = readEntityId(entry.cell_id);
-      const realPlacementId =
+      return (
         readEntityId(entry.placement_id) ??
         readEntityId(entry.schedule_placement_id) ??
-        readEntityId((entry as { schedule_placement?: unknown }).schedule_placement);
-      if (rowId != null && realPlacementId != null && String(rowId) !== String(realPlacementId)) return rowId;
-      if (rowId != null && realPlacementId == null) return rowId;
-      return null;
+        readEntityId((entry as { schedule_placement?: unknown }).schedule_placement) ??
+        readEntityId(entry.cell_id) ??
+        null
+      );
     },
     [scheduleViewMode],
   );
@@ -6264,6 +6285,7 @@ export default function SolveOverlay({
       const sourceCellId = String(s.source_cell_id ?? s.cell_id);
       const placementId = String(s.placement_id ?? s.schedule_placement_id ?? s.cell_id ?? "");
       const publishedPlacementId = getPublishedPlacementIdForCard(s);
+      if (publishedPlacementId == null) continue;
       const resolvedBundleId = resolveBundleIdForCard(s);
       const cellName =
         s.source_cell_name ||
@@ -6422,6 +6444,36 @@ export default function SolveOverlay({
     },
     [commentPlacementOptions, selectedCommentPlacementIndex],
   );
+
+  useEffect(() => {
+    if (!commentsPanelOpen || !selectedCommentPlacementKey) return;
+    const animationFrame = window.requestAnimationFrame(() => {
+      const overlay = overlayRef.current;
+      const scrollElement =
+        mainScheduleScrollRef.current ??
+        (overlay?.closest("[data-schedule-scroll]") as HTMLElement | null);
+      if (!overlay || !scrollElement) return;
+      const selectedCard = Array.from(
+        overlay.querySelectorAll<HTMLElement>("[data-comment-placement-key]"),
+      ).find((card) => card.dataset.commentPlacementKey === selectedCommentPlacementKey);
+      if (!selectedCard) return;
+
+      const viewportRect = scrollElement.getBoundingClientRect();
+      const cardRect = selectedCard.getBoundingClientRect();
+      const scheduleLeft = viewportRect.left + Math.min(timeColPx, viewportRect.width);
+      const desiredCenter = scheduleLeft + Math.max(0, viewportRect.right - scheduleLeft) / 2;
+      const nextScrollLeft = scrollElement.scrollLeft + cardRect.left + cardRect.width / 2 - desiredCenter;
+      const desiredCenterY = viewportRect.top + viewportRect.height / 2;
+      const nextScrollTop = scrollElement.scrollTop + cardRect.top + cardRect.height / 2 - desiredCenterY;
+      scrollElement.scrollTo({
+        left: Math.max(0, nextScrollLeft),
+        top: Math.max(0, nextScrollTop),
+        behavior: "smooth",
+      });
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [commentsPanelOpen, selectedCommentPlacementKey, timeColPx]);
+
   const shouldDimScheduleForCommentFocus =
     commentsPanelOpen && Boolean(selectedCommentPlacementKey);
 
@@ -6435,7 +6487,12 @@ export default function SolveOverlay({
 
   const submitPlacementComment = async () => {
     if (!commentAnchor || !commentDraft.trim()) return;
-    if (!canWritePublishedComments || !activePublishedScheduleId || scheduleViewMode !== "published") {
+    if (
+      !canWritePublishedComments ||
+      !activePublishedScheduleId ||
+      scheduleViewMode !== "published" ||
+      commentAnchor.publishedPlacementId == null
+    ) {
       setCommentError(t("solve_overlay.comments_unavailable"));
       return;
     }
@@ -6444,19 +6501,9 @@ export default function SolveOverlay({
     try {
       const payload: Record<string, unknown> = {
         published_schedule_id: commentAnchor.publishedScheduleId,
-        source_cell_id: commentAnchor.sourceCellId,
-        bundle: commentAnchor.bundleId,
-        day_index: commentAnchor.dayIndex,
-        start_slot: commentAnchor.startSlot,
-        end_slot: commentAnchor.endSlot,
+        published_placement_id: commentAnchor.publishedPlacementId,
         text: commentDraft.trim(),
       };
-      if (commentAnchor.publishedPlacementId != null && String(commentAnchor.publishedPlacementId).trim()) {
-        payload.published_placement_id = commentAnchor.publishedPlacementId;
-      }
-      if (commentAnchor.placementId != null && String(commentAnchor.placementId).trim()) {
-        payload.placement_id = commentAnchor.placementId;
-      }
       const res = await authFetch("/api/placement-comments/", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -6497,8 +6544,9 @@ export default function SolveOverlay({
         end_slot: raw.end_slot == null ? commentAnchor.endSlot : Number(raw.end_slot),
         text: String(raw.text ?? raw.message ?? commentDraft.trim()),
         created_at: raw.created_at,
-        author_id: raw.author_id ?? extractAuthorId(raw.author) ?? currentUserId ?? undefined,
+        author_id: extractAuthorId(raw) ?? currentUserId ?? undefined,
         author_name: extractAuthorName(raw),
+        author_avatar_url: extractAuthorAvatarUrl(raw) ?? currentUserAvatarUrl ?? undefined,
       };
       setPlacementComments((prev) => [next, ...prev]);
       setCommentDraft("");
@@ -8939,6 +8987,7 @@ export default function SolveOverlay({
                 key={cardKey}
                 data-placement-card
                 data-placement-id={placementId || undefined}
+                data-comment-placement-key={cardCommentPlacementKey || undefined}
                 className={`absolute ${dimForDraggedParticipant ? "pointer-events-none" : "pointer-events-auto"} ${cursorClass} ${
                   isDraggingCard ? "transition-none" : "transition-transform duration-150 ease-out"
                 }`}
@@ -9888,7 +9937,9 @@ export default function SolveOverlay({
                           createdAt={c.created_at}
                           authorId={c.author_id}
                           authorName={c.author_name}
+                          authorAvatarUrl={c.author_avatar_url}
                           currentUserId={currentUserId}
+                          currentUserAvatarUrl={currentUserAvatarUrl}
                           locale={locale}
                           youLabel={t("solve_overlay.comment_you")}
                           justNowLabel={t("solve_overlay.comment_just_now")}

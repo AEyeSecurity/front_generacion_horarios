@@ -92,6 +92,7 @@ type PlacementComment = {
   created_at?: string;
   author_id?: number | string;
   author_name?: string;
+  author_avatar_url?: string;
 };
 
 type CommentAnchor = {
@@ -218,6 +219,14 @@ const extractAuthorId = (raw: any): string | number | undefined => {
   return undefined;
 };
 
+const extractAuthorAvatarUrl = (raw: any): string | undefined => {
+  const direct = raw?.author_avatar_url ?? raw?.created_by_avatar_url ?? raw?.user_avatar_url;
+  if (typeof direct === "string" && direct.trim()) return direct;
+  const author = raw?.author ?? raw?.created_by ?? raw?.user;
+  const candidate = author?.avatar_url ?? author?.avatar ?? author?.image ?? author?.avatarUrl;
+  return typeof candidate === "string" && candidate.trim() ? candidate : undefined;
+};
+
 export default function ParticipantScheduleOverlay({
   gridId,
   gridCode,
@@ -259,6 +268,7 @@ export default function ParticipantScheduleOverlay({
   const [commentBusy, setCommentBusy] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserAvatarUrl, setCurrentUserAvatarUrl] = useState<string | null>(null);
   const [isClientReady, setIsClientReady] = useState(false);
 
   useEffect(() => {
@@ -273,9 +283,15 @@ export default function ParticipantScheduleOverlay({
         if (!response.ok) return;
         const me = await response.json().catch(() => null);
         const id = me?.id;
-        if (active && id != null) setCurrentUserId(String(id));
+        if (active && id != null) {
+          setCurrentUserId(String(id));
+          setCurrentUserAvatarUrl(extractAuthorAvatarUrl({ created_by: me }) ?? null);
+        }
       } catch {
-        if (active) setCurrentUserId(null);
+        if (active) {
+          setCurrentUserId(null);
+          setCurrentUserAvatarUrl(null);
+        }
       }
     })();
     return () => {
@@ -406,6 +422,14 @@ export default function ParticipantScheduleOverlay({
   }, [gridId, scheduleViewMode]);
 
   useEffect(() => {
+    setSchedulePlacements([]);
+    setScheduleId(null);
+    setPublishedScheduleId(null);
+    setCommentAnchor(null);
+    setPlacementComments([]);
+  }, [gridId, scheduleViewMode]);
+
+  useEffect(() => {
     let active = true;
     (async () => {
       setMetadataLoading(true);
@@ -516,11 +540,7 @@ export default function ParticipantScheduleOverlay({
         readEntityId(placement.snapshotPlacementId);
       if (explicit != null) return explicit;
       if (scheduleViewMode !== "published") return null;
-      const rowId = readEntityId(placement.id);
-      const realPlacementId = getPlacementId(placement);
-      if (rowId != null && realPlacementId != null && String(rowId) !== String(realPlacementId)) return rowId;
-      if (rowId != null && realPlacementId == null) return rowId;
-      return null;
+      return getPlacementId(placement);
     },
     [getPlacementId, scheduleViewMode],
   );
@@ -583,6 +603,7 @@ export default function ParticipantScheduleOverlay({
               created_at: raw.created_at,
               author_id: extractAuthorId(raw),
               author_name: extractAuthorName(raw),
+              author_avatar_url: extractAuthorAvatarUrl(raw),
             } as PlacementComment;
           })
           .filter(Boolean) as PlacementComment[];
@@ -632,6 +653,7 @@ export default function ParticipantScheduleOverlay({
       const sourceCellId = String(placement.source_cell_id ?? placement.source_cell ?? placement.id);
       const placementId = getPlacementId(placement);
       const publishedPlacementId = getPublishedPlacementId(placement);
+      if (publishedPlacementId == null) continue;
       const bundleId = placement.bundle_id ?? placement.bundle ?? null;
       const cellName = cellNameById[sourceCellId] || `Cell ${sourceCellId}`;
       const timeLabel = formatSlotRange(dayStartMin, slotMin, placement.start_slot, placement.end_slot);
@@ -714,6 +736,33 @@ export default function ParticipantScheduleOverlay({
   );
 
   useEffect(() => {
+    if (!commentsPanelOpen || !selectedCommentPlacementKey) return;
+    const animationFrame = window.requestAnimationFrame(() => {
+      const overlay = overlayRef.current;
+      const scrollElement = overlay?.closest("[data-schedule-scroll]") as HTMLElement | null;
+      if (!overlay || !scrollElement) return;
+      const selectedCard = Array.from(
+        overlay.querySelectorAll<HTMLElement>("[data-comment-placement-key]"),
+      ).find((card) => card.dataset.commentPlacementKey === selectedCommentPlacementKey);
+      if (!selectedCard) return;
+
+      const viewportRect = scrollElement.getBoundingClientRect();
+      const cardRect = selectedCard.getBoundingClientRect();
+      const scheduleLeft = viewportRect.left + Math.min(timeColPx, viewportRect.width);
+      const desiredCenter = scheduleLeft + Math.max(0, viewportRect.right - scheduleLeft) / 2;
+      const nextScrollLeft = scrollElement.scrollLeft + cardRect.left + cardRect.width / 2 - desiredCenter;
+      const desiredCenterY = viewportRect.top + viewportRect.height / 2;
+      const nextScrollTop = scrollElement.scrollTop + cardRect.top + cardRect.height / 2 - desiredCenterY;
+      scrollElement.scrollTo({
+        left: Math.max(0, nextScrollLeft),
+        top: Math.max(0, nextScrollTop),
+        behavior: "smooth",
+      });
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [commentsPanelOpen, selectedCommentPlacementKey, timeColPx]);
+
+  useEffect(() => {
     if (!commentsPanelOpen) {
       setCommentError((prev) => (prev == null ? prev : null));
       setCommentBusy((prev) => (prev === false ? prev : false));
@@ -790,7 +839,11 @@ export default function ParticipantScheduleOverlay({
 
   const submitPlacementComment = async () => {
     if (!commentAnchor || !commentDraft.trim()) return;
-    if (scheduleViewMode !== "published" || !publishedScheduleId) {
+    if (
+      scheduleViewMode !== "published" ||
+      !publishedScheduleId ||
+      commentAnchor.publishedPlacementId == null
+    ) {
       setCommentError(t("solve_overlay.comments_unavailable"));
       return;
     }
@@ -799,19 +852,9 @@ export default function ParticipantScheduleOverlay({
     try {
       const payload: Record<string, unknown> = {
         published_schedule_id: commentAnchor.publishedScheduleId,
-        source_cell_id: commentAnchor.sourceCellId,
-        bundle: commentAnchor.bundleId,
-        day_index: commentAnchor.dayIndex,
-        start_slot: commentAnchor.startSlot,
-        end_slot: commentAnchor.endSlot,
+        published_placement_id: commentAnchor.publishedPlacementId,
         text: commentDraft.trim(),
       };
-      if (commentAnchor.publishedPlacementId != null && String(commentAnchor.publishedPlacementId).trim()) {
-        payload.published_placement_id = commentAnchor.publishedPlacementId;
-      }
-      if (commentAnchor.placementId != null && String(commentAnchor.placementId).trim()) {
-        payload.placement_id = commentAnchor.placementId;
-      }
       const res = await authFetch("/api/placement-comments/", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -854,6 +897,7 @@ export default function ParticipantScheduleOverlay({
         created_at: raw.created_at,
         author_id: extractAuthorId(raw) ?? currentUserId ?? undefined,
         author_name: extractAuthorName(raw),
+        author_avatar_url: extractAuthorAvatarUrl(raw) ?? currentUserAvatarUrl ?? undefined,
       };
       setPlacementComments((prev) => [next, ...prev]);
       setCommentDraft("");
@@ -1042,6 +1086,7 @@ export default function ParticipantScheduleOverlay({
                 key={`${s.id}-${idx}`}
                 data-placement-card
                 data-placement-id={placementId == null ? undefined : String(placementId)}
+                data-comment-placement-key={commentKey || undefined}
                 className={`absolute ${commentsPanelOpen && commentAnchorForCard ? "pointer-events-auto cursor-pointer transition-transform duration-150 ease-out" : ""}`}
                 style={{
                   top,
@@ -1196,7 +1241,9 @@ export default function ParticipantScheduleOverlay({
                             createdAt={comment.created_at}
                             authorId={comment.author_id}
                             authorName={comment.author_name}
+                            authorAvatarUrl={comment.author_avatar_url}
                             currentUserId={currentUserId}
+                            currentUserAvatarUrl={currentUserAvatarUrl}
                             locale={locale}
                             youLabel={t("solve_overlay.comment_you")}
                             justNowLabel={t("solve_overlay.comment_just_now")}
