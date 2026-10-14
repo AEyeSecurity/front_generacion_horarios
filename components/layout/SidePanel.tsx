@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   Sheet,
@@ -10,10 +10,13 @@ import {
 } from "@/components/ui/sheet";
 import { useI18n } from "@/lib/use-i18n";
 import type { Role } from "@/lib/types";
+import { invalidateGridResource, invalidateGridScreenContext } from "@/lib/screen-context";
 
 const ParticipantsPanel = dynamic(() => import("@/components/panels/ParticipantsPanel"), { ssr: false });
 const CategoriesPanel = dynamic(() => import("@/components/panels/CategoriesPanel"), { ssr: false });
 const TimeRangesEditor = dynamic(() => import("@/components/grid/TimeRangesEditor"), { ssr: false });
+const AddParticipantDialog = dynamic(() => import("@/components/dialogs/AddParticipantDialog"), { ssr: false });
+const AddCategoryDialog = dynamic(() => import("@/components/dialogs/AddCategoryDialog"), { ssr: false });
 const PARTICIPANT_ADD_HIGHLIGHT_EVENT = "shift:participants-add-highlight";
 
 export default function SidePanel({
@@ -64,9 +67,10 @@ export default function SidePanel({
   const [participantsKey, setParticipantsKey] = useState(0);
   const [categoriesKey, setCategoriesKey] = useState(0);
   const [highlightAddParticipant, setHighlightAddParticipant] = useState(false);
-
-  const AddParticipantDialog = dynamic(() => import("@/components/dialogs/AddParticipantDialog"), { ssr: false });
-  const AddCategoryDialog = dynamic(() => import("@/components/dialogs/AddCategoryDialog"), { ssr: false });
+  const handleCategoryParents = useCallback(
+    (parents: { id: number; name: string }[]) => setCategoryParents(parents),
+    [],
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -81,7 +85,7 @@ export default function SidePanel({
   }, [gridId]);
 
   // Evitar que un click en el dock sea considerado "outside" por el Sheet
-  const ignoreDockOutside = (e: any) => {
+  const ignoreDockOutside = (e: Event) => {
     const dock = document.getElementById("sidedock");
     if (dock && e.target && dock.contains(e.target as Node)) {
       e.preventDefault(); // no cerrar el panel
@@ -131,7 +135,7 @@ export default function SidePanel({
             ) : (
               <CategoriesPanel
                 gridId={gridId}
-                onParents={(p) => setCategoryParents(p)}
+                onParents={handleCategoryParents}
                 refreshKey={categoriesKey}
               />
             )}
@@ -155,6 +159,8 @@ export default function SidePanel({
                     open={showPerson}
                     onOpenChange={setShowPerson}
                     onCreated={() => {
+                      invalidateGridResource(gridId, "participants");
+                      invalidateGridScreenContext(gridId, "draft");
                       onParticipantCreated?.();
                       setParticipantsKey((k) => k + 1);
                     }}
@@ -175,7 +181,12 @@ export default function SidePanel({
                     open={showCategory}
                     onOpenChange={setShowCategory}
                     parents={categoryParents}
-                    onCreated={() => setCategoriesKey((k) => k + 1)}
+                    onCreated={() => {
+                      invalidateGridResource(gridId, "categories");
+                      invalidateGridResource(gridId, "category_values");
+                      invalidateGridScreenContext(gridId, "draft");
+                      setCategoriesKey((k) => k + 1);
+                    }}
                   />
                 </>
               )}

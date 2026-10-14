@@ -3,12 +3,14 @@ import type { Role } from "@/lib/types";
 import { requireUserOrRedirect } from "@/lib/auth";
 import { CategoriesHeader } from "@/components/grid/headers";
 import { resolveGridByCode } from "../_helpers";
+import { getTranslation } from "@/lib/i18n";
 
 export default async function CategoriesPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
   const grid = await resolveGridByCode(code);
   const id = String(grid.id);
   const me = await requireUserOrRedirect(`/grid/${encodeURIComponent(grid.grid_code || code)}/categories`);
+  const t = (key: Parameters<typeof getTranslation>[1]) => getTranslation(me.preferred_language, key);
 
   let role: Role = "viewer";
   try {
@@ -37,7 +39,7 @@ export default async function CategoriesPage({ params }: { params: Promise<{ cod
 
         {categories.length === 0 ? (
           <div className="text-sm text-gray-600 border rounded-lg p-6 bg-white">
-            No categories yet. Create one with the Create button above.
+            {t("category_panel.no_categories_create_help")}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

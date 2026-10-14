@@ -1,24 +1,27 @@
 "use client";
 
 import { toast } from "sonner";
+import { getTranslation } from "@/lib/i18n";
+import { readDocumentPreferredLanguage } from "@/lib/language";
 
-export const NETWORK_OFFLINE_MESSAGE = "Sin conexión a internet";
-export const SESSION_EXPIRED_MESSAGE = "Tu sesión ha expirado por inactividad";
 export const SESSION_EXPIRED_EVENT = "shift:session-expired";
 export const NETWORK_STATUS_EVENT = "shift:network-status";
+
+const networkOfflineMessage = () => getTranslation(readDocumentPreferredLanguage(), "network.offline");
+const sessionExpiredMessage = () => getTranslation(readDocumentPreferredLanguage(), "network.session_expired");
 
 let sessionExpiryHandling = false;
 let offlineToastVisible = false;
 
 export class NetworkOfflineError extends Error {
-  constructor(message = NETWORK_OFFLINE_MESSAGE) {
+  constructor(message = networkOfflineMessage()) {
     super(message);
     this.name = "NetworkOfflineError";
   }
 }
 
 export class SessionExpiredError extends Error {
-  constructor(message = SESSION_EXPIRED_MESSAGE) {
+  constructor(message = sessionExpiredMessage()) {
     super(message);
     this.name = "SessionExpiredError";
   }
@@ -32,7 +35,7 @@ export function getIsOnline() {
 export function notifyOffline() {
   if (offlineToastVisible) return;
   offlineToastVisible = true;
-  toast.error(NETWORK_OFFLINE_MESSAGE, {
+  toast.error(networkOfflineMessage(), {
     id: "network-offline",
     duration: Infinity,
   });
@@ -65,7 +68,7 @@ async function clearAuthSession() {
 export async function handleSessionExpired(options: { redirectWith?: (url: string) => void; redirect?: boolean } = {}) {
   if (sessionExpiryHandling) throw new SessionExpiredError();
   sessionExpiryHandling = true;
-  toast.error(SESSION_EXPIRED_MESSAGE, { id: "session-expired" });
+  toast.error(sessionExpiredMessage(), { id: "session-expired" });
   await clearAuthSession();
   if (options.redirect !== false && typeof window !== "undefined") {
     const loginUrl = buildLoginUrl();

@@ -4,6 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/use-i18n";
 import PanelAsyncState from "@/components/ui/PanelAsyncState";
+import {
+  fetchGridResource,
+  invalidateGridScreenContext,
+  primeGridResource,
+} from "@/lib/screen-context";
 
 const TIME_RANGE_STATS_EVENT = "shift:time-range-stats";
 const TIME_RANGE_SAVED_EVENT = "shift:onboarding-time-range-saved";
@@ -259,17 +264,37 @@ export default function TimeRangesEditor({
     [horizonSpanMin, horizonStartMin, stepMin, t],
   );
 
-  const load = useCallback(async () => {
+  const cacheTimeRanges = useCallback((nextRanges: TimeRangeDraft[]) => {
+    primeGridResource(
+      gridId,
+      "time_ranges",
+      nextRanges.map((entry) => ({
+        id: entry.id,
+        grid: gridId,
+        name: entry.name,
+        start_time: minutesToClock(horizonStartMin + entry.startOffsetMin),
+        end_time: minutesToClock(horizonStartMin + entry.endOffsetMin),
+      } satisfies TimeRangeApi)),
+    );
+    invalidateGridScreenContext(gridId, "draft");
+  }, [gridId, horizonStartMin]);
+
+  const load = useCallback(async (force = false) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`, { cache: "no-store" });
-      if (!res.ok) {
-        const raw = await res.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, t("time_ranges.error_loading")));
-      }
-      const data = await res.json().catch(() => ({}));
-      const list = (Array.isArray(data) ? data : data.results ?? []) as TimeRangeApi[];
+      const list = await fetchGridResource<TimeRangeApi[]>(gridId, "time_ranges", {
+        force,
+        fallback: async () => {
+          const res = await fetch(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`, { cache: "no-store" });
+          if (!res.ok) {
+            const raw = await res.text().catch(() => "");
+            throw new Error(parseApiErrorMessage(raw, t("time_ranges.error_loading")));
+          }
+          const data = await res.json().catch(() => ({}));
+          return (Array.isArray(data) ? data : data.results ?? []) as TimeRangeApi[];
+        },
+      });
       const sorted = list
         .map(mapApiToDraft)
         .sort((a, b) => a.startOffsetMin - b.startOffsetMin || a.endOffsetMin - b.endOffsetMin || a.id - b.id);
@@ -351,8 +376,7 @@ export default function TimeRangesEditor({
         const raw = await res.text().catch(() => "");
         throw new Error(parseApiErrorMessage(raw, t("grid_solver_settings.time_ranges_save_failed")));
       }
-      setRanges((prev) =>
-        prev.map((entry) =>
+      const next = ranges.map((entry) =>
           entry.id === id
             ? {
                 ...entry,
@@ -362,8 +386,9 @@ export default function TimeRangesEditor({
                 needsInitialSave: false,
               }
             : entry,
-        ),
       );
+      setRanges(next);
+      cacheTimeRanges(next);
       window.dispatchEvent(
         new CustomEvent(TIME_RANGE_SAVED_EVENT, {
           detail: { gridId: String(gridId), rangeId: String(id) },
@@ -386,7 +411,9 @@ export default function TimeRangesEditor({
         const raw = await res.text().catch(() => "");
         throw new Error(parseTimeRangeDeleteError(raw, res.status, t("grid_solver_settings.time_ranges_delete_failed")));
       }
-      setRanges((prev) => prev.filter((entry) => entry.id !== id));
+      const next = ranges.filter((entry) => entry.id !== id);
+      setRanges(next);
+      cacheTimeRanges(next);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t("grid_solver_settings.time_ranges_delete_failed"));
     } finally {
@@ -423,13 +450,14 @@ export default function TimeRangesEditor({
           ...mapApiToDraft(created),
           needsInitialSave: true,
         };
-        setRanges((prev) =>
-          [...prev.filter((entry) => entry.id !== createdDraft.id), createdDraft].sort(
-            (a, b) => a.startOffsetMin - b.startOffsetMin || a.endOffsetMin - b.endOffsetMin || a.id - b.id,
-          ),
+        const next = [...ranges.filter((entry) => entry.id !== createdDraft.id), createdDraft].sort(
+          (a, b) => a.startOffsetMin - b.startOffsetMin || a.endOffsetMin - b.endOffsetMin || a.id - b.id,
         );
+        setRanges(next);
+        cacheTimeRanges(next);
       } else {
-        await load();
+        invalidateGridScreenContext(gridId, "draft");
+        await load(true);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t("grid_solver_settings.time_ranges_create_failed"));
@@ -835,7 +863,7 @@ export default function TimeRangesEditor({
               const p = polar(cx, cy, outerRadius * 0.56, midAngle);
               return (
                 <text x={p.x} y={p.y} textAnchor="middle" dominantBaseline="middle" fontSize={12} fill="#6b7280">
-                  Unassigned
+                  {t("time_ranges.unassigned")}
                 </text>
               );
             })() : null}

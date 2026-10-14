@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useI18n } from "@/lib/use-i18n";
+import { fetchGridResource, type GridResourceName } from "@/lib/screen-context";
 
 type OnboardingGuideProps = {
   gridId: number;
@@ -121,11 +122,9 @@ function parseCollectionCount(payload: unknown): number {
   return 0;
 }
 
-async function fetchCollectionCount(path: string): Promise<number> {
+async function fetchCollectionCount(gridId: number, resource: GridResourceName): Promise<number> {
   try {
-    const response = await fetch(path, { cache: "no-store" });
-    if (!response.ok) return 0;
-    const data = await response.json().catch(() => ({}));
+    const data = await fetchGridResource(gridId, resource);
     return parseCollectionCount(data);
   } catch {
     return 0;
@@ -667,8 +666,8 @@ function OnboardingGuideInner({ gridId, gridCode, show, unitNature }: Onboarding
       }
       if (nextStep === 2) {
         const [categoryCount, unitCount] = await Promise.all([
-          fetchCollectionCount(`/api/categories?grid=${encodeURIComponent(String(gridId))}`),
-          fetchCollectionCount(`/api/units?grid=${encodeURIComponent(String(gridId))}`),
+          fetchCollectionCount(gridId, "categories"),
+          fetchCollectionCount(gridId, "units"),
         ]);
         setCategoriesCount(categoryCount);
         setCategoryBaseline(categoryCount);
@@ -676,13 +675,13 @@ function OnboardingGuideInner({ gridId, gridCode, show, unitNature }: Onboarding
         setUnitBaseline(unitCount);
       }
       if (nextStep === 3) {
-        const nextCount = await fetchCollectionCount(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`);
+        const nextCount = await fetchCollectionCount(gridId, "time_ranges");
         setTimeRangesCount(nextCount);
         setTimeRangeBaseline(nextCount);
         setTimeRangeSavedInStep(false);
       }
       if (nextStep === 5) {
-        const nextCount = await fetchCollectionCount(`/api/cells?grid=${encodeURIComponent(String(gridId))}`);
+        const nextCount = await fetchCollectionCount(gridId, "cells");
         setCellsCount(nextCount);
         setCellBaseline(nextCount);
       }
@@ -710,11 +709,11 @@ function OnboardingGuideInner({ gridId, gridCode, show, unitNature }: Onboarding
 
     (async () => {
       const [pCount, catCount, unitCount, trCount, cCount] = await Promise.all([
-        fetchCollectionCount(`/api/participants?grid=${encodeURIComponent(String(gridId))}`),
-        fetchCollectionCount(`/api/categories?grid=${encodeURIComponent(String(gridId))}`),
-        fetchCollectionCount(`/api/units?grid=${encodeURIComponent(String(gridId))}`),
-        fetchCollectionCount(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`),
-        fetchCollectionCount(`/api/cells?grid=${encodeURIComponent(String(gridId))}`),
+        fetchCollectionCount(gridId, "participants"),
+        fetchCollectionCount(gridId, "categories"),
+        fetchCollectionCount(gridId, "units"),
+        fetchCollectionCount(gridId, "time_ranges"),
+        fetchCollectionCount(gridId, "cells"),
       ]);
       if (cancelled) return;
       setParticipantsCount(pCount);
@@ -872,14 +871,14 @@ function OnboardingGuideInner({ gridId, gridCode, show, unitNature }: Onboarding
     let cancelled = false;
     const poll = async () => {
       if (step === 1) {
-        const count = await fetchCollectionCount(`/api/participants?grid=${encodeURIComponent(String(gridId))}`);
+        const count = await fetchCollectionCount(gridId, "participants");
         if (!cancelled) setParticipantsCount(count);
         return;
       }
       if (step === 2) {
         const [categoryCount, unitCount] = await Promise.all([
-          fetchCollectionCount(`/api/categories?grid=${encodeURIComponent(String(gridId))}`),
-          fetchCollectionCount(`/api/units?grid=${encodeURIComponent(String(gridId))}`),
+          fetchCollectionCount(gridId, "categories"),
+          fetchCollectionCount(gridId, "units"),
         ]);
         if (!cancelled) {
           setCategoriesCount(categoryCount);
@@ -888,12 +887,12 @@ function OnboardingGuideInner({ gridId, gridCode, show, unitNature }: Onboarding
         return;
       }
       if (step === 3) {
-        const count = await fetchCollectionCount(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`);
+        const count = await fetchCollectionCount(gridId, "time_ranges");
         if (!cancelled) setTimeRangesCount(count);
         return;
       }
       if (step === 5) {
-        const count = await fetchCollectionCount(`/api/cells?grid=${encodeURIComponent(String(gridId))}`);
+        const count = await fetchCollectionCount(gridId, "cells");
         if (!cancelled) setCellsCount(count);
       }
     };
@@ -1680,7 +1679,7 @@ function OnboardingGuideInner({ gridId, gridCode, show, unitNature }: Onboarding
                 className={`h-2.5 w-2.5 rounded-full border transition ${
                   isCurrent || isDone ? "border-white bg-white" : "border-white/70 bg-transparent"
                 } ${disabled ? "cursor-not-allowed opacity-40" : "hover:scale-125"}`}
-                aria-label={`Go to onboarding step ${index + 1}`}
+                aria-label={t("onboarding.go_to_step", { step: index + 1 })}
               />
             );
           })}

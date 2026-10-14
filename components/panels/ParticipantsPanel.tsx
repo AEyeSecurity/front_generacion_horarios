@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import { AllTierLabel, TierBadge, TierFilterChip, type Tier } from "@/components/badges/TierBadge";
@@ -16,6 +16,7 @@ import PanelShell from "@/components/panels/PanelShell";
 import PanelScrollArea from "@/components/panels/PanelScrollArea";
 import EditParticipantDialog from "@/components/dialogs/EditParticipantDialog";
 import { useI18n } from "@/lib/use-i18n";
+import { fetchGridResource } from "@/lib/screen-context";
 
 type Participant = {
   id: number;
@@ -63,23 +64,35 @@ export default function ParticipantsPanel({
     }
   };
 
-  async function load() {
+  const load = useCallback(async (force = false) => {
     const requestId = ++loadRequestRef.current;
     setLoading(true);
     setErr(null);
     try {
-      const [participantsRes, gridRes] = await Promise.all([
-        fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" }),
-        tiersEnabled == null ? fetch(`/api/grids/${gridId}/`, { cache: "no-store" }).catch(() => null) : Promise.resolve(null),
+      const [items, gridData] = await Promise.all([
+        fetchGridResource<Participant[]>(gridId, "participants", {
+          force,
+          fallback: async () => {
+            const response = await fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" });
+            if (!response.ok) throw new Error(t("errors.failed_status", { status: response.status }));
+            const data = await response.json();
+            return Array.isArray(data) ? data : data.results ?? [];
+          },
+        }),
+        tiersEnabled == null
+          ? fetchGridResource<Record<string, unknown>>(gridId, "grid", {
+              fallback: async () => {
+                const response = await fetch(`/api/grids/${gridId}/`, { cache: "no-store" });
+                if (!response.ok) return {};
+                return response.json().catch(() => ({}));
+              },
+            })
+          : Promise.resolve(null),
       ]);
-      if (!participantsRes.ok) throw new Error(`Failed (${participantsRes.status})`);
-      const data = await participantsRes.json();
-      const items = Array.isArray(data) ? data : data.results ?? [];
       if (requestId !== loadRequestRef.current) return;
       if (tiersEnabled != null) {
         setTierEnabled(Boolean(tiersEnabled));
-      } else if (gridRes?.ok) {
-        const gridData = await gridRes.json().catch(() => null);
+      } else if (gridData) {
         setTierEnabled(readGridTierEnabled(gridData, false));
       }
       setList(items);
@@ -90,11 +103,11 @@ export default function ParticipantsPanel({
     } finally {
       if (requestId === loadRequestRef.current) setLoading(false);
     }
-  }
+  }, [gridId, onCountChange, t, tiersEnabled]);
 
   useEffect(() => {
-    load();
-  }, [gridId, refreshKey, tiersEnabled]);
+    void load(refreshKey > 0);
+  }, [load, refreshKey]);
 
   useEffect(() => () => clearRowClickTimer(), []);
 

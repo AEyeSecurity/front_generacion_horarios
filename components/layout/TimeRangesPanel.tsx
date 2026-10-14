@@ -235,7 +235,7 @@ export default function TimeRangesPanel({
       colored,
       unassigned: {
         id: "unassigned",
-        name: "Unassigned",
+        name: t("time_ranges.unassigned"),
         start: "",
         end: "",
         duration: unassignedDuration,
@@ -545,7 +545,7 @@ export default function TimeRangesPanel({
                       {t("entity.time_ranges")}
                     </text>
                     <text x="80" y="94" textAnchor="middle" className="fill-gray-500 text-[11px]">
-                      {`${Math.round(pieSegments.horizonSpan / 60)}h`}
+                      {Math.round(pieSegments.horizonSpan / 60)}{t("common.hours_short")}
                     </text>
                   </svg>
                 </div>
@@ -560,7 +560,7 @@ export default function TimeRangesPanel({
                       <span className="truncate font-medium text-gray-800">{segment.name}</span>
                       <span className="text-gray-500">{`${segment.start}-${segment.end}`}</span>
                       <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600">
-                        {placementCount != null ? `${placementCount} cells` : "—"}
+                        {placementCount != null ? t("time_ranges.cells_count", { count: placementCount }) : "—"}
                       </span>
                       <span className="text-gray-500">{formatPercent(segment.ratio)}</span>
                     </div>
@@ -568,7 +568,7 @@ export default function TimeRangesPanel({
                 })}
                 <div className="flex items-center gap-2 text-xs">
                   <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-300" />
-                  <span className="font-medium text-gray-700">Unassigned</span>
+                  <span className="font-medium text-gray-700">{t("time_ranges.unassigned")}</span>
                   <span className="ml-auto text-gray-500">{formatPercent(pieSegments.unassigned.ratio)}</span>
                 </div>
               </div>

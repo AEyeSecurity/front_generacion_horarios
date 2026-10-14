@@ -6,11 +6,13 @@ import { headers } from "next/headers";
 import { normalizePreferredLanguage } from "@/lib/language";
 import { I18nProvider } from "@/components/providers/I18nProvider";
 import NetworkAuthProvider from "@/components/providers/NetworkAuthProvider";
+import ApiRequestAuditProvider from "@/components/providers/ApiRequestAuditProvider";
+import { getTranslation } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Shift Scheduler",
+  title: getTranslation("en-US", "app.metadata_title"),
   icons: {
     icon: "/shift.png",
   },
@@ -41,6 +43,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className={`${googleSans.variable} min-h-dvh bg-gray-50 text-gray-900 font-sans`}>
         <I18nProvider initialLocale={language}>
           <NetworkAuthProvider>
+            <ApiRequestAuditProvider />
             <main className="w-full">{children}</main>
           </NetworkAuthProvider>
 

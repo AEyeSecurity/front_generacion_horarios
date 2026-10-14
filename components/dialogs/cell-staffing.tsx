@@ -658,20 +658,20 @@ export function CellStaffingEditor({
                         disabled={groupMode ? !canToggleDraftMember(participant) && !inDraft : poolDisabled}
                         title={
                           coveredByStaffGroup
-                            ? `Already in staff group ${Number(memberGroupIndex.get(id)) + 1}`
+                            ? t("cell_staffing.already_in_staff_group", { index: Number(memberGroupIndex.get(id)) + 1 })
                             : inDraft
-                            ? "In current draft group"
+                            ? t("cell_staffing.in_current_draft_group")
                             : tierCounts[tier] === 0 && !inPool
-                            ? "Tier count is 0"
+                            ? t("cell_staffing.tier_count_zero")
                             : inPool
-                            ? "In eligible pool"
+                            ? t("cell_staffing.in_eligible_pool")
                             : undefined
                         }
                       >
                         <span>{participantLabel(participant)}</span>
                         {coveredByStaffGroup && (
                           <span className="ml-2 text-[10px] uppercase tracking-wide">
-                            G{Number(memberGroupIndex.get(id)) + 1}
+                            {t("cell_staffing.group_abbreviation")}{Number(memberGroupIndex.get(id)) + 1}
                           </span>
                         )}
                       </button>
@@ -686,7 +686,7 @@ export function CellStaffingEditor({
           </div>
         ) : (
           <div className="rounded border bg-white p-3">
-            <div className="text-sm font-medium mb-3">Eligible participants</div>
+            <div className="text-sm font-medium mb-3">{t("cell_staffing.eligible_participants")}</div>
             <div className="flex flex-wrap gap-2">
               {filteredParticipants.map((participant) => {
                 const id = String(participant.id);
@@ -709,12 +709,14 @@ export function CellStaffingEditor({
                     onPointerCancel={clearLongPress}
                     onClick={() => handleChipClick(participant)}
                     disabled={groupMode ? !canToggleDraftMember(participant) && !inDraft : poolDisabled}
-                    title={coveredByStaffGroup ? `Already in staff group ${Number(memberGroupIndex.get(id)) + 1}` : undefined}
+                    title={coveredByStaffGroup
+                      ? t("cell_staffing.already_in_staff_group", { index: Number(memberGroupIndex.get(id)) + 1 })
+                      : undefined}
                   >
                     <span>{participantLabel(participant)}</span>
                     {coveredByStaffGroup && (
                       <span className="ml-2 text-[10px] uppercase tracking-wide">
-                        G{Number(memberGroupIndex.get(id)) + 1}
+                        {t("cell_staffing.group_abbreviation")}{Number(memberGroupIndex.get(id)) + 1}
                       </span>
                     )}
                   </button>
@@ -812,14 +814,14 @@ export function CellStaffingEditor({
                         key={`${group.members.join("-")}-${index}`}
                         className="inline-flex items-center gap-2 rounded-full border bg-white px-3 py-1 text-sm"
                       >
-                        <span className="text-xs font-medium text-gray-500">G{index + 1}</span>
+                        <span className="text-xs font-medium text-gray-500">{t("cell_staffing.group_abbreviation")}{index + 1}</span>
                         <span>
                           {group.display_name || group.name || group.members
                             .map((id) => participantLabel(participantMap[id] || { id, name: id }))
                             .join(" + ")}
                         </span>
                         <button type="button" className="text-gray-500" onClick={() => removeGroup(index)}>
-                          x
+                          ×
                         </button>
                       </div>
                     ))}

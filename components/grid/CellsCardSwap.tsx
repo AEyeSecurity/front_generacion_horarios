@@ -240,7 +240,7 @@ export default function CellsCardSwap({
                   setPageIdx((p) => (p - 1 + pages.length) % pages.length);
                 }}
                 className={`absolute left-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full border bg-white shadow ${canPrev ? "opacity-100" : "opacity-40 cursor-not-allowed"}`}
-                aria-label="Previous stack"
+                aria-label={t("cells_card_swap.previous_stack")}
               >
                 <ChevronLeft className="w-5 h-5 mx-auto text-gray-700" />
               </button>
@@ -252,7 +252,7 @@ export default function CellsCardSwap({
                   setPageIdx((p) => (p + 1) % pages.length);
                 }}
                 className={`absolute right-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full border bg-white shadow ${canNext ? "opacity-100" : "opacity-40 cursor-not-allowed"}`}
-                aria-label="Next stack"
+                aria-label={t("cells_card_swap.next_stack")}
               >
                 <ChevronRight className="w-5 h-5 mx-auto text-gray-700" />
               </button>
@@ -329,7 +329,7 @@ export default function CellsCardSwap({
                           style={{ color: textDark || "#374151" }}
                         />
                         <span className="relative z-10 whitespace-nowrap">
-                          {cell.duration_minutes ?? cell.duration_min ?? 0} min
+                          {cell.duration_minutes ?? cell.duration_min ?? 0} {t("common.minutes_short")}
                         </span>
                       </div>
                     </div>
@@ -375,7 +375,7 @@ export default function CellsCardSwap({
                       {hasEligible && (
                         <div>
                           <div className="mb-1 text-xs font-medium" style={{ color: textLight || undefined }}>
-                            Eligible Participants
+                            {t("cell_staffing.eligible_participants")}
                           </div>
                           <div
                             className="leading-relaxed"
@@ -398,6 +398,7 @@ export default function CellsCardSwap({
       <EditCellDialog
         gridId={gridId}
         cell={editCell}
+        bundleCatalog={bundles}
         open={Boolean(editCell)}
         onOpenChange={(v) => {
           if (!v) setEditCell(null);

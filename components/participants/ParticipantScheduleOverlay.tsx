@@ -15,6 +15,7 @@ import {
 } from "@/lib/schedule-view";
 import { CELL_COLOR_OPTIONS, CELL_TEXT_DARK, CELL_TEXT_LIGHT } from "@/lib/cell-colors";
 import { authFetch } from "@/lib/client-auth";
+import { fetchGridResource, fetchGridScreenContext, getContextList } from "@/lib/screen-context";
 import { useI18n } from "@/lib/use-i18n";
 import PlacementCommentBubble from "@/components/grid/PlacementCommentBubble";
 
@@ -333,13 +334,9 @@ export default function ParticipantScheduleOverlay({
     (async () => {
       setScheduleLoading(true);
       try {
-        const screenContextRes = await fetch(
-          `/api/grids/${gridId}/screen-context/?view=${scheduleViewMode}`,
-          { cache: "no-store" },
-        ).catch(() => null);
+        const data = await fetchGridScreenContext(gridId, scheduleViewMode).catch(() => null) as Record<string, any> | null;
 
-        if (screenContextRes?.ok) {
-          const data = await screenContextRes.json().catch(() => ({}));
+        if (data) {
           const scheduleCandidate = data?.schedule ?? data?.published_schedule ?? data?.latest ?? data;
           const placements = Array.isArray(scheduleCandidate?.placements)
             ? scheduleCandidate.placements
@@ -381,8 +378,8 @@ export default function ParticipantScheduleOverlay({
           if (active) setSchedulePlacements((prev) => (prev.length === 0 ? prev : []));
           return;
         }
-        const data = await r.json().catch(() => ({}));
-        const scheduleCandidate = data?.schedule ?? data?.published_schedule ?? data?.latest ?? data;
+        const fallbackData = await r.json().catch(() => ({})) as Record<string, any>;
+        const scheduleCandidate = fallbackData?.schedule ?? fallbackData?.published_schedule ?? fallbackData?.latest ?? fallbackData;
         const placements = Array.isArray(scheduleCandidate?.placements)
           ? scheduleCandidate.placements
           : Array.isArray(scheduleCandidate?.schedule)
@@ -434,27 +431,19 @@ export default function ParticipantScheduleOverlay({
     (async () => {
       setMetadataLoading(true);
       try {
-        const fetchCollection = async (urls: string[]) => {
-          for (const url of urls) {
-            const res = await fetch(url, { cache: "no-store" }).catch(() => null);
-            if (!res || !res.ok) continue;
-            const data = await res.json().catch(() => null);
-            if (Array.isArray(data)) return data;
-            if (Array.isArray((data as any)?.results)) return (data as any).results;
-          }
-          return [] as any[];
-        };
-
-        const [clist, blist, plist] = await Promise.all([
-          fetchCollection([`/api/cells?grid=${gridId}`, `/api/cells/?grid=${gridId}`]),
-          fetchCollection([`/api/bundles?grid=${gridId}`, `/api/bundles/?grid=${gridId}`]),
-          fetchCollection([
-            `/api/participants?grid=${gridId}`,
-            `/api/participants/?grid=${gridId}`,
-            `/api/grids/${gridId}/participants/`,
-            `/api/grids/${gridId}/participants`,
-          ]),
-        ]);
+        const metadataContext = await fetchGridScreenContext(gridId, scheduleViewMode).catch(() => ({})) as Record<string, unknown>;
+        const contextCells = getContextList<any>(metadataContext.cells);
+        const contextBundles = getContextList<any>(metadataContext.bundles);
+        const contextParticipants = getContextList<any>(metadataContext.participants);
+        const [clist, blist, plist] = scheduleViewMode === "published"
+          ? [contextCells, contextBundles, contextParticipants]
+          : await Promise.all([
+              contextCells.length > 0 ? contextCells : fetchGridResource<any[]>(gridId, "cells"),
+              contextBundles.length > 0 ? contextBundles : fetchGridResource<any[]>(gridId, "bundles"),
+              contextParticipants.length > 0
+                ? contextParticipants
+                : fetchGridResource<any[]>(gridId, "participants"),
+            ]);
 
         const cmap: Record<string, string> = {};
         const ccolors: Record<string, string> = {};
@@ -513,7 +502,7 @@ export default function ParticipantScheduleOverlay({
     return () => {
       active = false;
     };
-  }, [gridId]);
+  }, [gridId, scheduleViewMode]);
 
   const filteredSchedule = useMemo(() => schedulePlacements.filter((s) => {
     const assigned = Array.isArray(s.assigned_participants) ? s.assigned_participants : [];
@@ -559,7 +548,7 @@ export default function ParticipantScheduleOverlay({
           `/api/placement-comments/?published_schedule_id=${encodeURIComponent(String(publishedScheduleId))}`,
           { cache: "no-store" },
         );
-        if (!res.ok) throw new Error(`Failed to load comments (${res.status})`);
+        if (!res.ok) throw new Error(t("solve_overlay.failed_load_comments_status", { status: res.status }));
         const data = await res.json().catch(() => ([]));
         const list = Array.isArray(data) ? data : data.results ?? [];
         const normalized = list
@@ -617,7 +606,7 @@ export default function ParticipantScheduleOverlay({
     return () => {
       active = false;
     };
-  }, [canComment, publishedScheduleId, scheduleViewMode]);
+  }, [canComment, publishedScheduleId, scheduleViewMode, t]);
 
   const commentCountByPlacement = useMemo(() => {
     const map: Record<string, number> = {};

@@ -12,6 +12,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { useI18n } from "@/lib/use-i18n";
+import { fetchGridResource, invalidateGridResource, invalidateGridScreenContext } from "@/lib/screen-context";
 
 export default function AddParticipantDialog({
   gridId,
@@ -43,9 +44,12 @@ export default function AddParticipantDialog({
     let active = true;
     (async () => {
       try {
-        const res = await fetch(`/api/grids/${gridId}/`, { cache: "no-store" });
-        if (!res.ok) return;
-        const data = await res.json().catch(() => null);
+        const data = await fetchGridResource<Record<string, unknown>>(gridId, "grid", {
+          fallback: async () => {
+            const res = await fetch(`/api/grids/${gridId}`, { cache: "no-store" });
+            return res.ok ? res.json().catch(() => ({})) : {};
+          },
+        });
         if (!active) return;
         setTierEnabled(readGridTierEnabled(data, false));
       } catch {
@@ -80,6 +84,8 @@ export default function AddParticipantDialog({
       setFirst("");
       setLast("");
       setTier("PRIMARY");
+      invalidateGridResource(gridId, "participants");
+      invalidateGridScreenContext(gridId, "draft");
       onCreated?.();
       onOpenChange(false);
     } catch (e: any) {

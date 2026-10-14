@@ -1,14 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import PanelShell from "@/components/panels/PanelShell";
 import PanelScrollArea from "@/components/panels/PanelScrollArea";
 import { useI18n } from "@/lib/use-i18n";
+import {
+  fetchGridResource,
+  invalidateGridResource,
+  invalidateGridScreenContext,
+  primeGridResource,
+} from "@/lib/screen-context";
 
 const CATEGORY_VALUES_UPDATED_EVENT = "shift:category-values-updated";
+const CategoryDialog = dynamic(() => import("../dialogs/CategoryDialog"), { ssr: false });
 
 type Category = { id: number; name: string; parent: number | null; hidden?: boolean };
 
@@ -30,16 +37,19 @@ export default function CategoriesPanel({
   const [busyCategoryId, setBusyCategoryId] = useState<number | null>(null);
   const { t } = useI18n();
 
-  const CategoryDialog = dynamic(() => import("../dialogs/CategoryDialog"), { ssr: false });
-
-  async function load() {
+  const load = useCallback(async (force = false) => {
     setLoading(true);
     setErr(null);
     try {
-      const res = await fetch(`/api/categories?grid=${gridId}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`Failed (${res.status})`);
-      const data = await res.json();
-      const items = Array.isArray(data) ? data : data.results ?? [];
+      const items = await fetchGridResource<Category[]>(gridId, "categories", {
+        force,
+        fallback: async () => {
+          const res = await fetch(`/api/categories?grid=${gridId}`, { cache: "no-store" });
+          if (!res.ok) throw new Error(t("errors.failed_status", { status: res.status }));
+          const data = await res.json();
+          return Array.isArray(data) ? data : data.results ?? [];
+        },
+      });
       setList(items);
       onParents?.(items.map((c: Category) => ({ id: c.id, name: c.name })));
     } catch (e: unknown) {
@@ -47,11 +57,11 @@ export default function CategoriesPanel({
     } finally {
       setLoading(false);
     }
-  }
+  }, [gridId, onParents, t]);
 
   useEffect(() => {
-    load();
-  }, [gridId, refreshKey]);
+    void load(refreshKey > 0);
+  }, [load, refreshKey]);
 
   const filtered = useMemo(
     () => list.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())),
@@ -117,7 +127,12 @@ export default function CategoriesPanel({
         }
         throw new Error(message);
       }
-      await load();
+      const nextList = list.map((item) =>
+        item.id === category.id ? { ...item, hidden: nextHidden } : item,
+      );
+      setList(nextList);
+      primeGridResource(gridId, "categories", nextList);
+      invalidateGridScreenContext(gridId, "draft");
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CATEGORY_VALUES_UPDATED_EVENT));
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : t("category_panel.failed_toggle_visibility"));
@@ -183,13 +198,16 @@ export default function CategoriesPanel({
         </PanelScrollArea>
 
         <CategoryDialog
+          gridId={gridId}
           category={selected}
           open={showDialog}
           onOpenChange={setShowDialog}
           onDeleted={() => {
             setShowDialog(false);
             setSelected(null);
-            void load();
+            invalidateGridResource(gridId, "categories");
+            invalidateGridScreenContext(gridId, "draft");
+            void load(true);
           }}
         />
       </PanelShell>

@@ -12,7 +12,15 @@ import {
 } from "@/lib/schedule-view";
 import { useI18n } from "@/lib/use-i18n";
 
-export default function GridTopBarTools({ gridId, gridCode }: { gridId: number; gridCode?: string | null }) {
+export default function GridTopBarTools({
+  gridId,
+  gridCode,
+  hasPublishedSchedule = false,
+}: {
+  gridId: number;
+  gridCode?: string | null;
+  hasPublishedSchedule?: boolean;
+}) {
   const { t } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
@@ -101,21 +109,23 @@ export default function GridTopBarTools({ gridId, gridCode }: { gridId: number; 
           {isPublishedView ? <PencilLine className="h-3.5 w-3.5 text-slate-700" /> : <FileCheck2 className="h-3.5 w-3.5 text-slate-700" />}
         </span>
       </button>
-      <button
-        type="button"
-        title={isHistoryPage ? t("grid_topbar.back_to_schedule") : t("grid_topbar.version_history")}
-        aria-label={isHistoryPage ? t("grid_topbar.back_to_schedule") : t("grid_topbar.version_history")}
-        className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
-          isHistoryPage
-            ? "text-black bg-gray-100"
-            : "text-gray-700 hover:text-black hover:bg-gray-100"
-        }`}
-        onClick={() => {
-          router.push(isHistoryPage ? basePath : historyPath);
-        }}
-      >
-        <History className="h-5 w-5" />
-      </button>
+      {(hasPublishedSchedule || isHistoryPage) && (
+        <button
+          type="button"
+          title={isHistoryPage ? t("grid_topbar.back_to_schedule") : t("grid_topbar.version_history")}
+          aria-label={isHistoryPage ? t("grid_topbar.back_to_schedule") : t("grid_topbar.version_history")}
+          className={`inline-flex h-8 w-8 items-center justify-center rounded transition-colors ${
+            isHistoryPage
+              ? "text-black bg-gray-100"
+              : "text-gray-700 hover:text-black hover:bg-gray-100"
+          }`}
+          onClick={() => {
+            router.push(isHistoryPage ? basePath : historyPath);
+          }}
+        >
+          <History className="h-5 w-5" />
+        </button>
+      )}
     </div>
   );
 }

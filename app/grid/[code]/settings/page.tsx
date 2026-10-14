@@ -68,6 +68,7 @@ export default async function GridSettingsPage({
       <GridSettingsTabs
         gridId={Number(grid.id)}
         backHref={`/grid/${encodeURIComponent(grid.grid_code || code)}`}
+        initialGrid={grid as Record<string, unknown>}
       />
     </div>
   );

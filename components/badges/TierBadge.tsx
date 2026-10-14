@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/lib/use-i18n";
+
 export type Tier = "PRIMARY" | "SECONDARY" | "TERTIARY";
 
 export const TIER_STYLES: Record<Tier, { label: string; border: string; text: string; shadow: string }> = {
@@ -86,6 +88,7 @@ export function TierFilterChip({ tier, className }: { tier: Tier; className?: st
 }
 
 export function AllTierLabel({ compact = false }: { compact?: boolean }) {
+  const { t } = useI18n();
   return (
     <span
       className={[
@@ -95,7 +98,7 @@ export function AllTierLabel({ compact = false }: { compact?: boolean }) {
         .filter(Boolean)
         .join(" ")}
     >
-      All
+      {t("common.all")}
     </span>
   );
 }

@@ -25,6 +25,7 @@ import {
 } from "@/components/dialogs/cell-staffing";
 import { CELL_COLOR_OPTIONS_NO_RED as COLOR_OPTIONS } from "@/lib/cell-colors";
 import { useI18n } from "@/lib/use-i18n";
+import { invalidateGridResource, invalidateGridScreenContext } from "@/lib/screen-context";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import PanelAsyncState from "@/components/ui/PanelAsyncState";
 import {
@@ -425,6 +426,62 @@ function readBundleIdFromApiPayload(payload: unknown): number | null {
   return null;
 }
 
+function readCellSeriesId(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const cell = value as Record<string, unknown>;
+  const candidate = cell.series_id ?? cell.series;
+  if (typeof candidate === "string" || typeof candidate === "number") {
+    const normalized = String(candidate).trim();
+    return normalized || null;
+  }
+  if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+    const nestedId = (candidate as Record<string, unknown>).id;
+    if (typeof nestedId === "string" || typeof nestedId === "number") {
+      const normalized = String(nestedId).trim();
+      return normalized || null;
+    }
+  }
+  return null;
+}
+
+async function fetchCellSeriesMembers(gridId: number, seriesId: string): Promise<Cell[]> {
+  const membersById = new Map<string, Cell>();
+  const pageSize = 200;
+
+  for (let page = 1; page <= 50; page += 1) {
+    const query = new URLSearchParams({
+      grid: String(gridId),
+      series_id: seriesId,
+      page: String(page),
+      page_size: String(pageSize),
+    });
+    const response = await authFetch(`/api/cells?${query.toString()}`, { cache: "no-store" });
+    if (!response.ok) break;
+    const payload: unknown = await response.json().catch(() => null);
+    const payloadRecord =
+      payload && typeof payload === "object" && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>)
+        : null;
+    const rows = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payloadRecord?.results)
+      ? payloadRecord.results
+      : Array.isArray(payloadRecord?.data)
+      ? payloadRecord.data
+      : [];
+
+    for (const row of rows) {
+      if (readCellSeriesId(row) !== seriesId || !row || typeof row !== "object" || Array.isArray(row)) continue;
+      const id = readBootstrapEntityId(row);
+      if (id) membersById.set(id, row as Cell);
+    }
+
+    if (Array.isArray(payload) || !payloadRecord?.next || rows.length === 0) break;
+  }
+
+  return Array.from(membersById.values());
+}
+
 function extractStaffMemberIds(staff: any): string[] {
   const raw = Array.isArray(staff?.members)
     ? staff.members
@@ -454,12 +511,14 @@ function extractStaffMemberIds(staff: any): string[] {
 export default function EditCellDialog({
   gridId,
   cell,
+  bundleCatalog = [],
   open,
   onOpenChange,
   onSaved,
 }: {
   gridId: number;
   cell: Cell | null;
+  bundleCatalog?: Bundle[];
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onSaved?: () => void;
@@ -514,6 +573,7 @@ export default function EditCellDialog({
   const [loadedBootstrapCellId, setLoadedBootstrapCellId] = React.useState<string | null>(null);
   const [formLoadError, setFormLoadError] = React.useState<string | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
+  const [submitAttempted, setSubmitAttempted] = React.useState(false);
   const splitSliderRef = React.useRef<HTMLDivElement | null>(null);
   const inferredHeadcount = React.useMemo(
     () =>
@@ -789,6 +849,10 @@ export default function EditCellDialog({
   }, [step, totalSteps]);
 
   React.useEffect(() => {
+    setSubmitAttempted(false);
+  }, [step]);
+
+  React.useEffect(() => {
     if (!open || !cell) {
       setLoadedBootstrapCellId(null);
       setFormLoadError(null);
@@ -799,6 +863,7 @@ export default function EditCellDialog({
     setFormLoadError(null);
     setFormLoading(true);
     setErr(null);
+    setSubmitAttempted(false);
     setStep(1);
     setName(stripBundleSuffix(cell.name) || "");
     setDescription(cell.description || "");
@@ -815,13 +880,31 @@ export default function EditCellDialog({
         if (!active) return;
 
         const baseCell = (bootstrap.cell ?? cell) as Cell;
-        const seriesCells = bootstrap.seriesCells.length > 0
-          ? (bootstrap.seriesCells as Cell[])
-          : baseCell.seriesCells?.length
-          ? baseCell.seriesCells
-          : cell.seriesCells?.length
-          ? cell.seriesCells
-          : [baseCell];
+        const seriesId = readCellSeriesId(baseCell) ?? readCellSeriesId(cell);
+        let fetchedSeriesCells: Cell[] = [];
+        if (seriesId) {
+          try {
+            fetchedSeriesCells = await fetchCellSeriesMembers(gridId, seriesId);
+          } catch {
+            // Embedded bootstrap/card members remain available if the series lookup fails.
+          }
+        }
+        if (!active) return;
+        const seriesCellsById = new Map<string, Cell>();
+        const seriesCellOrder: string[] = [];
+        const mergeSeriesCell = (entry: Cell) => {
+          if (entry?.id == null) return;
+          const id = String(entry.id);
+          const previous = seriesCellsById.get(id);
+          if (!previous) seriesCellOrder.push(id);
+          seriesCellsById.set(id, previous ? { ...previous, ...entry } : entry);
+        };
+        for (const entry of cell.seriesCells ?? []) mergeSeriesCell(entry);
+        for (const entry of baseCell.seriesCells ?? []) mergeSeriesCell(entry);
+        for (const entry of bootstrap.seriesCells as Cell[]) mergeSeriesCell(entry);
+        for (const entry of fetchedSeriesCells) mergeSeriesCell(entry);
+        mergeSeriesCell(baseCell);
+        const seriesCells = seriesCellOrder.map((id) => seriesCellsById.get(id)!).filter(Boolean);
         const gridConfig = { ...bootstrap.options, ...bootstrap.grid } as GridConfig;
         const gridCellMin = Math.max(
           1,
@@ -886,8 +969,26 @@ export default function EditCellDialog({
         const selectedBundleObjects = seriesCells
           .flatMap((seriesCell) => Array.isArray(seriesCell.bundles) ? seriesCell.bundles : [])
           .filter((bundle): bundle is Record<string, unknown> => Boolean(bundle && typeof bundle === "object" && !Array.isArray(bundle)));
-        const bundleOptions = [...(bootstrap.bundles as Bundle[]), ...(selectedBundleObjects as Bundle[])]
-          .filter((bundle, index, all) => bundle?.id != null && all.findIndex((entry) => String(entry.id) === String(bundle.id)) === index);
+        const bundleCandidates = [
+          ...bundleCatalog,
+          ...(bootstrap.bundles as Bundle[]),
+          ...(selectedBundleObjects as Bundle[]),
+        ];
+        const bundleOptionsById = new Map<string, Bundle>();
+        for (const bundle of bundleCandidates) {
+          if (bundle?.id == null) continue;
+          const id = String(bundle.id);
+          const previous = bundleOptionsById.get(id);
+          bundleOptionsById.set(id, {
+            ...previous,
+            ...bundle,
+            units:
+              Array.isArray(bundle.units) && bundle.units.length > 0
+                ? bundle.units
+                : previous?.units,
+          });
+        }
+        const bundleOptions = Array.from(bundleOptionsById.values());
         const bundleUnits = bundleOptions.flatMap((bundle) => Array.isArray(bundle.units) ? bundle.units : []);
         const resolvedBundleUnits = bundleUnits
           .filter((unit): unit is Record<string, unknown> => Boolean(unit && typeof unit === "object" && !Array.isArray(unit)))
@@ -918,18 +1019,23 @@ export default function EditCellDialog({
           bootstrap.options.bundle_unit_sets ??
           bootstrap.raw.bundles_config ??
           (baseCell as Cell & { bundle_unit_sets?: unknown[] }).bundle_unit_sets;
-        let initialSets: string[][] = Array.isArray(rawBundleSets)
+        const configuredBundleSets: string[][] = Array.isArray(rawBundleSets)
           ? rawBundleSets.map((entry) => normalizeUnitSet(unitsForBundleEntry(entry))).filter((set) => set.length > 0)
           : [];
-        if (initialSets.length === 0) {
-          initialSets = seriesCells.map((seriesCell) => {
-            const unitSet = new Set<string>();
-            for (const bundleEntry of seriesCell.bundles ?? []) {
-              for (const unitId of normalizeUnitSet(unitsForBundleEntry(bundleEntry))) unitSet.add(unitId);
-            }
-            return normalizeUnitSet(Array.from(unitSet));
-          }).filter((set) => set.length > 0);
-        }
+        const seriesBundleSets = seriesCells.map((seriesCell) => {
+          const unitSet = new Set<string>();
+          for (const bundleEntry of seriesCell.bundles ?? []) {
+            for (const unitId of normalizeUnitSet(unitsForBundleEntry(bundleEntry))) unitSet.add(unitId);
+          }
+          return normalizeUnitSet(Array.from(unitSet));
+        }).filter((set) => set.length > 0);
+        const seenBundleSets = new Set<string>();
+        const initialSets = [...configuredBundleSets, ...seriesBundleSets].filter((set) => {
+          const key = normalizeUnitSet(set).join(",");
+          if (!key || seenBundleSets.has(key)) return false;
+          seenBundleSets.add(key);
+          return true;
+        });
         setBundleUnitSets(initialSets);
 
         const participantTierConfig = (
@@ -1037,7 +1143,7 @@ export default function EditCellDialog({
     return () => {
       active = false;
     };
-  }, [open, gridId, cell, t]);
+  }, [open, gridId, cell, bundleCatalog, t]);
 
   const stepOneReady = Boolean(
     name.trim() &&
@@ -1232,7 +1338,7 @@ export default function EditCellDialog({
     });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      throw new Error(txt || `Failed (${res.status})`);
+      throw new Error(txt || t("errors.failed_status", { status: res.status }));
     }
   }
 
@@ -1317,14 +1423,17 @@ export default function EditCellDialog({
     }
 
     if (attemptErrors.length > 0) {
-      throw new Error(`Failed to resolve bundle for the selected units.\n${attemptErrors[attemptErrors.length - 1]}`);
+      throw new Error(t("errors.failed_resolve_bundle_details", { details: attemptErrors[attemptErrors.length - 1] }));
     }
-    throw new Error("Failed to resolve bundle for the selected units.");
+    throw new Error(t("errors.failed_resolve_bundle"));
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSubmit || !cell) return;
+    if (!canSubmit || !cell) {
+      setSubmitAttempted(true);
+      return;
+    }
     if (maxDurationCellsAllowed != null && durationCellsSafe > maxDurationCellsAllowed) {
       setErr(`Duration cannot exceed ${maxDurationCellsAllowed} cells for the selected horizon.`);
       return;
@@ -1429,6 +1538,9 @@ export default function EditCellDialog({
         }
       }
 
+      invalidateGridResource(gridId, "cells");
+      invalidateGridResource(gridId, "bundles");
+      invalidateGridScreenContext(gridId, "draft");
       requestClose();
       onSaved?.();
     } catch (e: any) {
@@ -1522,15 +1634,15 @@ export default function EditCellDialog({
           {err && <div className="text-sm text-red-600 whitespace-pre-wrap">{err}</div>}
           {currentStepKey === "info" ? (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                <div className="sm:col-span-4">
-                  <label className="block text-sm mb-1">{t("create_cell.name_required")}</label>
-                  <input className="w-full border rounded px-3 py-2 text-sm" value={name} onChange={(e) => setName(e.target.value)} required />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1.15fr)_minmax(9.5rem,0.9fr)_max-content_minmax(0,1.15fr)] sm:items-start">
+                <div>
+                  <label className="mb-1 block h-5 whitespace-nowrap text-sm">{t("create_cell.name_required")}</label>
+                  <input className="h-10 w-full rounded border px-3 py-2 text-sm" value={name} onChange={(e) => setName(e.target.value)} required />
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm mb-1">{t("create_cell.duration_cells_required")}</label>
+                <div>
+                  <label className="mb-1 block h-5 whitespace-nowrap text-sm">{t("create_cell.duration_cells_required")}</label>
                   <input
-                    className="w-full border rounded px-3 py-2 text-sm"
+                    className="h-10 w-full rounded border px-3 py-2 text-sm"
                     type="number"
                     min={1}
                     max={maxDurationCellsAllowed ?? undefined}
@@ -1546,8 +1658,9 @@ export default function EditCellDialog({
                   <div className="text-xs text-gray-500 mt-1">{t("create_cell.total_minutes", { minutes: durationCells * cellMin })}</div>
                 </div>
                 {canShowMultiDayToggle && (
-                  <div className="sm:col-span-2 flex items-end">
-                    <label className="inline-flex items-center gap-2 text-sm select-none">
+                  <div>
+                    <span aria-hidden="true" className="mb-1 hidden h-5 sm:block" />
+                    <label className="inline-flex h-10 items-center gap-2 whitespace-nowrap text-sm select-none">
                       <input
                         type="checkbox"
                         checked={multiDayEnabled}
@@ -1560,9 +1673,9 @@ export default function EditCellDialog({
                   </div>
                 )}
                 {hasTimeRangeOptions && (
-                  <div className="sm:col-span-4">
-                    <label className="block text-sm mb-1">{t("create_cell.time_range_required")}</label>
-                    <select className="w-full border rounded px-3 py-2 text-sm" value={timeRangeId} onChange={(e) => setTimeRangeId(e.target.value)}>
+                  <div>
+                    <label className="mb-1 block h-5 whitespace-nowrap text-sm">{t("create_cell.time_range_required")}</label>
+                    <select className="h-10 w-full rounded border px-3 py-2 text-sm" value={timeRangeId} onChange={(e) => setTimeRangeId(e.target.value)}>
                       <option value="">{t("create_cell.select_option")}</option>
                       {timeRanges.map((t) => (
                         <option key={t.id} value={t.id}>
@@ -1572,9 +1685,9 @@ export default function EditCellDialog({
                     </select>
                   </div>
                 )}
-                <div className="sm:col-span-1 ml-auto">
-                  <label className="block text-sm mb-1">{t("create_cell.color")}</label>
-                  <div className="relative">
+                <div className="sm:col-span-4">
+                  <label className="mb-1 block h-5 text-sm">{t("create_cell.color")}</label>
+                  <div className="flex max-w-full flex-col items-start">
                     <button
                       type="button"
                       onClick={() => setColorMenuOpen((v) => !v)}
@@ -1585,18 +1698,18 @@ export default function EditCellDialog({
                       {!colorHex ? <span className="text-base leading-none">/</span> : null}
                     </button>
                     {colorMenuOpen && (
-                      <div className="absolute left-1/2 -translate-x-1/2 z-10 mt-2 rounded-md border bg-white p-2 shadow-lg">
-                        <div className="flex items-center gap-2 overflow-x-auto max-w-[360px]">
+                      <div className="z-10 mt-2 max-w-full rounded-md border bg-white p-2 shadow-lg">
+                        <div className="flex max-w-full flex-wrap items-center gap-2">
                           <button
                             type="button"
                             onClick={() => { setColorHex(null); setColorMenuOpen(false); }}
-                            className={`h-8 w-8 rounded-full border flex items-center justify-center text-gray-500 ${colorHex === null ? "ring-2 ring-black border-black" : "border-gray-300"}`}
+                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-gray-500 ${colorHex === null ? "ring-2 ring-black border-black" : "border-gray-300"}`}
                             aria-label={t("create_cell.no_color")}
                           >
                             <span className="text-sm leading-none">/</span>
                           </button>
                           {COLOR_OPTIONS.map((hex) => (
-                            <button key={hex} type="button" onClick={() => { setColorHex(hex); setColorMenuOpen(false); }} className={`h-8 w-8 rounded-full border ${colorHex === hex ? "ring-2 ring-black border-black" : "border-gray-300"}`} style={{ backgroundColor: hex }} />
+                            <button key={hex} type="button" onClick={() => { setColorHex(hex); setColorMenuOpen(false); }} className={`h-8 w-8 shrink-0 rounded-full border ${colorHex === hex ? "ring-2 ring-black border-black" : "border-gray-300"}`} style={{ backgroundColor: hex }} />
                           ))}
                         </div>
                       </div>
@@ -1931,9 +2044,6 @@ export default function EditCellDialog({
                 onStaffGroupsChange={setStaffGroups}
                 availableStaffGroups={availableStaffGroups}
               />
-              {staffingError && (
-                <div className="text-sm text-red-600">{staffingError}</div>
-              )}
             </>
           )}
           </>
@@ -1948,9 +2058,26 @@ export default function EditCellDialog({
               >
                 {t("common.cancel")}
               </button>
-              <button type="submit" className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50" disabled={saving || !canSubmit || !formReady}>
-                {saving ? t("common.saving") : t("common.save")}
-              </button>
+              <div className="relative">
+                <button
+                  type="submit"
+                  aria-describedby={submitAttempted && staffingError ? "edit-cell-submit-error" : undefined}
+                  className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50"
+                  disabled={saving || !formReady}
+                >
+                  {saving ? t("common.saving") : t("common.save")}
+                </button>
+                {submitAttempted && staffingError && (
+                  <div
+                    id="edit-cell-submit-error"
+                    role="tooltip"
+                    className="absolute bottom-full left-0 z-30 mb-3 w-max max-w-[min(26rem,calc(100vw-3rem))] rounded-md bg-gray-950 px-3 py-2 text-xs leading-relaxed text-white shadow-xl"
+                  >
+                    {staffingError}
+                    <span className="absolute left-5 top-full h-0 w-0 border-x-[6px] border-t-[6px] border-x-transparent border-t-gray-950" />
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               {step > 1 ? (

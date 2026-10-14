@@ -15,7 +15,15 @@ import {
   type ScheduleViewMode,
 } from "@/lib/schedule-view";
 import { GRID_COMMENTS_PANEL_TOGGLE_EVENT } from "@/lib/grid-comments-panel";
-import { fetchGridScreenContext, getContextList, invalidateGridScreenContext } from "@/lib/screen-context";
+import {
+  fetchGridResource,
+  fetchGridScreenContext,
+  getContextList,
+  invalidateGridScreenContext,
+  primeGridScreenContext,
+  updateCachedGridSchedulePlacements,
+} from "@/lib/screen-context";
+import { readDraftHistoryPayload, type DraftMutationNotice } from "@/lib/draft-mutation";
 import { useI18n } from "@/lib/use-i18n";
 import { authFetch } from "@/lib/client-auth";
 
@@ -203,6 +211,7 @@ type Props = {
   gridId: number;
   role: "viewer" | "editor" | "supervisor";
   selfParticipantId?: number | null;
+  initialScreenContext?: Record<string, unknown> | null;
   unitNature?: "audience" | "space" | "internal" | "none" | null;
   units: Unit[];
   days: string[];
@@ -350,6 +359,14 @@ const normalizeApiError = (raw: unknown, fallback: string): string => {
       return normalizeApiError(parsed, fallback);
     } catch {
       const normalized = text.toLowerCase();
+      if (
+        normalized.startsWith("<!doctype html") ||
+        normalized.startsWith("<html") ||
+        normalized.startsWith("&lt;!doctype html") ||
+        normalized.startsWith("&lt;html")
+      ) {
+        return fallback;
+      }
       if (
         normalized.includes("schedule, source_cell, bundle, day_index, start_slot must make a unique set") ||
         normalized.includes("must make a unique set")
@@ -626,7 +643,7 @@ const getPublishedCandidateList = <T,>(
   return null;
 };
 
-const normalizeScheduleTabScope = (source: unknown): ScheduleTabScope | null => {
+const normalizeScheduleTabScope = (source: unknown, formatUnitLabel: (id: string) => string): ScheduleTabScope | null => {
   if (!isObjectRecord(source)) return null;
   const rawId = source.id ?? source.scope_id ?? source.key;
   const rawLabel = source.label ?? source.name ?? source.title;
@@ -641,7 +658,7 @@ const normalizeScheduleTabScope = (source: unknown): ScheduleTabScope | null => 
     typeof rawLabel === "string" && rawLabel.trim()
       ? rawLabel.trim()
       : unitIds.length === 1
-      ? `Unit ${unitIds[0]}`
+      ? formatUnitLabel(unitIds[0])
       : id;
   if (!id || !label) return null;
   const categoryPath = Array.isArray(source.category_value_path)
@@ -664,11 +681,11 @@ const normalizeScheduleTabScope = (source: unknown): ScheduleTabScope | null => 
   };
 };
 
-const normalizeScheduleTabScopes = (source: unknown): ScheduleTabScope[] => {
+const normalizeScheduleTabScopes = (source: unknown, formatUnitLabel: (id: string) => string): ScheduleTabScope[] => {
   const list = getContextListIfPresent<unknown>(source);
   if (!list) return [];
   return list
-    .map(normalizeScheduleTabScope)
+    .map((scope) => normalizeScheduleTabScope(scope, formatUnitLabel))
     .filter((scope): scope is ScheduleTabScope => Boolean(scope))
     .sort((a, b) =>
       a.label.localeCompare(b.label, "es", {
@@ -678,7 +695,10 @@ const normalizeScheduleTabScopes = (source: unknown): ScheduleTabScope[] => {
     );
 };
 
-const readDraftScheduleTabScopes = (contextJson: Record<string, unknown> | null): ScheduleTabScope[] => {
+const readDraftScheduleTabScopes = (
+  contextJson: Record<string, unknown> | null,
+  formatUnitLabel: (id: string) => string,
+): ScheduleTabScope[] => {
   if (!contextJson) return [];
   const scheduleCandidate = isObjectRecord(contextJson.schedule) ? contextJson.schedule : null;
   const candidates = [
@@ -692,7 +712,7 @@ const readDraftScheduleTabScopes = (contextJson: Record<string, unknown> | null)
     scheduleCandidate?.tabScopes,
   ];
   for (const candidate of candidates) {
-    const scopes = normalizeScheduleTabScopes(candidate);
+    const scopes = normalizeScheduleTabScopes(candidate, formatUnitLabel);
     if (scopes.length > 0) return scopes;
   }
   return [];
@@ -765,6 +785,7 @@ const readPublishedScheduleIdFromCandidate = (scheduleCandidate: unknown): numbe
 const buildPublishedRenderModel = (
   contextJson: Record<string, unknown> | null,
   expectedGridId: number,
+  formatUnitLabel: (id: string) => string,
 ): ScheduleRenderModel => {
   const scheduleCandidate = readPublishedScheduleCandidateFromContext(contextJson);
   const publishedGridId = scheduleCandidate ? readEntityId(scheduleCandidate.grid) : null;
@@ -814,7 +835,7 @@ const buildPublishedRenderModel = (
         scheduleCandidate,
         ["time_ranges", "timeRanges", "snapshot_time_ranges"],
       ) ?? [],
-    scheduleTabScopes: normalizeScheduleTabScopes(publishedTabScopes),
+    scheduleTabScopes: normalizeScheduleTabScopes(publishedTabScopes, formatUnitLabel),
     missingReason: structure ? undefined : "missing_published_structure",
   };
 };
@@ -822,6 +843,7 @@ const buildPublishedRenderModel = (
 const buildDraftRenderModel = (
   contextJson: Record<string, unknown> | null,
   fallbackStructure: ActiveScheduleStructure,
+  formatUnitLabel: (id: string) => string,
 ): ScheduleRenderModel => {
   const scheduleCandidate = (contextJson?.schedule ?? null) as ScreenContextSchedule | null;
   return {
@@ -839,7 +861,7 @@ const buildDraftRenderModel = (
     units: getContextList<Unit>(contextJson?.units),
     blockages: getContextList<ScheduleBlockage>(contextJson?.blockages),
     timeRanges: getContextList<TimeRange>(contextJson?.time_ranges),
-    scheduleTabScopes: readDraftScheduleTabScopes(contextJson),
+    scheduleTabScopes: readDraftScheduleTabScopes(contextJson, formatUnitLabel),
   };
 };
 
@@ -849,7 +871,10 @@ const compareUnitsForTabs = (a: Unit, b: Unit) =>
     sensitivity: "base",
   });
 
-const derivePublishedUnitsForTabs = (renderModel: ScheduleRenderModel): Unit[] => {
+const derivePublishedUnitsForTabs = (
+  renderModel: ScheduleRenderModel,
+  formatUnitLabel: (id: string) => string,
+): Unit[] => {
   const unitsById = new Map<string, Unit>();
 
   const upsertUnit = (rawId: unknown, rawName?: unknown) => {
@@ -859,7 +884,7 @@ const derivePublishedUnitsForTabs = (renderModel: ScheduleRenderModel): Unit[] =
     const name =
       typeof rawName === "string" && rawName.trim()
         ? rawName.trim()
-        : `Unit ${id}`;
+        : formatUnitLabel(id);
 
     const existing = unitsById.get(id);
 
@@ -870,7 +895,7 @@ const derivePublishedUnitsForTabs = (renderModel: ScheduleRenderModel): Unit[] =
 
     const existingName = String(existing.name || "");
     const shouldReplaceGenericName =
-      existingName === `Unit ${id}` && name !== `Unit ${id}`;
+      existingName === formatUnitLabel(id) && name !== formatUnitLabel(id);
 
     if (shouldReplaceGenericName) {
       unitsById.set(id, { id, name });
@@ -939,27 +964,6 @@ const derivePublishedUnitsForTabs = (renderModel: ScheduleRenderModel): Unit[] =
   return Array.from(unitsById.values()).sort(compareUnitsForTabs);
 };
 
-const normalizeUnitsCollection = (
-  payload: unknown,
-  fallbackName: (id: string | number) => string,
-): Unit[] => {
-  const list =
-    Array.isArray(payload)
-      ? payload
-      : payload && typeof payload === "object" && Array.isArray((payload as { results?: unknown[] }).results)
-      ? (payload as { results: unknown[] }).results
-      : [];
-  return list
-    .map((entry) => {
-      const raw = entry as { id?: unknown; name?: unknown };
-      if (raw?.id == null) return null;
-      const id = raw.id as string | number;
-      const name = typeof raw.name === "string" && raw.name.trim() ? raw.name : fallbackName(id);
-      return { id, name };
-    })
-    .filter(Boolean) as Unit[];
-};
-
 const areUnitListsEqual = (a: Unit[], b: Unit[]) => {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i += 1) {
@@ -973,6 +977,7 @@ export default function GridSchedulePanel({
   gridId,
   role,
   selfParticipantId = null,
+  initialScreenContext = null,
   unitNature = null,
   units,
   days,
@@ -984,7 +989,15 @@ export default function GridSchedulePanel({
   historyMode = false,
   historyGridCode = null,
 }: Props) {
+  const primedInitialContextRef = useRef<string | null>(null);
+  const initialContextView: ScheduleViewMode = historyMode ? "published" : "draft";
+  const initialContextKey = initialScreenContext ? `${gridId}:${initialContextView}` : null;
+  if (initialScreenContext && primedInitialContextRef.current !== initialContextKey) {
+    primeGridScreenContext(gridId, initialContextView, initialScreenContext);
+    primedInitialContextRef.current = initialContextKey;
+  }
   const { t } = useI18n();
+  const formatUnitLabel = useCallback((id: string) => t("format.unit_with_id", { id }), [t]);
   const tierLabelByKey = useMemo<Record<TierKey, string>>(
     () => ({
       PRIMARY: t("tier.primary"),
@@ -1032,6 +1045,7 @@ export default function GridSchedulePanel({
   const baseBodyHeight = rows.length * rowPx;
   const [effectiveRowPx, setEffectiveRowPx] = useState(rowPx);
   const [scheduleViewportHeight, setScheduleViewportHeight] = useState(baseBodyHeight);
+  const [scheduleScrollbarInsets, setScheduleScrollbarInsets] = useState({ bottom: 0, right: 0 });
   const bodyHeight = rows.length * effectiveRowPx;
 
   const [scheduleViewMode, setScheduleViewMode] = useState<ScheduleViewMode>(
@@ -1062,17 +1076,16 @@ export default function GridSchedulePanel({
   const [draftHistory, setDraftHistory] = useState<DraftHistory>(EMPTY_DRAFT_HISTORY);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const draftHistoryRequestRef = useRef<Promise<void> | null>(null);
   const [historyErrorAnchor, setHistoryErrorAnchor] = useState<{ left: number; top: number } | null>(null);
   const [contextRefreshTick, setContextRefreshTick] = useState(0);
   const [hasLatestPublishedSchedule, setHasLatestPublishedSchedule] = useState(false);
   const [latestPublishedScheduleCache, setLatestPublishedScheduleCache] = useState<{
     gridId: number;
-    refreshTick: number;
     payload: Record<string, unknown> | null;
   } | null>(null);
   const latestPublishedSchedule =
-    latestPublishedScheduleCache?.gridId === gridId &&
-    latestPublishedScheduleCache.refreshTick === contextRefreshTick
+    latestPublishedScheduleCache?.gridId === gridId
       ? latestPublishedScheduleCache.payload
       : null;
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
@@ -1107,7 +1120,7 @@ export default function GridSchedulePanel({
     if (res.status === 404) return null;
 
     if (!res.ok) {
-      throw new Error(`Could not load published schedule (${res.status})`);
+      throw new Error(t("grid_schedule.could_not_load_published_status", { status: res.status }));
     }
 
     const data = await res.json().catch(() => null);
@@ -1163,12 +1176,12 @@ export default function GridSchedulePanel({
         const published = await fetchLatestPublishedSchedulePayload(gridId);
         if (!active) return;
 
-        setLatestPublishedScheduleCache({ gridId, refreshTick: contextRefreshTick, payload: published });
+        setLatestPublishedScheduleCache({ gridId, payload: published });
         setHasLatestPublishedSchedule(Boolean(published));
       } catch {
         if (!active) return;
 
-        setLatestPublishedScheduleCache({ gridId, refreshTick: contextRefreshTick, payload: null });
+        setLatestPublishedScheduleCache({ gridId, payload: null });
         setHasLatestPublishedSchedule(false);
       }
     })();
@@ -1176,37 +1189,7 @@ export default function GridSchedulePanel({
     return () => {
       active = false;
     };
-  }, [contextRefreshTick, gridId, historyMode]);
-
-  useEffect(() => {
-    if (historyMode) return;
-    if (scheduleViewMode === "published") return;
-    let active = true;
-    const syncUnits = async () => {
-      const fallbackName = (id: string | number) => t("format.unit_with_id", { id });
-      const endpoints = [`/api/units?grid=${encodeURIComponent(String(gridId))}`, `/api/units/?grid=${encodeURIComponent(String(gridId))}`];
-      for (const endpoint of endpoints) {
-        try {
-          const response = await authFetch(endpoint, { cache: "no-store" });
-          if (!response.ok) continue;
-          const payload = await response.json().catch(() => ({}));
-          const nextUnits = normalizeUnitsCollection(payload, fallbackName);
-          if (!active) return;
-          setUnitList((prev) => (areUnitListsEqual(prev, nextUnits) ? prev : nextUnits));
-          return;
-        } catch {
-          continue;
-        }
-      }
-    };
-
-    void syncUnits();
-    const intervalId = window.setInterval(() => void syncUnits(), 1500);
-    return () => {
-      active = false;
-      window.clearInterval(intervalId);
-    };
-  }, [gridId, historyMode, scheduleViewMode, t]);
+  }, [gridId, historyMode]);
 
   useEffect(() => {
     if (historyMode) return;
@@ -1290,6 +1273,42 @@ export default function GridSchedulePanel({
     () => ({ minWidth: scheduleMinWidthPx }),
     [scheduleMinWidthPx],
   );
+
+  useEffect(() => {
+    const scrollEl = scheduleScrollRef.current;
+    if (!scrollEl || typeof window === "undefined") return;
+
+    let frameId: number | null = null;
+    const updateInsets = () => {
+      if (frameId != null) window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        const hasHorizontalScrollbar = scrollEl.scrollWidth > scrollEl.clientWidth + 1;
+        const hasVerticalScrollbar = scrollEl.scrollHeight > scrollEl.clientHeight + 1;
+        const measuredBottom = Math.max(0, scrollEl.offsetHeight - scrollEl.clientHeight);
+        const measuredRight = Math.max(0, scrollEl.offsetWidth - scrollEl.clientWidth);
+        const next = {
+          bottom: hasHorizontalScrollbar ? Math.max(12, measuredBottom) : 0,
+          right: hasVerticalScrollbar ? Math.max(12, measuredRight) : 0,
+        };
+        setScheduleScrollbarInsets((current) =>
+          current.bottom === next.bottom && current.right === next.right ? current : next,
+        );
+      });
+    };
+
+    updateInsets();
+    const observer = new ResizeObserver(updateInsets);
+    observer.observe(scrollEl);
+    if (scrollEl.firstElementChild) observer.observe(scrollEl.firstElementChild);
+    window.addEventListener("resize", updateInsets);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateInsets);
+      if (frameId != null) window.cancelAnimationFrame(frameId);
+    };
+  }, [bodyHeight, scheduleMinWidthPx, scheduleViewportHeight]);
   const handleActiveScopeChange = useCallback((unitIds: string[]) => {
     setActiveScopeUnitIds((current) => {
       if (current.length === unitIds.length && current.every((unitId, index) => unitId === unitIds[index])) {
@@ -1471,7 +1490,6 @@ export default function GridSchedulePanel({
           if (active) {
             setLatestPublishedScheduleCache({
               gridId,
-              refreshTick: contextRefreshTick,
               payload: publishedPayload,
             });
             setHasLatestPublishedSchedule(Boolean(publishedPayload));
@@ -1480,15 +1498,15 @@ export default function GridSchedulePanel({
 
         const renderModel =
           scheduleViewMode === "published"
-            ? buildPublishedRenderModel(publishedPayload, gridId)
-            : buildDraftRenderModel(contextJson, fallbackStructure);
+            ? buildPublishedRenderModel(publishedPayload, gridId, formatUnitLabel)
+            : buildDraftRenderModel(contextJson, fallbackStructure, formatUnitLabel);
         const participantsList = getContextList<Participant>(contextJson?.participants);
         let cellsList = renderModel.cells;
         let bundlesList = renderModel.bundles;
-        let timeRangesList = renderModel.timeRanges;
+        const timeRangesList = renderModel.timeRanges;
         const unitsForModel =
           scheduleViewMode === "published"
-            ? derivePublishedUnitsForTabs(renderModel)
+            ? derivePublishedUnitsForTabs(renderModel, formatUnitLabel)
             : renderModel.units.length > 0
             ? [...renderModel.units].sort(compareUnitsForTabs)
             : [...unitList].sort(compareUnitsForTabs);
@@ -1518,22 +1536,15 @@ export default function GridSchedulePanel({
         );
         const structureForContext = contextStructure ?? fallbackStructure;
         if (scheduleViewMode !== "published" && bundlesList.length === 0) {
-          const gridQuery = encodeURIComponent(String(gridId));
-          const candidateEndpoints = [`/api/bundles/?grid=${gridQuery}`, `/api/bundles?grid=${gridQuery}`];
-          for (const endpoint of candidateEndpoints) {
-            try {
-              const res = await authFetch(endpoint, { cache: "no-store" });
-              if (!res.ok) continue;
+          bundlesList = await fetchGridResource<Bundle[]>(gridId, "bundles", {
+            fallback: async () => {
+              const gridQuery = encodeURIComponent(String(gridId));
+              const res = await authFetch(`/api/bundles?grid=${gridQuery}`, { cache: "no-store" });
+              if (!res.ok) return [];
               const payload = await res.json().catch(() => ({}));
-              const items = Array.isArray(payload) ? payload : Array.isArray(payload?.results) ? payload.results : [];
-              if (items.length > 0) {
-                bundlesList = items as Bundle[];
-                break;
-              }
-            } catch {
-              // try fallback endpoint
-            }
-          }
+              return Array.isArray(payload) ? payload : Array.isArray(payload?.results) ? payload.results : [];
+            },
+          });
         }
         const resolveGridAllowsOverstaffing = async () => {
           const contextGrid = contextJson?.grid;
@@ -1543,19 +1554,13 @@ export default function GridSchedulePanel({
               return fromContext;
             }
           }
-          const gridEndpoints = [`/api/grids/${gridId}/`, `/api/grids/${gridId}`];
-          for (const endpoint of gridEndpoints) {
-            try {
-              const res = await authFetch(endpoint, { cache: "no-store" });
-              if (!res.ok) continue;
-              const payload = (await res.json().catch(() => ({}))) as { allow_overstaffing?: unknown };
-              if (typeof payload.allow_overstaffing === "boolean") {
-                return payload.allow_overstaffing;
-              }
-            } catch {
-              // try next endpoint
-            }
-          }
+          const payload = await fetchGridResource<{ allow_overstaffing?: unknown }>(gridId, "grid", {
+            fallback: async () => {
+              const res = await authFetch(`/api/grids/${gridId}`, { cache: "no-store" });
+              return res.ok ? res.json().catch(() => ({})) : {};
+            },
+          });
+          if (typeof payload.allow_overstaffing === "boolean") return payload.allow_overstaffing;
           return true;
         };
         const gridAllowsOverstaffing =
@@ -1570,27 +1575,27 @@ export default function GridSchedulePanel({
               !hasOwn(cell, "division_days")),
         );
         if (scheduleViewMode !== "published" && needsCellContractEnrichment) {
-          const gridQuery = encodeURIComponent(String(gridId));
-          const candidateEndpoints = [
-            `/api/cells/?grid=${gridQuery}`,
-            `/api/cells?grid=${gridQuery}`,
-          ];
-          let cellsFromApi: Cell[] = [];
-          for (const endpoint of candidateEndpoints) {
-            try {
-              const res = await authFetch(endpoint, { cache: "no-store" });
-              if (!res.ok) continue;
+          const cellsFromApi = await fetchGridResource<Cell[]>(gridId, "cells", {
+            acceptCached: (value) =>
+              Array.isArray(value) &&
+              value.every(
+                (cell) =>
+                  !cell ||
+                  typeof cell !== "object" ||
+                  (hasOwn(cell, "allow_overstaffing") && hasOwn(cell, "split_parts_min") && hasOwn(cell, "division_days")),
+              ),
+            fallback: async () => {
+              const gridQuery = encodeURIComponent(String(gridId));
+              const res = await authFetch(`/api/cells?grid=${gridQuery}`, { cache: "no-store" });
+              if (!res.ok) return [];
               const payload = await res.json().catch(() => ({}));
-              cellsFromApi = Array.isArray(payload)
+              return Array.isArray(payload)
                 ? (payload as Cell[])
                 : Array.isArray((payload as { results?: unknown }).results)
                 ? ((payload as { results: Cell[] }).results ?? [])
                 : [];
-              if (cellsFromApi.length > 0) break;
-            } catch {
-              // keep trying fallback endpoint
-            }
-          }
+            },
+          });
           if (cellsFromApi.length > 0) {
             const apiCellById = new Map<string, Cell>();
             for (const apiCell of cellsFromApi) {
@@ -1769,7 +1774,7 @@ export default function GridSchedulePanel({
     return () => {
       active = false;
     };
-  }, [gridId, scheduleViewMode, fallbackStructure, contextRefreshTick, t, latestPublishedSchedule]);
+  }, [gridId, scheduleViewMode, fallbackStructure, contextRefreshTick, t, latestPublishedSchedule, formatUnitLabel]);
 
   const orderedParticipants = useMemo(() => {
     return participants
@@ -2052,28 +2057,53 @@ export default function GridSchedulePanel({
       setDraftHistory(EMPTY_DRAFT_HISTORY);
       return;
     }
-    try {
-      const res = await authFetch(`/api/grids/${gridId}/schedule/history/`, { cache: "no-store" });
-      if (!res.ok) {
-        const raw = await res.text().catch(() => "");
-        throw new Error(raw || `${t("grid_schedule.history_load_error")} (${res.status})`);
+    if (draftHistoryRequestRef.current) return draftHistoryRequestRef.current;
+    const request = (async () => {
+      try {
+        const res = await authFetch(`/api/grids/${gridId}/schedule/history`, { cache: "no-store" });
+        if (!res.ok) {
+          const raw = await res.text().catch(() => "");
+          const fallback = `${t("grid_schedule.history_load_error")} (${res.status})`;
+          throw new Error(normalizeApiError(raw, fallback));
+        }
+        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        const historyRaw = data?.draft_history ?? data?.history ?? data;
+        setDraftHistory(normalizeDraftHistory(historyRaw));
+        setHistoryError(null);
+      } catch (error: unknown) {
+        setDraftHistory(EMPTY_DRAFT_HISTORY);
+        setHistoryError(
+          normalizeApiError(error instanceof Error ? error.message : "", t("grid_schedule.history_load_error")),
+        );
       }
-      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      const historyRaw = data?.draft_history ?? data?.history ?? data;
-      setDraftHistory(normalizeDraftHistory(historyRaw));
-      setHistoryError(null);
-    } catch (error: unknown) {
-      setDraftHistory(EMPTY_DRAFT_HISTORY);
-      setHistoryError(
-        normalizeApiError(error instanceof Error ? error.message : "", t("grid_schedule.history_load_error")),
-      );
-    }
+    })().finally(() => {
+      draftHistoryRequestRef.current = null;
+    });
+    draftHistoryRequestRef.current = request;
+    return request;
   }, [canUseDraftHistory, gridId, t]);
 
-  const handleDraftMutated = useCallback(() => {
-    refreshAfterDraftMutation();
-    void loadDraftHistory();
-  }, [loadDraftHistory, refreshAfterDraftMutation]);
+  const handleDraftMutated = useCallback(
+    (notice: DraftMutationNotice = {}) => {
+      const requiresContextRefresh = notice.requiresContextRefresh !== false;
+      if (notice.placementChange && !requiresContextRefresh) {
+        const cacheUpdated = updateCachedGridSchedulePlacements(gridId, "draft", notice.placementChange);
+        if (!cacheUpdated) invalidateGridScreenContext(gridId, "draft");
+      } else if (requiresContextRefresh) {
+        refreshAfterDraftMutation();
+      } else {
+        invalidateGridScreenContext(gridId, "draft");
+      }
+
+      if (notice.draftHistory !== undefined) {
+        setDraftHistory(normalizeDraftHistory(notice.draftHistory));
+        setHistoryError(null);
+      } else {
+        void loadDraftHistory();
+      }
+    },
+    [gridId, loadDraftHistory, refreshAfterDraftMutation],
+  );
 
   useEffect(() => {
     const onCategoryValuesUpdated = () => {
@@ -2087,28 +2117,13 @@ export default function GridSchedulePanel({
 
   useEffect(() => {
     void loadDraftHistory();
-  }, [loadDraftHistory, contextRefreshTick]);
+  }, [loadDraftHistory]);
 
   useEffect(() => {
     if (canUseDraftHistory) return;
     setHistoryBusy(false);
     setHistoryError(null);
   }, [canUseDraftHistory]);
-
-  useEffect(() => {
-    if (!canUseDraftHistory) return;
-    const onFocus = () => {
-      void loadDraftHistory();
-    };
-    const id = window.setInterval(() => {
-      void loadDraftHistory();
-    }, 5000);
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.clearInterval(id);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [canUseDraftHistory, loadDraftHistory]);
 
   const applyDraftHistoryAction = useCallback(
     async (endpoint: string, body: Record<string, unknown> = {}) => {
@@ -2123,11 +2138,18 @@ export default function GridSchedulePanel({
         });
         if (!res.ok) {
           const raw = await res.text().catch(() => "");
-          throw new Error(raw || `${t("grid_schedule.history_apply_error")} (${res.status})`);
+          const fallback = `${t("grid_schedule.history_apply_error")} (${res.status})`;
+          throw new Error(normalizeApiError(raw, fallback));
         }
         const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-        const historyRaw = data?.draft_history ?? data?.history ?? (data?.schedule as Record<string, unknown>)?.history;
-        setDraftHistory(normalizeDraftHistory(historyRaw));
+        const historyRaw = readDraftHistoryPayload(data);
+        if (historyRaw !== undefined) {
+          setDraftHistory(normalizeDraftHistory(historyRaw));
+        } else {
+          await loadDraftHistory();
+        }
+        // Undo/redo can replace the entire draft snapshot, not just one placement.
+        // Its response does not provide a complete render model, so this remains an authoritative refresh.
         refreshAfterDraftMutation();
       } catch (error: unknown) {
         setHistoryError(
@@ -2137,17 +2159,17 @@ export default function GridSchedulePanel({
         setHistoryBusy(false);
       }
     },
-    [canUseDraftHistory, historyBusy, refreshAfterDraftMutation, t],
+    [canUseDraftHistory, historyBusy, loadDraftHistory, refreshAfterDraftMutation, t],
   );
 
   const undoDraft = useCallback(async () => {
     if (!draftHistory.can_undo) return;
-    await applyDraftHistoryAction(`/api/grids/${gridId}/schedule/history/undo/`, {});
+    await applyDraftHistoryAction(`/api/grids/${gridId}/schedule/history/undo`, {});
   }, [applyDraftHistoryAction, draftHistory.can_undo, gridId]);
 
   const redoDraft = useCallback(async () => {
     if (!draftHistory.can_redo) return;
-    await applyDraftHistoryAction(`/api/grids/${gridId}/schedule/history/redo/`, {});
+    await applyDraftHistoryAction(`/api/grids/${gridId}/schedule/history/redo`, {});
   }, [applyDraftHistoryAction, draftHistory.can_redo, gridId]);
 
   const restorePublishedInDraft = useCallback(
@@ -2880,7 +2902,7 @@ export default function GridSchedulePanel({
             style={{
               top: "3rem",
               left: `${timeColPx}px`,
-              right: "14px",
+              right: `${scheduleScrollbarInsets.right}px`,
               width: "auto",
             }}
           />
@@ -2896,9 +2918,9 @@ export default function GridSchedulePanel({
             showWhen="not-at-end"
             zIndex={10}
             style={{
-              bottom: "14px",
+              bottom: `${scheduleScrollbarInsets.bottom}px`,
               left: `${timeColPx}px`,
-              right: "14px",
+              right: `${scheduleScrollbarInsets.right}px`,
               width: "auto",
             }}
           />

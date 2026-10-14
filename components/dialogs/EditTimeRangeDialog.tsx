@@ -56,7 +56,7 @@ export default function EditTimeRangeDialog({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name, start_time: norm(start), end_time: norm(end) }),
       });
-      if (!r.ok) throw new Error(`Failed (${r.status})`);
+      if (!r.ok) throw new Error(t("errors.failed_status", { status: r.status }));
       onSaved?.();
       onOpenChange(false);
     } catch (e: any) {

@@ -14,6 +14,11 @@ import {
   type TierHours,
 } from "@/lib/grid-solver-settings";
 import { useI18n } from "@/lib/use-i18n";
+import {
+  fetchGridResource,
+  invalidateGridResource,
+  invalidateGridScreenContext,
+} from "@/lib/screen-context";
 
 type TierKey = (typeof TIER_KEYS)[number];
 type DayHeatmapKey = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
@@ -472,112 +477,112 @@ export default function GridSolverSettingsForm({
     () => [
       {
         key: "weight_availability",
-        label: "Availability respect",
-        help: "Higher values make the solver prioritize respecting participant availability.",
+        label: tt("grid_solver_settings.weight_availability_label", "Availability respect"),
+        help: tt("grid_solver_settings.weight_availability_help", "Higher values make the solver prioritize respecting participant availability."),
         min: 0,
         step: 0.1,
       },
       {
         key: "weight_participant_gap",
-        label: "Participant gap minimization",
-        help: "Higher values push the solver to avoid idle gaps within participant days.",
+        label: tt("grid_solver_settings.weight_participant_gap_label", "Participant gap minimization"),
+        help: tt("grid_solver_settings.weight_participant_gap_help", "Higher values push the solver to avoid idle gaps within participant days."),
         min: 0,
         step: 0.1,
       },
       {
         key: "weight_participant_days",
-        label: "Participant day concentration",
-        help: "Higher values encourage concentrating each participant's activities into fewer days.",
+        label: tt("grid_solver_settings.weight_participant_days_label", "Participant day concentration"),
+        help: tt("grid_solver_settings.weight_participant_days_help", "Higher values encourage concentrating each participant's activities into fewer days."),
         min: 0,
         step: 0.1,
       },
       {
         key: "weight_unit_gap",
-        label: "Unit gap minimization",
-        help: "Higher values reduce gaps inside each unit's daily schedule.",
+        label: tt("grid_solver_settings.weight_unit_gap_label", "Unit gap minimization"),
+        help: tt("grid_solver_settings.weight_unit_gap_help", "Higher values reduce gaps inside each unit's daily schedule."),
         min: 0,
         step: 0.1,
       },
       {
         key: "weight_unit_days",
-        label: "Unit day concentration",
-        help: "Higher values encourage concentrating each unit's activities into fewer days.",
+        label: tt("grid_solver_settings.weight_unit_days_label", "Unit day concentration"),
+        help: tt("grid_solver_settings.weight_unit_days_help", "Higher values encourage concentrating each unit's activities into fewer days."),
         min: 0,
         step: 0.1,
       },
       {
         key: "weight_soft_window",
-        label: "Soft time-window preference",
-        help: "Higher values make preferred time windows more influential in placement choices.",
+        label: tt("grid_solver_settings.weight_soft_window_label", "Soft time-window preference"),
+        help: tt("grid_solver_settings.weight_soft_window_help", "Higher values make preferred time windows more influential in placement choices."),
         min: 0,
         step: 0.1,
       },
       {
         key: "weight_min_week_shortfall",
-        label: "Min weekly hours shortfall penalty",
-        help: "Higher values strongly penalize missing minimum weekly-hour targets.",
+        label: tt("grid_solver_settings.weight_min_week_shortfall_label", "Min weekly hours shortfall penalty"),
+        help: tt("grid_solver_settings.weight_min_week_shortfall_help", "Higher values strongly penalize missing minimum weekly-hour targets."),
         min: 0,
         step: 0.1,
       },
       {
         key: "stability_weight",
-        label: "Schedule stability (0-100)",
-        help: "Higher values favor continuity with previous solver results.",
+        label: tt("grid_solver_settings.stability_weight_label", "Schedule stability (0-100)"),
+        help: tt("grid_solver_settings.stability_objective_help", "Higher values favor continuity with previous solver results."),
         min: 0,
         max: 100,
         step: 0.1,
       },
       {
         key: "weight_day_load_balance",
-        label: "Daily load balance",
-        help: "Higher values balance total activity load across enabled days.",
+        label: tt("grid_solver_settings.weight_day_load_balance_label", "Daily load balance"),
+        help: tt("grid_solver_settings.weight_day_load_balance_help", "Higher values balance total activity load across enabled days."),
         min: 0,
         step: 0.1,
       },
       {
         key: "weight_overstaff_day_balance",
-        label: "Overstaffing day balance",
-        help: "Higher values distribute overstaffing more evenly across days.",
+        label: tt("grid_solver_settings.weight_overstaff_day_balance_label", "Overstaffing day balance"),
+        help: tt("grid_solver_settings.weight_overstaff_day_balance_help", "Higher values distribute overstaffing more evenly across days."),
         min: 0,
         step: 0.1,
       },
       {
         key: "weight_overstaff_cell_balance",
-        label: "Overstaffing cell balance",
-        help: "Higher values distribute overstaffing across cells instead of concentrating it.",
+        label: tt("grid_solver_settings.weight_overstaff_cell_balance_label", "Overstaffing cell balance"),
+        help: tt("grid_solver_settings.weight_overstaff_cell_balance_help", "Higher values distribute overstaffing across cells instead of concentrating it."),
         min: 0,
         step: 0.1,
       },
       {
         key: "weight_random_tiebreak",
-        label: "Random tiebreak",
-        help: "Adds controlled randomness when candidate solutions are otherwise equivalent.",
+        label: tt("grid_solver_settings.weight_random_tiebreak_label", "Random tiebreak"),
+        help: tt("grid_solver_settings.weight_random_tiebreak_help", "Adds controlled randomness when candidate solutions are otherwise equivalent."),
         min: 0,
         step: 0.1,
       },
       {
         key: "weight_participant_daily_load_balance",
-        label: "Participant daily load balance",
-        help: "Higher values balance each participant's workload inside a day.",
+        label: tt("grid_solver_settings.weight_participant_daily_load_balance_label", "Participant daily load balance"),
+        help: tt("grid_solver_settings.weight_participant_daily_load_balance_help", "Higher values balance each participant's workload inside a day."),
         min: 0,
         step: 0.1,
       },
       {
         key: "weight_participant_day_spread",
-        label: "Participant day spread",
-        help: "Higher values spread participant workdays farther apart.",
+        label: tt("grid_solver_settings.weight_participant_day_spread_label", "Participant day spread"),
+        help: tt("grid_solver_settings.weight_participant_day_spread_help", "Higher values spread participant workdays farther apart."),
         min: 0,
         step: 0.1,
       },
       {
         key: "weight_participant_workload_equity",
-        label: "Participant workload equity",
-        help: "Higher values balance weekly assigned cells across comparable participants.",
+        label: tt("grid_solver_settings.weight_participant_workload_equity_label", "Participant workload equity"),
+        help: tt("grid_solver_settings.weight_participant_workload_equity_help", "Higher values balance weekly assigned cells across comparable participants."),
         min: 0,
         step: 0.1,
       },
     ],
-    [],
+    [tt],
   );
 
   const enabledDayKeys = useMemo<DayHeatmapKey[]>(
@@ -667,20 +672,24 @@ export default function GridSolverSettingsForm({
     [horizonSpanMin, horizonStartMin, timeRangeStep, tt],
   );
 
-  const loadTimeRanges = useCallback(async () => {
+  const loadTimeRanges = useCallback(async (force = false) => {
     setTimeRangesLoading(true);
     setTimeRangesError(null);
     try {
-      const response = await fetch(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`, {
-        cache: "no-store",
+      const list = await fetchGridResource<TimeRangeResource[]>(gridId, "time_ranges", {
+        force,
+        fallback: async () => {
+          const response = await fetch(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`, {
+            cache: "no-store",
+          });
+          if (!response.ok) {
+            const raw = await response.text().catch(() => "");
+            throw new Error(parseApiErrorMessage(raw, tt("time_ranges.error_loading", "Could not load time ranges.")));
+          }
+          const payload = (await response.json().catch(() => ({}))) as TimeRangeResource[] | TimeRangeListResponse;
+          return Array.isArray(payload) ? payload : Array.isArray(payload.results) ? payload.results : [];
+        },
       });
-      if (!response.ok) {
-        const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, tt("time_ranges.error_loading", "Could not load time ranges.")));
-      }
-
-      const payload = (await response.json().catch(() => ({}))) as TimeRangeResource[] | TimeRangeListResponse;
-      const list = Array.isArray(payload) ? payload : Array.isArray(payload.results) ? payload.results : [];
       const nextRanges = list
         .map((item) => toTimeRangeDraft(item))
         .filter((item) => Number.isFinite(item.id))
@@ -703,12 +712,16 @@ export default function GridSolverSettingsForm({
       setSettingsLoading(true);
       setSettingsError(null);
       try {
-        const gridRes = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}`, { cache: "no-store" });
-        if (!gridRes.ok) {
-          const raw = await gridRes.text().catch(() => "");
-          throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.load_failed", "Could not load settings.")));
-        }
-        const gridData = (await gridRes.json().catch(() => ({}))) as GridDetailResponse;
+        const gridData = await fetchGridResource<GridDetailResponse>(gridId, "grid", {
+          fallback: async () => {
+            const gridRes = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}`, { cache: "no-store" });
+            if (!gridRes.ok) {
+              const raw = await gridRes.text().catch(() => "");
+              throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.load_failed", "Could not load settings.")));
+            }
+            return gridRes.json().catch(() => ({}));
+          },
+        });
         const solverParamsSource =
           (gridData?.solve_preference?.solver_params && typeof gridData.solve_preference.solver_params === "object"
             ? gridData.solve_preference.solver_params
@@ -778,6 +791,8 @@ export default function GridSolverSettingsForm({
       const raw = await response.text().catch(() => "");
       throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.save_failed", "Could not save settings.")));
     }
+    invalidateGridResource(gridId, "grid");
+    invalidateGridScreenContext(gridId, "draft");
   };
 
   const saveConstraintSettings = async () => {
@@ -921,6 +936,8 @@ export default function GridSolverSettingsForm({
         const raw = await response.text().catch(() => "");
         throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.heatmap_save_failed", "Could not save day heatmap.")));
       }
+      invalidateGridResource(gridId, "grid");
+      invalidateGridScreenContext(gridId, "draft");
       setHeatmapSaved(tt("grid_solver_settings.heatmap_saved", "Saved."));
       toast.success(tt("grid_solver_settings.heatmap_saved", "Saved."));
     } catch (error: unknown) {
@@ -956,7 +973,9 @@ export default function GridSolverSettingsForm({
         throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.time_ranges_create_failed", "Could not create time range.")));
       }
       setNewTimeRangeName("");
-      await loadTimeRanges();
+      invalidateGridResource(gridId, "time_ranges");
+      invalidateGridScreenContext(gridId, "draft");
+      await loadTimeRanges(true);
     } catch (error: unknown) {
       setTimeRangesError(
         error instanceof Error ? error.message : tt("grid_solver_settings.time_ranges_create_failed", "Could not create time range."),
@@ -1004,7 +1023,12 @@ export default function GridSolverSettingsForm({
         const raw = await response.text().catch(() => "");
         throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.time_ranges_save_failed", "Could not save time range.")));
       }
-      await loadTimeRanges();
+      const next = timeRanges.map((entry) =>
+        entry.id === id ? { ...entry, name: current.name.trim(), rowError: null } : entry,
+      );
+      setTimeRanges(next);
+      invalidateGridResource(gridId, "time_ranges");
+      invalidateGridScreenContext(gridId, "draft");
       toast.success(tt("common.saved", "Saved."));
     } catch (error: unknown) {
       const rowMessage =
@@ -1031,6 +1055,8 @@ export default function GridSolverSettingsForm({
         throw new Error(parseTimeRangeDeleteError(raw, response.status, tt("grid_solver_settings.time_ranges_delete_failed", "Could not delete time range.")));
       }
       setTimeRanges((prev) => prev.filter((entry) => entry.id !== id));
+      invalidateGridResource(gridId, "time_ranges");
+      invalidateGridScreenContext(gridId, "draft");
       toast.success(tt("common.deleted", "Deleted."));
     } catch (error: unknown) {
       setTimeRangesError(
@@ -1260,7 +1286,9 @@ export default function GridSolverSettingsForm({
                           setWeightsSaved(null);
                         }}
                       />
-                      <span className="text-xs text-gray-500">default: {OBJECTIVE_WEIGHT_DEFAULTS[row.key].toFixed(1)}</span>
+                      <span className="text-xs text-gray-500">
+                        {tt("grid_solver_settings.default_value", "default:")} {OBJECTIVE_WEIGHT_DEFAULTS[row.key].toFixed(1)}
+                      </span>
                     </div>
                   </div>
                 ))}

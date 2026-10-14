@@ -318,10 +318,10 @@ function statusFromInvite(inv: Invite): InviteStatus {
   return "pending";
 }
 
-function statusBadge(status: InviteStatus): { label: string; className: string } | null {
-  if (status === "accepted") return { label: "Accepted", className: "text-green-700 bg-green-50 border border-green-200" };
-  if (status === "declined") return { label: "Declined", className: "text-red-700 bg-red-50 border border-red-200" };
-  if (status === "expired") return { label: "Expired", className: "text-yellow-700 bg-yellow-50 border border-yellow-200" };
+function statusBadge(status: InviteStatus): { labelKey: "invite_token.accepted" | "invite_token.declined" | "invite_token.expired"; className: string } | null {
+  if (status === "accepted") return { labelKey: "invite_token.accepted", className: "text-green-700 bg-green-50 border border-green-200" };
+  if (status === "declined") return { labelKey: "invite_token.declined", className: "text-red-700 bg-red-50 border border-red-200" };
+  if (status === "expired") return { labelKey: "invite_token.expired", className: "text-yellow-700 bg-yellow-50 border border-yellow-200" };
   return null;
 }
 
@@ -743,7 +743,7 @@ export default function InvitesMenu({ me }: { me: User }) {
                         <span
                           className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTag.className}`}
                         >
-                          {statusTag.label}
+                        {t(statusTag.labelKey)}
                         </span>
                       )}
                       {status === "pending" && (

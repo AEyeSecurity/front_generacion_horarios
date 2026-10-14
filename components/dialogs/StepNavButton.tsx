@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/lib/use-i18n";
+
 type Props = {
   step: 1 | 2;
   disabled?: boolean;
@@ -8,13 +10,14 @@ type Props = {
 };
 
 export default function StepNavButton({ step, disabled = false, onToggle, className = "" }: Props) {
+  const { t } = useI18n();
   return (
     <button
       type="button"
       className={`h-9 w-9 rounded-full border text-sm flex items-center justify-center hover:bg-gray-50 disabled:opacity-40 ${className}`}
       onClick={onToggle}
       disabled={disabled}
-      aria-label={step === 1 ? "Go to Staffing" : "Go to Basic Data"}
+      aria-label={step === 1 ? t("create_cell.go_to_staffing") : t("create_cell.go_to_basic_data")}
     >
       <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
         {step === 1 ? (

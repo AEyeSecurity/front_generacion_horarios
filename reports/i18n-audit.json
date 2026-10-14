@@ -1,0 +1,2533 @@
+{
+  "generatedAt": "2026-10-09T22:58:31.018Z",
+  "summary": {
+    "filesScanned": 160,
+    "hardcodedStrings": 5,
+    "missingEnglishKeys": 0,
+    "missingSpanishKeys": 0,
+    "unusedKeys": 216,
+    "dynamicTranslationCalls": 21,
+    "duplicateKeyDefinitions": 0,
+    "duplicateValueGroups": 151
+  },
+  "hardcodedStrings": [
+    {
+      "file": "lib/api-base.ts",
+      "line": 4,
+      "column": 21,
+      "text": "Missing API base URL. Set NEXT_PUBLIC_API_URL.",
+      "context": "error message"
+    },
+    {
+      "file": "lib/cell-api.ts",
+      "line": 5,
+      "column": 21,
+      "text": "Missing {...}.",
+      "context": "error message"
+    },
+    {
+      "file": "lib/cell-api.ts",
+      "line": 9,
+      "column": 21,
+      "text": "Missing {...}.",
+      "context": "error message"
+    },
+    {
+      "file": "lib/grid-config.ts",
+      "line": 35,
+      "column": 21,
+      "text": "Could not load grid configuration ({...}).",
+      "context": "error message"
+    },
+    {
+      "file": "lib/screen-context.ts",
+      "line": 76,
+      "column": 30,
+      "text": "Failed to load screen context ({...})",
+      "context": "error message"
+    }
+  ],
+  "missingEnglishKeys": [],
+  "missingSpanishKeys": [],
+  "unusedKeys": [
+    {
+      "key": "add_participant.custom_requires_override",
+      "englishValue": "Custom mode requires at least one weekly override.",
+      "line": 1009
+    },
+    {
+      "key": "add_participant.weekly_mode",
+      "englishValue": "Weekly hours mode",
+      "line": 1003
+    },
+    {
+      "key": "add_participant.weekly_mode_custom",
+      "englishValue": "Custom",
+      "line": 1005
+    },
+    {
+      "key": "add_participant.weekly_mode_default",
+      "englishValue": "Default",
+      "line": 1004
+    },
+    {
+      "key": "add_participant.weekly_mode_not_available",
+      "englishValue": "Not available",
+      "line": 1006
+    },
+    {
+      "key": "add_rule.cancel",
+      "englishValue": "Cancel",
+      "line": 980
+    },
+    {
+      "key": "add_rule.error_could_not_create",
+      "englishValue": "Could not create rule.",
+      "line": 976
+    },
+    {
+      "key": "add_rule.error_could_not_merge",
+      "englishValue": "Could not merge with adjacent rule.",
+      "line": 977
+    },
+    {
+      "key": "add_rule.error_creating_with_status",
+      "englishValue": "Error creating rule ({status})",
+      "line": 975
+    },
+    {
+      "key": "auth.registration_failed",
+      "englishValue": "Registration failed",
+      "line": 102
+    },
+    {
+      "key": "category_panel.no_participants_found",
+      "englishValue": "No categories found.",
+      "line": 50
+    },
+    {
+      "key": "common.end",
+      "englishValue": "End",
+      "line": 12
+    },
+    {
+      "key": "common.english",
+      "englishValue": "English",
+      "line": 6
+    },
+    {
+      "key": "common.settings",
+      "englishValue": "Settings",
+      "line": 17
+    },
+    {
+      "key": "common.spanish",
+      "englishValue": "Spanish",
+      "line": 7
+    },
+    {
+      "key": "common.start",
+      "englishValue": "Start",
+      "line": 11
+    },
+    {
+      "key": "create_cell.days_count_hint",
+      "englishValue": "Between 2 and {max} days.",
+      "line": 1109
+    },
+    {
+      "key": "create_cell.division_days",
+      "englishValue": "Division in days",
+      "line": 1105
+    },
+    {
+      "key": "create_cell.next_step",
+      "englishValue": "Next step",
+      "line": 1128
+    },
+    {
+      "key": "create_cell.previous_step",
+      "englishValue": "Previous step",
+      "line": 1127
+    },
+    {
+      "key": "create_cell.quantity",
+      "englishValue": "Quantity",
+      "line": 1103
+    },
+    {
+      "key": "create_cell.split_preview",
+      "englishValue": "Day {day}: {cells} cells ({minutes} min)",
+      "line": 1125
+    },
+    {
+      "key": "create_cell.unit_mode_global_label",
+      "englishValue": "Global unit mode",
+      "line": 1114
+    },
+    {
+      "key": "create_cell.unit_mode_global_value_and",
+      "englishValue": "AND",
+      "line": 1115
+    },
+    {
+      "key": "create_cell.unit_mode_global_value_or",
+      "englishValue": "OR",
+      "line": 1116
+    },
+    {
+      "key": "create_cell.unit_mode_override",
+      "englishValue": "Override global unit mode",
+      "line": 1117
+    },
+    {
+      "key": "create_cell.unit_mode_override_help_and",
+      "englishValue": "Global mode is AND. Turning this on uses OR for this cell.",
+      "line": 1118
+    },
+    {
+      "key": "create_cell.unit_mode_override_help_or",
+      "englishValue": "Global mode is OR. Turning this on uses AND for this cell.",
+      "line": 1120
+    },
+    {
+      "key": "entity.bundle",
+      "englishValue": "Bundle",
+      "line": 30
+    },
+    {
+      "key": "entity.category",
+      "englishValue": "Category",
+      "line": 36
+    },
+    {
+      "key": "entity.cell",
+      "englishValue": "Cell",
+      "line": 38
+    },
+    {
+      "key": "entity.grid",
+      "englishValue": "Grid",
+      "line": 32
+    },
+    {
+      "key": "entity.schedule",
+      "englishValue": "Schedule",
+      "line": 33
+    },
+    {
+      "key": "entity.staff",
+      "englishValue": "Staff",
+      "line": 31
+    },
+    {
+      "key": "entity.unit",
+      "englishValue": "Unit",
+      "line": 29
+    },
+    {
+      "key": "format.grid_with_id",
+      "englishValue": "Grid {id}",
+      "line": 66
+    },
+    {
+      "key": "format.staff_with_id",
+      "englishValue": "Staff {id}",
+      "line": 62
+    },
+    {
+      "key": "grid_actions.delete_failed",
+      "englishValue": "Failed to delete grid ({status}). {details}",
+      "line": 168
+    },
+    {
+      "key": "grid_actions.time_ranges",
+      "englishValue": "Time Ranges",
+      "line": 159
+    },
+    {
+      "key": "grid_new.cell_size_validation_error",
+      "englishValue": "Cell size must be at least 30 and a multiple of 5.",
+      "line": 422
+    },
+    {
+      "key": "grid_new.create_grid",
+      "englishValue": "Create Grid",
+      "line": 429
+    },
+    {
+      "key": "grid_new.creating",
+      "englishValue": "Creating...",
+      "line": 428
+    },
+    {
+      "key": "grid_new.description",
+      "englishValue": "Description",
+      "line": 416
+    },
+    {
+      "key": "grid_new.title",
+      "englishValue": "Create New Grid",
+      "line": 414
+    },
+    {
+      "key": "grid_overview.categories",
+      "englishValue": "Categories",
+      "line": 727
+    },
+    {
+      "key": "grid_overview.cells",
+      "englishValue": "Cells",
+      "line": 726
+    },
+    {
+      "key": "grid_overview.participants",
+      "englishValue": "Participants",
+      "line": 725
+    },
+    {
+      "key": "grid_overview.time_ranges",
+      "englishValue": "Time Ranges",
+      "line": 728
+    },
+    {
+      "key": "grid_schedule.drop_to_remove_participant",
+      "englishValue": "Drop here to remove this participant from the placement",
+      "line": 201
+    },
+    {
+      "key": "grid_schedule.loading_participants",
+      "englishValue": "Loading participants...",
+      "line": 177
+    },
+    {
+      "key": "grid_schedule.move_card_left",
+      "englishValue": "Move card left",
+      "line": 186
+    },
+    {
+      "key": "grid_schedule.move_card_right",
+      "englishValue": "Move card right",
+      "line": 187
+    },
+    {
+      "key": "grid_schedule.my_participant_missing",
+      "englishValue": "Your participant profile was not found in this grid.",
+      "line": 179
+    },
+    {
+      "key": "grid_schedule.no_participants_found",
+      "englishValue": "No participants found for this grid.",
+      "line": 178
+    },
+    {
+      "key": "grid_schedule.no_tier",
+      "englishValue": "No tier",
+      "line": 182
+    },
+    {
+      "key": "grid_schedule.placed_cards_same_row_error",
+      "englishValue": "Placed cards can only be moved inside the same participant row.",
+      "line": 191
+    },
+    {
+      "key": "grid_settings.availability_costs_help",
+      "englishValue": "Prioritize penalties for non-preferred and impossible slots.",
+      "line": 808
+    },
+    {
+      "key": "grid_settings.availability_costs_section",
+      "englishValue": "Availability Cost Prioritization",
+      "line": 807
+    },
+    {
+      "key": "grid_settings.close_sections",
+      "englishValue": "Close sections",
+      "line": 834
+    },
+    {
+      "key": "grid_settings.constraints_section",
+      "englishValue": "Constraints",
+      "line": 794
+    },
+    {
+      "key": "grid_settings.day_heatmap",
+      "englishValue": "Day Heatmap",
+      "line": 813
+    },
+    {
+      "key": "grid_settings.impossible_priority",
+      "englishValue": "Impossible slots priority",
+      "line": 811
+    },
+    {
+      "key": "grid_settings.impossible_priority_help",
+      "englishValue": "Maps to impossible_cost (default 10000).",
+      "line": 812
+    },
+    {
+      "key": "grid_settings.lexicographic_availability",
+      "englishValue": "Lexicographic availability",
+      "line": 803
+    },
+    {
+      "key": "grid_settings.lexicographic_availability_help",
+      "englishValue": "Maps to lexicographic_availability.",
+      "line": 804
+    },
+    {
+      "key": "grid_settings.non_preferred_priority",
+      "englishValue": "Non-preferred slots priority",
+      "line": 809
+    },
+    {
+      "key": "grid_settings.non_preferred_priority_help",
+      "englishValue": "Maps to non_preferred_cost (default 100).",
+      "line": 810
+    },
+    {
+      "key": "grid_settings.p1_help",
+      "englishValue": "Maps to weight_availability (30-150).",
+      "line": 785
+    },
+    {
+      "key": "grid_settings.p10_help",
+      "englishValue": "Adjusts weight_participant_day_spread and weight_participant_days.",
+      "line": 792
+    },
+    {
+      "key": "grid_settings.p11_help",
+      "englishValue": "Maps to weight_participant_workload_equity (0-10).",
+      "line": 793
+    },
+    {
+      "key": "grid_settings.p2_help",
+      "englishValue": "Maps to weight_participant_gap (1-20).",
+      "line": 786
+    },
+    {
+      "key": "grid_settings.p3_help",
+      "englishValue": "Maps to weight_participant_days (0.5-10).",
+      "line": 787
+    },
+    {
+      "key": "grid_settings.p4_help",
+      "englishValue": "Maps to weight_unit_gap (1-15).",
+      "line": 788
+    },
+    {
+      "key": "grid_settings.p5_help",
+      "englishValue": "Maps to weight_unit_days (0.5-8).",
+      "line": 789
+    },
+    {
+      "key": "grid_settings.p6_help",
+      "englishValue": "Maps to weight_soft_window (0.2-5).",
+      "line": 790
+    },
+    {
+      "key": "grid_settings.p9_help",
+      "englishValue": "Maps to weight_participant_daily_load_balance (0.5-8).",
+      "line": 791
+    },
+    {
+      "key": "grid_settings.participants_tab",
+      "englishValue": "Participants",
+      "line": 754
+    },
+    {
+      "key": "grid_settings.prevent_overlap",
+      "englishValue": "Prevent overlap for same unit",
+      "line": 795
+    },
+    {
+      "key": "grid_settings.prevent_overlap_help",
+      "englishValue": "Maps to unit_nooverlap_enabled.",
+      "line": 796
+    },
+    {
+      "key": "grid_settings.principal_tab",
+      "englishValue": "Principal",
+      "line": 752
+    },
+    {
+      "key": "grid_settings.priorities_help",
+      "englishValue": "Tune solver priorities from low (1) to high (10).",
+      "line": 784
+    },
+    {
+      "key": "grid_settings.priorities_section",
+      "englishValue": "Priorities",
+      "line": 783
+    },
+    {
+      "key": "grid_settings.save_units",
+      "englishValue": "Save unit constraints",
+      "line": 817
+    },
+    {
+      "key": "grid_settings.schedule_section",
+      "englishValue": "Schedule",
+      "line": 815
+    },
+    {
+      "key": "grid_settings.soft_window_base_cost",
+      "englishValue": "Soft window base cost",
+      "line": 801
+    },
+    {
+      "key": "grid_settings.soft_window_base_cost_help",
+      "englishValue": "Maps to soft_window_base_cost (default 500).",
+      "line": 802
+    },
+    {
+      "key": "grid_settings.soft_window_enabled",
+      "englishValue": "Soft window enabled",
+      "line": 799
+    },
+    {
+      "key": "grid_settings.soft_window_enabled_help",
+      "englishValue": "Maps to soft_window_enabled.",
+      "line": 800
+    },
+    {
+      "key": "grid_settings.stability_weight",
+      "englishValue": "Stability weight",
+      "line": 805
+    },
+    {
+      "key": "grid_settings.stability_weight_help",
+      "englishValue": "Maps to stability_weight (0-100).",
+      "line": 806
+    },
+    {
+      "key": "grid_settings.unit_constraints",
+      "englishValue": "Unit Constraints",
+      "line": 816
+    },
+    {
+      "key": "grid_settings.unit_max_hours_day",
+      "englishValue": "Unit max hours per day",
+      "line": 797
+    },
+    {
+      "key": "grid_settings.unit_max_hours_day_help",
+      "englishValue": "Maps to unit_max_hours_day.",
+      "line": 798
+    },
+    {
+      "key": "grid_solver_settings.enabled",
+      "englishValue": "Enabled",
+      "line": 908
+    },
+    {
+      "key": "grid_solver_settings.heatmap_budget_ok",
+      "englishValue": "Heatmap budget usage: {used} upgrade points used out of {max} for {days} enabled days.",
+      "line": 916
+    },
+    {
+      "key": "grid_solver_settings.max_hours_day_title",
+      "englishValue": "Max hours per day by tier",
+      "line": 889
+    },
+    {
+      "key": "grid_solver_settings.max_hours_week_title",
+      "englishValue": "Max hours per week by tier",
+      "line": 891
+    },
+    {
+      "key": "grid_solver_settings.min_hours_shortfall_weight_title",
+      "englishValue": "Min weekly shortfall penalty weight",
+      "line": 898
+    },
+    {
+      "key": "grid_solver_settings.min_hours_week_hard_title",
+      "englishValue": "Minimum weekly hours are hard",
+      "line": 895
+    },
+    {
+      "key": "grid_solver_settings.min_hours_week_title",
+      "englishValue": "Min hours per week by tier",
+      "line": 893
+    },
+    {
+      "key": "grid_solver_settings.min_rest_hours_title",
+      "englishValue": "Minimum rest hours",
+      "line": 903
+    },
+    {
+      "key": "grid_solver_settings.payload_preview",
+      "englishValue": "Payload Preview",
+      "line": 909
+    },
+    {
+      "key": "grid_solver_settings.placeholder_example_8",
+      "englishValue": "e.g. 8",
+      "line": 910
+    },
+    {
+      "key": "grid_solver_settings.prevent_overlap_help",
+      "englishValue": "If enabled, cells sharing the same unit cannot be scheduled at the same time.",
+      "line": 887
+    },
+    {
+      "key": "grid_solver_settings.prevent_overlap_title",
+      "englishValue": "Prevent overlap for same unit",
+      "line": 886
+    },
+    {
+      "key": "grid_solver_settings.runtime_options",
+      "englishValue": "Runtime solver options. Only enabled and fully configured fields are sent in solver_params.",
+      "line": 884
+    },
+    {
+      "key": "grid_solver_settings.stability_weight_help",
+      "englishValue": "0..100. Higher values keep schedules closer to the previous solution.",
+      "line": 906
+    },
+    {
+      "key": "grid_solver_settings.stability_weight_title",
+      "englishValue": "Stability weight",
+      "line": 905
+    },
+    {
+      "key": "grid_solver_settings.time_ranges_help",
+      "englishValue": "Manage time ranges here. Each range uses a 2-knob slider over the full schedule horizon.",
+      "line": 921
+    },
+    {
+      "key": "grid_solver_settings.time_ranges_horizon",
+      "englishValue": "Horizon: {start} to {end}",
+      "line": 923
+    },
+    {
+      "key": "grid_solver_settings.title",
+      "englishValue": "Settings",
+      "line": 882
+    },
+    {
+      "key": "grid_solver_settings.unit_max_hours_day_help",
+      "englishValue": "Hard daily cap per unit.",
+      "line": 902
+    },
+    {
+      "key": "grid_solver_settings.unit_max_hours_day_title",
+      "englishValue": "Unit max hours per day",
+      "line": 901
+    },
+    {
+      "key": "onboarding.add_participant",
+      "englishValue": "Add Participant",
+      "line": 446
+    },
+    {
+      "key": "onboarding.add_time_range",
+      "englishValue": "Add Time Range",
+      "line": 447
+    },
+    {
+      "key": "onboarding.blockage_step_description",
+      "englishValue": "Optionally, block time slots where no activities should be scheduled. Open the right dock tools and choose blockage.",
+      "line": 516
+    },
+    {
+      "key": "onboarding.category_step_description",
+      "englishValue": "Optionally, create categories and values to generate unit tabs for your schedule.",
+      "line": 483
+    },
+    {
+      "key": "onboarding.category_step_unit_hint_audience",
+      "englishValue": "You chose group-based units; category values become the group tabs in your schedule.",
+      "line": 485
+    },
+    {
+      "key": "onboarding.category_step_unit_hint_internal",
+      "englishValue": "You chose internal units; category values can represent areas, teams or departments.",
+      "line": 489
+    },
+    {
+      "key": "onboarding.category_step_unit_hint_none",
+      "englishValue": "You chose no units; skip this unless you want unit tabs later.",
+      "line": 491
+    },
+    {
+      "key": "onboarding.category_step_unit_hint_space",
+      "englishValue": "You chose space-based units; category values can represent rooms, courts, desks or other spaces.",
+      "line": 487
+    },
+    {
+      "key": "onboarding.create_cell",
+      "englishValue": "Create Cell",
+      "line": 453
+    },
+    {
+      "key": "onboarding.finish",
+      "englishValue": "Finish",
+      "line": 459
+    },
+    {
+      "key": "onboarding.got_it",
+      "englishValue": "Got it",
+      "line": 456
+    },
+    {
+      "key": "onboarding.later",
+      "englishValue": "Later",
+      "line": 454
+    },
+    {
+      "key": "onboarding.participant_step_description",
+      "englishValue": "Create at least one participant before creating cells.",
+      "line": 467
+    },
+    {
+      "key": "onboarding.skip_for_now",
+      "englishValue": "Skip for now",
+      "line": 452
+    },
+    {
+      "key": "onboarding.step_1_description",
+      "englishValue": "Participants are the people who will be assigned to cells in your schedule. You need at least one before creating cells.",
+      "line": 432
+    },
+    {
+      "key": "onboarding.step_1_title",
+      "englishValue": "Add your first participant",
+      "line": 431
+    },
+    {
+      "key": "onboarding.step_2_description",
+      "englishValue": "Time ranges let you restrict when certain cells can be scheduled (for example, Morning or Afternoon). You can set them later from the Time Ranges panel in the left dock.",
+      "line": 435
+    },
+    {
+      "key": "onboarding.step_2_title",
+      "englishValue": "Define time ranges",
+      "line": 434
+    },
+    {
+      "key": "onboarding.step_3_description",
+      "englishValue": "Blockages prevent the solver from placing cells in specific time slots. You can add them later using the blockage tool on the right dock.",
+      "line": 438
+    },
+    {
+      "key": "onboarding.step_3_title",
+      "englishValue": "Block unavailable times",
+      "line": 437
+    },
+    {
+      "key": "onboarding.step_4_description",
+      "englishValue": "Cells are the activities or shifts to be scheduled. Each cell needs at least one eligible participant.",
+      "line": 441
+    },
+    {
+      "key": "onboarding.step_4_title",
+      "englishValue": "Create your first cell",
+      "line": 440
+    },
+    {
+      "key": "onboarding.step_5_description",
+      "englishValue": "You can now run the solver from the lightbulb button on the right. To fine-tune solver objectives and constraints, go to Settings.",
+      "line": 444
+    },
+    {
+      "key": "onboarding.step_5_title",
+      "englishValue": "You're all set!",
+      "line": 443
+    },
+    {
+      "key": "onboarding.time_range_create_failed",
+      "englishValue": "Could not create time range.",
+      "line": 449
+    },
+    {
+      "key": "onboarding.time_range_created",
+      "englishValue": "Time range created.",
+      "line": 450
+    },
+    {
+      "key": "onboarding.time_range_name_required",
+      "englishValue": "Time range name is required.",
+      "line": 448
+    },
+    {
+      "key": "onboarding.time_range_step_description",
+      "englishValue": "Optionally, define time ranges to constrain when cells can be placed.",
+      "line": 506
+    },
+    {
+      "key": "onboarding.title",
+      "englishValue": "Quick setup guide",
+      "line": 430
+    },
+    {
+      "key": "onboarding.waiting_cell_creation",
+      "englishValue": "Current cells: {count}. Create one or skip.",
+      "line": 531
+    },
+    {
+      "key": "onboarding.waiting_participant_creation",
+      "englishValue": "Waiting for participant creation. Current participants: {count}.",
+      "line": 481
+    },
+    {
+      "key": "onboarding.waiting_time_range_creation",
+      "englishValue": "Time ranges created: {count}.",
+      "line": 514
+    },
+    {
+      "key": "participants_page.linked_user",
+      "englishValue": "Linked user",
+      "line": 985
+    },
+    {
+      "key": "solve_overlay.cannot_place_cell_bundle_unit_occupied",
+      "englishValue": "Cannot place this cell there: one of its bundle units is already occupied.",
+      "line": 265
+    },
+    {
+      "key": "solve_overlay.loading_blockages",
+      "englishValue": "Loading...",
+      "line": 209
+    },
+    {
+      "key": "solve_overlay.no_valid_participants_for_slot",
+      "englishValue": "No valid participants/staff are available at this slot (availability, overlap, or tier constraints).",
+      "line": 296
+    },
+    {
+      "key": "solve_overlay.open_assignment_first_available",
+      "englishValue": "First available participant",
+      "line": 378
+    },
+    {
+      "key": "solve_overlay.open_assignment_recommended",
+      "englishValue": "Recommended from previous assignment",
+      "line": 379
+    },
+    {
+      "key": "solve_overlay.placement_status_blocked",
+      "englishValue": "Blocked",
+      "line": 331
+    },
+    {
+      "key": "solve_overlay.placement_status_invalid",
+      "englishValue": "Invalid",
+      "line": 332
+    },
+    {
+      "key": "solve_overlay.placement_status_neutral",
+      "englishValue": "Valid",
+      "line": 333
+    },
+    {
+      "key": "solve_overlay.placement_status_recommended",
+      "englishValue": "Recommended",
+      "line": 334
+    },
+    {
+      "key": "solve_overlay.placement_status_warning",
+      "englishValue": "Warning",
+      "line": 335
+    },
+    {
+      "key": "solve_overlay.precheck_blocking_with_counts",
+      "englishValue": "Precheck blocking issues: {errors} errors, {warnings} warnings",
+      "line": 363
+    },
+    {
+      "key": "solve_overlay.precheck_passed",
+      "englishValue": "Precheck passed.",
+      "line": 361
+    },
+    {
+      "key": "solve_overlay.precheck_solver_skipped",
+      "englishValue": "Solver skipped because precheck failed.",
+      "line": 360
+    },
+    {
+      "key": "solve_overlay.precheck_warnings_with_counts",
+      "englishValue": "Precheck warnings: {warnings}",
+      "line": 362
+    },
+    {
+      "key": "solve_overlay.publish",
+      "englishValue": "Publish",
+      "line": 252
+    },
+    {
+      "key": "solve_overlay.publishing",
+      "englishValue": "Publishing...",
+      "line": 253
+    },
+    {
+      "key": "solve_overlay.selected_bundle_has_no_units",
+      "englishValue": "Selected bundle has no units.",
+      "line": 347
+    },
+    {
+      "key": "solve_overlay.staff_assignment_label",
+      "englishValue": "Staff: {name}",
+      "line": 373
+    },
+    {
+      "key": "solve_overlay.tier_pools",
+      "englishValue": "Tier pools",
+      "line": 375
+    },
+    {
+      "key": "solve_overlay.tier_pools_assignment_label",
+      "englishValue": "Tier pools: {names}",
+      "line": 376
+    },
+    {
+      "key": "solve_overlay.tier_pools_recommended",
+      "englishValue": "Tier pools (recommended from previous assignment)",
+      "line": 377
+    },
+    {
+      "key": "solver_wizard.custom_description",
+      "englishValue": "Custom description",
+      "line": 556
+    },
+    {
+      "key": "solver_wizard.custom_description_placeholder",
+      "englishValue": "Describe your organization",
+      "line": 557
+    },
+    {
+      "key": "solver_wizard.day_spread_cluster",
+      "englishValue": "Cluster",
+      "line": 687
+    },
+    {
+      "key": "solver_wizard.day_spread_separate",
+      "englishValue": "Separate",
+      "line": 686
+    },
+    {
+      "key": "solver_wizard.no_preference",
+      "englishValue": "No preference",
+      "line": 664
+    },
+    {
+      "key": "solver_wizard.optional",
+      "englishValue": "optional",
+      "line": 562
+    },
+    {
+      "key": "solver_wizard.other_context_helper",
+      "englishValue": "This helps us understand new scheduling use cases and improve the system.",
+      "line": 653
+    },
+    {
+      "key": "solver_wizard.other_context_placeholder",
+      "englishValue": "Example: rotating shifts for a small clinic, music academy schedules, church volunteers...",
+      "line": 650
+    },
+    {
+      "key": "solver_wizard.priorities_optional",
+      "englishValue": "All sliders are optional. Untouched values keep profile defaults.",
+      "line": 563
+    },
+    {
+      "key": "solver_wizard.priority_availability",
+      "englishValue": "Respect participant availability",
+      "line": 675
+    },
+    {
+      "key": "solver_wizard.priority_daily_load_balance",
+      "englishValue": "Daily load balance",
+      "line": 678
+    },
+    {
+      "key": "solver_wizard.priority_day_spread",
+      "englishValue": "Separate vs. cluster days",
+      "line": 679
+    },
+    {
+      "key": "solver_wizard.priority_participant_days",
+      "englishValue": "Concentrate activities in fewer days",
+      "line": 677
+    },
+    {
+      "key": "solver_wizard.priority_participant_gap",
+      "englishValue": "Minimize gaps between participant activities",
+      "line": 676
+    },
+    {
+      "key": "solver_wizard.priority_participant_workload_equity",
+      "englishValue": "Participant workload equity",
+      "line": 683
+    },
+    {
+      "key": "solver_wizard.priority_participant_workload_equity_desc",
+      "englishValue": "Should weekly assigned cells be balanced fairly across comparable participants?",
+      "line": 684
+    },
+    {
+      "key": "solver_wizard.priority_soft_window",
+      "englishValue": "Respect preferred time windows",
+      "line": 682
+    },
+    {
+      "key": "solver_wizard.priority_unit_days",
+      "englishValue": "Concentrate unit activities",
+      "line": 681
+    },
+    {
+      "key": "solver_wizard.priority_unit_gap",
+      "englishValue": "Minimize gaps in units",
+      "line": 680
+    },
+    {
+      "key": "solver_wizard.q_min_cells",
+      "englishValue": "Minimum cells per week by tier",
+      "line": 671
+    },
+    {
+      "key": "solver_wizard.q_min_cells_invalid",
+      "englishValue": "Min cells values must be non-negative integers.",
+      "line": 672
+    },
+    {
+      "key": "solver_wizard.q_tiers",
+      "englishValue": "Tier usage",
+      "line": 667
+    },
+    {
+      "key": "solver_wizard.q_tiers_disable",
+      "englishValue": "Disable tiers",
+      "line": 670
+    },
+    {
+      "key": "solver_wizard.q_tiers_enable",
+      "englishValue": "Enable tiers",
+      "line": 669
+    },
+    {
+      "key": "solver_wizard.q_tiers_keep",
+      "englishValue": "No change",
+      "line": 668
+    },
+    {
+      "key": "solver_wizard.q1_required",
+      "englishValue": "Please select an organization type.",
+      "line": 688
+    },
+    {
+      "key": "solver_wizard.q4_no",
+      "englishValue": "No",
+      "line": 663
+    },
+    {
+      "key": "solver_wizard.q4_unit_nooverlap",
+      "englishValue": "Keep unit placements from overlapping",
+      "line": 661
+    },
+    {
+      "key": "solver_wizard.q4_yes",
+      "englishValue": "Yes",
+      "line": 662
+    },
+    {
+      "key": "solver_wizard.q5_help",
+      "englishValue": "Leave empty or 0 to skip",
+      "line": 666
+    },
+    {
+      "key": "solver_wizard.q5_min_rest",
+      "englishValue": "Minimum rest hours",
+      "line": 665
+    },
+    {
+      "key": "solver_wizard.section_priorities",
+      "englishValue": "Priorities",
+      "line": 560
+    },
+    {
+      "key": "solver_wizard.section_questions",
+      "englishValue": "Questions",
+      "line": 559
+    },
+    {
+      "key": "solver_wizard.step_x_of_y",
+      "englishValue": "Step {step} of {total}",
+      "line": 537
+    },
+    {
+      "key": "solver_wizard.unit_nature_audience",
+      "englishValue": "Audience",
+      "line": 567
+    },
+    {
+      "key": "solver_wizard.unit_nature_audience_help",
+      "englishValue": "Units represent groups that attend together (classes/sections).",
+      "line": 568
+    },
+    {
+      "key": "solver_wizard.unit_nature_internal",
+      "englishValue": "Internal",
+      "line": 570
+    },
+    {
+      "key": "solver_wizard.unit_nature_internal_group",
+      "englishValue": "Internal group",
+      "line": 580
+    },
+    {
+      "key": "solver_wizard.unit_nature_internal_group_help",
+      "englishValue": "Units represent internal organizational divisions.",
+      "line": 581
+    },
+    {
+      "key": "solver_wizard.unit_nature_internal_help",
+      "englishValue": "Units represent internal operational groups.",
+      "line": 571
+    },
+    {
+      "key": "solver_wizard.unit_nature_none",
+      "englishValue": "None",
+      "line": 573
+    },
+    {
+      "key": "solver_wizard.unit_nature_none_help",
+      "englishValue": "No unit-level coupling is needed.",
+      "line": 574
+    },
+    {
+      "key": "solver_wizard.unit_nature_space",
+      "englishValue": "Space",
+      "line": 576
+    },
+    {
+      "key": "solver_wizard.unit_nature_space_help",
+      "englishValue": "Units represent space constraints and spatial separation needs.",
+      "line": 577
+    },
+    {
+      "key": "solver_wizard.unit_nature_space_help_short",
+      "englishValue": "Space-based grouping and conflicts.",
+      "line": 579
+    },
+    {
+      "key": "solver_wizard.use_default_configuration",
+      "englishValue": "Use default configuration",
+      "line": 674
+    },
+    {
+      "key": "time_ranges.add_new",
+      "englishValue": "Add new time range",
+      "line": 171
+    },
+    {
+      "key": "time_ranges.create_failed",
+      "englishValue": "Create failed ({status})",
+      "line": 173
+    },
+    {
+      "key": "time_ranges.delete_failed",
+      "englishValue": "Delete failed ({status})",
+      "line": 175
+    }
+  ],
+  "duplicateKeyDefinitions": [],
+  "duplicateValues": [
+    {
+      "locale": "en-US",
+      "value": "Add Participant",
+      "keys": [
+        "add_participant.title",
+        "onboarding.add_participant"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Adding...",
+      "keys": [
+        "add_category.adding",
+        "add_participant.adding"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Audience",
+      "keys": [
+        "grid_settings.unit_nature_audience",
+        "solver_wizard.unit_nature_audience"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Availability Rules",
+      "keys": [
+        "landing.availability_rules",
+        "participant_detail.availability_rules"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Back to",
+      "keys": [
+        "auth.back_to",
+        "password_change.back_to"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Blocked",
+      "keys": [
+        "solve_overlay.blocked_overlay_label",
+        "solve_overlay.placement_status_blocked"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Breaks",
+      "keys": [
+        "break_dialog.title",
+        "solve_overlay.breaks"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Cancel",
+      "keys": [
+        "add_rule.cancel",
+        "common.cancel"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Categories",
+      "keys": [
+        "category_panel.title",
+        "entity.categories",
+        "grid_overview.categories",
+        "side_dock.categories"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Cells",
+      "keys": [
+        "cells.title",
+        "entity.cells",
+        "grid_overview.cells",
+        "side_dock.cells"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Close",
+      "keys": [
+        "common.close",
+        "invite_dialog.close"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Comments",
+      "keys": [
+        "participant_detail.comments",
+        "solve_overlay.comments"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Could not create time range.",
+      "keys": [
+        "grid_solver_settings.time_ranges_create_failed",
+        "onboarding.time_range_create_failed"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Could not delete grid.",
+      "keys": [
+        "grid_actions.could_not_delete_grid",
+        "grid_settings.delete_grid_failed"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Could not remove participant from placement.",
+      "keys": [
+        "grid_schedule.could_not_remove_participant",
+        "solve_overlay.could_not_remove_participant"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Create Cell",
+      "keys": [
+        "create_cell.title",
+        "onboarding.create_cell"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Create Grid",
+      "keys": [
+        "grid_new.create_grid",
+        "solver_wizard.create_grid"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Create New Grid",
+      "keys": [
+        "grid_new.title",
+        "solver_wizard.title"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Create your first cell",
+      "keys": [
+        "onboarding.cell_step_title",
+        "onboarding.step_4_title"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Creating...",
+      "keys": [
+        "auth.creating_account",
+        "create_cell.creating",
+        "grid_new.creating",
+        "solver_wizard.creating"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Daily load balance",
+      "keys": [
+        "grid_solver_settings.weight_day_load_balance_label",
+        "solver_wizard.priority_daily_load_balance"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Day Heatmap",
+      "keys": [
+        "grid_settings.day_heatmap",
+        "grid_solver_settings.day_heatmap_title"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Define time ranges",
+      "keys": [
+        "onboarding.step_2_title",
+        "onboarding.time_range_step_title"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Delete",
+      "keys": [
+        "category_dialog.delete_value",
+        "common.delete"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Delete grid",
+      "keys": [
+        "grid_actions.delete_grid",
+        "grid_settings.delete_grid_button",
+        "grid_settings.delete_grid_confirm_button",
+        "grid_settings.delete_grid_section_title"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Deleting...",
+      "keys": [
+        "grid_settings.delete_grid_deleting",
+        "solve_overlay.action_deleting"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Description",
+      "keys": [
+        "create_cell.description",
+        "grid_new.description",
+        "grid_settings.description"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Double click to edit participant",
+      "keys": [
+        "participant_detail.edit_hint",
+        "participants_panel.double_click_edit"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Email",
+      "keys": [
+        "auth.email",
+        "editor_invite.email"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Enabled",
+      "keys": [
+        "common.enabled",
+        "grid_solver_settings.enabled"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Error creating rule ({status})",
+      "keys": [
+        "add_rule.error_creating_status",
+        "add_rule.error_creating_with_status"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Failed ({status})",
+      "keys": [
+        "errors.failed_status",
+        "participant_detail.failed_status"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Failed to add value",
+      "keys": [
+        "add_category.failed_add_value",
+        "category_dialog.failed_add_value"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Finish",
+      "keys": [
+        "common.finish",
+        "onboarding.finish"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Go to step {step}",
+      "keys": [
+        "common.go_to_step",
+        "create_cell.go_to_step",
+        "solver_wizard.go_to_step"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Grid",
+      "keys": [
+        "entity.grid",
+        "grid_settings.context_prefix"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Internal",
+      "keys": [
+        "grid_settings.unit_nature_internal",
+        "solver_wizard.unit_nature_internal"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Last name",
+      "keys": [
+        "add_participant.last_name",
+        "auth.last_name"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Loading settings...",
+      "keys": [
+        "grid_settings.loading",
+        "grid_solver_settings.loading"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Loading...",
+      "keys": [
+        "category_dialog.loading",
+        "common.loading",
+        "invite_dialog.loading",
+        "password_change.loading",
+        "solve_overlay.loading_blockages"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Log in",
+      "keys": [
+        "auth.log_in",
+        "invite_token.log_in",
+        "verify_email_confirm.log_in"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Max hours per day by tier",
+      "keys": [
+        "grid_settings.max_hours_day_by_tier",
+        "grid_solver_settings.max_hours_day_title"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Max hours per week by tier",
+      "keys": [
+        "grid_settings.max_hours_week_by_tier",
+        "grid_solver_settings.max_hours_week_title"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Message (optional)",
+      "keys": [
+        "editor_invite.message_optional",
+        "invite_dialog.message_optional"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Min hours per week by tier",
+      "keys": [
+        "grid_settings.min_hours_week_by_tier",
+        "grid_solver_settings.min_hours_week_title"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Min weekly shortfall penalty weight",
+      "keys": [
+        "grid_settings.min_hours_week_weight",
+        "grid_solver_settings.min_hours_shortfall_weight_title"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Minimum rest hours",
+      "keys": [
+        "grid_settings.min_rest_hours",
+        "grid_solver_settings.min_rest_hours_title",
+        "solver_wizard.q5_min_rest"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Minimum weekly hours are hard",
+      "keys": [
+        "grid_settings.min_hours_week_hard",
+        "grid_solver_settings.min_hours_week_hard_title"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Name",
+      "keys": [
+        "common.name",
+        "grid_new.name",
+        "grid_settings.name"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Name *",
+      "keys": [
+        "add_category.name_required",
+        "create_cell.name_required"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Name is required.",
+      "keys": [
+        "add_participant.name_required_error",
+        "grid_settings.name_required"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "New password",
+      "keys": [
+        "auth.new_password",
+        "password_change.new_password"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "New value name",
+      "keys": [
+        "add_category.new_value_name",
+        "category_dialog.new_value_name"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Next",
+      "keys": [
+        "common.next",
+        "onboarding.next",
+        "solver_wizard.next_step"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Next step",
+      "keys": [
+        "common.next_step",
+        "create_cell.next_step"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "No bundle sets saved yet.",
+      "keys": [
+        "create_cell.no_bundle_sets_saved",
+        "edit_cell.no_bundle_sets_saved"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "No categories found.",
+      "keys": [
+        "category_panel.no_categories_found",
+        "category_panel.no_participants_found"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "No values yet",
+      "keys": [
+        "add_category.no_values_yet",
+        "category_dialog.no_values_yet"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "None",
+      "keys": [
+        "grid_settings.unit_nature_none",
+        "solver_wizard.unit_nature_none"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Not available",
+      "keys": [
+        "add_participant.weekly_mode_not_available",
+        "grid_settings.not_available"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Owner",
+      "keys": [
+        "invite_dialog.owner",
+        "recent_projects.column_owner"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Participant workload equity",
+      "keys": [
+        "grid_solver_settings.weight_participant_workload_equity_label",
+        "solver_wizard.priority_participant_workload_equity"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Participants",
+      "keys": [
+        "entity.participants",
+        "grid_overview.participants",
+        "grid_settings.participants_tab",
+        "side_dock.participants",
+        "solve_overlay.participants"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Placement",
+      "keys": [
+        "break_dialog.placement",
+        "grid_settings.placement_item",
+        "solve_overlay.placement"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Prevent overlap for same unit",
+      "keys": [
+        "grid_settings.prevent_overlap",
+        "grid_solver_settings.prevent_overlap_title"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Previous step",
+      "keys": [
+        "common.previous_step",
+        "create_cell.previous_step",
+        "solver_wizard.previous_step"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Priorities",
+      "keys": [
+        "grid_settings.priorities_section",
+        "solver_wizard.section_priorities"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Recommended",
+      "keys": [
+        "solve_overlay.placement_status_recommended",
+        "solve_overlay.recommended"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Saving...",
+      "keys": [
+        "add_rule.saving",
+        "common.saving",
+        "solve_overlay.saving"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Schedule",
+      "keys": [
+        "entity.schedule",
+        "grid_settings.schedule_section",
+        "grid_settings.schedule_tab",
+        "participant_detail.schedule"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Select at least one day.",
+      "keys": [
+        "grid_new.days_required",
+        "grid_settings.days_required"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Select...",
+      "keys": [
+        "create_cell.select_option",
+        "grid_settings.select_option"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Sending...",
+      "keys": [
+        "auth.sending",
+        "editor_invite.sending",
+        "invite_dialog.sending"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Settings",
+      "keys": [
+        "common.settings",
+        "grid_actions.settings",
+        "grid_solver_settings.title"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Space",
+      "keys": [
+        "grid_settings.unit_nature_space",
+        "solver_wizard.unit_nature_space"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Stability weight",
+      "keys": [
+        "grid_settings.stability_weight",
+        "grid_solver_settings.stability_weight_title"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "The grid could not be deleted because it still has related data.",
+      "keys": [
+        "grid_actions.delete_protected",
+        "grid_settings.delete_grid_protected"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Time range name is required.",
+      "keys": [
+        "grid_solver_settings.time_ranges_name_required",
+        "onboarding.time_range_name_required"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Time Ranges",
+      "keys": [
+        "entity.time_ranges",
+        "grid_actions.time_ranges",
+        "grid_overview.time_ranges",
+        "grid_solver_settings.time_ranges_title",
+        "side_dock.time_ranges"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Unit max hours per day",
+      "keys": [
+        "grid_settings.unit_max_hours_day",
+        "grid_solver_settings.unit_max_hours_day_title"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Update password",
+      "keys": [
+        "auth.update_password",
+        "password_change.update_password"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Updating...",
+      "keys": [
+        "auth.updating",
+        "password_change.updating"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "Version history",
+      "keys": [
+        "grid_topbar.version_history",
+        "solve_overlay.history"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "What do you want to organize?",
+      "keys": [
+        "solver_wizard.unit_nature_event_question",
+        "solver_wizard.unit_nature_gym_question",
+        "solver_wizard.unit_nature_private_tutor_question"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "value": "You're all set!",
+      "keys": [
+        "onboarding.final_step_title",
+        "onboarding.step_5_title"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "¿Qué querés organizar?",
+      "keys": [
+        "solver_wizard.unit_nature_event_question",
+        "solver_wizard.unit_nature_gym_question",
+        "solver_wizard.unit_nature_private_tutor_question"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Actualizando...",
+      "keys": [
+        "auth.updating",
+        "password_change.updating"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Actualizar contraseña",
+      "keys": [
+        "auth.update_password",
+        "password_change.update_password"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Agregando...",
+      "keys": [
+        "add_category.adding",
+        "add_participant.adding"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Agregar participante",
+      "keys": [
+        "add_participant.title",
+        "onboarding.add_participant"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Apellido",
+      "keys": [
+        "add_participant.last_name",
+        "auth.last_name"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Asignacion",
+      "keys": [
+        "break_dialog.placement",
+        "grid_settings.placement_item",
+        "solve_overlay.placement"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Audiencia",
+      "keys": [
+        "grid_settings.unit_nature_audience",
+        "solver_wizard.unit_nature_audience"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Bloqueado",
+      "keys": [
+        "solve_overlay.blocked_overlay_label",
+        "solve_overlay.placement_status_blocked"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Cambiar contraseña",
+      "keys": [
+        "password_change.title",
+        "user_menu.change_password"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Cargando...",
+      "keys": [
+        "category_dialog.loading",
+        "common.loading",
+        "invite_dialog.loading",
+        "password_change.loading",
+        "solve_overlay.loading_blockages"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Categorias",
+      "keys": [
+        "entity.categories",
+        "side_dock.categories"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Celdas",
+      "keys": [
+        "cells.title",
+        "entity.cells",
+        "side_dock.cells"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Cerrar",
+      "keys": [
+        "common.close",
+        "invite_dialog.close"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Comentarios",
+      "keys": [
+        "participant_detail.comments",
+        "solve_overlay.comments"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Configuracion",
+      "keys": [
+        "common.settings",
+        "grid_actions.settings"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Configuracion de grilla",
+      "keys": [
+        "grid_settings.page_heading",
+        "grid_settings.title"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Crea tu primera celda",
+      "keys": [
+        "onboarding.cell_step_title",
+        "onboarding.step_4_title"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Creando...",
+      "keys": [
+        "auth.creating_account",
+        "create_cell.creating",
+        "grid_new.creating",
+        "solver_wizard.creating"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Crear celda",
+      "keys": [
+        "create_cell.title",
+        "onboarding.create_cell"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Crear grilla",
+      "keys": [
+        "grid_new.create_grid",
+        "solver_wizard.create_grid"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Crear nueva grilla",
+      "keys": [
+        "grid_new.title",
+        "solver_wizard.title"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Define rangos horarios",
+      "keys": [
+        "onboarding.step_2_title",
+        "onboarding.time_range_step_title"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Descripcion",
+      "keys": [
+        "create_cell.description",
+        "grid_new.description",
+        "grid_settings.description"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "El nombre del rango horario es obligatorio.",
+      "keys": [
+        "grid_solver_settings.time_ranges_name_required",
+        "onboarding.time_range_name_required"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "El nombre es obligatorio.",
+      "keys": [
+        "add_participant.name_required_error",
+        "grid_settings.name_required"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Eliminar grilla",
+      "keys": [
+        "grid_actions.delete_grid",
+        "grid_settings.delete_grid_button",
+        "grid_settings.delete_grid_confirm_button",
+        "grid_settings.delete_grid_dialog_title",
+        "grid_settings.delete_grid_section_title"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Email",
+      "keys": [
+        "auth.email",
+        "editor_invite.email"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Enviando...",
+      "keys": [
+        "auth.sending",
+        "editor_invite.sending",
+        "invite_dialog.sending",
+        "solve_overlay.submitting"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Error ({status})",
+      "keys": [
+        "errors.failed_status",
+        "participant_detail.failed_status"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Espacio",
+      "keys": [
+        "grid_settings.unit_nature_space",
+        "solver_wizard.unit_nature_space"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Finalizar",
+      "keys": [
+        "common.finish",
+        "onboarding.finish"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Grilla",
+      "keys": [
+        "entity.grid",
+        "grid_settings.context_prefix"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Guardando...",
+      "keys": [
+        "add_rule.saving",
+        "common.saving",
+        "solve_overlay.saving"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Heatmap diario",
+      "keys": [
+        "grid_settings.day_heatmap",
+        "grid_solver_settings.day_heatmap_title"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Historial de versiones",
+      "keys": [
+        "grid_topbar.version_history",
+        "solve_overlay.history"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Horario",
+      "keys": [
+        "entity.schedule",
+        "grid_settings.schedule_section",
+        "grid_settings.schedule_tab",
+        "participant_detail.schedule"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Iniciar sesión",
+      "keys": [
+        "auth.log_in",
+        "invite_token.log_in",
+        "nav.log_in",
+        "verify_email_confirm.log_in"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Ir al paso {step}",
+      "keys": [
+        "common.go_to_step",
+        "create_cell.go_to_step",
+        "solver_wizard.go_to_step"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "La hora de fin debe ser posterior a la hora de inicio.",
+      "keys": [
+        "add_rule.validation_end_greater_than_start",
+        "availability_rule.end_must_be_later_than_start"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Mensaje (opcional)",
+      "keys": [
+        "editor_invite.message_optional",
+        "invite_dialog.message_optional"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Naturaleza de unidad",
+      "keys": [
+        "grid_settings.unit_nature",
+        "solver_wizard.unit_nature"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Ninguna",
+      "keys": [
+        "grid_settings.unit_nature_none",
+        "solver_wizard.unit_nature_none"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "No disponible",
+      "keys": [
+        "add_participant.weekly_mode_not_available",
+        "grid_settings.not_available"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "No hay valores aún",
+      "keys": [
+        "add_category.no_values_yet",
+        "category_dialog.no_values_yet"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "No se pudo crear el rango horario.",
+      "keys": [
+        "grid_solver_settings.time_ranges_create_failed",
+        "onboarding.time_range_create_failed"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "No se pudo eliminar la grilla.",
+      "keys": [
+        "grid_actions.could_not_delete_grid",
+        "grid_settings.delete_grid_failed"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "No se pudo quitar al participante de la asignación.",
+      "keys": [
+        "grid_schedule.could_not_remove_participant",
+        "solve_overlay.could_not_remove_participant"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Nombre",
+      "keys": [
+        "auth.first_name",
+        "common.name",
+        "grid_new.name",
+        "grid_settings.name"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Nombre *",
+      "keys": [
+        "add_category.name_required",
+        "add_participant.first_name_required",
+        "create_cell.name_required"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Nombre de nuevo valor",
+      "keys": [
+        "add_category.new_value_name",
+        "category_dialog.new_value_name"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Participantes",
+      "keys": [
+        "entity.participants",
+        "grid_settings.participants_tab",
+        "side_dock.participants",
+        "solve_overlay.participants"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Paso anterior",
+      "keys": [
+        "common.previous_step",
+        "create_cell.previous_step",
+        "solver_wizard.previous_step"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Principal",
+      "keys": [
+        "grid_settings.main_tab",
+        "grid_settings.principal_tab"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Prioridades",
+      "keys": [
+        "grid_settings.priorities_section",
+        "solver_wizard.section_priorities"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Rangos horarios",
+      "keys": [
+        "entity.time_ranges",
+        "grid_actions.time_ranges",
+        "grid_solver_settings.time_ranges_title",
+        "side_dock.time_ranges"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Recomendado",
+      "keys": [
+        "solve_overlay.placement_status_recommended",
+        "solve_overlay.recommended"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Reglas de disponibilidad",
+      "keys": [
+        "landing.availability_rules",
+        "participant_detail.availability_rules"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Selecciona al menos un dia.",
+      "keys": [
+        "grid_new.days_required",
+        "grid_settings.days_required"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Seleccionar...",
+      "keys": [
+        "create_cell.select_option",
+        "grid_settings.select_option"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Siguiente",
+      "keys": [
+        "common.next",
+        "onboarding.next",
+        "solver_wizard.next_step"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Siguiente paso",
+      "keys": [
+        "common.next_step",
+        "create_cell.next_step"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Tipo de organizacion",
+      "keys": [
+        "grid_settings.organization_type",
+        "solver_wizard.org_type"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Todavia no hay conjuntos guardados.",
+      "keys": [
+        "create_cell.no_bundle_sets_saved",
+        "edit_cell.no_bundle_sets_saved"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Todo listo!",
+      "keys": [
+        "onboarding.final_step_title",
+        "onboarding.step_5_title"
+      ]
+    },
+    {
+      "locale": "es-AR",
+      "value": "Volver",
+      "keys": [
+        "auth.back_to",
+        "common.back"
+      ]
+    }
+  ],
+  "dynamicTranslationCalls": [
+    {
+      "file": "app/(site)/dashboard/page.tsx",
+      "line": 9,
+      "column": 98,
+      "expression": "key"
+    },
+    {
+      "file": "app/grid/[code]/categories/page.tsx",
+      "line": 13,
+      "column": 98,
+      "expression": "key"
+    },
+    {
+      "file": "app/grid/[code]/cells/page.tsx",
+      "line": 93,
+      "column": 98,
+      "expression": "key"
+    },
+    {
+      "file": "app/grid/[code]/history/page.tsx",
+      "line": 24,
+      "column": 43,
+      "expression": "key"
+    },
+    {
+      "file": "app/grid/[code]/page.tsx",
+      "line": 59,
+      "column": 39,
+      "expression": "key"
+    },
+    {
+      "file": "app/grid/[code]/participants/page.tsx",
+      "line": 153,
+      "column": 99,
+      "expression": "key"
+    },
+    {
+      "file": "app/grid/[code]/settings/page.tsx",
+      "line": 26,
+      "column": 99,
+      "expression": "key"
+    },
+    {
+      "file": "app/grid/new/page.tsx",
+      "line": 246,
+      "column": 26,
+      "expression": "key as never"
+    },
+    {
+      "file": "components/dialogs/cell-staffing.tsx",
+      "line": 309,
+      "column": 23,
+      "expression": "key"
+    },
+    {
+      "file": "components/dialogs/cell-staffing.tsx",
+      "line": 316,
+      "column": 23,
+      "expression": "key"
+    },
+    {
+      "file": "components/grid/GridSchedulePanel.tsx",
+      "line": 1040,
+      "column": 29,
+      "expression": "labelKey"
+    },
+    {
+      "file": "components/grid/GridSettingsTabs.tsx",
+      "line": 902,
+      "column": 28,
+      "expression": "key as never"
+    },
+    {
+      "file": "components/grid/GridSolverSettingsForm.tsx",
+      "line": 432,
+      "column": 28,
+      "expression": "key as never"
+    },
+    {
+      "file": "components/grid/GridSolverSettingsForm.tsx",
+      "line": 1180,
+      "column": 44,
+      "expression": "DAY_KEY_TO_I18N[dayKey]"
+    },
+    {
+      "file": "components/grid/OnboardingGuide.tsx",
+      "line": 1570,
+      "column": 28,
+      "expression": "categoryUnitHintKey as Parameters<typeof t>[0]"
+    },
+    {
+      "file": "components/invitations/InvitesMenu.tsx",
+      "line": 746,
+      "column": 28,
+      "expression": "statusTag.labelKey"
+    },
+    {
+      "file": "components/navigation/GridTopBar.tsx",
+      "line": 31,
+      "column": 99,
+      "expression": "key"
+    },
+    {
+      "file": "components/navigation/NavBar.tsx",
+      "line": 23,
+      "column": 99,
+      "expression": "key"
+    },
+    {
+      "file": "components/providers/I18nProvider.tsx",
+      "line": 61,
+      "column": 58,
+      "expression": "key"
+    },
+    {
+      "file": "components/site/LandingPage.tsx",
+      "line": 25,
+      "column": 91,
+      "expression": "key"
+    },
+    {
+      "file": "lib/use-i18n.ts",
+      "line": 54,
+      "column": 30,
+      "expression": "key"
+    }
+  ]
+}

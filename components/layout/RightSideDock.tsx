@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CircleOff, Coffee, LayoutGrid, Lightbulb, LightbulbOff, Loader2, MessageSquare, Plus, Upload, Users } from "lucide-react";
+import { CircleOff, Coffee, LayoutGrid, Lightbulb, LightbulbOff, Loader2, Lock, MessageSquare, Plus, Upload, Users, X } from "lucide-react";
 import GlassSurface from "@/components/ui/GlassSurface";
 import { CELL_COLOR_OPTIONS, CELL_TEXT_DARK, CELL_TEXT_LIGHT } from "@/lib/cell-colors";
 
 type ToolKey = "participants" | "break" | "blockage" | "unassigned";
 type DockActionStatus = "active" | "locked" | "hidden";
+type UnassignedCellPlacementState = "UNPLACED" | "PARTIALLY_PLACED" | "FULLY_PLACED" | "STALE";
 const GRID_ONBOARDING_RIGHT_FAN_REQUEST_EVENT = "shift:onboarding-right-fan-request";
 const GRID_ONBOARDING_RIGHT_TOOL_REQUEST_EVENT = "shift:onboarding-right-tool-request";
 const DOCK_FEEDBACK_HIGHLIGHT_EVENT = "shift:dock-feedback-highlight";
@@ -30,8 +31,11 @@ type UnassignedCellItem = {
   timeLabel: string;
   bundleLabel?: string;
   durationSlots: number;
+  isSplitCell?: boolean;
   remainingPlacements?: number;
   totalPlacements?: number;
+  placementState: UnassignedCellPlacementState;
+  blockedReason?: string;
   canGrab: boolean;
   selectedBundleId: string | null;
 };
@@ -64,6 +68,7 @@ type Props = {
   isSolving?: boolean;
   solveElapsedMs?: number;
   error: string | null;
+  onErrorDismiss?: () => void;
   labels: {
     add: string;
     participants: string;
@@ -73,11 +78,13 @@ type Props = {
     publishDraft: string;
     nothingToPublish: string;
     solving: string;
+    secondsShort: string;
     noParticipants?: string;
     noCells?: string;
     createAtLeastOneCellFirst?: string;
     noCellsAvailableForUnit?: string;
     assignCellBeforeBreaks?: string;
+    dismissError?: string;
   };
   participantScrollerItems?: ParticipantScrollerItem[];
   unassignedCellItems?: UnassignedCellItem[];
@@ -88,6 +95,7 @@ type Props = {
     cellName: string;
     bundleLabel?: string;
     durationSlots: number;
+    isSplitCell: boolean;
     pointerId: number;
     clientX: number;
     clientY: number;
@@ -95,8 +103,11 @@ type Props = {
     grabOffsetY: number;
     offsetX: number;
     offsetY: number;
+    cardWidth: number;
+    cardHeight: number;
+    timeLabel: string;
   }) => void;
-  onUnassignedGrabBlocked?: () => void;
+  onUnassignedGrabBlocked?: (reason?: string) => void;
   onParticipantGrabStart?: (payload: {
     cardKey: string;
     participantId: string;
@@ -162,6 +173,7 @@ export default function RightSideDock({
   isSolving = false,
   solveElapsedMs = 0,
   error,
+  onErrorDismiss,
   labels,
   participantScrollerItems = [],
   unassignedCellItems = [],
@@ -493,10 +505,28 @@ export default function RightSideDock({
             </button>
           )}
         </div>
-        {error && <div className="mt-2 w-48 text-xs text-red-600 text-right">{error}</div>}
+        {error && (
+          <div
+            role="alert"
+            className="mt-2 flex max-h-24 w-64 items-start gap-2 overflow-y-auto break-words rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-left text-xs leading-relaxed text-red-700 shadow-sm"
+          >
+            <span className="min-w-0 flex-1">{error}</span>
+            {onErrorDismiss && (
+              <button
+                type="button"
+                className="-mr-1 -mt-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded hover:bg-red-100"
+                onClick={onErrorDismiss}
+                aria-label={labels.dismissError}
+                title={labels.dismissError}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
         {isSolving && (
           <div className="mt-1 w-48 text-xs text-gray-600 text-right">
-            {labels.solving} {Math.round(solveElapsedMs / 100) / 10}s
+            {labels.solving} {Math.round(solveElapsedMs / 100) / 10}{labels.secondsShort}
           </div>
         )}
       </div>
@@ -638,12 +668,15 @@ export default function RightSideDock({
                     : nearOffset + nearToFarOffset;
                 const y = baseCenterY + sign * yOffset;
                 const z = 120 - absDistance * 20;
+                const isStale = cell.placementState === "STALE";
                 return (
                   <div
                     key={`unassigned-cell-${cell.id}-${bundleKey}`}
-                    className={`absolute left-0 right-2 rounded-xl border px-3 py-2 shadow-[0_12px_18px_-14px_rgba(0,0,0,0.55)] transition-transform duration-150 ${
+                    className={`absolute left-0 right-2 rounded-xl border px-3 py-2 shadow-[0_12px_18px_-14px_rgba(0,0,0,0.55)] transition-[transform,opacity,filter] duration-150 ease-out ${
                       cell.canGrab ? "cursor-grab" : "cursor-not-allowed"
                     }`}
+                    title={cell.blockedReason}
+                    aria-disabled={!cell.canGrab}
                     style={{
                       top: `${y - cardHeight / 2}px`,
                       height: `${cardHeight}px`,
@@ -651,11 +684,14 @@ export default function RightSideDock({
                       borderColor: border,
                       transform: `scale(${scale})`,
                       opacity: cell.canGrab ? opacity : Math.max(0.45, opacity * 0.6),
+                      filter: isStale ? "grayscale(0.65)" : "none",
                       zIndex: z,
                     }}
                     onPointerDown={(event) => {
                       if (!cell.canGrab) {
-                        onUnassignedGrabBlocked?.();
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onUnassignedGrabBlocked?.(cell.blockedReason);
                         return;
                       }
                       const cardRect = (event.currentTarget as HTMLDivElement).getBoundingClientRect();
@@ -666,6 +702,7 @@ export default function RightSideDock({
                         cellName: cell.name,
                         bundleLabel: cell.bundleLabel,
                         durationSlots: Math.max(1, Number(cell.durationSlots) || 1),
+                        isSplitCell: Boolean(cell.isSplitCell),
                         pointerId: event.pointerId,
                         clientX: event.clientX,
                         clientY: event.clientY,
@@ -673,9 +710,20 @@ export default function RightSideDock({
                         grabOffsetY: event.clientY - cardRect.top,
                         offsetX: event.clientX,
                         offsetY: event.clientY,
+                        cardWidth: cardRect.width,
+                        cardHeight: cardRect.height,
+                        timeLabel: cell.timeLabel,
                       });
                     }}
                   >
+                    {isStale && absDistance === 0 && (
+                      <div
+                        className="absolute left-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-black/10 bg-white/75 shadow-sm"
+                        style={{ color: textDark }}
+                      >
+                        <Lock className="h-3 w-3" aria-hidden="true" />
+                      </div>
+                    )}
                     {absDistance === 0 && (
                       <div
                         className="absolute right-2 top-2 rounded-full bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold leading-none"

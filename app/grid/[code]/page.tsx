@@ -20,6 +20,21 @@ const DAY_KEYS = [
   "day.sun_short",
 ] as const;
 
+type GridMembership = {
+  role?: Role;
+  user_id?: number;
+  user?: number | { id?: number };
+};
+
+type ContextParticipant = {
+  id?: number | string;
+  grid_participant_id?: number | string;
+  user_id?: number;
+  user?: number | { id?: number };
+};
+
+type ContextUnit = { id?: number | string; name?: string };
+
 // Next 15: params es Promise
 export default async function GridOverview({
   params,
@@ -37,7 +52,7 @@ export default async function GridOverview({
   let grid: Grid;
   try {
     grid = await resolveGridByCode(code);
-  } catch (e: any) {
+  } catch (e: unknown) {
     if (isAuthApiError(e)) {
       redirect(`/login?next=${encodeURIComponent(nextPath)}`);
     }
@@ -45,7 +60,7 @@ export default async function GridOverview({
       <div className="space-y-3">
         <h1 className="text-xl font-semibold">{translate("en-US", "grid_overview.not_found")}</h1>
         <pre className="text-xs p-3 bg-red-50 border rounded text-red-700 overflow-auto">
-          {String(e?.message ?? e)}
+          {String(e instanceof Error ? e.message : e)}
         </pre>
         <p className="text-sm text-gray-600">
           {translate("en-US", "grid_overview.not_found_help", { code })}
@@ -69,31 +84,37 @@ export default async function GridOverview({
   const ROW_PX = 64;
   const TIME_COL_PX = 100;
 
-  const [unitsResult, membershipsResult, participantsResult] = await Promise.allSettled([
+  const [screenContextResult, membershipsResult] = await Promise.allSettled([
     (async () => {
-      const udata = await backendFetchJSON<any>(`/api/units/?grid=${id}`);
-      const list = Array.isArray(udata) ? udata : udata.results ?? [];
-      return list.map((u: any) => ({ id: u.id, name: u.name || t("format.unit_with_id", { id: u.id }) }));
+      return await backendFetchJSON<Record<string, unknown>>(
+        `/api/grids/${encodeURIComponent(id)}/screen-context/?view=draft`,
+      );
     })(),
     (async () => {
-      const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
+      const data = await backendFetchJSON<GridMembership[] | { results?: GridMembership[] }>(
+        `/api/grid-memberships/?grid=${id}`,
+      );
       return Array.isArray(data) ? data : data.results ?? [];
-    })(),
-    (async () => {
-      try {
-        const pdata = await backendFetchJSON<any>(`/api/participants/?grid=${id}`);
-        return Array.isArray(pdata) ? pdata : pdata.results ?? [];
-      } catch {
-        const pdata = await backendFetchJSON<any>(`/api/participants?grid=${id}`);
-        return Array.isArray(pdata) ? pdata : pdata.results ?? [];
-      }
     })(),
   ]);
 
+  const initialScreenContext =
+    screenContextResult.status === "fulfilled" ? screenContextResult.value : null;
+  const contextList = <T extends Record<string, unknown>>(value: unknown): T[] =>
+    Array.isArray(value)
+      ? (value as T[])
+      : value && typeof value === "object" && Array.isArray((value as { results?: unknown[] }).results)
+      ? ((value as { results: T[] }).results)
+      : [];
   const units: { id: number | string; name: string }[] =
-    unitsResult.status === "fulfilled" ? unitsResult.value : [];
+    contextList<ContextUnit>(initialScreenContext?.units)
+      .filter((unit): unit is ContextUnit & { id: number | string } => unit.id != null)
+      .map((unit) => ({
+        id: unit.id,
+        name: unit.name || t("format.unit_with_id", { id: unit.id }),
+      }));
   const memberships = membershipsResult.status === "fulfilled" ? membershipsResult.value : [];
-  const participants = participantsResult.status === "fulfilled" ? participantsResult.value : [];
+  const participants = contextList<ContextParticipant>(initialScreenContext?.participants);
 
   // Resolve my role and participant id in this grid without waiting on schedule data.
   let role: Role = "viewer";
@@ -102,13 +123,17 @@ export default async function GridOverview({
   {
     try {
       const mine = memberships.find(
-        (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
+        (membership) =>
+          (membership.user_id ??
+            (typeof membership.user === "number" ? membership.user : membership.user?.id)) === me.id,
       );
       role = (mine?.role ?? "viewer") as Role;
     } catch {}
     try {
       const myp = participants.find(
-        (p: any) => (p.user_id ?? (typeof p.user === "number" ? p.user : p.user?.id)) === me.id
+        (participant) =>
+          (participant.user_id ??
+            (typeof participant.user === "number" ? participant.user : participant.user?.id)) === me.id,
       );
       if (myp?.id != null) selfPid = Number(myp.id);
       if (myp?.grid_participant_id != null) selfRoutePid = myp.grid_participant_id;
@@ -145,6 +170,7 @@ export default async function GridOverview({
               gridId={Number(grid.id)}
               role={role}
               selfParticipantId={selfPid}
+              initialScreenContext={initialScreenContext}
               units={units}
               days={days}
               dayStartMin={start}

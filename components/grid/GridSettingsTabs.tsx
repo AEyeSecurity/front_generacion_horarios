@@ -17,7 +17,12 @@ import {
 import { OBJECTIVE_WEIGHT_DEFAULTS, TIER_KEYS } from "@/lib/grid-solver-settings";
 import { useI18n } from "@/lib/use-i18n";
 import { readGridTierEnabled } from "@/lib/grid-tier";
-import { invalidateGridScreenContext } from "@/lib/screen-context";
+import {
+  fetchGridResource,
+  invalidateGridResource,
+  invalidateGridScreenContext,
+  primeGridResource,
+} from "@/lib/screen-context";
 import { normalizeAllowedCellSizesFromConfig } from "@/lib/grid-config";
 import GridSolverSettingsForm from "@/components/grid/GridSolverSettingsForm";
 import { invalidatePlacementPreviewCacheForGrid } from "@/components/grid/SolveOverlay";
@@ -601,13 +606,14 @@ function BooleanOption({
   value: boolean;
   onChange: (value: boolean) => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="rounded-md border p-4">
       <div className="text-sm font-medium">{title}</div>
       <p className="mt-1 text-xs text-gray-600">{help}</p>
       <label className="mt-3 inline-flex items-center gap-2 text-sm">
         <input type="checkbox" checked={value} onChange={(event) => onChange(event.target.checked)} />
-        <span>{value ? "Enabled" : "Disabled"}</span>
+        <span>{value ? t("common.enabled") : t("common.disabled")}</span>
       </label>
     </div>
   );
@@ -636,13 +642,14 @@ function NumberOption({
   step?: number;
   placeholder?: string;
 }) {
+  const { t } = useI18n();
   return (
     <div className="rounded-md border p-4">
       <div className="text-sm font-medium">{title}</div>
       <p className="mt-1 text-xs text-gray-600">{help}</p>
       <label className="mt-3 inline-flex items-center gap-2 text-sm">
         <input type="checkbox" checked={enabled} onChange={(event) => onEnabledChange(event.target.checked)} />
-        <span>{enabled ? "Enabled" : "Disabled"}</span>
+        <span>{enabled ? t("common.enabled") : t("common.disabled")}</span>
       </label>
       <input
         type="number"
@@ -674,13 +681,14 @@ function TierInputs({
   values: Record<TierKey, string>;
   onValuesChange: (next: Record<TierKey, string>) => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="rounded-md border p-4">
       <div className="text-sm font-medium">{title}</div>
       <p className="mt-1 text-xs text-gray-600">{help}</p>
       <label className="mt-3 inline-flex items-center gap-2 text-sm">
         <input type="checkbox" checked={enabled} onChange={(event) => onEnabledChange(event.target.checked)} />
-        <span>{enabled ? "Enabled" : "Disabled"}</span>
+        <span>{enabled ? t("common.enabled") : t("common.disabled")}</span>
       </label>
       <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
         {TIER_KEYS.map((tier) => (
@@ -891,7 +899,20 @@ function DraftStructureImpactList({
   );
 }
 
-export default function GridSettingsTabs({ gridId, backHref }: { gridId: number; backHref: string }) {
+export default function GridSettingsTabs({
+  gridId,
+  backHref,
+  initialGrid,
+}: {
+  gridId: number;
+  backHref: string;
+  initialGrid?: Record<string, unknown> | null;
+}) {
+  const initialGridPrimedRef = useRef(false);
+  if (initialGrid && !initialGridPrimedRef.current) {
+    primeGridResource(gridId, "grid", initialGrid);
+    initialGridPrimedRef.current = true;
+  }
   const { t } = useI18n();
   const router = useRouter();
   const tt = useCallback(
@@ -1144,15 +1165,19 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
     setTabError(null);
     setTabSaved(null);
     try {
-      const [response, configResponse] = await Promise.all([
-        fetch(`/api/grids/${encodeURIComponent(String(gridId))}`, { cache: "no-store" }),
+      const [data, configResponse] = await Promise.all([
+        fetchGridResource<GridSettingsResponse>(gridId, "grid", {
+          fallback: async () => {
+            const response = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}`, { cache: "no-store" });
+            if (!response.ok) {
+              const raw = await response.text().catch(() => "");
+              throw new Error(parseApiErrorMessage(raw, tt("grid_settings.load_failed", "Could not load grid settings.")));
+            }
+            return response.json().catch(() => ({}));
+          },
+        }),
         fetch("/api/grids/config/", { cache: "no-store" }).catch(() => null),
       ]);
-      if (!response.ok) {
-        const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, tt("grid_settings.load_failed", "Could not load grid settings.")));
-      }
-      const data = (await response.json().catch(() => ({}))) as GridSettingsResponse;
       const configData = configResponse?.ok ? await configResponse.json().catch(() => ({})) : null;
       const loadedName = String(data.name ?? "");
       setName(loadedName);
@@ -1331,7 +1356,10 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
         const raw = await response.text().catch(() => "");
         throw new Error(parseApiErrorMessage(raw, tt(fallbackErrorKey, "Could not save settings.")));
       }
-      return response.json().catch(() => ({}));
+      const data = await response.json().catch(() => ({}));
+      invalidateGridResource(gridId, "grid");
+      invalidateGridScreenContext(gridId, "draft");
+      return data;
     },
     [gridId, tt],
   );
@@ -1417,6 +1445,7 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
             preview?.new_structure,
           payload,
         );
+        invalidateGridResource(gridId, "grid");
         await patchScheduleGridSettings();
         invalidateGridScreenContext(gridId, "draft");
         invalidatePlacementPreviewCacheForGrid(gridId);
@@ -1706,6 +1735,14 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
         },
         "grid_settings.save_principal_failed",
       );
+
+      if (showRegenerationWarning) {
+        invalidateGridResource(gridId, "units");
+        invalidateGridResource(gridId, "categories");
+        invalidateGridResource(gridId, "category_values");
+        invalidateGridResource(gridId, "cells");
+        invalidateGridResource(gridId, "bundles");
+      }
 
       initialOrganizationRef.current = organizationType;
       initialUnitNatureRef.current = unitNature;
@@ -2174,7 +2211,7 @@ export default function GridSettingsTabs({ gridId, backHref }: { gridId: number;
                         >
                           {allowedCellSizes.map((minutes) => (
                             <option key={minutes} value={minutes}>
-                              {minutes} min
+                              {minutes} {t("common.minutes_short")}
                             </option>
                           ))}
                         </select>

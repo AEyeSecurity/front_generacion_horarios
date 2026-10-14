@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import {
@@ -34,6 +34,7 @@ import {
 import { CELL_COLOR_OPTIONS, CELL_TEXT_DARK, CELL_TEXT_LIGHT } from "@/lib/cell-colors";
 import { writeGridScheduleViewMode } from "@/lib/schedule-view";
 import {
+  fetchGridResource,
   fetchGridScreenContext,
   getContextList,
   invalidateGridScreenContext,
@@ -47,6 +48,12 @@ import type { ScheduleViewMode } from "@/lib/schedule-view";
 import { useI18n } from "@/lib/use-i18n";
 import { authFetch } from "@/lib/client-auth";
 import { readGridTierEnabled } from "@/lib/grid-tier";
+import { readDraftHistoryPayload, type DraftMutationNotice } from "@/lib/draft-mutation";
+import {
+  buildBalancedSlotParts,
+  classifySplitCellPlacements,
+  type SplitCellPlacementState,
+} from "@/lib/split-placement-state";
 
 const shadeHex = (hex: string, amt: number) => {
   if (!/^#([0-9a-f]{6})$/i.test(hex)) return hex;
@@ -574,6 +581,73 @@ const parseClockToMin = (value: string) => {
   return hour * 60 + minute;
 };
 
+function ScheduleCellCardFace({
+  backgroundColor,
+  borderColor,
+  textDark,
+  textLight,
+  cellName,
+  bundleLabel,
+  assignmentLabel,
+  timeLabel,
+  className = "",
+  style,
+  children,
+}: {
+  backgroundColor: string;
+  borderColor: string;
+  textDark: string;
+  textLight: string;
+  cellName: string;
+  bundleLabel?: string;
+  assignmentLabel?: string;
+  timeLabel: string;
+  className?: string;
+  style?: CSSProperties;
+  children?: ReactNode;
+}) {
+  return (
+    <div
+      className={`group relative h-full w-full rounded-md border px-2 py-2 text-[11px] ${className}`}
+      style={{ backgroundColor, borderColor, color: textDark, ...style }}
+    >
+      {children}
+      <div className="flex h-full flex-col items-center justify-center text-center leading-tight">
+        <div className="font-semibold" style={{ color: textLight }}>{cellName}</div>
+        {bundleLabel ? (
+          <div className="px-1 text-[10px] font-semibold opacity-90" style={{ color: textDark }}>
+            {bundleLabel}
+          </div>
+        ) : null}
+        {assignmentLabel ? <div className="px-1">{assignmentLabel}</div> : null}
+        <div className="h-2" />
+        <div className="text-[10px] font-medium" style={{ color: textDark }}>{timeLabel}</div>
+      </div>
+    </div>
+  );
+}
+
+const MAX_API_ERROR_LENGTH = 480;
+
+const isLikelyHtmlResponse = (raw: string, contentType = "") => {
+  const normalizedContentType = contentType.toLowerCase();
+  const trimmed = raw.trim().slice(0, 160).toLowerCase();
+  return (
+    normalizedContentType.includes("text/html") ||
+    trimmed.startsWith("<!doctype") ||
+    trimmed.startsWith("<html") ||
+    trimmed.startsWith("&lt;!doctype") ||
+    trimmed.startsWith("&lt;html")
+  );
+};
+
+const boundApiErrorMessage = (message: string, fallback: string) => {
+  const normalized = message.replace(/\s+/g, " ").trim();
+  if (!normalized) return fallback;
+  if (normalized.length > MAX_API_ERROR_LENGTH) return fallback;
+  return normalized;
+};
+
 const flattenErrorText = (value: unknown): string[] => {
   if (typeof value === "string") return value.trim() ? [value.trim()] : [];
   if (Array.isArray(value)) return value.flatMap((entry) => flattenErrorText(entry));
@@ -581,9 +655,10 @@ const flattenErrorText = (value: unknown): string[] => {
     const source = value as Record<string, unknown>;
     const fromDetail = flattenErrorText(source.detail);
     if (fromDetail.length > 0) return fromDetail;
-    return Object.entries(source).flatMap(([key, entry]) =>
-      flattenErrorText(entry).map((message) => `${key}: ${message}`),
-    );
+    return Object.entries(source).flatMap(([key, entry]) => {
+      if (["code", "status", "upstream_status"].includes(key)) return [];
+      return flattenErrorText(entry).map((message) => `${key}: ${message}`);
+    });
   }
   return [];
 };
@@ -591,24 +666,15 @@ const flattenErrorText = (value: unknown): string[] => {
 const parseApiErrorMessage = (raw: string, fallback: string) => {
   const text = raw.trim();
   if (!text) return fallback;
+  if (isLikelyHtmlResponse(text)) return fallback;
   try {
     const parsed = JSON.parse(text) as unknown;
     const flattened = flattenErrorText(parsed);
-    if (flattened.length > 0) return flattened.join(" ");
+    if (flattened.length > 0) return boundApiErrorMessage(flattened.join(" "), fallback);
   } catch {
-    return text;
+    return boundApiErrorMessage(text, fallback);
   }
   return fallback;
-};
-
-const isLikelyHtmlResponse = (raw: string, contentType: string) => {
-  const normalizedContentType = contentType.toLowerCase();
-  const trimmed = raw.trim().slice(0, 120).toLowerCase();
-  return (
-    normalizedContentType.includes("text/html") ||
-    trimmed.startsWith("<!doctype") ||
-    trimmed.startsWith("<html")
-  );
 };
 
 const parseJsonObjectResponse = (raw: string, contentType: string, endpointFallback: string, parseFallback: string) => {
@@ -879,7 +945,7 @@ type Props = {
   enablePinning?: boolean;
   scheduleViewMode?: ScheduleViewMode;
   externalRefreshTick?: number;
-  onDraftMutated?: () => void;
+  onDraftMutated?: (notice?: DraftMutationNotice) => void;
   commentsPanelOpen?: boolean;
   onCommentsPanelOpenChange?: (open: boolean) => void;
   onGlobalScopeMetaChange?: (meta: {
@@ -904,6 +970,7 @@ type PlacementOrUnassignedDragState = {
   originalDayIndex: number | null;
   originalStartSlot: number | null;
   durationSlots: number;
+  isSplitCell?: boolean;
   pointerId: number;
   clientX: number;
   clientY: number;
@@ -913,6 +980,9 @@ type PlacementOrUnassignedDragState = {
   grabOffsetY: number;
   interactionIntent?: "pending" | "visual-order" | "placement-move";
   assignedParticipantIds?: string[];
+  timeLabel?: string;
+  grabRatioX?: number;
+  grabRatioY?: number;
 };
 
 type ParticipantToolDragState = {
@@ -947,6 +1017,7 @@ type PendingPlacementRequest = {
   dayIndex: number;
   startSlot: number;
   durationSlots: number;
+  isSplitCell: boolean;
   previewItem?: PlacementPreviewItem | null;
 };
 
@@ -967,6 +1038,7 @@ type PlacementMode = "MOVE_ASSIGNED_CELL" | "PLACE_UNASSIGNED_CELL";
 type PlacementStatus = "VALID" | "WARNING" | "INVALID";
 type PlacementQuality = "RECOMMENDED" | "NEUTRAL";
 type PlacementVisualKind = "BLOCKED" | "DEFAULT";
+type CellScrollerPlacementState = SplitCellPlacementState;
 type PlacementTimeRangeKind = "INSIDE" | "SOFT_OUTSIDE" | "HARD_OUTSIDE";
 
 type PlacementReasonType =
@@ -993,6 +1065,8 @@ type PlacementPreviewRequest = {
   schedule_id?: number | string;
   placement_id?: number | string;
   bundle_id?: number | string;
+  duration_slots?: number;
+  split_segment?: boolean;
   candidate_placements?: CandidatePlacementRequest[];
 };
 
@@ -1088,6 +1162,8 @@ type ConfirmPlacementRequest = {
   schedule_id: number | string;
   placement_id?: number | string;
   bundle_id?: number | string;
+  duration_slots?: number;
+  split_segment?: boolean;
   day_index: number;
   start_slot: number;
   selected_participant_ids?: Array<number | string>;
@@ -1100,6 +1176,7 @@ type ConfirmPlacementResponse = {
   schedule_id?: number | string;
   schedule_revision: string;
   placement: NonNullable<ScheduleResource["placements"]>[number];
+  draft_history?: unknown;
 };
 
 type SchedulePlacementRow = NonNullable<ScheduleResource["placements"]>[number];
@@ -1127,6 +1204,8 @@ type PreviewCacheKey = string;
 
 const placementPreviewCache = new Map<PreviewCacheKey, PlacementPreviewResponse>();
 const lastKnownScheduleRevisionBySchedule = new Map<string, string>();
+const ACTIVE_SCHEDULE_DRAG_CLASS =
+  "rounded-md shadow-[0_18px_36px_-12px_rgba(15,23,42,0.48)] ring-1 ring-black/5";
 
 const getScheduleRevisionCacheId = (gridId: number | string, scheduleId: number | string) =>
   `${String(gridId)}:${String(scheduleId)}`;
@@ -1154,6 +1233,7 @@ const buildPlacementPreviewCacheKey = (args: {
   mode: PlacementMode;
   placementId?: number | string | null;
   bundleId?: number | string | null;
+  durationSlots: number;
   candidatePlacements: CandidatePlacementRequest[];
 }): PreviewCacheKey =>
   [
@@ -1165,6 +1245,7 @@ const buildPlacementPreviewCacheKey = (args: {
     args.mode,
     normalizePreviewCachePart(args.placementId),
     normalizePreviewCachePart(args.bundleId),
+    Math.max(1, Math.round(args.durationSlots) || 1),
     getVisibleCandidateHash(args.candidatePlacements),
   ].join(":");
 
@@ -1313,6 +1394,7 @@ export default function SolveOverlay({
   const [precheckRefreshTick, setPrecheckRefreshTick] = useState(0);
   const [tick, setTick] = useState(0);
   const [cellNameById, setCellNameById] = useState<Record<string, string>>({});
+  const [cellCanonicalIdByAlias, setCellCanonicalIdByAlias] = useState<Record<string, string>>({});
   const [cellStaffsById, setCellStaffsById] = useState<Record<string, string[]>>({});
   const [cellColorById, setCellColorById] = useState<Record<string, string>>({});
   const [staffMembersByStaffId, setStaffMembersByStaffId] = useState<Record<string, string[]>>({});
@@ -1326,6 +1408,7 @@ export default function SolveOverlay({
   const [cellDurationSlotsById, setCellDurationSlotsById] = useState<Record<string, number>>({});
   const [cellSplitPartSlotsById, setCellSplitPartSlotsById] = useState<Record<string, number[]>>({});
   const [cellRequiredPlacementsById, setCellRequiredPlacementsById] = useState<Record<string, number>>({});
+  const [suppressedUnassignedCellIds, setSuppressedUnassignedCellIds] = useState<Set<string>>(new Set());
   const [bundleUnitsById, setBundleUnitsById] = useState<Record<string, string[]>>({});
   const [bundleNameById, setBundleNameById] = useState<Record<string, string>>({});
   const [unitNameById, setUnitNameById] = useState<Record<string, string>>({});
@@ -1375,6 +1458,7 @@ export default function SolveOverlay({
   const [hoveredJiggleCardKey, setHoveredJiggleCardKey] = useState<string | null>(null);
   const [isJiggleMode, setIsJiggleMode] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const activeUnassignedDragCellRef = useRef<string | null>(null);
   const placementMovePreviewPointerRef = useRef<number | null>(null);
   const [participantDragHoverPlacementId, setParticipantDragHoverPlacementId] = useState<string | null>(null);
   const [participantDropGhost, setParticipantDropGhost] = useState<{
@@ -1550,12 +1634,12 @@ export default function SolveOverlay({
   );
 
   const canSolve = role === "supervisor" && !historyMode;
-  const notifyDraftMutation = useCallback(() => {
+  const notifyDraftMutation = useCallback((notice: DraftMutationNotice = {}) => {
     if (historyMode) return;
     if (scheduleViewMode !== "draft") return;
 
     invalidatePlacementPreviewCacheForSchedule(gridId, currentSchedule?.id);
-    onDraftMutated?.();
+    onDraftMutated?.(notice);
   }, [currentSchedule?.id, gridId, historyMode, onDraftMutated, scheduleViewMode]);
 
   useEffect(() => {
@@ -1620,6 +1704,28 @@ export default function SolveOverlay({
     },
     [pendingCandidateStorageKey],
   );
+
+  const clearResolvedCandidateRun = useCallback(() => {
+    persistPendingCandidateRun(null);
+    setCandidateRunId(null);
+    setSolveCandidates([]);
+    setSelectableCandidateIndexes([]);
+    setAllCandidatesFailed(false);
+    setCandidatePreference(null);
+    setRejectReasonOptions([]);
+    setRejectReasonCode("");
+    setRejectNote("");
+    setPendingSolveSignature(null);
+    setCandidatePreviewContext(null);
+    setPreviewCandidateIndex(null);
+    setPreviewParticipantsOpen(false);
+    setPreviewParticipantId(null);
+    setPreviewSelectedUnitId(null);
+    setPreviewMode("candidate");
+    setPreviewParticipantsQuery("");
+    setCandidateDialogOpen(false);
+    setCandidateError(null);
+  }, [persistPendingCandidateRun]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2442,7 +2548,7 @@ export default function SolveOverlay({
         Object.keys(sanitizedSolverParams).length > 0
           ? { solver_params: sanitizedSolverParams }
           : {};
-      const res = await authFetch(`/api/grids/${gridId}/precheck/`, {
+      const res = await authFetch(`/api/grids/${gridId}/precheck`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
@@ -2617,7 +2723,10 @@ export default function SolveOverlay({
   );
 
   const normalizeConfirmedPlacement = useCallback(
-    (rawPlacement: unknown, fallback: ConfirmPlacementRequest & { sourceCellId: string }) => {
+    (
+      rawPlacement: unknown,
+      fallback: ConfirmPlacementRequest & { sourceCellId: string; durationSlots?: number },
+    ) => {
       const fallbackId =
         fallback.placement_id != null
           ? String(fallback.placement_id)
@@ -2646,7 +2755,12 @@ export default function SolveOverlay({
       const rawEndSlot = Number(source.end_slot);
       const endSlot =
         normalized?.end_slot ??
-        Math.max(startSlot + 1, Number.isFinite(rawEndSlot) ? rawEndSlot : startSlot + 1);
+        Math.max(
+          startSlot + 1,
+          Number.isFinite(rawEndSlot)
+            ? rawEndSlot
+            : startSlot + Math.max(1, Math.round(fallback.durationSlots ?? 1)),
+        );
       const assignedParticipants =
         normalized?.assigned_participants ??
         normalizeIdArray((source as { assigned_participants?: unknown }).assigned_participants);
@@ -2694,6 +2808,7 @@ export default function SolveOverlay({
     async (
       sourceCellId: string,
       payload: ConfirmPlacementRequest,
+      fallbackDurationSlots?: number,
     ): Promise<ConfirmPlacementResponse> => {
       const res = await authFetch(`/api/grids/${gridId}/cells/${encodeURIComponent(String(sourceCellId))}/place/`, {
         method: "POST",
@@ -2723,7 +2838,9 @@ export default function SolveOverlay({
         placement: normalizeConfirmedPlacement(rawPlacement, {
           ...payload,
           sourceCellId,
+          durationSlots: fallbackDurationSlots,
         }),
+        draft_history: readDraftHistoryPayload(raw),
       };
     },
     [gridId, normalizeConfirmedPlacement, t],
@@ -2922,7 +3039,7 @@ export default function SolveOverlay({
     if (r.status === 404) return null;
     if (!r.ok) {
       const txt = await r.text().catch(() => "");
-      throw new Error(txt || `Failed to load schedule (${r.status})`);
+      throw new Error(txt || t("solve_overlay.failed_load_schedule_status", { status: r.status }));
     }
     const raw = await r.json().catch(() => ({} as Record<string, unknown>));
     return normalizeScheduleResource(raw);
@@ -3027,6 +3144,7 @@ export default function SolveOverlay({
           mode: args.mode,
           placementId: args.placementId ?? null,
           bundleId: args.bundleId ?? null,
+          durationSlots: args.durationSlots,
           candidatePlacements,
         });
         const cachedPreview = placementPreviewCache.get(cacheKey);
@@ -3055,6 +3173,10 @@ export default function SolveOverlay({
         };
         if (args.mode === "MOVE_ASSIGNED_CELL") {
           payload.placement_id = placementApiId;
+        } else {
+          payload.duration_slots = Math.max(1, Math.round(args.durationSlots) || 1);
+          payload.split_segment =
+            Math.max(1, Number(cellRequiredPlacementsById[String(args.sourceCellId)]) || 1) > 1;
         }
         if (bundleApiId != null) {
           payload.bundle_id = bundleApiId;
@@ -3076,6 +3198,7 @@ export default function SolveOverlay({
           mode: args.mode,
           placementId: args.placementId ?? null,
           bundleId: args.bundleId ?? null,
+          durationSlots: args.durationSlots,
           candidatePlacements,
         });
         placementPreviewCache.set(finalCacheKey, preview);
@@ -3106,6 +3229,7 @@ export default function SolveOverlay({
     [
       applyPlacementPreviewResponse,
       buildPlacementCandidateRequests,
+      cellRequiredPlacementsById,
       currentSchedule,
       ensureDraftSchedule,
       gridId,
@@ -3149,7 +3273,7 @@ export default function SolveOverlay({
         const res = await authFetch(`/api/grids/${gridId}/published-schedules/`, { cache: "no-store" });
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
-          throw new Error(txt || `Failed to load published versions (${res.status})`);
+          throw new Error(txt || t("solve_overlay.failed_load_published_versions_status", { status: res.status }));
         }
         const payload = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         const listRaw = Array.isArray(payload)
@@ -3271,7 +3395,7 @@ export default function SolveOverlay({
           `/api/placement-comments/?published_schedule_id=${encodeURIComponent(String(activePublishedScheduleId))}`,
           { cache: "no-store" },
         );
-        if (!r.ok) throw new Error(`Failed to load comments (${r.status})`);
+        if (!r.ok) throw new Error(t("solve_overlay.failed_load_comments_status", { status: r.status }));
         const data = await r.json().catch(() => ([]));
         const list = Array.isArray(data) ? data : data.results ?? [];
         const normalized: PlacementComment[] = list
@@ -3369,7 +3493,7 @@ export default function SolveOverlay({
         });
         if (!r.ok) {
           const txt = await r.text().catch(() => "");
-          throw new Error(txt || `Failed to load blockages (${r.status})`);
+          throw new Error(txt || t("solve_overlay.failed_load_blockages_status", { status: r.status }));
         }
         const data = await r.json().catch(() => ([]));
         const list = Array.isArray(data) ? data : data.results ?? [];
@@ -3407,7 +3531,15 @@ export default function SolveOverlay({
     return () => {
       active = false;
     };
-  }, [blockagesRefreshTick, currentSchedule, externalRefreshTick, historyMode, scheduleViewMode]);
+  }, [
+    blockagesRefreshTick,
+    currentSchedule?.blockages,
+    currentSchedule?.id,
+    currentSchedule?.schedule_blockages,
+    externalRefreshTick,
+    historyMode,
+    scheduleViewMode,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -3472,47 +3604,25 @@ export default function SolveOverlay({
         }
 
         if (scheduleViewMode !== "published" && blist.length === 0) {
-          const bundleEndpoints = [`/api/bundles?grid=${gridId}`, `/api/bundles/?grid=${gridId}`];
-          for (const endpoint of bundleEndpoints) {
-            try {
-              const res = await authFetch(endpoint, { cache: "no-store" });
-              if (!res.ok) continue;
+          blist = await fetchGridResource<any[]>(gridId, "bundles", {
+            fallback: async () => {
+              const res = await authFetch(`/api/bundles?grid=${gridId}`, { cache: "no-store" });
+              if (!res.ok) return [];
               const payload = await res.json().catch(() => ({}));
-              const list = Array.isArray(payload)
-                ? payload
-                : Array.isArray(payload?.results)
-                ? payload.results
-                : [];
-              if (list.length > 0) {
-                blist = list;
-                break;
-              }
-            } catch {
-              // keep trying
-            }
-          }
+              return Array.isArray(payload) ? payload : Array.isArray(payload?.results) ? payload.results : [];
+            },
+          });
         }
 
         if (scheduleViewMode !== "published" && ulist.length === 0) {
-          const unitEndpoints = [`/api/units?grid=${gridId}`, `/api/units/?grid=${gridId}`];
-          for (const endpoint of unitEndpoints) {
-            try {
-              const res = await authFetch(endpoint, { cache: "no-store" });
-              if (!res.ok) continue;
+          ulist = await fetchGridResource<any[]>(gridId, "units", {
+            fallback: async () => {
+              const res = await authFetch(`/api/units?grid=${gridId}`, { cache: "no-store" });
+              if (!res.ok) return [];
               const payload = await res.json().catch(() => ({}));
-              const list = Array.isArray(payload)
-                ? payload
-                : Array.isArray(payload?.results)
-                ? payload.results
-                : [];
-              if (list.length > 0) {
-                ulist = list;
-                break;
-              }
-            } catch {
-              // keep trying
-            }
-          }
+              return Array.isArray(payload) ? payload : Array.isArray(payload?.results) ? payload.results : [];
+            },
+          });
         }
 
         const resolveGridSettings = async () => {
@@ -3526,18 +3636,15 @@ export default function SolveOverlay({
             }
             tierEnabled = readGridTierEnabled(contextGrid, tierEnabled);
           }
-          const gridEndpoints = [`/api/grids/${gridId}/`, `/api/grids/${gridId}`];
-          for (const endpoint of gridEndpoints) {
-            try {
-              const res = await authFetch(endpoint, { cache: "no-store" });
-              if (!res.ok) continue;
-              const payload = (await res.json().catch(() => ({}))) as { allow_overstaffing?: unknown };
-              if (typeof payload.allow_overstaffing === "boolean") allowOverstaffing = payload.allow_overstaffing;
-              tierEnabled = readGridTierEnabled(payload, tierEnabled);
-              break;
-            } catch {
-              // try next endpoint
-            }
+          if (!contextGrid || typeof contextGrid !== "object") {
+            const payload = await fetchGridResource<Record<string, unknown>>(gridId, "grid", {
+              fallback: async () => {
+                const res = await authFetch(`/api/grids/${gridId}`, { cache: "no-store" });
+                return res.ok ? res.json().catch(() => ({})) : {};
+              },
+            });
+            if (typeof payload.allow_overstaffing === "boolean") allowOverstaffing = payload.allow_overstaffing;
+            tierEnabled = readGridTierEnabled(payload, tierEnabled);
           }
           return { allowOverstaffing: allowOverstaffing ?? true, tierEnabled };
         };
@@ -3553,30 +3660,30 @@ export default function SolveOverlay({
             cell?.id != null &&
             (!hasOwn(cell, "allow_overstaffing") ||
               !hasOwn(cell, "split_parts_min") ||
-              !hasOwn(cell, "division_days")),
+              !hasOwn(cell, "division_days") ||
+              (!hasOwn(cell, "duration_min") && !hasOwn(cell, "duration_minutes"))),
         );
         if (scheduleViewMode !== "published" && needsCellContractEnrichment) {
-          const gridQuery = encodeURIComponent(String(gridId));
-          const candidateEndpoints = [
-            `/api/cells/?grid=${gridQuery}`,
-            `/api/cells?grid=${gridQuery}`,
-          ];
-          let cellsFromApi: any[] = [];
-          for (const endpoint of candidateEndpoints) {
-            try {
-              const res = await authFetch(endpoint, { cache: "no-store" });
-              if (!res.ok) continue;
+          const cellsFromApi = await fetchGridResource<any[]>(gridId, "cells", {
+            acceptCached: (value) =>
+              Array.isArray(value) &&
+              value.every(
+                (cell) =>
+                  !cell ||
+                  typeof cell !== "object" ||
+                  (hasOwn(cell, "allow_overstaffing") &&
+                    hasOwn(cell, "split_parts_min") &&
+                    hasOwn(cell, "division_days") &&
+                    (hasOwn(cell, "duration_min") || hasOwn(cell, "duration_minutes"))),
+              ),
+            fallback: async () => {
+              const gridQuery = encodeURIComponent(String(gridId));
+              const res = await authFetch(`/api/cells?grid=${gridQuery}`, { cache: "no-store" });
+              if (!res.ok) return [];
               const payload = await res.json().catch(() => ({}));
-              cellsFromApi = Array.isArray(payload)
-                ? payload
-                : Array.isArray(payload?.results)
-                ? payload.results
-                : [];
-              if (cellsFromApi.length > 0) break;
-            } catch {
-              // keep trying fallback endpoint
-            }
-          }
+              return Array.isArray(payload) ? payload : Array.isArray(payload?.results) ? payload.results : [];
+            },
+          });
           if (cellsFromApi.length > 0) {
             const apiCellById = new Map<string, any>();
             for (const apiCell of cellsFromApi) {
@@ -3614,6 +3721,9 @@ export default function SolveOverlay({
               if (!hasOwn(merged, "duration_min") && hasOwn(apiCell, "duration_min")) {
                 merged.duration_min = apiCell.duration_min;
               }
+              if (!hasOwn(merged, "duration_minutes") && hasOwn(apiCell, "duration_minutes")) {
+                merged.duration_minutes = apiCell.duration_minutes;
+              }
               if ((!Array.isArray(merged.bundles) || merged.bundles.length === 0) && Array.isArray(apiCell.bundles)) {
                 merged.bundles = apiCell.bundles;
               }
@@ -3646,6 +3756,7 @@ export default function SolveOverlay({
         }
 
         const cmap: Record<string, string> = {};
+        const ccanonical: Record<string, string> = {};
         const cstaffs: Record<string, string[]> = {};
         const ccolors: Record<string, string> = {};
         const ctierCounts: Record<string, Record<TierKey, number>> = {};
@@ -3661,6 +3772,7 @@ export default function SolveOverlay({
           const cellId = cellIds[0];
           if (cellId != null) {
             const cid = String(cellId);
+            for (const aliasId of cellIds) ccanonical[String(aliasId)] = cid;
             cmap[cid] = c.name || `Cell ${cid}`;
             coverstaff[cid] = Boolean(c?.allow_overstaffing);
             const splitPartsCount = Array.isArray(c?.split_parts_min)
@@ -3763,7 +3875,7 @@ export default function SolveOverlay({
                 ? c.time_range.id
                 : c?.time_range;
             if (trRaw != null) ctrange[cid] = String(trRaw);
-            const durationMin = Number(c?.duration_min ?? c?.duration ?? 0);
+            const durationMin = Number(c?.duration_minutes ?? c?.duration_min ?? c?.duration ?? 0);
             if (Number.isFinite(durationMin) && durationMin > 0) {
               cdurationSlots[cid] = Math.max(1, Math.ceil(durationMin / slotMin));
             }
@@ -3858,6 +3970,7 @@ export default function SolveOverlay({
           setGridAllowsOverstaffing(Boolean(gridSettings.allowOverstaffing));
           setGridTierEnabled(Boolean(gridSettings.tierEnabled));
           setCellNameById(cmap);
+          setCellCanonicalIdByAlias(ccanonical);
           setCellAllowOverstaffById(coverstaff);
           setCellStaffsById(cstaffs);
           setCellColorById(ccolors);
@@ -4036,7 +4149,7 @@ export default function SolveOverlay({
       }
 
       const sanitizedSolverParams = sanitizeSolverParamsForSolve(solverParams);
-      const r = await authFetch(`/api/grids/${gridId}/solve-candidates/`, {
+      const r = await authFetch(`/api/grids/${gridId}/solve-candidates`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -4046,7 +4159,10 @@ export default function SolveOverlay({
       });
       if (!r.ok) {
         const txt = await r.text().catch(() => "");
-        throw new Error(txt || `Solve candidates failed (${r.status})`);
+        const fallback = r.status >= 500
+          ? t("solve_overlay.solver_internal_error")
+          : t("solve_overlay.solve_candidates_failed_status", { status: r.status });
+        throw new Error(parseApiErrorMessage(txt, fallback));
       }
       const data = (await r.json()) as SolveCandidatesResponse;
       const responsePrecheck = data.precheck ? normalizePrecheckResponse(data.precheck) : null;
@@ -4181,10 +4297,14 @@ export default function SolveOverlay({
       );
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || `Failed to choose candidate (${res.status})`);
+        throw new Error(
+          parseApiErrorMessage(txt, t("solve_overlay.failed_choose_candidate_status", { status: res.status })),
+        );
       }
       const chosen = (await res.json().catch(() => ({}))) as {
         schedule?: ScheduleResource;
+        draft_history?: unknown;
+        history?: unknown;
         detail?: string;
       };
       const materializedSchedule =
@@ -4192,18 +4312,13 @@ export default function SolveOverlay({
           ? chosen.schedule
           : await fetchCurrentSchedule();
       setCurrentSchedule(materializedSchedule);
-      setCandidateDialogOpen(false);
-      setPreviewCandidateIndex(null);
-      setPreviewParticipantsOpen(false);
-      setPreviewParticipantId(null);
-      setPreviewSelectedUnitId(null);
       setError(null);
       if (pendingSolveSignature) {
         window.localStorage.setItem(solveSignatureStorageKey, pendingSolveSignature);
         setInputSignature(pendingSolveSignature);
       }
-      persistPendingCandidateRun(null);
-      hardReloadGridView("draft");
+      clearResolvedCandidateRun();
+      notifyDraftMutation({ draftHistory: readDraftHistoryPayload(chosen) });
     } catch (e: any) {
       setCandidateError(e?.message || t("solve_overlay.could_not_choose_candidate"));
     } finally {
@@ -4237,7 +4352,9 @@ export default function SolveOverlay({
       );
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || `Failed to reject candidates (${res.status})`);
+        throw new Error(
+          parseApiErrorMessage(txt, t("solve_overlay.failed_reject_candidates_status", { status: res.status })),
+        );
       }
       setCandidateDialogOpen(false);
       setError(t("solve_overlay.candidates_rejected_adjust_and_run_again"));
@@ -5071,35 +5188,79 @@ export default function SolveOverlay({
     [bundleNameById, bundleUnitsById, t, unitNameById],
   );
 
-  const unassignedCells = useMemo(() => {
-    const placedCountBySourceCell = schedule.reduce<Record<string, number>>((acc, row) => {
-      const sourceCellId = String(row.source_cell_id ?? row.cell_id);
-      acc[sourceCellId] = (acc[sourceCellId] ?? 0) + 1;
+  const cellPlacementAvailabilityById = useMemo(() => {
+    const placementsBySourceCell = schedule.reduce<Record<string, ScheduleRow[]>>((acc, row) => {
+      const rawSourceCellId = String(row.source_cell_id ?? row.cell_id);
+      const sourceCellId = cellCanonicalIdByAlias[rawSourceCellId] ?? rawSourceCellId;
+      if (!acc[sourceCellId]) acc[sourceCellId] = [];
+      acc[sourceCellId].push(row);
       return acc;
     }, {});
+
+    const availability: Record<
+      string,
+      {
+        requiredPlacements: number;
+        remainingSegmentSlots: number[];
+        state: CellScrollerPlacementState;
+      }
+    > = {};
+
+    for (const cellId of Object.keys(cellNameById)) {
+      const cellKey = String(cellId);
+      if ((cellCanonicalIdByAlias[cellKey] ?? cellKey) !== cellKey) continue;
+      const requiredPlacements = Math.max(1, Number(cellRequiredPlacementsById[cellKey] ?? 1));
+      const trId = cellTimeRangeById[cellKey];
+      const trMeta = trId ? timeRangeMetaById[trId] : undefined;
+      const trDurationSlots = trMeta ? Math.max(1, trMeta.endSlot - trMeta.startSlot) : null;
+      const baseDurationSlots = Math.max(1, Number(cellDurationSlotsById[cellKey] ?? trDurationSlots ?? 1) || 1);
+      const splitPartSlots = Array.isArray(cellSplitPartSlotsById[cellKey])
+        ? cellSplitPartSlotsById[cellKey]
+        : [];
+      const expectedSegmentSlots =
+        splitPartSlots.length > 0
+          ? splitPartSlots
+          : requiredPlacements > 1
+          ? buildBalancedSlotParts(baseDurationSlots, requiredPlacements)
+          : [baseDurationSlots];
+      const placedDurationSlots = (placementsBySourceCell[cellKey] ?? []).map(
+        (placement) => Number(placement.end_slot) - Number(placement.start_slot),
+      );
+      const compatibility = classifySplitCellPlacements(expectedSegmentSlots, placedDurationSlots);
+      availability[cellKey] = {
+        requiredPlacements,
+        remainingSegmentSlots: compatibility.remainingSegmentSlots,
+        state: compatibility.state,
+      };
+    }
+
+    return availability;
+  }, [
+    cellCanonicalIdByAlias,
+    cellDurationSlotsById,
+    cellNameById,
+    cellRequiredPlacementsById,
+    cellSplitPartSlotsById,
+    cellTimeRangeById,
+    schedule,
+    timeRangeMetaById,
+  ]);
+
+  const unassignedCells = useMemo(() => {
     return Object.entries(cellNameById)
+      .filter(([cellId]) => (cellCanonicalIdByAlias[String(cellId)] ?? String(cellId)) === String(cellId))
       .flatMap(([cellId, name]) => {
         const cellKey = String(cellId);
-        const requiredPlacements = Math.max(1, Number(cellRequiredPlacementsById[cellKey] ?? 1));
-        const currentPlacements = Number(placedCountBySourceCell[cellKey] ?? 0);
-        const remainingPlacements = Math.max(0, requiredPlacements - currentPlacements);
-        const needsPlacement = remainingPlacements > 0;
-        if (!needsPlacement) return [];
+        if (suppressedUnassignedCellIds.has(cellKey)) return [];
+        const placementAvailability = cellPlacementAvailabilityById[cellKey];
+        if (!placementAvailability) return [];
+        const requiredPlacements = placementAvailability.requiredPlacements;
+        const placementState = placementAvailability.state;
+        const remainingPlacements = placementAvailability.remainingSegmentSlots.length;
+        if (placementState === "FULLY_PLACED") return [];
         const trId = cellTimeRangeById[cellKey];
         const trMeta = trId ? timeRangeMetaById[trId] : undefined;
-        const trDurationSlots =
-          trMeta
-            ? Math.max(1, trMeta.endSlot - trMeta.startSlot)
-            : null;
-        const splitPartSlots = Array.isArray(cellSplitPartSlotsById[cellKey]) ? cellSplitPartSlotsById[cellKey] : [];
-        const nextSplitPartSlot =
-          splitPartSlots.length > 0
-            ? splitPartSlots[Math.min(currentPlacements, splitPartSlots.length - 1)]
-            : null;
-        const baseDurationSlots = Math.max(1, Number(cellDurationSlotsById[cellKey] ?? trDurationSlots ?? 1) || 1);
-        const evenlySplitFallbackSlots =
-          requiredPlacements > 1 ? Math.max(1, Math.ceil(baseDurationSlots / requiredPlacements)) : null;
-        const durationSlots = nextSplitPartSlot ?? evenlySplitFallbackSlots ?? baseDurationSlots;
+        const durationSlots = placementAvailability.remainingSegmentSlots[0] ?? 1;
         const timeLabel = trMeta
           ? formatSlotRange(dayStartMin, slotMin, trMeta.startSlot, trMeta.endSlot)
           : t("grid_schedule.no_time_range");
@@ -5145,6 +5306,7 @@ export default function SolveOverlay({
             durationSlots,
             remainingPlacements,
             totalPlacements: requiredPlacements,
+            placementState,
             selectedBundleId,
             unitIds,
             canGrabForCurrentTab,
@@ -5155,16 +5317,15 @@ export default function SolveOverlay({
   }, [
     bundleUnitsById,
     cellColorById,
-    cellDurationSlotsById,
+    cellCanonicalIdByAlias,
     cellNameById,
     cellPinMetaById,
-    cellSplitPartSlotsById,
-    cellRequiredPlacementsById,
+    cellPlacementAvailabilityById,
     cellTimeRangeById,
     formatBundleLabelById,
-    schedule,
     selectedScopeUnitIdSet,
     selectedScopeUnitIds.length,
+    suppressedUnassignedCellIds,
     isNoUnitScopeSelected,
     dayStartMin,
     slotMin,
@@ -5319,20 +5480,20 @@ export default function SolveOverlay({
   const canWritePublishedComments =
     canCommentCards &&
     (role === "editor" || role === "supervisor");
-  const hasUnassignedCells = unassignedCells.length > 0;
+  const hasUnassignedCells = unassignedCells.length > 0 || suppressedUnassignedCellIds.size > 0;
   const hasAnyCells = Object.keys(cellNameById).length > 0;
   const unitsWithAvailableCells = useMemo(() => {
-    const placedCountBySourceCell = schedule.reduce<Record<string, number>>((acc, row) => {
-      const sourceCellId = String(row.source_cell_id ?? row.cell_id);
-      acc[sourceCellId] = (acc[sourceCellId] ?? 0) + 1;
-      return acc;
-    }, {});
     const unitIds = new Set<string>();
     for (const cellId of Object.keys(cellNameById)) {
       const cellKey = String(cellId);
-      const requiredPlacements = Math.max(1, Number(cellRequiredPlacementsById[cellKey] ?? 1));
-      const currentPlacements = Number(placedCountBySourceCell[cellKey] ?? 0);
-      if (currentPlacements >= requiredPlacements) continue;
+      if ((cellCanonicalIdByAlias[cellKey] ?? cellKey) !== cellKey) continue;
+      const placementAvailability = cellPlacementAvailabilityById[cellKey];
+      if (!placementAvailability) continue;
+      if (
+        placementAvailability.state === "FULLY_PLACED"
+      ) {
+        continue;
+      }
       const bundles = (cellPinMetaById[cellKey]?.bundles || []).map(String);
       for (const bundleId of bundles) {
         for (const unitId of bundleUnitsById[bundleId] || []) {
@@ -5341,7 +5502,7 @@ export default function SolveOverlay({
       }
     }
     return Array.from(unitIds);
-  }, [bundleUnitsById, cellNameById, cellPinMetaById, cellRequiredPlacementsById, schedule]);
+  }, [bundleUnitsById, cellCanonicalIdByAlias, cellNameById, cellPinMetaById, cellPlacementAvailabilityById]);
   const hasPlacedCells = Array.isArray(currentSchedule?.placements) && currentSchedule.placements.length > 0;
   const hasOverstaffableCells = useMemo(
     () => gridAllowsOverstaffing && Object.values(cellAllowOverstaffById).some(Boolean),
@@ -5500,7 +5661,22 @@ export default function SolveOverlay({
     void runSolve();
   };
 
+  const restoreSuppressedUnassignedCell = useCallback((sourceCellId: string) => {
+    const canonicalSourceCellId = cellCanonicalIdByAlias[sourceCellId] ?? sourceCellId;
+    setSuppressedUnassignedCellIds((current) => {
+      if (!current.has(canonicalSourceCellId)) return current;
+      const next = new Set(current);
+      next.delete(canonicalSourceCellId);
+      return next;
+    });
+  }, [cellCanonicalIdByAlias]);
+
   const closeEditModes = useCallback(() => {
+    const activeUnassignedCellId = activeUnassignedDragCellRef.current;
+    if (activeUnassignedCellId) {
+      restoreSuppressedUnassignedCell(activeUnassignedCellId);
+      activeUnassignedDragCellRef.current = null;
+    }
     setEditToolMode("none");
     setIsJiggleMode(false);
     setBlockageDraft(null);
@@ -5509,7 +5685,7 @@ export default function SolveOverlay({
     clearLongPressTimer();
     setDragState(null);
     clearPlacementPreviewState();
-  }, [clearPlacementPreviewState, closeRightDockFan]);
+  }, [clearPlacementPreviewState, closeRightDockFan, restoreSuppressedUnassignedCell]);
 
   const activateEditTool = useCallback(
     (tool: EditToolMode) => {
@@ -5540,6 +5716,7 @@ export default function SolveOverlay({
       cellName: string;
       bundleLabel?: string;
       durationSlots: number;
+      isSplitCell: boolean;
       pointerId: number;
       clientX: number;
       clientY: number;
@@ -5547,20 +5724,32 @@ export default function SolveOverlay({
       grabOffsetY: number;
       offsetX: number;
       offsetY: number;
+      cardWidth: number;
+      cardHeight: number;
+      timeLabel: string;
     }) => {
       if (!canManualEditCards || !isJiggleMode) return;
       clearLongPressTimer();
       setPinError(null);
+      const canonicalSourceCellId = cellCanonicalIdByAlias[payload.sourceCellId] ?? payload.sourceCellId;
+      activeUnassignedDragCellRef.current = canonicalSourceCellId;
+      setSuppressedUnassignedCellIds((current) => {
+        if (current.has(canonicalSourceCellId)) return current;
+        const next = new Set(current);
+        next.add(canonicalSourceCellId);
+        return next;
+      });
       setDragState({
         dragType: "unassigned",
         cardKey: payload.cardKey,
-        sourceCellId: payload.sourceCellId,
+        sourceCellId: canonicalSourceCellId,
         sourceBundleId: payload.sourceBundleId,
         cellName: payload.cellName,
         bundleLabel: payload.bundleLabel,
         originalDayIndex: null,
         originalStartSlot: null,
         durationSlots: Math.max(1, Number(payload.durationSlots) || 1),
+        isSplitCell: payload.isSplitCell,
         pointerId: payload.pointerId,
         clientX: payload.clientX,
         clientY: payload.clientY,
@@ -5568,15 +5757,18 @@ export default function SolveOverlay({
         offsetY: payload.offsetY,
         grabOffsetX: payload.grabOffsetX,
         grabOffsetY: payload.grabOffsetY,
+        timeLabel: payload.timeLabel,
+        grabRatioX: Math.max(0, Math.min(1, payload.grabOffsetX / Math.max(1, payload.cardWidth))),
+        grabRatioY: Math.max(0, Math.min(1, payload.grabOffsetY / Math.max(1, payload.cardHeight))),
       });
       void loadPlacementPreviewForDrag({
         mode: "PLACE_UNASSIGNED_CELL",
-        sourceCellId: payload.sourceCellId,
+        sourceCellId: canonicalSourceCellId,
         bundleId: payload.sourceBundleId,
         durationSlots: Math.max(1, Number(payload.durationSlots) || 1),
       });
     },
-    [canManualEditCards, clearLongPressTimer, isJiggleMode, loadPlacementPreviewForDrag],
+    [canManualEditCards, cellCanonicalIdByAlias, clearLongPressTimer, isJiggleMode, loadPlacementPreviewForDrag],
   );
 
   const handleParticipantScrollerGrabStart = useCallback(
@@ -5771,13 +5963,13 @@ export default function SolveOverlay({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || `Failed to export schedule (${res.status})`);
+        throw new Error(txt || t("solve_overlay.failed_export_schedule_status", { status: res.status }));
       }
       const blob = await res.blob();
       const versionLabel =
         typeof selectedHistoryEntry.publishedVersion === "number"
-          ? `v${selectedHistoryEntry.publishedVersion}`
-          : "published";
+          ? t("solve_overlay.export_version_token", { version: selectedHistoryEntry.publishedVersion })
+          : t("solve_overlay.export_published_token");
       const fallbackName = `grid-${gridId}-${versionLabel}-schedule.xlsx`;
       const filename = fileNameFromDisposition(res.headers.get("content-disposition"), fallbackName);
       const url = window.URL.createObjectURL(blob);
@@ -5846,15 +6038,26 @@ export default function SolveOverlay({
     const rect = overlay.getBoundingClientRect();
     const contentWidth = rect.width - timeColPx;
     if (!Number.isFinite(contentWidth) || contentWidth <= 0) return null;
+    const effectiveDurationSlots = Math.max(
+      1,
+      dragState.dragType === "unassigned"
+        ? dragState.durationSlots
+        : placementPreviewDurationSlots ?? dragState.durationSlots,
+    );
+    const dragCardHeight = Math.max(6, effectiveDurationSlots * rowPx);
+    const effectiveGrabOffsetY =
+      dragState.dragType === "unassigned"
+        ? dragCardHeight * Math.max(0, Math.min(1, dragState.grabRatioY ?? 0.5))
+        : dragState.grabOffsetY;
     const cardLeft = dragState.clientX - rect.left - timeColPx - dragState.grabOffsetX;
-    const cardTop = dragState.clientY - rect.top - dragState.grabOffsetY;
+    const cardTop = dragState.clientY - rect.top - effectiveGrabOffsetY;
     if (!Number.isFinite(cardLeft) || !Number.isFinite(cardTop)) return null;
     const pointerX = dragState.clientX - rect.left - timeColPx;
     const dayIndex = getDayIndexFromContentX(pointerX, contentWidth, effectiveDayWidthFactors);
     if (dayIndex == null) return null;
     const slotCount = Math.max(0, Math.round(bodyHeight / rowPx));
     const rawStart = Math.round(cardTop / rowPx);
-    const maxStart = Math.max(0, slotCount - dragState.durationSlots);
+    const maxStart = Math.max(0, slotCount - effectiveDurationSlots);
     const startSlot = Math.max(0, Math.min(maxStart, rawStart));
     const dragUnitIds =
       dragState.sourceBundleId != null
@@ -5888,7 +6091,7 @@ export default function SolveOverlay({
       placementId: previewPlacementId,
       dayIndex,
       startSlot,
-      endSlot: startSlot + dragState.durationSlots,
+      endSlot: startSlot + effectiveDurationSlots,
       spanWeight: previewSpanUnits,
       visualOrder: draggedRow?.visual_order ?? Number.MAX_SAFE_INTEGER,
     });
@@ -5912,7 +6115,7 @@ export default function SolveOverlay({
       dayIndex,
       startSlot,
       top: startSlot * rowPx,
-      height: Math.max(6, dragState.durationSlots * rowPx),
+      height: Math.max(6, effectiveDurationSlots * rowPx),
       left: previewLayout.left,
       width: previewLayout.width,
       cellName: dragState.cellName,
@@ -5929,6 +6132,52 @@ export default function SolveOverlay({
     effectiveDayWidthFactors,
     filteredSchedule,
     isGroupedUnitScope,
+    placementPreviewDurationSlots,
+    rowPx,
+    selectedScopeUnitIds,
+    timeColPx,
+  ]);
+
+  const unassignedDragCardVisual = useMemo(() => {
+    if (!dragState || dragState.dragType !== "unassigned") return null;
+    const overlay = overlayRef.current;
+    if (!overlay) return null;
+    const rect = overlay.getBoundingClientRect();
+    const contentWidth = Math.max(1, rect.width - timeColPx);
+    const safeFactors = effectiveDayWidthFactors.length > 0 ? effectiveDayWidthFactors : [1];
+    const totalFactor = Math.max(
+      1,
+      safeFactors.reduce((sum, factor) => sum + Math.max(0.1, Number(factor) || 1), 0),
+    );
+    const pointerX = dragState.clientX - rect.left - timeColPx;
+    const hoveredDayIndex = getDayIndexFromContentX(pointerX, contentWidth, safeFactors) ?? 0;
+    const dayFactor = Math.max(0.1, Number(safeFactors[hoveredDayIndex]) || 1);
+    const dayWidthPx = contentWidth * (dayFactor / totalFactor);
+    const dragUnitIds =
+      dragState.sourceBundleId != null
+        ? (bundleUnitsById[String(dragState.sourceBundleId)] || []).map(String)
+        : [];
+    const scopeCount = Math.max(1, selectedScopeUnitIds.length);
+    const spanUnits = getGroupedUnitSpanCount(selectedScopeUnitIds, dragUnitIds);
+    const durationSlots = Math.max(
+      1,
+      dragState.dragType === "unassigned"
+        ? dragState.durationSlots
+        : placementPreviewDurationSlots ?? dragState.durationSlots,
+    );
+    const width = Math.max(1, dayWidthPx * (Math.min(scopeCount, spanUnits) / scopeCount));
+    const height = Math.max(6, durationSlots * rowPx);
+    return {
+      left: dragState.clientX - width * Math.max(0, Math.min(1, dragState.grabRatioX ?? 0.5)),
+      top: dragState.clientY - height * Math.max(0, Math.min(1, dragState.grabRatioY ?? 0.5)),
+      width,
+      height,
+    };
+  }, [
+    bundleUnitsById,
+    dragState,
+    effectiveDayWidthFactors,
+    placementPreviewDurationSlots,
     rowPx,
     selectedScopeUnitIds,
     timeColPx,
@@ -5940,7 +6189,9 @@ export default function SolveOverlay({
     const validation = getDropValidation(
       dragPreview.dayIndex,
       dragPreview.startSlot,
-      placementPreviewDurationSlots ?? dragState.durationSlots,
+      dragState.dragType === "unassigned"
+        ? dragState.durationSlots
+        : placementPreviewDurationSlots ?? dragState.durationSlots,
       placementPreviewBySlot,
     );
     return validation.canDrop ? validation.startItem : validation.reasonItem;
@@ -6511,7 +6762,7 @@ export default function SolveOverlay({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || `Failed to add comment (${res.status})`);
+        throw new Error(txt || t("solve_overlay.failed_add_comment_status", { status: res.status }));
       }
       const raw = await res.json().catch(() => ({}));
       const bundleRaw =
@@ -6595,7 +6846,7 @@ export default function SolveOverlay({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || `Failed to update lock (${res.status})`);
+        throw new Error(txt || t("solve_overlay.failed_update_lock_status", { status: res.status }));
       }
       notifyDraftMutation();
       setPrecheckRefreshTick((prev) => prev + 1);
@@ -6942,7 +7193,15 @@ export default function SolveOverlay({
           const txt = await res.text().catch(() => "");
           throw new Error(txt || `${t("solve_overlay.could_not_remove_placement")} (${res.status})`);
         }
-        notifyDraftMutation();
+        const mutationPayload =
+          res.status === 204
+            ? undefined
+            : await res.json().catch(() => undefined);
+        notifyDraftMutation({
+          requiresContextRefresh: false,
+          draftHistory: readDraftHistoryPayload(mutationPayload),
+          placementChange: { kind: "delete", placementId },
+        });
         removePendingPlacementIds([placementId]);
       } catch (error: unknown) {
         setCurrentSchedule((prev) =>
@@ -6979,7 +7238,10 @@ export default function SolveOverlay({
       startSlot: number,
       durationSlots: number,
     ) => {
-      const endSlot = startSlot + durationSlots;
+      const canonicalSourceCellId = cellCanonicalIdByAlias[String(sourceCellId)] ?? String(sourceCellId);
+      const currentSegmentDurationSlots = Math.max(1, Math.round(durationSlots) || 1);
+      const isSplitCell = Math.max(1, Number(cellRequiredPlacementsById[canonicalSourceCellId]) || 1) > 1;
+      const endSlot = startSlot + currentSegmentDurationSlots;
       lastPlacementAttemptRef.current = {
         sourceCellId,
         dayIndex,
@@ -6989,10 +7251,16 @@ export default function SolveOverlay({
 
       if (hasPendingCandidateResolution) {
         setPinError(t("solve_overlay.resolve_pending_candidates"));
+        restoreSuppressedUnassignedCell(sourceCellId);
         return;
       }
 
-      const dropValidation = getDropValidation(dayIndex, startSlot, durationSlots, placementPreviewBySlot);
+      const dropValidation = getDropValidation(
+        dayIndex,
+        startSlot,
+        currentSegmentDurationSlots,
+        placementPreviewBySlot,
+      );
       const previewItem = dropValidation.canDrop ? dropValidation.startItem : dropValidation.reasonItem;
       const hasUsableSlotMap = Object.keys(placementPreviewBySlot).length > 0;
       if (!dropValidation.canDrop) {
@@ -7005,6 +7273,7 @@ export default function SolveOverlay({
           ),
         );
         clearPlacementPreviewState();
+        restoreSuppressedUnassignedCell(sourceCellId);
         return;
       }
 
@@ -7015,6 +7284,7 @@ export default function SolveOverlay({
         if (!scheduleForPlacement?.id) {
           setPinError(t("grid_schedule.no_draft_schedule_error"));
           clearPlacementPreviewState();
+          restoreSuppressedUnassignedCell(sourceCellId);
           return;
         }
         const assignmentPreview = previewItem?.assignment_preview;
@@ -7022,27 +7292,122 @@ export default function SolveOverlay({
         const usesAtomicStaffGroups =
           (cellStaffsById[String(sourceCellId)] || []).length > 0 ||
           (assignmentPreview?.available_staff_group_ids || []).length > 0;
-        if (assignmentPreview?.requires_user_selection && !usesAtomicStaffGroups) {
-          const recommendedOptions: PlacementAssignmentOption[] =
-            recommendedParticipantIds.length > 0
-              ? [
-                  {
-                    id: "backend:recommended",
-                    source: "pool",
-                    participantIds: recommendedParticipantIds,
-                    label: t("solve_overlay.backend_recommended_assignment"),
-                    recommended: true,
-                  },
-                ]
-              : [];
-          setAssignmentOptions(recommendedOptions);
-          setSelectedAssignmentOptionId(recommendedOptions[0]?.id ?? null);
+        if (assignmentPreview?.requires_user_selection) {
+          const optionsByParticipants = new Map<string, PlacementAssignmentOption>();
+          const addAssignmentOption = (option: PlacementAssignmentOption) => {
+            const participantKey = option.participantIds.map(String).sort().join("|");
+            if (!participantKey || optionsByParticipants.has(participantKey)) return;
+            optionsByParticipants.set(participantKey, option);
+          };
+
+          for (const rawStaffId of assignmentPreview.available_staff_group_ids) {
+            const staffId = String(rawStaffId);
+            const participantIds = Array.from(
+              new Set((staffMembersByStaffId[staffId] || []).map(String)),
+            );
+            if (participantIds.length === 0) continue;
+            const participantLabel = participantIds
+              .map((participantId) => participantNameById[participantId] || `#${participantId}`)
+              .join(", ");
+            addAssignmentOption({
+              id: `staff:${staffId}`,
+              source: "staff",
+              participantIds,
+              label: staffNameById[staffId] || participantLabel,
+              recommended:
+                recommendedParticipantIds.length === participantIds.length &&
+                recommendedParticipantIds.every((participantId) => participantIds.includes(participantId)),
+            });
+          }
+
+          if (recommendedParticipantIds.length > 0) {
+            addAssignmentOption({
+              id: "backend:recommended",
+              source: "pool",
+              participantIds: recommendedParticipantIds,
+              label: t("solve_overlay.backend_recommended_assignment"),
+              recommended: true,
+            });
+          }
+
+          try {
+            const normalizedBundleId = toApiEntityId(bundleId);
+            const placementOptionsResponse = await authFetch(
+              `/api/grids/${encodeURIComponent(String(gridId))}/schedule/placement-options/`,
+              {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                  schedule_id: scheduleForPlacement.id,
+                  source_cell_id: toApiEntityId(sourceCellId) ?? sourceCellId,
+                  bundle_id: normalizedBundleId,
+                  day_index: dayIndex,
+                  start_slot: startSlot,
+                  end_slot: endSlot,
+                }),
+              },
+            );
+            if (placementOptionsResponse.ok) {
+              const placementOptionsData = await placementOptionsResponse.json().catch(() => ({}));
+              const rawOptions =
+                placementOptionsData && typeof placementOptionsData === "object"
+                  ? (placementOptionsData as { options?: unknown }).options
+                  : null;
+              const validAssignments =
+                rawOptions && typeof rawOptions === "object" &&
+                Array.isArray((rawOptions as { valid_assignments?: unknown }).valid_assignments)
+                  ? ((rawOptions as { valid_assignments: unknown[] }).valid_assignments)
+                  : [];
+              validAssignments.forEach((rawAssignment, index) => {
+                if (!rawAssignment || typeof rawAssignment !== "object") return;
+                const assignment = rawAssignment as Record<string, unknown>;
+                const participantIds = Array.from(
+                  new Set(
+                    normalizeIdArray(
+                      assignment.participant_ids ??
+                        assignment.assigned_participants ??
+                        assignment.members ??
+                        assignment.participants,
+                    ).map(String),
+                  ),
+                );
+                if (participantIds.length === 0) return;
+                const staffId = readEntityId(assignment.staff_id ?? assignment.staff);
+                const participantLabel = participantIds
+                  .map((participantId) => participantNameById[participantId] || `#${participantId}`)
+                  .join(", ");
+                addAssignmentOption({
+                  id: `${staffId != null ? "staff" : "pool"}:${String(staffId ?? index)}`,
+                  source: staffId != null ? "staff" : "pool",
+                  participantIds,
+                  label:
+                    typeof assignment.label === "string" && assignment.label.trim()
+                      ? assignment.label
+                      : staffId != null
+                      ? staffNameById[String(staffId)] || participantLabel
+                      : participantLabel,
+                  recommended: Boolean(assignment.recommended),
+                });
+              });
+            }
+          } catch {
+            // Preview-derived options and explicit backend auto-selection remain available.
+          }
+
+          const assignmentChoices = Array.from(optionsByParticipants.values()).sort(
+            (a, b) => Number(b.recommended) - Number(a.recommended),
+          );
+          setAssignmentOptions(assignmentChoices);
+          setSelectedAssignmentOptionId(
+            assignmentChoices.find((option) => option.recommended)?.id ?? assignmentChoices[0]?.id ?? null,
+          );
           setPendingPlacementRequest({
             sourceCellId,
             bundleId,
             dayIndex,
             startSlot,
-            durationSlots,
+            durationSlots: currentSegmentDurationSlots,
+            isSplitCell,
             previewItem,
           });
           setAssignmentDialogOpen(true);
@@ -7053,6 +7418,8 @@ export default function SolveOverlay({
         const payload: ConfirmPlacementRequest = {
           mode: "PLACE_UNASSIGNED_CELL",
           schedule_id: scheduleForPlacement.id,
+          duration_slots: currentSegmentDurationSlots,
+          split_segment: isSplitCell,
           day_index: dayIndex,
           start_slot: startSlot,
         };
@@ -7068,9 +7435,16 @@ export default function SolveOverlay({
 
         if (usesAtomicStaffGroups) {
           clearPlacementPreviewState();
-          const result = await withScheduleActionLoading("placing", () => confirmCellPlacement(sourceCellId, payload));
+          const result = await withScheduleActionLoading("placing", () =>
+            confirmCellPlacement(sourceCellId, payload, currentSegmentDurationSlots),
+          );
           applyConfirmedPlacementResponse(result, scheduleForPlacement.id);
-          notifyDraftMutation();
+          notifyDraftMutation({
+            requiresContextRefresh: false,
+            draftHistory: result.draft_history,
+            placementChange: { kind: "upsert", placement: result.placement },
+          });
+          restoreSuppressedUnassignedCell(sourceCellId);
           return;
         }
 
@@ -7079,7 +7453,7 @@ export default function SolveOverlay({
           bundleId,
           dayIndex,
           startSlot,
-          durationSlots,
+          durationSlots: currentSegmentDurationSlots,
           assignedParticipants: recommendedParticipantIds,
         });
         const optimisticPlacementId = getPlacementIdentity(optimisticPlacement) ?? optimisticPlacement.id;
@@ -7096,15 +7470,27 @@ export default function SolveOverlay({
                 placements: [...previousPlacements, optimisticPlacement],
               },
         );
+        restoreSuppressedUnassignedCell(sourceCellId);
         clearPlacementPreviewState();
-        const result = await withScheduleActionLoading("placing", () => confirmCellPlacement(sourceCellId, payload));
+        const result = await withScheduleActionLoading("placing", () =>
+          confirmCellPlacement(sourceCellId, payload, currentSegmentDurationSlots),
+        );
         applyConfirmedPlacementResponse(result, scheduleForPlacement.id, {
           replacementPlacementId: optimisticPlacement.id,
         });
-        notifyDraftMutation();
+        notifyDraftMutation({
+          requiresContextRefresh: false,
+          draftHistory: result.draft_history,
+          placementChange: {
+            kind: "upsert",
+            placement: result.placement,
+            replacementPlacementId: optimisticPlacement.id,
+          },
+        });
         removePendingPlacementIds([pendingOptimisticPlacementId]);
       } catch (error: unknown) {
         clearPlacementPreviewState();
+        restoreSuppressedUnassignedCell(sourceCellId);
         if (rollbackPlacements) {
           const rollback = rollbackPlacements;
           setCurrentSchedule((prev) =>
@@ -7124,6 +7510,8 @@ export default function SolveOverlay({
       addPendingPlacementIds,
       applyConfirmedPlacementResponse,
       buildOptimisticPlacement,
+      cellCanonicalIdByAlias,
+      cellRequiredPlacementsById,
       cellStaffsById,
       clearPlacementPreviewState,
       confirmCellPlacement,
@@ -7134,6 +7522,7 @@ export default function SolveOverlay({
       placementPreviewBusy,
       placementPreviewBySlot,
       removePendingPlacementIds,
+      restoreSuppressedUnassignedCell,
       t,
       withScheduleActionLoading,
     ],
@@ -7152,11 +7541,14 @@ export default function SolveOverlay({
         const scheduleForPlacement = await ensureDraftSchedule();
         if (!scheduleForPlacement?.id) {
           setPinError(t("grid_schedule.no_draft_schedule_error"));
+          restoreSuppressedUnassignedCell(pendingPlacementRequest.sourceCellId);
           return;
         }
         const payload: ConfirmPlacementRequest = {
           mode: "PLACE_UNASSIGNED_CELL",
           schedule_id: scheduleForPlacement.id,
+          duration_slots: pendingPlacementRequest.durationSlots,
+          split_segment: pendingPlacementRequest.isSplitCell,
           day_index: pendingPlacementRequest.dayIndex,
           start_slot: pendingPlacementRequest.startSlot,
           selected_participant_ids: chosenOption.participantIds.map((id) => toApiEntityId(id) ?? id),
@@ -7164,11 +7556,21 @@ export default function SolveOverlay({
         const bundleApiId = toApiEntityId(pendingPlacementRequest.bundleId);
         if (bundleApiId != null) payload.bundle_id = bundleApiId;
         const result = await withScheduleActionLoading("assigning", () =>
-          confirmCellPlacement(pendingPlacementRequest.sourceCellId, payload),
+          confirmCellPlacement(
+            pendingPlacementRequest.sourceCellId,
+            payload,
+            pendingPlacementRequest.durationSlots,
+          ),
         );
         applyConfirmedPlacementResponse(result, scheduleForPlacement.id);
-        notifyDraftMutation();
+        notifyDraftMutation({
+          requiresContextRefresh: false,
+          draftHistory: result.draft_history,
+          placementChange: { kind: "upsert", placement: result.placement },
+        });
+        restoreSuppressedUnassignedCell(pendingPlacementRequest.sourceCellId);
       } catch (error: unknown) {
+        restoreSuppressedUnassignedCell(pendingPlacementRequest.sourceCellId);
         setPinError(error instanceof Error ? error.message : t("grid_schedule.could_not_place_cell"));
       }
     })();
@@ -7179,6 +7581,7 @@ export default function SolveOverlay({
     ensureDraftSchedule,
     notifyDraftMutation,
     pendingPlacementRequest,
+    restoreSuppressedUnassignedCell,
     selectedAssignmentOptionId,
     t,
     withScheduleActionLoading,
@@ -7196,11 +7599,14 @@ export default function SolveOverlay({
         const scheduleForPlacement = await ensureDraftSchedule();
         if (!scheduleForPlacement?.id) {
           setPinError(t("grid_schedule.no_draft_schedule_error"));
+          restoreSuppressedUnassignedCell(request.sourceCellId);
           return;
         }
         const payload: ConfirmPlacementRequest = {
           mode: "PLACE_UNASSIGNED_CELL",
           schedule_id: scheduleForPlacement.id,
+          duration_slots: request.durationSlots,
+          split_segment: request.isSplitCell,
           day_index: request.dayIndex,
           start_slot: request.startSlot,
           auto_select_participants: true,
@@ -7208,11 +7614,17 @@ export default function SolveOverlay({
         const bundleApiId = toApiEntityId(request.bundleId);
         if (bundleApiId != null) payload.bundle_id = bundleApiId;
         const result = await withScheduleActionLoading("assigning", () =>
-          confirmCellPlacement(request.sourceCellId, payload),
+          confirmCellPlacement(request.sourceCellId, payload, request.durationSlots),
         );
         applyConfirmedPlacementResponse(result, scheduleForPlacement.id);
-        notifyDraftMutation();
+        notifyDraftMutation({
+          requiresContextRefresh: false,
+          draftHistory: result.draft_history,
+          placementChange: { kind: "upsert", placement: result.placement },
+        });
+        restoreSuppressedUnassignedCell(request.sourceCellId);
       } catch (error: unknown) {
+        restoreSuppressedUnassignedCell(request.sourceCellId);
         setPinError(error instanceof Error ? error.message : t("grid_schedule.could_not_place_cell"));
       }
     })();
@@ -7222,6 +7634,7 @@ export default function SolveOverlay({
     ensureDraftSchedule,
     notifyDraftMutation,
     pendingPlacementRequest,
+    restoreSuppressedUnassignedCell,
     t,
     withScheduleActionLoading,
   ]);
@@ -7312,15 +7725,24 @@ export default function SolveOverlay({
         const bundleApiId = toApiEntityId(normalizedBundleId);
         if (bundleApiId != null) payload.bundle_id = bundleApiId;
         const result = await confirmCellPlacement(targetSourceCellId, payload);
+        const confirmedResult = {
+          ...result,
+          placement: preservePlacementAssignmentMetadata(result.placement, targetPlacement),
+        };
         applyConfirmedPlacementResponse(
-          {
-            ...result,
-            placement: preservePlacementAssignmentMetadata(result.placement, targetPlacement),
-          },
+          confirmedResult,
           scheduleId,
           { replacementPlacementId: optimisticPlacement.id },
         );
-        notifyDraftMutation();
+        notifyDraftMutation({
+          requiresContextRefresh: false,
+          draftHistory: confirmedResult.draft_history,
+          placementChange: {
+            kind: "upsert",
+            placement: confirmedResult.placement,
+            replacementPlacementId: optimisticPlacement.id,
+          },
+        });
         removePendingPlacementIds([placementId, optimisticPlacementId]);
       } catch (error: unknown) {
         clearPlacementPreviewState();
@@ -7377,6 +7799,7 @@ export default function SolveOverlay({
     if (pending.dragType === "unassigned") {
       if (pending.sourceBundleId == null && !isNoUnitScopeSelected) {
         clearPlacementPreviewState();
+        restoreSuppressedUnassignedCell(pending.sourceCellId);
         setPinError(t("solve_overlay.select_matching_unit_tab_before_placing"));
         return;
       }
@@ -7396,6 +7819,7 @@ export default function SolveOverlay({
     pendingDropWhilePreviewLoading,
     placementPreviewBusy,
     requestUnassignedPlacement,
+    restoreSuppressedUnassignedCell,
     t,
   ]);
 
@@ -7420,7 +7844,7 @@ export default function SolveOverlay({
       const finalized = blockageDraft;
       setBlockageDraft(null);
       void createBlockage(finalized.dayIndex, finalized.startSlot, finalized.endSlot).catch((error: unknown) => {
-        setPinError(error instanceof Error ? error.message : "Could not create blockage.");
+        setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_create_blockage"));
       });
     };
     const onPointerCancel = (event: PointerEvent) => {
@@ -7494,7 +7918,7 @@ export default function SolveOverlay({
           prev.map((entry) => (entry.id === original.id ? original : entry)),
         );
         void deleteBlockage(original).catch((error: unknown) => {
-          setPinError(error instanceof Error ? error.message : "Could not delete blockage.");
+          setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_delete_blockage"));
         });
         return;
       }
@@ -7511,7 +7935,7 @@ export default function SolveOverlay({
           );
         })
         .catch((error: unknown) => {
-          setPinError(error instanceof Error ? error.message : "Could not update blockage.");
+          setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_update_blockage"));
         })
         .finally(() => {
           setBlockageMutationBusy(false);
@@ -7603,7 +8027,18 @@ export default function SolveOverlay({
         );
         return;
       }
-      if (placementPreviewLoadingWithoutCache) return;
+      if (placementPreviewLoadingWithoutCache) {
+        setDragState((prev) =>
+          prev && prev.pointerId === event.pointerId
+            ? {
+                ...prev,
+                clientX: event.clientX,
+                clientY: event.clientY,
+              }
+            : prev,
+        );
+        return;
+      }
       if (dragState.dragType === "participant-tool") {
         const target = evaluateParticipantDropTarget(event.clientX, event.clientY, String(dragState.participantId));
         const hoverValid = Boolean(target.canDrop && target.placementId);
@@ -7626,6 +8061,9 @@ export default function SolveOverlay({
       if (event.pointerId !== dragState.pointerId) return;
       const activeDrag = dragState;
       setDragState(null);
+      if (activeDrag.dragType === "unassigned") {
+        activeUnassignedDragCellRef.current = null;
+      }
       placementMovePreviewPointerRef.current = null;
       const droppedOnDelete = isInsideDeleteDropTarget(event.clientX, event.clientY);
       setIsDeleteDropActive(false);
@@ -7670,11 +8108,11 @@ export default function SolveOverlay({
           }, 600);
           participantDropGhostTimersRef.current.push(safetyGhostCleanupTimer);
           if (target.reason === "already_assigned") {
-            setPinError("Participant already assigned");
+            setPinError(t("solve_overlay.participant_already_assigned"));
           } else if (target.reason === "capacity") {
-            setPinError("This placement is already at capacity.");
+            setPinError(t("solve_overlay.placement_at_capacity"));
           } else if (target.reason === "ineligible") {
-            setPinError(`${activeDrag.participantName} is not eligible for this cell.`);
+            setPinError(t("solve_overlay.participant_not_eligible_for_cell", { name: activeDrag.participantName }));
           }
           return;
         }
@@ -7728,7 +8166,7 @@ export default function SolveOverlay({
               }),
             );
             if (!res.ok) {
-              throw new Error("Could not assign participant");
+              throw new Error(t("solve_overlay.could_not_assign_participant"));
             }
             notifyDraftMutation();
             removePendingPlacementIds([placementId]);
@@ -7742,7 +8180,7 @@ export default function SolveOverlay({
                 : prev,
             );
             removePendingPlacementIds([placementId]);
-            setPinError(error instanceof Error ? error.message : "Could not assign participant");
+            setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_assign_participant"));
           }
         })();
         return;
@@ -7750,32 +8188,51 @@ export default function SolveOverlay({
 
       const overlay = overlayRef.current;
       if (!overlay) {
+        if (activeDrag.dragType === "unassigned") {
+          restoreSuppressedUnassignedCell(activeDrag.sourceCellId);
+        }
         clearPlacementPreviewState();
         return;
       }
 
       const rect = overlay.getBoundingClientRect();
       const contentWidth = rect.width - timeColPx;
-      const cardTop = event.clientY - rect.top - activeDrag.grabOffsetY;
       const pointerX = event.clientX - rect.left - timeColPx;
+      const effectiveDurationSlots = Math.max(
+        1,
+        activeDrag.dragType === "unassigned"
+          ? activeDrag.durationSlots
+          : placementPreviewDurationSlots ?? activeDrag.durationSlots,
+      );
+      const dragCardHeight = Math.max(6, effectiveDurationSlots * rowPx);
+      const effectiveGrabOffsetY =
+        activeDrag.dragType === "unassigned"
+          ? dragCardHeight * Math.max(0, Math.min(1, activeDrag.grabRatioY ?? 0.5))
+          : activeDrag.grabOffsetY;
+      const cardTop = event.clientY - rect.top - effectiveGrabOffsetY;
       if (
         !Number.isFinite(pointerX) ||
         !Number.isFinite(cardTop) ||
         pointerX < 0 ||
         pointerX >= contentWidth
       ) {
+        if (activeDrag.dragType === "unassigned") {
+          restoreSuppressedUnassignedCell(activeDrag.sourceCellId);
+        }
         clearPlacementPreviewState();
         return;
       }
 
       const droppedDay = getDayIndexFromContentX(pointerX, contentWidth, effectiveDayWidthFactors);
       if (droppedDay == null) {
+        if (activeDrag.dragType === "unassigned") {
+          restoreSuppressedUnassignedCell(activeDrag.sourceCellId);
+        }
         clearPlacementPreviewState();
         return;
       }
       const slotCount = Math.max(0, Math.round(bodyHeight / rowPx));
       const rawStartSlot = Math.round(cardTop / rowPx);
-      const effectiveDurationSlots = Math.max(1, placementPreviewDurationSlots ?? activeDrag.durationSlots);
       const maxStartSlot = Math.max(0, slotCount - effectiveDurationSlots);
       const droppedStart = Math.max(0, Math.min(maxStartSlot, rawStartSlot));
       if (placementPreviewLoadingWithoutCache) {
@@ -7803,6 +8260,7 @@ export default function SolveOverlay({
       if (activeDrag.dragType === "unassigned") {
         if (activeDrag.sourceBundleId == null && !isNoUnitScopeSelected) {
           clearPlacementPreviewState();
+          restoreSuppressedUnassignedCell(activeDrag.sourceCellId);
           setPinError(t("solve_overlay.select_matching_unit_tab_before_placing"));
           return;
         }
@@ -7818,6 +8276,10 @@ export default function SolveOverlay({
 
     const onPointerCancel = (event: PointerEvent) => {
       if (event.pointerId !== dragState.pointerId) return;
+      if (dragState.dragType === "unassigned") {
+        restoreSuppressedUnassignedCell(dragState.sourceCellId);
+        activeUnassignedDragCellRef.current = null;
+      }
       setDragState(null);
       placementMovePreviewPointerRef.current = null;
       setParticipantDragHoverPlacementId(null);
@@ -7841,6 +8303,7 @@ export default function SolveOverlay({
     daysCount,
     deleteSchedulePlacement,
     dragState,
+    effectiveDayWidthFactors,
     evaluateParticipantDropTarget,
     canReorderVisualPlacements,
     getVisualOrderTargetIndex,
@@ -7858,6 +8321,7 @@ export default function SolveOverlay({
     t,
     pendingPlacementIds,
     removePendingPlacementIds,
+    restoreSuppressedUnassignedCell,
     timeColPx,
     triggerParticipantDropGhost,
     visualOrderBusy,
@@ -8409,7 +8873,7 @@ export default function SolveOverlay({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || `Failed to publish schedule (${res.status})`);
+        throw new Error(txt || t("solve_overlay.failed_publish_schedule_status", { status: res.status }));
       }
 
       writeGridScheduleViewMode(gridId, "published");
@@ -8583,7 +9047,7 @@ export default function SolveOverlay({
                   : { left: dragPreview.left, width: dragPreview.width };
               return (
             <div
-              className="absolute pointer-events-none z-[45]"
+              className="absolute pointer-events-none z-[45] transition-[top,left,width,height] duration-100 ease-out"
               style={{
                 top: dragPreview.top,
                 left: previewRenderableLayout.left,
@@ -8593,7 +9057,7 @@ export default function SolveOverlay({
             >
               <div
                 className={[
-                  "relative h-full w-full rounded-md border border-dashed transition-colors",
+                  "relative h-full w-full animate-in rounded-md border border-dashed fade-in zoom-in-95 transition-colors duration-150",
                   activeDragPreviewStyle.outer,
                 ].join(" ")}
               >
@@ -8646,7 +9110,7 @@ export default function SolveOverlay({
                   canInteractBlockage ? "pointer-events-auto" : "pointer-events-none"
                 }`}
                 style={{ top, left, width, height }}
-                title={blockage.note || "Blocked window"}
+                title={blockage.note || t("solve_overlay.blocked_window")}
                 onPointerDown={(event) => {
                   if (!canInteractBlockage) return;
                   if (!isJiggleMode) {
@@ -8678,7 +9142,7 @@ export default function SolveOverlay({
                 onDoubleClick={() => {
                   if (!canEditBlockage) return;
                   void deleteBlockage(blockage.id).catch((error: unknown) => {
-                    setPinError(error instanceof Error ? error.message : "Could not delete blockage.");
+                    setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_delete_blockage"));
                   });
                 }}
               >
@@ -8699,7 +9163,7 @@ export default function SolveOverlay({
                   />
                   <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                     <span className="select-none text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400/60">
-                      Blocked
+                      {t("solve_overlay.blocked_overlay_label")}
                     </span>
                   </div>
                 </div>
@@ -8990,7 +9454,7 @@ export default function SolveOverlay({
                 data-comment-placement-key={cardCommentPlacementKey || undefined}
                 className={`absolute ${dimForDraggedParticipant ? "pointer-events-none" : "pointer-events-auto"} ${cursorClass} ${
                   isDraggingCard ? "transition-none" : "transition-transform duration-150 ease-out"
-                }`}
+                } ${isDraggingCard ? ACTIVE_SCHEDULE_DRAG_CLASS : ""}`}
                 style={{
                   top,
                   left,
@@ -9096,8 +9560,8 @@ export default function SolveOverlay({
                   );
                 }}
               >
-                <div
-                  className={`group relative w-full h-full rounded-md border px-2 py-2 text-[11px] ${
+                <ScheduleCellCardFace
+                  className={`${
                     isJiggleMode && !isPlacementLocked && hoveredJiggleCardKey !== cardKey ? "shift-jiggle" : ""
                   } ${
                     activeDraggedParticipantId &&
@@ -9107,10 +9571,15 @@ export default function SolveOverlay({
                       ? "ring-2 ring-amber-400/70"
                       : ""
                   }`}
+                  backgroundColor={bg || "#f3f4f6"}
+                  borderColor={border}
+                  textDark={textDark}
+                  textLight={textLight}
+                  cellName={cellName}
+                  bundleLabel={bundleLabel}
+                  assignmentLabel={assignmentLabel}
+                  timeLabel={timeLabel}
                   style={{
-                    backgroundColor: bg || "#f3f4f6",
-                    borderColor: border,
-                    color: textDark,
                     animationDelay: `${(idx % 6) * 35}ms`,
                     opacity: dimForParticipantsTool || dimForDraggedParticipant ? 0.35 : 1,
                     filter: dimForParticipantsTool || dimForDraggedParticipant ? "grayscale(0.65)" : "none",
@@ -9192,18 +9661,7 @@ export default function SolveOverlay({
                       />
                     );
                   })}
-                  <div className="flex h-full flex-col items-center justify-center text-center leading-tight">
-                    <div className="font-semibold" style={{ color: textLight }}>{cellName}</div>
-                    {bundleLabel && (
-                      <div className="px-1 text-[10px] font-semibold opacity-90" style={{ color: textDark }}>
-                        {bundleLabel}
-                      </div>
-                    )}
-                    {assignmentLabel && <div className="px-1">{assignmentLabel}</div>}
-                    <div className="h-2" />
-                    <div className="text-[10px] font-medium" style={{ color: textDark }}>{timeLabel}</div>
-                  </div>
-                </div>
+                </ScheduleCellCardFace>
               </div>
             );
           })}
@@ -9386,7 +9844,7 @@ export default function SolveOverlay({
                             }}
                             aria-label={t("common.delete")}
                           >
-                            x
+                            ×
                           </button>
                           <div
                             className="absolute left-0 right-0 top-0 h-2 cursor-ns-resize"
@@ -9501,7 +9959,7 @@ export default function SolveOverlay({
                     void executeDeleteBlockage(pending.blockage, "CURRENT_UNIT_ONLY", pending.unitId)
                       .then(() => setPendingBlockageDelete(null))
                       .catch((error: unknown) => {
-                        setPinError(error instanceof Error ? error.message : "Could not delete blockage.");
+                        setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_delete_blockage"));
                       })
                       .finally(() => setBlockageDeleteBusy(false));
                   }}
@@ -9519,7 +9977,7 @@ export default function SolveOverlay({
                     void executeDeleteBlockage(pending.blockage, "GLOBAL", pending.unitId)
                       .then(() => setPendingBlockageDelete(null))
                       .catch((error: unknown) => {
-                        setPinError(error instanceof Error ? error.message : "Could not delete blockage.");
+                        setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_delete_blockage"));
                       })
                       .finally(() => setBlockageDeleteBusy(false));
                   }}
@@ -9537,6 +9995,9 @@ export default function SolveOverlay({
         onOpenChange={(open) => {
           setAssignmentDialogOpen(open);
           if (!open) {
+            if (pendingPlacementRequest) {
+              restoreSuppressedUnassignedCell(pendingPlacementRequest.sourceCellId);
+            }
             setPendingPlacementRequest(null);
             setAssignmentOptions([]);
             setSelectedAssignmentOptionId(null);
@@ -9625,6 +10086,9 @@ export default function SolveOverlay({
                 type="button"
                 className="h-9 rounded border px-3 text-sm hover:bg-gray-50"
                 onClick={() => {
+                  if (pendingPlacementRequest) {
+                    restoreSuppressedUnassignedCell(pendingPlacementRequest.sourceCellId);
+                  }
                   setAssignmentDialogOpen(false);
                   setPendingPlacementRequest(null);
                   setAssignmentOptions([]);
@@ -10789,6 +11253,7 @@ export default function SolveOverlay({
             publishDraft: "",
             nothingToPublish: "",
             solving: "",
+            secondsShort: "",
           }}
         />
       )}
@@ -10823,6 +11288,7 @@ export default function SolveOverlay({
           isSolving={isSolving}
           solveElapsedMs={solveElapsedMs}
           error={error}
+          onErrorDismiss={() => setError(null)}
           labels={{
             add: t("common.add"),
             participants: t("solve_overlay.participants"),
@@ -10832,6 +11298,8 @@ export default function SolveOverlay({
             publishDraft: t("solve_overlay.publish_draft_schedule"),
             nothingToPublish: t("solve_overlay.nothing_to_publish"),
             solving: t("solve_overlay.solving"),
+            secondsShort: t("common.seconds_short"),
+            dismissError: t("errors.dismiss"),
             createAtLeastOneCellFirst: t("dock.create_at_least_one_cell_first"),
             noCellsAvailableForUnit: t("dock.no_cells_available_for_unit"),
             assignCellBeforeBreaks: t("dock.assign_cell_before_breaks"),
@@ -10844,18 +11312,24 @@ export default function SolveOverlay({
             timeLabel: cell.timeLabel,
             bundleLabel: cell.bundleLabel,
             durationSlots: Math.max(1, Number(cell.durationSlots) || 1),
+            isSplitCell: Math.max(1, Number(cell.totalPlacements) || 1) > 1,
             remainingPlacements: Math.max(0, Number(cell.remainingPlacements) || 0),
             totalPlacements: Math.max(1, Number(cell.totalPlacements) || 1),
+            placementState: cell.placementState,
+            blockedReason: cell.placementState === "STALE"
+              ? t("solve_overlay.stale_cell_placement_warning")
+              : undefined,
             canGrab: Boolean(
               canManualEditCards &&
                 isJiggleMode &&
-                cell.canGrabForCurrentTab,
+                cell.canGrabForCurrentTab &&
+                (cell.placementState === "UNPLACED" || cell.placementState === "PARTIALLY_PLACED"),
             ),
             selectedBundleId: cell.selectedBundleId != null ? String(cell.selectedBundleId) : null,
           }))}
           onUnassignedGrabStart={handleUnassignedScrollerGrabStart}
-          onUnassignedGrabBlocked={() => {
-            setPinError(t("solve_overlay.select_matching_unit_tab_before_placing"));
+          onUnassignedGrabBlocked={(reason) => {
+            setPinError(reason || t("solve_overlay.select_matching_unit_tab_before_placing"));
           }}
           onSolvePressed={onSolvePressed}
           onPendingReviewPressed={openPendingCandidatePreview}
@@ -10877,6 +11351,47 @@ export default function SolveOverlay({
             void publishDraftSchedule();
           }}
         />
+      )}
+      {dragState?.dragType === "unassigned" && unassignedDragCardVisual && (
+        (() => {
+          const color = cellColorById[String(dragState.sourceCellId)] || "";
+          const colorIndex = CELL_COLOR_OPTIONS.findIndex(
+            (option) => option.toLowerCase() === color.toLowerCase(),
+          );
+          const useColor = Boolean(color && colorIndex >= 0);
+          const backgroundColor = useColor ? color : "#f3f4f6";
+          const textDark = useColor ? CELL_TEXT_DARK[colorIndex] : "#111827";
+          const textLight = useColor ? CELL_TEXT_LIGHT[colorIndex] : "#374151";
+          const borderColor = useColor ? shadeHex(backgroundColor, -0.33) : "#d1d5db";
+          return (
+            <div
+              className={`pointer-events-none fixed z-[300] ${ACTIVE_SCHEDULE_DRAG_CLASS}`}
+              style={{
+                left: unassignedDragCardVisual.left,
+                top: unassignedDragCardVisual.top,
+                width: unassignedDragCardVisual.width,
+                height: unassignedDragCardVisual.height,
+              }}
+            >
+              <ScheduleCellCardFace
+                backgroundColor={backgroundColor}
+                borderColor={borderColor}
+                textDark={textDark}
+                textLight={textLight}
+                cellName={dragState.cellName}
+                bundleLabel={dragState.bundleLabel}
+                timeLabel={dragState.timeLabel || ""}
+              />
+            </div>
+          );
+        })()
+      )}
+      {isJiggleMode && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-16 z-[210] flex justify-center px-4">
+          <div className="animate-in slide-in-from-bottom-4 fade-in rounded-full border border-gray-200 bg-gray-950/92 px-4 py-2 text-center text-sm font-medium text-white shadow-xl duration-300">
+            {t("solve_overlay.exit_edit_mode_hint")}
+          </div>
+        </div>
       )}
       {dragState?.dragType === "participant-tool" && (
         <div

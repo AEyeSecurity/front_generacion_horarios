@@ -433,7 +433,7 @@ export default function InviteDialog({
     } finally {
       setLoadingData(false);
     }
-  }, [gridId]);
+  }, [gridId, t]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -686,7 +686,7 @@ export default function InviteDialog({
                     {emails.map((email) => (
                       <span key={email} className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm shrink-0">
                         {email}
-                        <button type="button" onClick={() => removeEmail(email)} aria-label={`Remove ${email}`}>
+                        <button type="button" onClick={() => removeEmail(email)} aria-label={t("invite_dialog.remove_email", { email })}>
                           <X className="h-3.5 w-3.5" />
                         </button>
                       </span>

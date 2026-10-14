@@ -3,6 +3,7 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { Link as LinkIcon } from "lucide-react";
+import { useI18n } from "@/lib/use-i18n";
 const EditorInviteDialog = dynamic(() => import("@/components/dialogs/EditorInviteDialog"), { ssr: false });
 
 export default function EditorInviteInline({
@@ -18,12 +19,13 @@ export default function EditorInviteInline({
   disabled?: boolean;
   onLinked?: () => void;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   return (
     <>
       <button
         type="button"
-        title="Link participant to a user"
+        title={t("participants.link_to_user")}
         className="inline-flex items-center justify-center w-9 h-9 rounded-md hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
         disabled={disabled}
         onClick={() => setOpen(true)}

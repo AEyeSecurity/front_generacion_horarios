@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
+import { useI18n } from "@/lib/use-i18n";
 
 export default function DeleteParticipantButton({
   gridId,
@@ -13,18 +14,19 @@ export default function DeleteParticipantButton({
   participantId: number | string;
 }) {
   const router = useRouter();
+  const { t } = useI18n();
 
   async function onDelete() {
     const id = String(participantId);
     if (!id || id === "undefined") {
-      alert("Could not resolve participant id");
+      alert(t("participants.could_not_resolve_id"));
       return;
     }
-    if (!window.confirm("Delete this participant? This cannot be undone.")) return;
+    if (!window.confirm(t("participants.delete_confirm"))) return;
     const res = await fetch(`/api/participants/${encodeURIComponent(id)}`, { method: "DELETE" });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      alert(`Failed to delete participant (${res.status}). ${txt}`);
+      alert(t("participants.delete_failed_status", { status: res.status, details: txt }));
       return;
     }
     router.push(`/grid/${encodeURIComponent(gridCode || String(gridId))}`);
@@ -38,7 +40,7 @@ export default function DeleteParticipantButton({
       onClick={onDelete}
     >
       <Trash2 className="w-4 h-4" />
-      <span className="max-[700px]:hidden">Delete Participant</span>
+      <span className="max-[700px]:hidden">{t("participants.delete")}</span>
     </button>
   );
 }

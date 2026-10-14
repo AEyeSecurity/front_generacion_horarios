@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import AddAvailabilityRuleDialog from "@/components/dialogs/AddRuleDialog";
+import { useI18n } from "@/lib/use-i18n";
 
 export default function AddRuleButton({
   participantId,
@@ -22,6 +23,7 @@ export default function AddRuleButton({
   disabled?: boolean;
   onCreated?: () => void | Promise<void>;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
@@ -35,7 +37,7 @@ export default function AddRuleButton({
         disabled={disabled}
       >
         <Plus className="w-4 h-4" />
-        <span className="max-[700px]:hidden">Add Rule</span>
+        <span className="max-[700px]:hidden">{t("add_rule.title")}</span>
       </button>
 
       <AddAvailabilityRuleDialog

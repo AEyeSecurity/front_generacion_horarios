@@ -32,7 +32,7 @@ export default async function NavBar() {
             href={logoHref}
             className={`${sourceSerif.className} text-xl font-bold`}
           >
-            Shift
+            {t("nav.brand_name")}
           </Link>
         </div>
         <div className="flex items-center gap-4">

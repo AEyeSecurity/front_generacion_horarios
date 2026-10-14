@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { useI18n } from "@/lib/use-i18n";
 import type { Role } from "@/lib/types";
+import { fetchGridResource, invalidateGridResource, invalidateGridScreenContext } from "@/lib/screen-context";
 
 type Participant = {
   id: number;
@@ -80,9 +81,12 @@ export default function EditParticipantDialog({
     let active = true;
     (async () => {
       try {
-        const res = await fetch(`/api/grids/${gridId}/`, { cache: "no-store" });
-        if (!res.ok || !active) return;
-        const data = await res.json().catch(() => null);
+        const data = await fetchGridResource<Record<string, unknown>>(gridId, "grid", {
+          fallback: async () => {
+            const res = await fetch(`/api/grids/${gridId}`, { cache: "no-store" });
+            return res.ok ? res.json().catch(() => ({})) : {};
+          },
+        });
         if (!active) return;
         setTierEnabled(readGridTierEnabled(data, true));
       } catch {
@@ -141,6 +145,8 @@ export default function EditParticipantDialog({
         throw new Error(typeof parsed === "string" ? parsed : JSON.stringify(parsed));
       }
 
+      invalidateGridResource(gridId, "participants");
+      invalidateGridScreenContext(gridId, "draft");
       onUpdated?.();
       onOpenChange(false);
     } catch (error: unknown) {
@@ -198,7 +204,7 @@ export default function EditParticipantDialog({
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="block text-sm mb-1">{t("add_participant.min_hours_override") || "Min weekly (override)"}</label>
+                <label className="block text-sm mb-1">{t("add_participant.min_hours_override")}</label>
                 <input
                   type="number"
                   min={0}
@@ -209,7 +215,7 @@ export default function EditParticipantDialog({
                 />
               </div>
               <div>
-                <label className="block text-sm mb-1">{t("add_participant.max_hours_override") || "Max weekly (override)"}</label>
+                <label className="block text-sm mb-1">{t("add_participant.max_hours_override")}</label>
                 <input
                   type="number"
                   min={0}
@@ -235,7 +241,7 @@ export default function EditParticipantDialog({
                 className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50"
                 disabled={saving}
               >
-                {saving ? (t("common.saving") || "Saving...") : (t("common.save") || "Save")}
+                {saving ? t("common.saving") : t("common.save")}
               </button>
             </DialogFooter>
           </form>

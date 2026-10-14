@@ -12,6 +12,7 @@ import {
 import AnimatedList from "@/components/navigation/AnimatedList";
 import { Trash2, Pencil, Check, X } from "lucide-react";
 import { useI18n } from "@/lib/use-i18n";
+import { invalidateGridResource, invalidateGridScreenContext } from "@/lib/screen-context";
 const CATEGORY_VALUES_UPDATED_EVENT = "shift:category-values-updated";
 
 function safeApiText(raw: string, fallback: string) {
@@ -79,6 +80,9 @@ export default function AddCategoryDialog({
       const created = await res.json().catch(() => ({}));
       const id = Number(created?.id);
       if (!id) throw new Error(t("add_category.failed_resolve_id"));
+      invalidateGridResource(gridId, "categories");
+      invalidateGridResource(gridId, "category_values");
+      invalidateGridScreenContext(gridId, "draft");
       setCreatedId(id);
       setValues([]);
       setNewValue("");
@@ -97,7 +101,7 @@ export default function AddCategoryDialog({
           setValues([]);
           return;
         }
-        throw new Error(`Failed (${res.status})`);
+        throw new Error(t("errors.failed_status", { status: res.status }));
       }
       const data = await res.json().catch(() => ({}));
       const items = Array.isArray(data) ? data : data.results ?? [];
@@ -149,6 +153,8 @@ export default function AddCategoryDialog({
       }
       setNewValue("");
       await loadValues(createdId);
+      invalidateGridResource(gridId, "category_values");
+      invalidateGridScreenContext(gridId, "draft");
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CATEGORY_VALUES_UPDATED_EVENT));
     } catch (e: any) {
       setErr(e?.message || t("add_category.failed_add_value"));
@@ -180,6 +186,8 @@ export default function AddCategoryDialog({
       return;
     }
     if (createdId) await loadValues(createdId);
+    invalidateGridResource(gridId, "category_values");
+    invalidateGridScreenContext(gridId, "draft");
     if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CATEGORY_VALUES_UPDATED_EVENT));
   }
 
@@ -201,6 +209,8 @@ export default function AddCategoryDialog({
       setEditingValueId(null);
       setEditingValueName("");
       if (createdId) await loadValues(createdId);
+      invalidateGridResource(gridId, "category_values");
+      invalidateGridScreenContext(gridId, "draft");
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CATEGORY_VALUES_UPDATED_EVENT));
     } catch (error: any) {
       setErr(error?.message || t("category_dialog.failed_update_value"));

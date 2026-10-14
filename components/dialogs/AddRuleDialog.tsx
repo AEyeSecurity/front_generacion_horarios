@@ -238,7 +238,7 @@ export default function AddAvailabilityRuleDialog({
         }
 
         const rulesRes = await fetch(`/api/availability_rules?participant=${participantId}`, { cache: "no-store" });
-        if (!rulesRes.ok) throw new Error(rawError || `Error creating rule (${res.status})`);
+        if (!rulesRes.ok) throw new Error(rawError || t("add_rule.error_creating_status", { status: res.status }));
         const rulesData = await rulesRes.json().catch(() => null);
         const rulesList = normalizeAvailabilityRulesResponse(rulesData);
 

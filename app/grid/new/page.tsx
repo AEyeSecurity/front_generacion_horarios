@@ -500,7 +500,7 @@ export default function NewGridPage() {
 
       if (!createRes.ok) {
         const raw = await createRes.text().catch(() => "");
-        throw new Error(raw || `Failed to create grid (${createRes.status})`);
+        throw new Error(raw || tt("grid_new.failed_create_status", "Failed to create grid ({status})", { status: createRes.status }));
       }
 
       const rawGrid = await createRes.json();
@@ -706,7 +706,7 @@ export default function NewGridPage() {
                         >
                           {allowedCellSizes.map((minutes) => (
                             <option key={minutes} value={minutes}>
-                              {minutes} min
+                              {minutes} {t("common.minutes_short")}
                             </option>
                           ))}
                         </select>

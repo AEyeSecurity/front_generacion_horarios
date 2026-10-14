@@ -25,6 +25,7 @@ import {
 } from "@/components/dialogs/cell-staffing";
 import { CELL_COLOR_OPTIONS_NO_RED as COLOR_OPTIONS } from "@/lib/cell-colors";
 import { useI18n } from "@/lib/use-i18n";
+import { invalidateGridResource, invalidateGridScreenContext } from "@/lib/screen-context";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import PanelAsyncState from "@/components/ui/PanelAsyncState";
 import { normalizeCellFormBootstrap } from "@/lib/cell-form-bootstrap";
@@ -371,6 +372,7 @@ export default function CreateCellDialog({
   const [loadedOptionsGridId, setLoadedOptionsGridId] = React.useState<number | null>(null);
   const [optionsLoadError, setOptionsLoadError] = React.useState<string | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
+  const [submitAttempted, setSubmitAttempted] = React.useState(false);
   const splitSliderRef = React.useRef<HTMLDivElement | null>(null);
 
   const inferredHeadcount = React.useMemo(
@@ -636,12 +638,17 @@ export default function CreateCellDialog({
   }, [step, totalSteps]);
 
   React.useEffect(() => {
+    setSubmitAttempted(false);
+  }, [step]);
+
+  React.useEffect(() => {
     if (!open) {
       setLoadedOptionsGridId(null);
       setOptionsLoadError(null);
       return;
     }
     setErr(null);
+    setSubmitAttempted(false);
     setStep(1);
     setName("");
     setDescription("");
@@ -722,7 +729,7 @@ export default function CreateCellDialog({
         setOptionsLoading(false);
       }
     })();
-  }, [open, gridId]);
+  }, [open, gridId, t]);
 
   const stepOneReady = Boolean(
     name.trim() &&
@@ -955,14 +962,17 @@ export default function CreateCellDialog({
     }
 
     if (attemptErrors.length > 0) {
-      throw new Error(`Failed to resolve bundle for the selected units.\n${attemptErrors[attemptErrors.length - 1]}`);
+      throw new Error(t("errors.failed_resolve_bundle_details", { details: attemptErrors[attemptErrors.length - 1] }));
     }
-    throw new Error("Failed to resolve bundle for the selected units.");
+    throw new Error(t("errors.failed_resolve_bundle"));
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSubmit) return;
+    if (!canSubmit) {
+      setSubmitAttempted(true);
+      return;
+    }
     if (maxDurationCellsAllowed != null && durationCellsSafe > maxDurationCellsAllowed) {
       setErr(`Duration cannot exceed ${maxDurationCellsAllowed} cells for the selected horizon.`);
       return;
@@ -1044,6 +1054,9 @@ export default function CreateCellDialog({
         const raw = await res.text().catch(() => "");
         throw new Error(buildApiErrorMessage(raw, res.status, t("create_cell.failed_create")));
       }
+      invalidateGridResource(gridId, "cells");
+      invalidateGridResource(gridId, "bundles");
+      invalidateGridScreenContext(gridId, "draft");
       onOpenChange(false);
       await onCreated?.();
     } catch (e: any) {
@@ -1112,15 +1125,15 @@ export default function CreateCellDialog({
             {err && <div className="text-sm text-red-600 whitespace-pre-wrap">{err}</div>}
             {currentStepKey === "info" ? (
               <>
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                  <div className="sm:col-span-4">
-                    <label className="block text-sm mb-1">{t("create_cell.name_required")}</label>
-                    <input className="w-full border rounded px-3 py-2 text-sm" value={name} onChange={(e) => setName(e.target.value)} required />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1.15fr)_minmax(9.5rem,0.9fr)_max-content_minmax(0,1.15fr)] sm:items-start">
+                  <div>
+                    <label className="mb-1 block h-5 whitespace-nowrap text-sm">{t("create_cell.name_required")}</label>
+                    <input className="h-10 w-full rounded border px-3 py-2 text-sm" value={name} onChange={(e) => setName(e.target.value)} required />
                   </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-sm mb-1">{t("create_cell.duration_cells_required")}</label>
+                  <div>
+                    <label className="mb-1 block h-5 whitespace-nowrap text-sm">{t("create_cell.duration_cells_required")}</label>
                     <input
-                      className="w-full border rounded px-3 py-2 text-sm"
+                      className="h-10 w-full rounded border px-3 py-2 text-sm"
                       type="number"
                       min={1}
                       max={maxDurationCellsAllowed ?? undefined}
@@ -1136,8 +1149,9 @@ export default function CreateCellDialog({
                     <div className="text-xs text-gray-500 mt-1">{t("create_cell.total_minutes", { minutes: durationCells * cellMin })}</div>
                   </div>
                   {canShowMultiDayToggle && (
-                    <div className="sm:col-span-2 flex items-end">
-                      <label className="inline-flex items-center gap-2 text-sm select-none">
+                    <div>
+                      <span aria-hidden="true" className="mb-1 hidden h-5 sm:block" />
+                      <label className="inline-flex h-10 items-center gap-2 whitespace-nowrap text-sm select-none">
                         <input
                           type="checkbox"
                           checked={multiDayEnabled}
@@ -1150,9 +1164,9 @@ export default function CreateCellDialog({
                     </div>
                   )}
                   {hasTimeRangeOptions && (
-                    <div className="sm:col-span-4">
-                      <label className="block text-sm mb-1">{t("create_cell.time_range_required")}</label>
-                      <select className="w-full border rounded px-3 py-2 text-sm" value={timeRangeId} onChange={(e) => setTimeRangeId(e.target.value)}>
+                    <div>
+                      <label className="mb-1 block h-5 whitespace-nowrap text-sm">{t("create_cell.time_range_required")}</label>
+                      <select className="h-10 w-full rounded border px-3 py-2 text-sm" value={timeRangeId} onChange={(e) => setTimeRangeId(e.target.value)}>
                         <option value="">{t("create_cell.select_option")}</option>
                         {timeRanges.map((t) => (
                           <option key={t.id} value={t.id}>
@@ -1162,9 +1176,9 @@ export default function CreateCellDialog({
                       </select>
                     </div>
                   )}
-                  <div className="sm:col-span-1 ml-auto">
-                    <label className="block text-sm mb-1">{t("create_cell.color")}</label>
-                    <div className="relative">
+                  <div className="sm:col-span-4">
+                    <label className="mb-1 block h-5 text-sm">{t("create_cell.color")}</label>
+                    <div className="flex max-w-full flex-col items-start">
                       <button
                         type="button"
                         onClick={() => setColorMenuOpen((v) => !v)}
@@ -1175,18 +1189,18 @@ export default function CreateCellDialog({
                         {!colorHex ? <span className="text-base leading-none">/</span> : null}
                       </button>
                       {colorMenuOpen && (
-                        <div className="absolute left-1/2 -translate-x-1/2 z-10 mt-2 rounded-md border bg-white p-2 shadow-lg">
-                          <div className="flex items-center gap-2 overflow-x-auto max-w-[360px]">
+                        <div className="z-10 mt-2 max-w-full rounded-md border bg-white p-2 shadow-lg">
+                          <div className="flex max-w-full flex-wrap items-center gap-2">
                             <button
                               type="button"
                               onClick={() => { setColorHex(null); setColorMenuOpen(false); }}
-                              className={`h-8 w-8 rounded-full border flex items-center justify-center text-gray-500 ${colorHex === null ? "ring-2 ring-black border-black" : "border-gray-300"}`}
+                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-gray-500 ${colorHex === null ? "ring-2 ring-black border-black" : "border-gray-300"}`}
                               aria-label={t("create_cell.no_color")}
                             >
                               <span className="text-sm leading-none">/</span>
                             </button>
                             {COLOR_OPTIONS.map((hex) => (
-                              <button key={hex} type="button" onClick={() => { setColorHex(hex); setColorMenuOpen(false); }} className={`h-8 w-8 rounded-full border ${colorHex === hex ? "ring-2 ring-black border-black" : "border-gray-300"}`} style={{ backgroundColor: hex }} />
+                              <button key={hex} type="button" onClick={() => { setColorHex(hex); setColorMenuOpen(false); }} className={`h-8 w-8 shrink-0 rounded-full border ${colorHex === hex ? "ring-2 ring-black border-black" : "border-gray-300"}`} style={{ backgroundColor: hex }} />
                             ))}
                           </div>
                         </div>
@@ -1472,9 +1486,6 @@ export default function CreateCellDialog({
                   onStaffGroupsChange={setStaffGroups}
                   availableStaffGroups={availableStaffGroups}
                 />
-                {staffingError && (
-                  <div className="text-sm text-red-600">{staffingError}</div>
-                )}
               </>
             )}
             </>
@@ -1489,9 +1500,26 @@ export default function CreateCellDialog({
                   </button>
                 </DialogClose>
                 {step === finalStep && (
-                  <button type="submit" className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50" disabled={saving || !canSubmit}>
-                    {saving ? t("create_cell.creating") : t("common.finish")}
-                  </button>
+                  <div className="relative">
+                    <button
+                      type="submit"
+                      aria-describedby={submitAttempted && staffingError ? "create-cell-submit-error" : undefined}
+                      className="px-3 py-2 rounded bg-black text-white text-sm disabled:opacity-50"
+                      disabled={saving || !optionsReady}
+                    >
+                      {saving ? t("create_cell.creating") : t("common.finish")}
+                    </button>
+                    {submitAttempted && staffingError && (
+                      <div
+                        id="create-cell-submit-error"
+                        role="tooltip"
+                        className="absolute bottom-full left-0 z-30 mb-3 w-max max-w-[min(26rem,calc(100vw-3rem))] rounded-md bg-gray-950 px-3 py-2 text-xs leading-relaxed text-white shadow-xl"
+                      >
+                        {staffingError}
+                        <span className="absolute left-5 top-full h-0 w-0 border-x-[6px] border-t-[6px] border-x-transparent border-t-gray-950" />
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
               <div className="flex items-center gap-2">

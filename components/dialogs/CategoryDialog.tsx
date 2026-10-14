@@ -12,6 +12,7 @@ import {
 import { Trash2, Plus, Pencil, Check, X } from "lucide-react";
 import AnimatedList from "@/components/navigation/AnimatedList";
 import { useI18n } from "@/lib/use-i18n";
+import { invalidateGridResource, invalidateGridScreenContext } from "@/lib/screen-context";
 const CATEGORY_VALUES_UPDATED_EVENT = "shift:category-values-updated";
 
 function safeApiText(raw: string, fallback: string) {
@@ -25,11 +26,13 @@ type Category = { id: number; name: string };
 type CategoryValue = { id: number; name: string; category: number };
 
 export default function CategoryDialog({
+  gridId,
   category,
   open,
   onOpenChange,
   onDeleted,
 }: {
+  gridId: number;
   category: Category | null;
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -53,7 +56,7 @@ export default function CategoryDialog({
     setErr(null);
     try {
       const res = await fetch(`/api/category_values?category=${catId}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      if (!res.ok) throw new Error(t("errors.failed_status", { status: res.status }));
       const data = await res.json();
       const items = Array.isArray(data) ? data : data.results ?? [];
       setValues(items.filter((v: any) => Number(v.category) === Number(catId)));
@@ -83,6 +86,8 @@ export default function CategoryDialog({
       }
       setNewValue("");
       await load();
+      invalidateGridResource(gridId, "category_values");
+      invalidateGridScreenContext(gridId, "draft");
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CATEGORY_VALUES_UPDATED_EVENT));
     } catch (e: any) {
       setErr(e.message || t("category_dialog.failed_add_value"));
@@ -105,6 +110,8 @@ export default function CategoryDialog({
       return;
     }
     await load();
+    invalidateGridResource(gridId, "category_values");
+    invalidateGridScreenContext(gridId, "draft");
     if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CATEGORY_VALUES_UPDATED_EVENT));
   }
 
@@ -126,6 +133,8 @@ export default function CategoryDialog({
       setEditingValueId(null);
       setEditingValueName("");
       await load();
+      invalidateGridResource(gridId, "category_values");
+      invalidateGridScreenContext(gridId, "draft");
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CATEGORY_VALUES_UPDATED_EVENT));
     } catch (error: any) {
       setErr(error?.message || t("category_dialog.failed_update_value"));
@@ -150,6 +159,9 @@ export default function CategoryDialog({
       );
       return;
     }
+    invalidateGridResource(gridId, "categories");
+    invalidateGridResource(gridId, "category_values");
+    invalidateGridScreenContext(gridId, "draft");
     onOpenChange(false);
     onDeleted?.();
     if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CATEGORY_VALUES_UPDATED_EVENT));

@@ -94,7 +94,7 @@ export default async function GridCellsPage({
   const gridBase = `/grid/${encodeURIComponent(grid.grid_code || code)}`;
 
   let cells: any[] = [];
-  let bundles: { id: number | string; name?: string }[] = [];
+  let bundles: { id: number | string; name?: string; units?: unknown[] }[] = [];
   let usedCellsFallback = false;
   try {
     const payload = await backendFetchJSON<any>(gridCellCardsPath(id));
@@ -105,6 +105,7 @@ export default async function GridCellsPage({
       .map((bundle: any) => ({
         id: bundle.id,
         name: readBundleLabel(bundle) || `Bundle ${bundle.id}`,
+        units: Array.isArray(bundle.units) ? bundle.units : [],
       }));
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {

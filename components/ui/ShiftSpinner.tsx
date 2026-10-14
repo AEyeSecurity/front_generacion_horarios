@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/lib/use-i18n";
+
 type ShiftSpinnerProps = {
   size?: "sm" | "md" | "lg";
   label?: string;
@@ -13,7 +15,8 @@ const SIZE_CLASS: Record<NonNullable<ShiftSpinnerProps["size"]>, string> = {
 };
 
 export default function ShiftSpinner({ size = "md", label, className = "" }: ShiftSpinnerProps) {
-  const accessibleLabel = label?.trim() || "Loading";
+  const { t } = useI18n();
+  const accessibleLabel = label?.trim() || t("common.loading");
 
   return (
     <div

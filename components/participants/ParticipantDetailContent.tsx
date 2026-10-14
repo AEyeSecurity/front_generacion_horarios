@@ -15,6 +15,7 @@ import ParticipantScheduleOverlay from "@/components/participants/ParticipantSch
 import { GradualBlur } from "@/components/animations";
 import { useI18n } from "@/lib/use-i18n";
 import DeleteDropBubble from "@/components/layout/DeleteDropBubble";
+import { fetchGridScreenContext } from "@/lib/screen-context";
 
 type Rule = {
   id: number;
@@ -349,9 +350,9 @@ export default function ParticipantDetailContent({
 
   const loadParticipantForEdit = useCallback(async () => {
     const res = await fetch(`/api/participants/${encodeURIComponent(String(participantId))}`, { cache: "no-store" });
-    if (!res.ok) throw new Error(`Failed (${res.status})`);
+    if (!res.ok) throw new Error(t("participant_detail.failed_status", { status: res.status }));
     const payload = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!payload) throw new Error("Invalid participant payload");
+    if (!payload) throw new Error(t("participant_detail.invalid_payload"));
     const next: EditableParticipant = {
       id: Number(payload.id ?? participantId),
       name: String(payload.name ?? "").trim(),
@@ -367,7 +368,7 @@ export default function ParticipantDetailContent({
     };
     setEditParticipant(next);
     setDisplayParticipantName(formatParticipantName(next, participantName));
-  }, [participantId, participantName]);
+  }, [participantId, participantName, t]);
 
   useEffect(() => {
     let active = true;
@@ -389,42 +390,12 @@ export default function ParticipantDetailContent({
 
     (async () => {
       try {
-        const screenContextEndpoints = [
-          `/api/grids/${gridId}/screen-context/?view=draft`,
-          `/api/grids/${gridId}/screen-context/?view=published`,
-        ];
-        let found = false;
-        for (const endpoint of screenContextEndpoints) {
-          const res = await fetch(endpoint, { cache: "no-store" }).catch(() => null);
-          if (!res || !res.ok) continue;
-          const payload = await res.json().catch(() => null);
-          if (hasPlacementForParticipant(payload)) {
-            found = true;
-            break;
-          }
-        }
-        if (found) {
-          if (active) setHasParticipantPlacement((prev) => (prev === true ? prev : true));
-          return;
-        }
-
-        const endpoints = [
-          `/api/grids/${gridId}/schedule/`,
-          `/api/grids/${gridId}/schedule`,
-          `/api/grids/${gridId}/published-schedule/`,
-          `/api/grids/${gridId}/published-schedule`,
-        ];
-        let fallbackFound = false;
-        for (const endpoint of endpoints) {
-          const res = await fetch(endpoint, { cache: "no-store" }).catch(() => null);
-          if (!res || !res.ok) continue;
-          const payload = await res.json().catch(() => null);
-          if (hasPlacementForParticipant(payload)) {
-            fallbackFound = true;
-            break;
-          }
-        }
-        if (active) setHasParticipantPlacement((prev) => (prev === fallbackFound ? prev : fallbackFound));
+        const contexts = await Promise.all([
+          fetchGridScreenContext(gridId, "draft").catch(() => null),
+          fetchGridScreenContext(gridId, "published").catch(() => null),
+        ]);
+        const found = contexts.some((payload) => hasPlacementForParticipant(payload));
+        if (active) setHasParticipantPlacement((prev) => (prev === found ? prev : found));
       } catch {
         if (active) setHasParticipantPlacement((prev) => (prev === false ? prev : false));
       }
@@ -462,18 +433,11 @@ export default function ParticipantDetailContent({
     (async () => {
       try {
         let total = 0;
-        const endpoints = [
-          `/api/grids/${gridId}/schedule/`,
-          `/api/grids/${gridId}/schedule`,
-          `/api/grids/${gridId}/published-schedule/`,
-          `/api/grids/${gridId}/published-schedule`,
-        ];
-        for (const endpoint of endpoints) {
-          const res = await fetch(endpoint, { cache: "no-store" }).catch(() => null);
-          if (!res || !res.ok) continue;
-          const payload = await res.json().catch(() => null);
-          total += countInPayload(payload);
-        }
+        const contexts = await Promise.all([
+          fetchGridScreenContext(gridId, "draft").catch(() => null),
+          fetchGridScreenContext(gridId, "published").catch(() => null),
+        ]);
+        for (const payload of contexts) total += countInPayload(payload);
         if (active) setLinkedPlacementsCount((prev) => (prev === total ? prev : total));
       } catch {
         if (active) setLinkedPlacementsCount((prev) => (prev === 0 ? prev : 0));
@@ -505,11 +469,11 @@ export default function ParticipantDetailContent({
 
   const fetchParticipantRules = useCallback(async (): Promise<Rule[]> => {
     const res = await fetch(`/api/availability_rules?participant=${participantId}`, { cache: "no-store" });
-    if (!res.ok) throw new Error(`Failed to fetch rules (${res.status})`);
+    if (!res.ok) throw new Error(t("participant_detail.failed_fetch_rules_status", { status: res.status }));
     const data = await res.json().catch(() => ([]));
     const list = Array.isArray(data) ? data : data.results ?? [];
     return list.map(normalizeRuleRecord).filter((value: Rule | null): value is Rule => Boolean(value));
-  }, [participantId]);
+  }, [participantId, t]);
 
   const reloadParticipantRules = useCallback(async () => {
     const nextRules = await fetchParticipantRules();
@@ -1395,7 +1359,7 @@ export default function ParticipantDetailContent({
             className={`absolute top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-gray-100 transition-[left,background-color] duration-200 z-10 ${
               commentsPanelOpen ? "-left-4" : "left-0"
             }`}
-            title="Back to grid"
+            title={t("participant_detail.back_to_grid")}
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </Link>
@@ -1404,7 +1368,7 @@ export default function ParticipantDetailContent({
             <div className="flex items-center justify-center gap-2">
               <h1
                 className={`text-xl md:text-2xl font-semibold ${canManageRules && !participantActionsDisabled ? "cursor-pointer" : ""}`}
-                title={canManageRules && !participantActionsDisabled ? "Double click to edit participant" : undefined}
+                title={canManageRules && !participantActionsDisabled ? t("participant_detail.edit_hint") : undefined}
                 onDoubleClick={async () => {
                   if (!canManageRules || participantActionsDisabled) return;
                   try {
@@ -1426,7 +1390,7 @@ export default function ParticipantDetailContent({
                 {displayParticipantName}
               </h1>
               {participantLinkedState ? (
-                <span title="Linked participant">
+                <span title={t("participant_detail.linked_participant")}>
                   <BadgeCheck className="w-5 h-5 text-emerald-600" />
                 </span>
               ) : participantActionsDisabled ? null : (
@@ -1446,7 +1410,7 @@ export default function ParticipantDetailContent({
                 onClick={() => setParticipantView("schedule")}
                 className={view === "schedule" ? "font-semibold text-gray-800" : "hover:text-gray-700"}
               >
-                Schedule
+                {t("participant_detail.schedule")}
               </button>
               {canViewRules && (
                 <>
@@ -1457,7 +1421,7 @@ export default function ParticipantDetailContent({
                     disabled={participantActionsDisabled}
                     className={view === "rules" ? "font-semibold text-gray-800" : "hover:text-gray-700"}
                   >
-                    Availability Rules
+                    {t("participant_detail.availability_rules")}
                   </button>
                 </>
               )}
@@ -1489,7 +1453,7 @@ export default function ParticipantDetailContent({
         <div className="fixed right-4 top-1/2 z-[160] -translate-y-1/2 pointer-events-none">
           <button
             type="button"
-            title="Comments"
+            title={t("participant_detail.comments")}
             onClick={() => {
               setParticipantView("schedule");
               setInlineAddOpen(false);
@@ -1837,7 +1801,7 @@ export default function ParticipantDetailContent({
             ref={ruleDeleteDropRef}
             visible={Boolean(ruleMove)}
             active={isRuleDeleteDropActive}
-            title="Drop here to delete rule"
+            title={t("participant_detail.drop_to_delete_rule")}
             dataAttribute="data-jiggle-delete-drop"
           />
         </div>
@@ -2005,9 +1969,9 @@ export default function ParticipantDetailContent({
               <div className="font-medium">{t("participant_detail.danger_zone")}</div>
               <div className="text-sm text-gray-600">
                 {linkedPlacementsLoading
-                  ? t("common.loading") || "Loading..."
+                  ? t("common.loading")
                   : linkedPlacementsCount > 0
-                  ? `Linked placements detected: ${linkedPlacementsCount}. Changes here can affect the same scheduling constraints shown when deleting participants.`
+                  ? t("participant_detail.linked_placements_warning", { count: linkedPlacementsCount })
                   : t("participant_detail.delete_participant_with_rules")}
               </div>
             </div>

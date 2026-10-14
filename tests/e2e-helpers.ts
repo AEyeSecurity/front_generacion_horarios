@@ -259,9 +259,13 @@ export async function createMinimalCell(
     participantId: number | string;
     timeRangeId?: number | string | null;
     name?: string;
+    durationMinutes?: number;
+    splitPartsMin?: number[];
   },
 ) {
-  const durationMinutes = 60;
+  const durationMinutes = Math.max(1, Math.round(input.durationMinutes ?? 60));
+  const splitPartsMin = (input.splitPartsMin ?? [durationMinutes]).map((part) => Math.max(1, Math.round(part)));
+  const divisionDays = Math.max(1, splitPartsMin.length);
   const raw = await requestJson<Record<string, unknown>>(page, "POST", "/api/cells", {
     grid: input.gridId,
     name: input.name ?? uniqueName("E2E Cell"),
@@ -269,13 +273,13 @@ export async function createMinimalCell(
     duration_minutes: durationMinutes,
     duration_min: durationMinutes,
     quantity: 1,
-    split_parts_min: [durationMinutes],
+    split_parts_min: splitPartsMin,
     split_order_flexible: false,
-    division_days: 1,
-    div_days: 1,
+    division_days: divisionDays,
+    div_days: divisionDays,
     division_days_config: {
-      count: 1,
-      parts_min: [durationMinutes],
+      count: divisionDays,
+      parts_min: splitPartsMin,
       order_flexible: false,
     },
     time_range: input.timeRangeId ? Number(input.timeRangeId) : null,

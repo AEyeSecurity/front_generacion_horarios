@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { ScheduleRenderModel, ScheduleTabScope } from "@/components/grid/GridSchedulePanel";
 import SolveOverlay from "@/components/grid/SolveOverlay";
 import type { ScheduleViewMode } from "@/lib/schedule-view";
+import type { DraftMutationNotice } from "@/lib/draft-mutation";
+import { useI18n } from "@/lib/use-i18n";
 
 type Unit = { id: number | string; name: string };
 type UnitNature = "audience" | "space" | "internal" | "none";
@@ -14,7 +16,6 @@ const UNIT_TABS_HIGHLIGHT_EVENT = "shift:unit-tabs-highlight";
 const DOCK_FEEDBACK_HIGHLIGHT_EVENT = "shift:dock-feedback-highlight";
 const NO_UNIT_TAB_ID = "__no_unit__";
 const GLOBAL_BLOCKAGE_TAB_ID = "__global__";
-const GLOBAL_BLOCKAGE_TAB_LABEL = "Global";
 
 export default function UnitTabs({
   gridId,
@@ -58,7 +59,7 @@ export default function UnitTabs({
   enablePinning?: boolean;
   scheduleViewMode?: ScheduleViewMode;
   externalRefreshTick?: number;
-  onDraftMutated?: () => void;
+  onDraftMutated?: (notice?: DraftMutationNotice) => void;
   onScheduleLoadingChange?: (loading: boolean, ready: boolean) => void;
   onSelectedScopeChange?: (unitIds: string[]) => void;
   commentsPanelOpen?: boolean;
@@ -67,6 +68,7 @@ export default function UnitTabs({
   historyGridCode?: string | null;
   unitNature?: UnitNature | null;
 }) {
+  const { t } = useI18n();
   const [selected, setSelected] = useState<string | null>(null);
   const [hasUnitlessPlacements, setHasUnitlessPlacements] = useState(false);
   const [hasNoUnitCells, setHasNoUnitCells] = useState(false);
@@ -111,21 +113,21 @@ export default function UnitTabs({
   const tabs = useMemo<RenderTab[]>(() => {
     if (unitTabs.length === 0) {
       if (blockageGlobalModeActive) {
-        return [{ id: GLOBAL_BLOCKAGE_TAB_ID, name: GLOBAL_BLOCKAGE_TAB_LABEL, unitIds: [], isVirtual: false }];
+        return [{ id: GLOBAL_BLOCKAGE_TAB_ID, name: t("grid_schedule.global"), unitIds: [], isVirtual: false }];
       }
-      return [{ id: NO_UNIT_TAB_ID, name: "No-Unit", unitIds: [], isVirtual: false }];
+      return [{ id: NO_UNIT_TAB_ID, name: t("grid_schedule.no_unit"), unitIds: [], isVirtual: false }];
     }
 
     const showGlobeGlobalTab = blockageGlobalModeActive;
     const showNoUnitTab = !blockageGlobalModeActive && (hasUnitlessPlacements || hasNoUnitCells);
     if (showGlobeGlobalTab) {
-      return [{ id: GLOBAL_BLOCKAGE_TAB_ID, name: GLOBAL_BLOCKAGE_TAB_LABEL, unitIds: [], isVirtual: false }, ...unitTabs];
+      return [{ id: GLOBAL_BLOCKAGE_TAB_ID, name: t("grid_schedule.global"), unitIds: [], isVirtual: false }, ...unitTabs];
     }
     if (showNoUnitTab) {
-      return [{ id: NO_UNIT_TAB_ID, name: "No-Unit", unitIds: [], isVirtual: false }, ...unitTabs];
+      return [{ id: NO_UNIT_TAB_ID, name: t("grid_schedule.no_unit"), unitIds: [], isVirtual: false }, ...unitTabs];
     }
     return unitTabs;
-  }, [blockageGlobalModeActive, hasNoUnitCells, hasUnitlessPlacements, unitTabs]);
+  }, [blockageGlobalModeActive, hasNoUnitCells, hasUnitlessPlacements, t, unitTabs]);
 
   const firstSelectableTab =
     unitTabs.length === 0

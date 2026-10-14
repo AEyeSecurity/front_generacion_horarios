@@ -33,7 +33,7 @@ export default function EntityPageHeader({
         <Link
           href={backHref}
           className="p-2 rounded-full hover:bg-gray-100 transition-colors"
-          title="Back to grid"
+          title={t("participant_detail.back_to_grid")}
         >
           <ArrowLeft className="w-5 h-5 text-gray-600" />
         </Link>

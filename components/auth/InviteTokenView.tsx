@@ -648,7 +648,7 @@ export default function InviteTokenView({ token }: { token: string }) {
       {error && <div className="text-sm text-red-600">{error}</div>}
       {isAuthenticated === false && !isLinkInvite && (
         <p className="text-sm text-gray-600">
-          <Link href="/login" className="underline">{t("invite_token.log_in")}</Link> or{" "}
+          <Link href="/login" className="underline">{t("invite_token.log_in")}</Link> {t("auth.or")}{" "}
           <Link href="/register" className="underline">{t("invite_token.create_account")}</Link>.
         </p>
       )}

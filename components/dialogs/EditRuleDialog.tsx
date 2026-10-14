@@ -86,7 +86,7 @@ export default function EditRuleDialog({
     (async () => {
       try {
         const r = await fetch(`/api/availability_rules/${ruleId}`, { cache: "no-store" });
-        if (!r.ok) throw new Error(`Failed (${r.status})`);
+        if (!r.ok) throw new Error(t("errors.failed_status", { status: r.status }));
         const data = await r.json();
         setPreference(data.preference);
         setDay(Number(data.day_of_week));
@@ -98,7 +98,7 @@ export default function EditRuleDialog({
         setLoading(false);
       }
     })();
-  }, [open, ruleId]);
+  }, [open, ruleId, t]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -116,7 +116,7 @@ export default function EditRuleDialog({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || `Failed to update rule (${res.status})`);
+        throw new Error(txt || t("edit_rule.failed_update_status", { status: res.status }));
       }
       onSaved?.();
       onOpenChange(false);
@@ -135,7 +135,7 @@ export default function EditRuleDialog({
       const res = await fetch(`/api/availability_rules/${ruleId}`, { method: "DELETE" });
       if (!res.ok && res.status !== 204) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || `Failed to delete rule (${res.status})`);
+        throw new Error(txt || t("edit_rule.failed_delete_status", { status: res.status }));
       }
       onSaved?.();
       onOpenChange(false);

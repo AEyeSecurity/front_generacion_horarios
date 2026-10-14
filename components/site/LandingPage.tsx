@@ -109,14 +109,14 @@ export default function LandingPage({ language = "en-US" }: LandingPageProps) {
           <div className="flex items-center justify-center gap-10">
             <Image
               src="/polo52.png"
-              alt="Polo 52"
+              alt={t("landing.polo_52_alt")}
               width={50}
               height={36}
               priority
             />
             <Image
               src="/ucc.png"
-              alt="Universidad Catolica de Cordoba"
+              alt={t("landing.ucc_alt")}
               width={50}
               height={36}
               priority

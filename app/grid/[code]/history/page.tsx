@@ -6,6 +6,7 @@ import { requireUserOrRedirect } from "@/lib/auth";
 import { readGridTierEnabled } from "@/lib/grid-tier";
 import type { Role } from "@/lib/types";
 import { resolveGridByCode, resolveScheduleByGridCode } from "../_helpers";
+import { getTranslation } from "@/lib/i18n";
 
 const EN_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -19,6 +20,10 @@ export default async function GridHistoryPage({
   const gridId = String(grid.id);
   const gridCode = grid.grid_code || code;
   const me = await requireUserOrRedirect(`/grid/${encodeURIComponent(gridCode)}/history`);
+  const t = (key: Parameters<typeof getTranslation>[1], values?: Record<string, string | number>) =>
+    getTranslation(me.preferred_language, key).replace(/\{(\w+)\}/g, (_, token: string) =>
+      Object.prototype.hasOwnProperty.call(values ?? {}, token) ? String(values?.[token]) : `{${token}}`,
+    );
 
   const toMin = (hhmmss: string) => {
     const [h, m] = hhmmss.split(":").map(Number);
@@ -32,19 +37,24 @@ export default async function GridHistoryPage({
   const ROW_PX = 64;
   const TIME_COL_PX = 100;
 
+  let initialScreenContext: Record<string, unknown> | null = null;
   let units: { id: number | string; name: string }[] = [];
+  let contextParticipants: Record<string, unknown>[] = [];
   try {
-    const udata = await backendFetchJSON<Record<string, unknown> | Record<string, unknown>[]>(
-      `/api/units/?grid=${gridId}`,
+    initialScreenContext = await backendFetchJSON<Record<string, unknown>>(
+      `/api/grids/${encodeURIComponent(gridId)}/screen-context/?view=published`,
     );
-    const list = Array.isArray(udata)
-      ? udata
-      : Array.isArray((udata as { results?: unknown[] }).results)
-      ? ((udata as { results?: unknown[] }).results as Record<string, unknown>[])
-      : [];
+    const contextList = (value: unknown): Record<string, unknown>[] =>
+      Array.isArray(value)
+        ? (value as Record<string, unknown>[])
+        : value && typeof value === "object" && Array.isArray((value as { results?: unknown[] }).results)
+        ? ((value as { results: Record<string, unknown>[] }).results ?? [])
+        : [];
+    const list = contextList(initialScreenContext.units);
+    contextParticipants = contextList(initialScreenContext.participants);
     units = list.map((u) => ({
       id: u.id as number | string,
-      name: (u.name as string | undefined) || `Unit ${String(u.id)}`,
+      name: (u.name as string | undefined) || t("format.unit_with_id", { id: String(u.id) }),
     }));
   } catch {}
 
@@ -65,19 +75,9 @@ export default async function GridHistoryPage({
       role = ((mine?.role as Role | undefined) ?? "viewer") as Role;
     } catch {}
 
-    try {
-      const pdata = await backendFetchJSON<Record<string, unknown> | Record<string, unknown>[]>(
-        `/api/participants/?grid=${gridId}`,
-      );
-      const participants = Array.isArray(pdata)
-        ? pdata
-        : Array.isArray((pdata as { results?: unknown[] }).results)
-        ? ((pdata as { results?: unknown[] }).results as Record<string, unknown>[])
-        : [];
-      const mine = participants.find((participant) => Number(participant.user_id) === Number(me.id));
-      if (mine?.id != null) selfPid = Number(mine.id);
-      if (mine?.grid_participant_id != null) selfRoutePid = mine.grid_participant_id as string | number;
-    } catch {}
+    const mine = contextParticipants.find((participant) => Number(participant.user_id) === Number(me.id));
+    if (mine?.id != null) selfPid = Number(mine.id);
+    if (mine?.grid_participant_id != null) selfRoutePid = mine.grid_participant_id as string | number;
   }
 
   let hasSolved = false;
@@ -91,13 +91,13 @@ export default async function GridHistoryPage({
       <div className="p-4">
         <div className="w-[80%] mx-auto">
           <div className="rounded-lg border bg-white p-6 text-sm text-gray-700">
-            No published schedule versions are available yet.
+            {t("schedule.no_published_versions")}
             <div className="mt-3">
               <Link
                 href={`/grid/${encodeURIComponent(gridCode)}`}
                 className="inline-flex rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
               >
-                Back to schedule
+                {t("grid_topbar.back_to_schedule")}
               </Link>
             </div>
           </div>
@@ -137,6 +137,7 @@ export default async function GridHistoryPage({
               timeColPx={TIME_COL_PX}
               historyMode
               historyGridCode={gridCode}
+              initialScreenContext={initialScreenContext}
             />
           </div>
         </div>

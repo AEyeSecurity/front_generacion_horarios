@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/lib/use-i18n";
+
 type Props = {
   step: 1 | 2;
   canGoStep2?: boolean;
@@ -11,6 +13,7 @@ const stepCircleBase =
   "w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-semibold transition-colors";
 
 export default function TwoStepIndicator({ step, canGoStep2 = true, onStepChange, className = "" }: Props) {
+  const { t } = useI18n();
   return (
     <div className={`flex items-center justify-center gap-2 select-none ${className}`}>
       <button
@@ -21,7 +24,7 @@ export default function TwoStepIndicator({ step, canGoStep2 = true, onStepChange
             ? "bg-black text-white border-black shadow-[0_0_0_3px_rgba(0,0,0,0.18)]"
             : "bg-black text-white border-black"
         }`}
-        aria-label="Go to step 1"
+        aria-label={t("common.go_to_step", { step: 1 })}
       >
         1
       </button>
@@ -37,7 +40,7 @@ export default function TwoStepIndicator({ step, canGoStep2 = true, onStepChange
             ? "bg-black text-white border-black shadow-[0_0_0_3px_rgba(0,0,0,0.18)]"
             : "bg-white text-gray-500 border-gray-300"
         } disabled:opacity-40`}
-        aria-label="Go to step 2"
+        aria-label={t("common.go_to_step", { step: 2 })}
       >
         2
       </button>
