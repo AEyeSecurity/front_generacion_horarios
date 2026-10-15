@@ -39,17 +39,13 @@ export async function GET(req: Request) {
 
   // First attempt: /api/users/ with current access if present
   let r = await tryPath("/api/users/", access || undefined);
-  if (!r.ok && r.status === 404) {
-    // Fallback path many backends use
-    r = await tryPath("/api/auth/users/", access || undefined);
-  }
   if (r.ok) return NextResponse.json(await r.json(), { status: r.status });
   if (r.status !== 401) {
     const text = await r.text().catch(() => "error");
     return NextResponse.json({ error: text }, { status: r.status });
   }
 
-  // Refresh and retry both paths
+  // Refresh and retry the canonical Django endpoint.
   const refreshed = await refreshTokens();
   if ("error" in refreshed) {
     const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
@@ -59,9 +55,6 @@ export async function GET(req: Request) {
   const { tokens, refresh } = refreshed;
 
   r = await tryPath("/api/users/", tokens.access);
-  if (!r.ok && r.status === 404) {
-    r = await tryPath("/api/auth/users/", tokens.access);
-  }
 
   const data = await r.json().catch(() => ({}));
   const out = NextResponse.json(data, { status: r.status });

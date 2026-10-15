@@ -53,11 +53,7 @@ async function fetchParticipantTabs(gridId: string): Promise<ParticipantTabEntry
   try {
     return await read(`/api/participants/?grid=${gridId}`);
   } catch {
-    try {
-      return await read(`/api/participants?grid=${gridId}`);
-    } catch {
-      return [];
-    }
+    return [];
   }
 }
 
@@ -66,12 +62,7 @@ async function fetchParticipants(gridId: string): Promise<any[]> {
     const data = await backendFetchJSON<any>(`/api/participants/?grid=${gridId}`);
     return Array.isArray(data) ? data : data.results ?? [];
   } catch {
-    try {
-      const data = await backendFetchJSON<any>(`/api/participants?grid=${gridId}`);
-      return Array.isArray(data) ? data : data.results ?? [];
-    } catch {
-      return [];
-    }
+    return [];
   }
 }
 

@@ -23,11 +23,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       // mirror browser cookies to backend in case it's used for context
       cookie: req.headers.get("cookie") || "",
     };
-    // DRF suele aceptar con y sin slash; probamos ambos
-    let res = await fetch(`${B}/api/grids/${id}/`, { method: "DELETE", headers, cache: "no-store" });
-    if (res.status === 404) {
-      res = await fetch(`${B}/api/grids/${id}`, { method: "DELETE", headers, cache: "no-store" });
-    }
+    const res = await fetch(`${B}/api/grids/${id}/`, { method: "DELETE", headers, cache: "no-store" });
     return res;
   };
 
@@ -87,9 +83,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   let res: Response;
   try {
     res = await fetch(`${B}/api/grids/${id}/`, { headers, cache: "no-store" });
-    if (res.status === 404) {
-      res = await fetch(`${B}/api/grids/${id}`, { headers, cache: "no-store" });
-    }
   } catch {
     return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
   }
@@ -113,9 +106,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     };
     try {
       res = await fetch(`${B}/api/grids/${id}/`, { headers: retryHeaders, cache: "no-store" });
-      if (res.status === 404) {
-        res = await fetch(`${B}/api/grids/${id}`, { headers: retryHeaders, cache: "no-store" });
-      }
     } catch {
       return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
     }
@@ -155,14 +145,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       body,
       cache: "no-store",
     });
-    if (res.status === 404) {
-      res = await fetch(`${B}/api/grids/${id}`, {
-        method: "PATCH",
-        headers,
-        body,
-        cache: "no-store",
-      });
-    }
   } catch {
     return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
   }
@@ -192,14 +174,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         body,
         cache: "no-store",
       });
-      if (res.status === 404) {
-        res = await fetch(`${B}/api/grids/${id}`, {
-          method: "PATCH",
-          headers: retryHeaders,
-          body,
-          cache: "no-store",
-        });
-      }
     } catch {
       return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
     }

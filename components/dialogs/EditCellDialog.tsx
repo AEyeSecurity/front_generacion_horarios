@@ -23,7 +23,7 @@ import {
   type TierCounts,
   type TierPools,
 } from "@/components/dialogs/cell-staffing";
-import { CELL_COLOR_OPTIONS_NO_RED as COLOR_OPTIONS } from "@/lib/cell-colors";
+import CellColorGrid from "@/components/dialogs/CellColorGrid";
 import { useI18n } from "@/lib/use-i18n";
 import { invalidateGridResource, invalidateGridScreenContext } from "@/lib/screen-context";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -546,7 +546,6 @@ export default function EditCellDialog({
   const [maxSplitDays, setMaxSplitDays] = React.useState<number>(7);
   const [timeRangeId, setTimeRangeId] = React.useState<string>("");
   const [colorHex, setColorHex] = React.useState<string | null>(null);
-  const [colorMenuOpen, setColorMenuOpen] = React.useState(false);
   const [unitIds, setUnitIds] = React.useState<string[]>([]);
   const [bundleUnitSets, setBundleUnitSets] = React.useState<string[][]>([]);
   const [editingBundleIndex, setEditingBundleIndex] = React.useState<number | null>(null);
@@ -1641,21 +1640,25 @@ export default function EditCellDialog({
                 </div>
                 <div>
                   <label className="mb-1 block h-5 whitespace-nowrap text-sm">{t("create_cell.duration_cells_required")}</label>
-                  <input
-                    className="h-10 w-full rounded border px-3 py-2 text-sm"
-                    type="number"
-                    min={1}
-                    max={maxDurationCellsAllowed ?? undefined}
-                    step={1}
-                    value={durationCells}
-                    onChange={(e) => {
-                      const raw = Math.max(1, Number(e.target.value) || 1);
-                      const capped = maxDurationCellsAllowed == null ? raw : Math.min(raw, maxDurationCellsAllowed);
-                      setDurationCells(capped);
-                    }}
-                    required
-                  />
-                  <div className="text-xs text-gray-500 mt-1">{t("create_cell.total_minutes", { minutes: durationCells * cellMin })}</div>
+                  <div className="flex h-10 w-full items-center rounded border bg-white focus-within:ring-2 focus-within:ring-black/15">
+                    <input
+                      className="h-full min-w-0 flex-1 rounded-l bg-transparent px-3 py-2 text-sm outline-none"
+                      type="number"
+                      min={1}
+                      max={maxDurationCellsAllowed ?? undefined}
+                      step={1}
+                      value={durationCells}
+                      onChange={(e) => {
+                        const raw = Math.max(1, Number(e.target.value) || 1);
+                        const capped = maxDurationCellsAllowed == null ? raw : Math.min(raw, maxDurationCellsAllowed);
+                        setDurationCells(capped);
+                      }}
+                      required
+                    />
+                    <span className="shrink-0 pr-3 text-xs text-gray-500">
+                      {t("create_cell.duration_minutes_legend", { minutes: durationCellsSafe * cellMin })}
+                    </span>
+                  </div>
                 </div>
                 {canShowMultiDayToggle && (
                   <div>
@@ -1685,37 +1688,6 @@ export default function EditCellDialog({
                     </select>
                   </div>
                 )}
-                <div className="sm:col-span-4">
-                  <label className="mb-1 block h-5 text-sm">{t("create_cell.color")}</label>
-                  <div className="flex max-w-full flex-col items-start">
-                    <button
-                      type="button"
-                      onClick={() => setColorMenuOpen((v) => !v)}
-                      className="h-10 w-10 rounded-full border border-gray-300 shadow-sm flex items-center justify-center text-gray-500"
-                      style={{ backgroundColor: colorHex || "#ffffff" }}
-                      aria-label={t("create_cell.select_color")}
-                    >
-                      {!colorHex ? <span className="text-base leading-none">/</span> : null}
-                    </button>
-                    {colorMenuOpen && (
-                      <div className="z-10 mt-2 max-w-full rounded-md border bg-white p-2 shadow-lg">
-                        <div className="flex max-w-full flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => { setColorHex(null); setColorMenuOpen(false); }}
-                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-gray-500 ${colorHex === null ? "ring-2 ring-black border-black" : "border-gray-300"}`}
-                            aria-label={t("create_cell.no_color")}
-                          >
-                            <span className="text-sm leading-none">/</span>
-                          </button>
-                          {COLOR_OPTIONS.map((hex) => (
-                            <button key={hex} type="button" onClick={() => { setColorHex(hex); setColorMenuOpen(false); }} className={`h-8 w-8 shrink-0 rounded-full border ${colorHex === hex ? "ring-2 ring-black border-black" : "border-gray-300"}`} style={{ backgroundColor: hex }} />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
               </div>
               {canShowMultiDayToggle && !canEnableMultiDay && (
                 <div className="text-xs text-gray-500">
@@ -1723,9 +1695,18 @@ export default function EditCellDialog({
                 </div>
               )}
 
-              <div>
-                <label className="block text-sm mb-1">{t("create_cell.description")}</label>
-                <textarea className="w-full border rounded px-3 py-2 text-sm resize-none" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm">{t("create_cell.description")}</label>
+                  <textarea className="w-full resize-none rounded border px-3 py-2 text-sm" rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
+                </div>
+                <CellColorGrid
+                  value={colorHex}
+                  onChange={setColorHex}
+                  label={t("create_cell.color")}
+                  noColorLabel={t("create_cell.no_color")}
+                  selectColorLabel={t("create_cell.select_color")}
+                />
               </div>
 
             </>

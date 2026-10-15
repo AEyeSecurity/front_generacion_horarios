@@ -1,0 +1,7630 @@
+{
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/auth/google",
+      "file": "app/api/auth/google/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/auth/google/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "file": "app/api/auth/login/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/auth/login/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "file": "app/api/auth/logout/route.ts",
+      "upstream": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/password-change",
+      "file": "app/api/auth/password-change/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/auth/whoami/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/password-change/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/password-reset/confirm",
+      "file": "app/api/auth/password-reset/confirm/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/auth/password-reset/confirm/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/password-reset",
+      "file": "app/api/auth/password-reset/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/auth/password-reset/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/refresh",
+      "file": "app/api/auth/refresh/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/register",
+      "file": "app/api/auth/register/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/auth/register/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/verify-email/confirm",
+      "file": "app/api/auth/verify-email/confirm/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/auth/verify-email/confirm/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/verify-email",
+      "file": "app/api/auth/verify-email/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/auth/verify-email/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/availability_rules",
+      "file": "app/api/availability_rules/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/availability-rules/",
+          "query": "?grid=123&token=audit-token"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/availability_rules",
+      "file": "app/api/availability_rules/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/availability-rules/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/availability_rules/[id]",
+      "file": "app/api/availability_rules/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/availability-rules/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/availability_rules/[id]",
+      "file": "app/api/availability_rules/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "PATCH",
+          "path": "/api/availability-rules/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/availability_rules/[id]",
+      "file": "app/api/availability_rules/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "DELETE",
+          "path": "/api/availability-rules/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/bundles",
+      "file": "app/api/bundles/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/bundles/",
+          "query": "?grid=123&token=audit-token"
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/bundles",
+      "file": "app/api/bundles/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/bundles/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/categories",
+      "file": "app/api/categories/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/categories/",
+          "query": "?grid=123&token=audit-token"
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/categories",
+      "file": "app/api/categories/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/categories/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/categories/[id]",
+      "file": "app/api/categories/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "PATCH",
+          "path": "/api/categories/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/categories/[id]",
+      "file": "app/api/categories/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "DELETE",
+          "path": "/api/categories/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/category_values",
+      "file": "app/api/category_values/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/category-values/",
+          "query": "?grid=123&token=audit-token"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/category_values",
+      "file": "app/api/category_values/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/category-values/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/category_values/[id]",
+      "file": "app/api/category_values/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "PATCH",
+          "path": "/api/category-values/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/category_values/[id]",
+      "file": "app/api/category_values/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "DELETE",
+          "path": "/api/category-values/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/cells/bulk_create",
+      "file": "app/api/cells/bulk_create/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/cells/bulk_create/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/cells",
+      "file": "app/api/cells/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/cells/",
+          "query": "?grid=123&token=audit-token"
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/cells",
+      "file": "app/api/cells/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/cells/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/cells/[id]/extend_series",
+      "file": "app/api/cells/[id]/extend_series/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/cells/123/extend_series/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/cells/[id]/form-bootstrap",
+      "file": "app/api/cells/[id]/form-bootstrap/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/cells/123/form-bootstrap/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/cells/[id]",
+      "file": "app/api/cells/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/cells/123/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/cells/[id]",
+      "file": "app/api/cells/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "PATCH",
+          "path": "/api/cells/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/cells/[id]",
+      "file": "app/api/cells/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "DELETE",
+          "path": "/api/cells/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/code/[code]/cells/[cell_id]/place",
+      "file": "app/api/grids/code/[code]/cells/[cell_id]/place/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/code/AUDITCODE/cells/456/place/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/code/[code]/cells/[cell_id]/placement-preview",
+      "file": "app/api/grids/code/[code]/cells/[cell_id]/placement-preview/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/code/AUDITCODE/cells/456/placement-preview/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/code/[code]/draft-structure/apply",
+      "file": "app/api/grids/code/[code]/draft-structure/apply/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/code/AUDITCODE/draft-structure/apply/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/code/[code]/draft-structure/preview",
+      "file": "app/api/grids/code/[code]/draft-structure/preview/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/code/AUDITCODE/draft-structure/preview/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/code/[code]/precheck",
+      "file": "app/api/grids/code/[code]/precheck/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/code/AUDITCODE/precheck/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/code/[code]/published-schedule",
+      "file": "app/api/grids/code/[code]/published-schedule/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/code/AUDITCODE/published-schedule/",
+          "query": "?grid=123&token=audit-token"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/code/[code]/published-schedules",
+      "file": "app/api/grids/code/[code]/published-schedules/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/code/AUDITCODE/published-schedules/",
+          "query": "?grid=123&token=audit-token"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/code/[code]",
+      "file": "app/api/grids/code/[code]/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/code/AUDITCODE/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/code/[code]/schedule/export",
+      "file": "app/api/grids/code/[code]/schedule/export/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/code/AUDITCODE/schedule/export/",
+          "query": "?grid=123&token=audit-token&view=draft"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/code/[code]/schedule/history/redo",
+      "file": "app/api/grids/code/[code]/schedule/history/redo/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/code/AUDITCODE/schedule/history/redo/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/code/[code]/schedule/history",
+      "file": "app/api/grids/code/[code]/schedule/history/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/code/AUDITCODE/schedule/history/",
+          "query": "?grid=123&token=audit-token"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/code/[code]/schedule/history/undo",
+      "file": "app/api/grids/code/[code]/schedule/history/undo/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/code/AUDITCODE/schedule/history/undo/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/code/[code]/schedule/placement-options",
+      "file": "app/api/grids/code/[code]/schedule/placement-options/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/code/AUDITCODE/schedule/placement-options/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/code/[code]/schedule/publish",
+      "file": "app/api/grids/code/[code]/schedule/publish/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/code/AUDITCODE/schedule/publish/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/code/[code]/schedule/restore-published",
+      "file": "app/api/grids/code/[code]/schedule/restore-published/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/code/AUDITCODE/schedule/restore-published/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/code/[code]/schedule",
+      "file": "app/api/grids/code/[code]/schedule/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/code/AUDITCODE/schedule/",
+          "query": "?grid=123&token=audit-token"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/code/[code]/schedule",
+      "file": "app/api/grids/code/[code]/schedule/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/code/AUDITCODE/schedule/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/grids/code/[code]/schedule/visual-order",
+      "file": "app/api/grids/code/[code]/schedule/visual-order/route.ts",
+      "upstream": [
+        {
+          "method": "PATCH",
+          "path": "/api/grids/code/AUDITCODE/schedule/visual-order/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/code/[code]/screen-context",
+      "file": "app/api/grids/code/[code]/screen-context/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/code/AUDITCODE/screen-context/",
+          "query": "?grid=123&token=audit-token"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/code/[code]/solve-candidates",
+      "file": "app/api/grids/code/[code]/solve-candidates/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/code/AUDITCODE/solve-candidates/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/code/[code]/solve-candidates/[run_id]/choose",
+      "file": "app/api/grids/code/[code]/solve-candidates/[run_id]/choose/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/code/AUDITCODE/solve-candidates/789/choose/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/code/[code]/solve-candidates/[run_id]/reject",
+      "file": "app/api/grids/code/[code]/solve-candidates/[run_id]/reject/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/code/AUDITCODE/solve-candidates/789/reject/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/config",
+      "file": "app/api/grids/config/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/config/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids",
+      "file": "app/api/grids/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids",
+      "file": "app/api/grids/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/[id]/cells/cards",
+      "file": "app/api/grids/[id]/cells/cards/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/123/cells/cards/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/[id]/cells/form-options",
+      "file": "app/api/grids/[id]/cells/form-options/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/123/cells/form-options/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/[id]/cells/[cell_id]/place",
+      "file": "app/api/grids/[id]/cells/[cell_id]/place/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/123/cells/456/place/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/grids/123/schedule/placement-options/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/schedule-placements/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/[id]/cells/[cell_id]/placement-preview",
+      "file": "app/api/grids/[id]/cells/[cell_id]/placement-preview/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/123/cells/456/placement-preview/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/[id]/draft-structure/apply",
+      "file": "app/api/grids/[id]/draft-structure/apply/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/123/draft-structure/apply/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/[id]/draft-structure/preview",
+      "file": "app/api/grids/[id]/draft-structure/preview/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/123/draft-structure/preview/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/[id]/precheck",
+      "file": "app/api/grids/[id]/precheck/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/123/precheck/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/[id]/published-schedule",
+      "file": "app/api/grids/[id]/published-schedule/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/123/published-schedule/",
+          "query": "?grid=123&token=audit-token"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/[id]/published-schedules",
+      "file": "app/api/grids/[id]/published-schedules/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/123/published-schedules/",
+          "query": "?grid=123&token=audit-token"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/[id]",
+      "file": "app/api/grids/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/123/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/grids/[id]",
+      "file": "app/api/grids/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "PATCH",
+          "path": "/api/grids/123/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/grids/[id]",
+      "file": "app/api/grids/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "DELETE",
+          "path": "/api/grids/123/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/[id]/schedule/export",
+      "file": "app/api/grids/[id]/schedule/export/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/123/schedule/export/",
+          "query": "?grid=123&token=audit-token&view=draft"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/[id]/schedule/history/redo",
+      "file": "app/api/grids/[id]/schedule/history/redo/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/123/schedule/history/redo/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/[id]/schedule/history",
+      "file": "app/api/grids/[id]/schedule/history/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/123/schedule/history/",
+          "query": "?grid=123&token=audit-token"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/[id]/schedule/history/undo",
+      "file": "app/api/grids/[id]/schedule/history/undo/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/123/schedule/history/undo/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/[id]/schedule/placement-options",
+      "file": "app/api/grids/[id]/schedule/placement-options/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/123/schedule/placement-options/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/[id]/schedule/publish",
+      "file": "app/api/grids/[id]/schedule/publish/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/123/schedule/publish/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/[id]/schedule/restore-published",
+      "file": "app/api/grids/[id]/schedule/restore-published/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/123/schedule/restore-published/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/[id]/schedule",
+      "file": "app/api/grids/[id]/schedule/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/123/schedule/",
+          "query": "?grid=123&token=audit-token"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/[id]/schedule",
+      "file": "app/api/grids/[id]/schedule/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/123/schedule/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/grids/[id]/schedule/visual-order",
+      "file": "app/api/grids/[id]/schedule/visual-order/route.ts",
+      "upstream": [
+        {
+          "method": "PATCH",
+          "path": "/api/grids/123/schedule/visual-order/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/[id]/screen-context",
+      "file": "app/api/grids/[id]/screen-context/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/123/screen-context/",
+          "query": "?grid=123&token=audit-token"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grids/[id]/solutions",
+      "file": "app/api/grids/[id]/solutions/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grids/123/solutions/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/[id]/solve",
+      "file": "app/api/grids/[id]/solve/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/123/solve/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/[id]/solve-candidates",
+      "file": "app/api/grids/[id]/solve-candidates/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/123/solve-candidates/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/[id]/solve-candidates/[run_id]/choose",
+      "file": "app/api/grids/[id]/solve-candidates/[run_id]/choose/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/123/solve-candidates/789/choose/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/[id]/solve-candidates/[run_id]/reject",
+      "file": "app/api/grids/[id]/solve-candidates/[run_id]/reject/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/123/solve-candidates/789/reject/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/grids/[id]/solver-wizard",
+      "file": "app/api/grids/[id]/solver-wizard/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/grids/123/solver-wizard/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/grid_memberships",
+      "file": "app/api/grid_memberships/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/grid-memberships/",
+          "query": "?grid=123&token=audit-token"
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/invitations/accept",
+      "file": "app/api/invitations/accept/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/invitations/accept/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/invitations/accept-link/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/invitations/decline",
+      "file": "app/api/invitations/decline/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/invitations/decline/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/invitations/incoming",
+      "file": "app/api/invitations/incoming/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/invitations/incoming/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/invitations/resolve",
+      "file": "app/api/invitations/resolve/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/invitations/resolve/",
+          "query": "?token=audit-token"
+        },
+        {
+          "method": "GET",
+          "path": "/api/invitations/resolve-link/",
+          "query": "?token=audit-token"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/invitations",
+      "file": "app/api/invitations/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/invitations/",
+          "query": "?grid=123&token=audit-token"
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/invitations",
+      "file": "app/api/invitations/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/invitations/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/invitations/[id]/cancel",
+      "file": "app/api/invitations/[id]/cancel/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/invitations/123/cancel/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/invitations/[id]/resend",
+      "file": "app/api/invitations/[id]/resend/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/invitations/123/resend/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/participants",
+      "file": "app/api/participants/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/participants/",
+          "query": "?grid=123&token=audit-token"
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/participants",
+      "file": "app/api/participants/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/participants/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/participants/[id]",
+      "file": "app/api/participants/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/participants/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/participants/[id]",
+      "file": "app/api/participants/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "PUT",
+          "path": "/api/participants/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/participants/[id]",
+      "file": "app/api/participants/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "PATCH",
+          "path": "/api/participants/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/participants/[id]",
+      "file": "app/api/participants/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "DELETE",
+          "path": "/api/participants/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/placement-comments",
+      "file": "app/api/placement-comments/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/placement-comments/",
+          "query": "?grid=123&token=audit-token"
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/placement-comments",
+      "file": "app/api/placement-comments/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/placement-comments/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/placement-comments/[id]",
+      "file": "app/api/placement-comments/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "PATCH",
+          "path": "/api/placement-comments/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/placement-comments/[id]",
+      "file": "app/api/placement-comments/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "DELETE",
+          "path": "/api/placement-comments/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/schedule-blockages",
+      "file": "app/api/schedule-blockages/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/schedule-blockages/",
+          "query": "?grid=123&token=audit-token"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/schedule-blockages",
+      "file": "app/api/schedule-blockages/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/schedule-blockages/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/schedule-blockages/[id]",
+      "file": "app/api/schedule-blockages/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "PATCH",
+          "path": "/api/schedule-blockages/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/schedule-blockages/[id]",
+      "file": "app/api/schedule-blockages/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "DELETE",
+          "path": "/api/schedule-blockages/123/",
+          "query": "?grid=123&token=audit-token"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/schedule-placements",
+      "file": "app/api/schedule-placements/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/schedule-placements/",
+          "query": "?grid=123&token=audit-token"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/schedule-placements",
+      "file": "app/api/schedule-placements/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/schedule-placements/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/schedule-placements/[id]",
+      "file": "app/api/schedule-placements/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "PATCH",
+          "path": "/api/schedule-placements/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/schedule-placements/[id]",
+      "file": "app/api/schedule-placements/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "DELETE",
+          "path": "/api/schedule-placements/123/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/staff-members",
+      "file": "app/api/staff-members/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/staff-members/",
+          "query": "?grid=123&token=audit-token"
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/staff-members",
+      "file": "app/api/staff-members/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/staff-members/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/staffs",
+      "file": "app/api/staffs/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/staffs/",
+          "query": "?grid=123&token=audit-token"
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/staffs",
+      "file": "app/api/staffs/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/staffs/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/time_ranges",
+      "file": "app/api/time_ranges/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/time-ranges/",
+          "query": "?grid=123&token=audit-token"
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/time_ranges",
+      "file": "app/api/time_ranges/route.ts",
+      "upstream": [
+        {
+          "method": "POST",
+          "path": "/api/time-ranges/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/time_ranges/[id]",
+      "file": "app/api/time_ranges/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/time-ranges/123/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/time_ranges/[id]",
+      "file": "app/api/time_ranges/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "PATCH",
+          "path": "/api/time-ranges/123/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/time_ranges/[id]",
+      "file": "app/api/time_ranges/[id]/route.ts",
+      "upstream": [
+        {
+          "method": "DELETE",
+          "path": "/api/time-ranges/123/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/units",
+      "file": "app/api/units/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/units/",
+          "query": "?grid=123&token=audit-token"
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/users",
+      "file": "app/api/users/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/users/",
+          "query": "?grid=123&token=audit-token"
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/whoami",
+      "file": "app/api/whoami/route.ts",
+      "upstream": [
+        {
+          "method": "GET",
+          "path": "/api/auth/whoami/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/whoami",
+      "file": "app/api/whoami/route.ts",
+      "upstream": [
+        {
+          "method": "PUT",
+          "path": "/api/auth/whoami/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/whoami",
+      "file": "app/api/whoami/route.ts",
+      "upstream": [
+        {
+          "method": "PATCH",
+          "path": "/api/auth/whoami/",
+          "query": ""
+        },
+        {
+          "method": "POST",
+          "path": "/api/auth/refresh/",
+          "query": ""
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "file": "app/(public)/password-reset/confirm/page.tsx",
+      "line": 44,
+      "expression": "\"/api/auth/password-reset/confirm\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/auth/password-reset/confirm"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "app/(public)/password-reset/page.tsx",
+      "line": 28,
+      "expression": "`/api/users?search=${encodeURIComponent(normalizedEmail)}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/users?search={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "app/(public)/password-reset/page.tsx",
+      "line": 48,
+      "expression": "\"/api/auth/password-reset\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/auth/password-reset"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "app/(public)/register/verify/page.tsx",
+      "line": 56,
+      "expression": "\"/api/auth/verify-email\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/auth/verify-email"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "app/(public)/verify-email/confirm/page.tsx",
+      "line": 44,
+      "expression": "\"/api/auth/verify-email/confirm\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/auth/verify-email/confirm"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "app/(site)/dashboard/ClientRecentProjects.tsx",
+      "line": 19,
+      "expression": "\"/api/grids\"",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "app/(site)/password-change/page.tsx",
+      "line": 30,
+      "expression": "\"/api/whoami\"",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/whoami"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "app/(site)/password-change/page.tsx",
+      "line": 71,
+      "expression": "\"/api/auth/password-change\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/auth/password-change"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "app/grid/new/page.tsx",
+      "line": 495,
+      "expression": "\"/api/grids/\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/grids/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "app/grid/[code]/categories/page.tsx",
+      "line": 17,
+      "expression": "`/api/grid-memberships/?grid=${id}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grid-memberships/?grid={id}"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/categories/page.tsx",
+      "line": 30,
+      "expression": "`/api/categories/?grid=${id}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/categories/?grid={id}"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/cells/page.tsx",
+      "line": 56,
+      "expression": "gridCellCardsPath(id)",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{id}/cells/cards/"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/cells/page.tsx",
+      "line": 71,
+      "expression": "`/api/grid-memberships/?grid=${id}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grid-memberships/?grid={id}"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/cells/page.tsx",
+      "line": 79,
+      "expression": "`/api/participants/?grid=${id}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/participants/?grid={id}"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/history/page.tsx",
+      "line": 44,
+      "expression": "`/api/grids/${encodeURIComponent(gridId)}/screen-context/?view=published`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{id}/screen-context/?view=published"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/history/page.tsx",
+      "line": 66,
+      "expression": "`/api/grid-memberships/?grid=${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grid-memberships/?grid={id}"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/layout.tsx",
+      "line": 38,
+      "expression": "`/api/grid-memberships/?grid=${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grid-memberships/?grid={dynamic}"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/layout.tsx",
+      "line": 52,
+      "expression": "`/api/grids/${encodeURIComponent(String(gridId))}/published-schedule/`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{id}/published-schedule/"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/page.tsx",
+      "line": 89,
+      "expression": "`/api/grids/${encodeURIComponent(id)}/screen-context/?view=draft`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{id}/screen-context/?view=draft"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/page.tsx",
+      "line": 94,
+      "expression": "`/api/grid-memberships/?grid=${id}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grid-memberships/?grid={id}"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/participants/page.tsx",
+      "line": 48,
+      "expression": "path",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/participants/?grid={id}"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/participants/page.tsx",
+      "line": 62,
+      "expression": "`/api/participants/?grid=${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/participants/?grid={id}"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/participants/page.tsx",
+      "line": 71,
+      "expression": "`/api/grids/${gridId}/participants/${encodeURIComponent(routeParticipantId)}/`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{id}/participants/{id}/"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/participants/page.tsx",
+      "line": 161,
+      "expression": "`/api/grid-memberships/?grid=${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grid-memberships/?grid={id}"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/settings/page.tsx",
+      "line": 31,
+      "expression": "`/api/grid-memberships/?grid=${id}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grid-memberships/?grid={id}"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/_helpers.ts",
+      "line": 8,
+      "expression": "`/api/grids/code/${encoded}/`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/code/{id}/"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "app/grid/[code]/_helpers.ts",
+      "line": 13,
+      "expression": "path",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/code/{id}/schedule/",
+        "/api/grids/code/{id}/published-schedule/",
+        "/api/grids/{id}/schedule/",
+        "/api/grids/{id}/published-schedule/"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "components/actions/DeleteGridBubble.tsx",
+      "line": 37,
+      "expression": "`/api/grids/${encodeURIComponent(id)}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/grids/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/actions/DeleteParticipantButton.tsx",
+      "line": 26,
+      "expression": "`/api/participants/${encodeURIComponent(id)}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/participants/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/auth/GoogleSignInButton.tsx",
+      "line": 68,
+      "expression": "\"/api/auth/google\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/auth/google"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/auth/InviteTokenView.tsx",
+      "line": 300,
+      "expression": "`/api/grids/${encodeURIComponent(rawId)}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/auth/InviteTokenView.tsx",
+      "line": 322,
+      "expression": "\"/api/whoami\"",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/whoami"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/auth/InviteTokenView.tsx",
+      "line": 346,
+      "expression": "`/api/invitations/resolve/?token=${encodeURIComponent(token)}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/invitations/resolve/?token={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/auth/InviteTokenView.tsx",
+      "line": 420,
+      "expression": "`/api/invitations/accept/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/invitations/accept/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/auth/InviteTokenView.tsx",
+      "line": 447,
+      "expression": "`/api/invitations/resolve/?token=${encodeURIComponent(token)}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/invitations/resolve/?token={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/auth/InviteTokenView.tsx",
+      "line": 482,
+      "expression": "`/api/invitations/resolve/?token=${encodeURIComponent(token)}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/invitations/resolve/?token={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/auth/InviteTokenView.tsx",
+      "line": 554,
+      "expression": "`/api/grids/code/${encodeURIComponent(String(gridCode))}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/code/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/auth/InviteTokenView.tsx",
+      "line": 566,
+      "expression": "`/api/grid_memberships/?grid=${encodeURIComponent(gridId)}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grid_memberships/?grid={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dashboard/RecentProjects.tsx",
+      "line": 207,
+      "expression": "`/api/grid_memberships/?grid=${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grid_memberships/?grid={dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/AddCategoryDialog.tsx",
+      "line": 67,
+      "expression": "`/api/categories/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/categories/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/AddCategoryDialog.tsx",
+      "line": 98,
+      "expression": "`/api/category_values?category=${catId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/category_values?category={dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/AddCategoryDialog.tsx",
+      "line": 145,
+      "expression": "`/api/category_values`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/category_values"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/AddCategoryDialog.tsx",
+      "line": 167,
+      "expression": "`/api/categories/${catId}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/categories/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/AddCategoryDialog.tsx",
+      "line": 177,
+      "expression": "`/api/category_values/${id}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/category_values/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/AddCategoryDialog.tsx",
+      "line": 200,
+      "expression": "`/api/category_values/${id}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/category_values/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/AddParticipantDialog.tsx",
+      "line": 49,
+      "expression": "`/api/grids/${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/AddParticipantDialog.tsx",
+      "line": 70,
+      "expression": "`/api/participants/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/participants/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/AddRuleDialog.tsx",
+      "line": 229,
+      "expression": "\"/api/availability_rules\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/availability_rules"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/AddRuleDialog.tsx",
+      "line": 240,
+      "expression": "`/api/availability_rules?participant=${participantId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/availability_rules?participant={dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/AddRuleDialog.tsx",
+      "line": 299,
+      "expression": "`/api/availability_rules/${id}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/availability_rules/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/AddRuleDialog.tsx",
+      "line": 303,
+      "expression": "\"/api/availability_rules\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/availability_rules"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/AddRuleDialog.tsx",
+      "line": 320,
+      "expression": "`/api/availability_rules/${keep.id}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/availability_rules/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/AddRuleDialog.tsx",
+      "line": 355,
+      "expression": "`/api/availability_rules/${keep.id}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/availability_rules/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/CategoryDialog.tsx",
+      "line": 58,
+      "expression": "`/api/category_values?category=${catId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/category_values?category={dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/CategoryDialog.tsx",
+      "line": 78,
+      "expression": "`/api/category_values`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/category_values"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/CategoryDialog.tsx",
+      "line": 101,
+      "expression": "`/api/category_values/${id}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/category_values/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/CategoryDialog.tsx",
+      "line": 124,
+      "expression": "`/api/category_values/${id}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/category_values/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/CategoryDialog.tsx",
+      "line": 151,
+      "expression": "`/api/categories/${catId}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/categories/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/CreateCellDialog.tsx",
+      "line": 685,
+      "expression": "gridCellFormOptionsPath(gridId)",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{id}/cells/form-options/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/CreateCellDialog.tsx",
+      "line": 910,
+      "expression": "endpoint",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/bundles?grid={dynamic}",
+        "/api/bundles/?grid={dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/CreateCellDialog.tsx",
+      "line": 938,
+      "expression": "`/api/bundles`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/bundles"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/CreateCellDialog.tsx",
+      "line": 1048,
+      "expression": "isBulk ? `/api/cells/bulk_create` : `/api/cells`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/cells/bulk_create",
+        "/api/cells"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditCellDialog.tsx",
+      "line": 458,
+      "expression": "`/api/cells?${query.toString()}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/cells?{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditCellDialog.tsx",
+      "line": 877,
+      "expression": "cellFormBootstrapPath(cell.id)",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/cells/{id}/form-bootstrap/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditCellDialog.tsx",
+      "line": 1324,
+      "expression": "`/api/cells/${targetCellId}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/cells/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditCellDialog.tsx",
+      "line": 1336,
+      "expression": "`/api/cells/${targetCellId}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/cells/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditCellDialog.tsx",
+      "line": 1351,
+      "expression": "endpoint",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/bundles?grid={dynamic}",
+        "/api/bundles/?grid={dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditCellDialog.tsx",
+      "line": 1385,
+      "expression": "`/api/bundles`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/bundles"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditCellDialog.tsx",
+      "line": 1501,
+      "expression": "`/api/cells/${cell.id}/extend_series`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/cells/{dynamic}/extend_series"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditorInviteDialog.tsx",
+      "line": 39,
+      "expression": "`/api/participants?grid=${encodeURIComponent(String(gridId))}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/participants?grid={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditorInviteDialog.tsx",
+      "line": 58,
+      "expression": "\"/api/whoami\"",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/whoami"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditorInviteDialog.tsx",
+      "line": 109,
+      "expression": "`/api/invitations/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/invitations/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditorInviteDialog.tsx",
+      "line": 138,
+      "expression": "\"/api/whoami\"",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/whoami"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditorInviteDialog.tsx",
+      "line": 162,
+      "expression": "`/api/participants/${encodeURIComponent(String(participantId))}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/participants/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditParticipantDialog.tsx",
+      "line": 86,
+      "expression": "`/api/grids/${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditParticipantDialog.tsx",
+      "line": 133,
+      "expression": "`/api/participants/${encodeURIComponent(String(participant.id))}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/participants/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditRuleDialog.tsx",
+      "line": 88,
+      "expression": "`/api/availability_rules/${ruleId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/availability_rules/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditRuleDialog.tsx",
+      "line": 107,
+      "expression": "`/api/availability_rules/${ruleId}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/availability_rules/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditRuleDialog.tsx",
+      "line": 135,
+      "expression": "`/api/availability_rules/${ruleId}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/availability_rules/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/EditTimeRangeDialog.tsx",
+      "line": 54,
+      "expression": "`/api/time_ranges/${value.id}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/time_ranges/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/InviteDialog.tsx",
+      "line": 350,
+      "expression": "`/api/grid_memberships/?grid=${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grid_memberships/?grid={dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/InviteDialog.tsx",
+      "line": 351,
+      "expression": "`/api/participants?grid=${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/participants?grid={dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/InviteDialog.tsx",
+      "line": 352,
+      "expression": "`/api/grids/${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/InviteDialog.tsx",
+      "line": 353,
+      "expression": "`/api/invitations/?grid=${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/invitations/?grid={dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/InviteDialog.tsx",
+      "line": 517,
+      "expression": "`/api/invitations/${encodeURIComponent(String(id))}/cancel/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/invitations/{id}/cancel/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/InviteDialog.tsx",
+      "line": 546,
+      "expression": "`/api/invitations/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/invitations/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/dialogs/InviteDialog.tsx",
+      "line": 619,
+      "expression": "`/api/invitations/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/invitations/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/forms/LoginForm.tsx",
+      "line": 22,
+      "expression": "\"/api/auth/login\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/auth/login"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/forms/RegisterForm.tsx",
+      "line": 41,
+      "expression": "\"/api/auth/register\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/auth/register"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridActions.tsx",
+      "line": 56,
+      "expression": "`/api/grids/${encodeURIComponent(id)}/schedule/export?view=${view}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{id}/schedule/export?view=draft",
+        "/api/grids/{id}/schedule/export?view=published"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSchedulePanel.tsx",
+      "line": 1116,
+      "expression": "`/api/grids/${gridId}/published-schedule/`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}/published-schedule/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSchedulePanel.tsx",
+      "line": 1542,
+      "expression": "`/api/bundles?grid=${gridQuery}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/bundles?grid={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSchedulePanel.tsx",
+      "line": 1559,
+      "expression": "`/api/grids/${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSchedulePanel.tsx",
+      "line": 1589,
+      "expression": "`/api/cells?grid=${gridQuery}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/cells?grid={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSchedulePanel.tsx",
+      "line": 2063,
+      "expression": "`/api/grids/${gridId}/schedule/history`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}/schedule/history"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSchedulePanel.tsx",
+      "line": 2134,
+      "expression": "endpoint",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}/schedule/history/undo",
+        "/api/grids/{dynamic}/schedule/history/redo",
+        "/api/grids/{dynamic}/schedule/restore-published/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSchedulePanel.tsx",
+      "line": 2391,
+      "expression": "`/api/schedule-placements/${encodeURIComponent(placementId)}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/schedule-placements/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSchedulePanel.tsx",
+      "line": 2410,
+      "expression": "`/api/schedule-placements/${encodeURIComponent(placementId)}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/schedule-placements/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSchedulePanel.tsx",
+      "line": 2471,
+      "expression": "`/api/schedule-placements/${encodeURIComponent(payload.placementId)}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/schedule-placements/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSchedulePanel.tsx",
+      "line": 2584,
+      "expression": "`/api/schedule-placements/${encodeURIComponent(placementId)}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/schedule-placements/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSchedulePanel.tsx",
+      "line": 2602,
+      "expression": "`/api/schedule-placements/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/schedule-placements/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSchedulePanel.tsx",
+      "line": 2650,
+      "expression": "`/api/schedule-placements/${encodeURIComponent(String(concurrentSameDayPlacement.id))}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/schedule-placements/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSettingsTabs.tsx",
+      "line": 1171,
+      "expression": "`/api/grids/${encodeURIComponent(String(gridId))}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSettingsTabs.tsx",
+      "line": 1179,
+      "expression": "\"/api/grids/config/\"",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/config/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSettingsTabs.tsx",
+      "line": 1350,
+      "expression": "`/api/grids/${encodeURIComponent(String(gridId))}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/grids/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSettingsTabs.tsx",
+      "line": 1432,
+      "expression": "`/api/grids/${encodeURIComponent(String(gridId))}/draft-structure/apply/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/grids/{id}/draft-structure/apply/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSettingsTabs.tsx",
+      "line": 1529,
+      "expression": "`/api/grids/${encodeURIComponent(String(gridId))}/draft-structure/preview/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/grids/{id}/draft-structure/preview/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSettingsTabs.tsx",
+      "line": 1862,
+      "expression": "`/api/grids/${id}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/grids/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSolverSettingsForm.tsx",
+      "line": 682,
+      "expression": "`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/time_ranges?grid={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSolverSettingsForm.tsx",
+      "line": 717,
+      "expression": "`/api/grids/${encodeURIComponent(String(gridId))}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSolverSettingsForm.tsx",
+      "line": 785,
+      "expression": "`/api/grids/${encodeURIComponent(String(gridId))}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/grids/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSolverSettingsForm.tsx",
+      "line": 930,
+      "expression": "`/api/grids/${encodeURIComponent(String(gridId))}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/grids/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSolverSettingsForm.tsx",
+      "line": 961,
+      "expression": "\"/api/time_ranges\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/time_ranges"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSolverSettingsForm.tsx",
+      "line": 1013,
+      "expression": "`/api/time_ranges/${encodeURIComponent(String(id))}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/time_ranges/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/GridSolverSettingsForm.tsx",
+      "line": 1050,
+      "expression": "`/api/time_ranges/${encodeURIComponent(String(id))}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/time_ranges/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 1659,
+      "expression": "\"/api/whoami\"",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/whoami"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 2551,
+      "expression": "`/api/grids/${gridId}/precheck`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}/precheck"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 2678,
+      "expression": "`/api/grids/${gridId}/cells/${encodeURIComponent(String(sourceCellId))}/placement-preview/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}/cells/{id}/placement-preview/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 2813,
+      "expression": "`/api/grids/${gridId}/cells/${encodeURIComponent(String(sourceCellId))}/place/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}/cells/{id}/place/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 3038,
+      "expression": "endpoint",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}/published-schedule/",
+        "/api/grids/{dynamic}/schedule/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 3077,
+      "expression": "`/api/grids/${gridId}/schedule/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}/schedule/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 3273,
+      "expression": "`/api/grids/${gridId}/published-schedules/`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}/published-schedules/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 3394,
+      "expression": "`/api/placement-comments/?published_schedule_id=${encodeURIComponent(String(activePublishedScheduleId))}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/placement-comments/?published_schedule_id={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 3491,
+      "expression": "`/api/schedule-blockages/?schedule=${encodeURIComponent(String(scheduleId))}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/schedule-blockages/?schedule={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 3609,
+      "expression": "`/api/bundles?grid=${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/bundles?grid={dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 3620,
+      "expression": "`/api/units?grid=${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/units?grid={dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 3642,
+      "expression": "`/api/grids/${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 3681,
+      "expression": "`/api/cells?grid=${gridQuery}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/cells?grid={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 4152,
+      "expression": "`/api/grids/${gridId}/solve-candidates`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}/solve-candidates"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 4290,
+      "expression": "`/api/grids/${gridId}/solve-candidates/${encodeURIComponent(candidateRunId)}/choose/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}/solve-candidates/{id}/choose/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 4342,
+      "expression": "`/api/grids/${gridId}/solve-candidates/${encodeURIComponent(candidateRunId)}/reject/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}/solve-candidates/{id}/reject/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 4898,
+      "expression": "`/api/grids/${encodeURIComponent(String(gridId))}/schedule/visual-order/`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/grids/{id}/schedule/visual-order/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 5961,
+      "expression": "`/api/grids/${encodeURIComponent(String(gridId))}/schedule/export?${query.toString()}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{id}/schedule/export?{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 5999,
+      "expression": "`/api/grids/${encodeURIComponent(String(gridId))}/schedule/restore-published/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/grids/{id}/schedule/restore-published/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 6758,
+      "expression": "\"/api/placement-comments/\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/placement-comments/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 6842,
+      "expression": "`/api/schedule-placements/${encodeURIComponent(placementId)}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/schedule-placements/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 6918,
+      "expression": "`/api/schedule-placements/${encodeURIComponent(placementId)}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/schedule-placements/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 6947,
+      "expression": "`/api/schedule-blockages/${encodeURIComponent(id)}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/schedule-blockages/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 6980,
+      "expression": "\"/api/schedule-blockages/\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/schedule-blockages/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 7022,
+      "expression": "`/api/schedule-blockages/${encodeURIComponent(blockage.id)}/?${params.toString()}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/schedule-blockages/{id}/?{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 7136,
+      "expression": "`/api/schedule-placements/${encodeURIComponent(placementId)}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/schedule-placements/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 7146,
+      "expression": "`/api/schedule-placements/${encodeURIComponent(placementId)}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/schedule-placements/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 7188,
+      "expression": "`/api/schedule-placements/${encodeURIComponent(placementId)}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/schedule-placements/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 7335,
+      "expression": "`/api/grids/${encodeURIComponent(String(gridId))}/schedule/placement-options/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/grids/{id}/schedule/placement-options/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 8162,
+      "expression": "`/api/schedule-placements/${encodeURIComponent(String(placementId))}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/schedule-placements/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 8684,
+      "expression": "endpoint",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/availability_rules?participant={id}",
+        "/api/availability_rules/?participant={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 8870,
+      "expression": "`/api/grids/${gridId}/schedule/publish/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}/schedule/publish/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/SolveOverlay.tsx",
+      "line": 8881,
+      "expression": "`/api/grids/${gridId}/published-schedule/`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}/published-schedule/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/TimeRangesEditor.tsx",
+      "line": 289,
+      "expression": "`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/time_ranges?grid={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/TimeRangesEditor.tsx",
+      "line": 366,
+      "expression": "`/api/time_ranges/${encodeURIComponent(String(id))}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/time_ranges/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/TimeRangesEditor.tsx",
+      "line": 409,
+      "expression": "`/api/time_ranges/${encodeURIComponent(String(id))}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/time_ranges/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/grid/TimeRangesEditor.tsx",
+      "line": 432,
+      "expression": "`/api/time_ranges`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/time_ranges"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/invitations/InvitesMenu.tsx",
+      "line": 429,
+      "expression": "\"/api/invitations/?ordering=-created_at\"",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/invitations/?ordering=-created_at"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/invitations/InvitesMenu.tsx",
+      "line": 430,
+      "expression": "\"/api/invitations/incoming/\"",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/invitations/incoming/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/invitations/InvitesMenu.tsx",
+      "line": 473,
+      "expression": "`/api/grids/${encodeURIComponent(gid)}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/invitations/InvitesMenu.tsx",
+      "line": 485,
+      "expression": "`/api/grids/code/${encodeURIComponent(code)}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/code/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/invitations/InvitesMenu.tsx",
+      "line": 518,
+      "expression": "`/api/invitations/resolve/?token=${encodeURIComponent(token)}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/invitations/resolve/?token={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/invitations/InvitesMenu.tsx",
+      "line": 599,
+      "expression": "\"/api/invitations/accept/\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/invitations/accept/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/invitations/InvitesMenu.tsx",
+      "line": 638,
+      "expression": "\"/api/invitations/decline/\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/invitations/decline/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/layout/TimeRangesPanel.tsx",
+      "line": 156,
+      "expression": "`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/time_ranges?grid={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/layout/TimeRangesPanel.tsx",
+      "line": 260,
+      "expression": "\"/api/time_ranges\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/time_ranges"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/layout/TimeRangesPanel.tsx",
+      "line": 323,
+      "expression": "`/api/time_ranges/${encodeURIComponent(String(id))}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/time_ranges/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/layout/TimeRangesPanel.tsx",
+      "line": 351,
+      "expression": "`/api/time_ranges/${encodeURIComponent(String(id))}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/time_ranges/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/navigation/UserMenu.tsx",
+      "line": 64,
+      "expression": "\"/api/whoami\"",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/whoami"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/panels/CategoriesPanel.tsx",
+      "line": 47,
+      "expression": "`/api/categories?grid=${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/categories?grid={dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/panels/CategoriesPanel.tsx",
+      "line": 88,
+      "expression": "`/api/categories/${category.id}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/categories/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/panels/ParticipantsPanel.tsx",
+      "line": 76,
+      "expression": "`/api/participants?grid=${gridId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/participants?grid={dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/panels/ParticipantsPanel.tsx",
+      "line": 85,
+      "expression": "`/api/grids/${gridId}/`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/participants/ParticipantDetailContent.tsx",
+      "line": 352,
+      "expression": "`/api/participants/${encodeURIComponent(String(participantId))}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/participants/{id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/participants/ParticipantDetailContent.tsx",
+      "line": 471,
+      "expression": "`/api/availability_rules?participant=${participantId}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/availability_rules?participant={dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/participants/ParticipantDetailContent.tsx",
+      "line": 790,
+      "expression": "`/api/availability_rules/${id}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/availability_rules/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/participants/ParticipantDetailContent.tsx",
+      "line": 794,
+      "expression": "\"/api/availability_rules\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/availability_rules"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/participants/ParticipantDetailContent.tsx",
+      "line": 815,
+      "expression": "`/api/availability_rules/${keepId}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/availability_rules/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/participants/ParticipantDetailContent.tsx",
+      "line": 852,
+      "expression": "`/api/availability_rules/${keepId}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/availability_rules/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/participants/ParticipantDetailContent.tsx",
+      "line": 989,
+      "expression": "`/api/availability_rules/${ruleResize.ruleId}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/availability_rules/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/participants/ParticipantDetailContent.tsx",
+      "line": 1152,
+      "expression": "`/api/availability_rules/${ruleMove.ruleId}`",
+      "methods": [
+        "DELETE"
+      ],
+      "urls": [
+        "/api/availability_rules/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/participants/ParticipantDetailContent.tsx",
+      "line": 1169,
+      "expression": "`/api/availability_rules/${ruleMove.ruleId}`",
+      "methods": [
+        "PATCH"
+      ],
+      "urls": [
+        "/api/availability_rules/{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/participants/ParticipantScheduleOverlay.tsx",
+      "line": 283,
+      "expression": "\"/api/whoami\"",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/whoami"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/participants/ParticipantScheduleOverlay.tsx",
+      "line": 376,
+      "expression": "scheduleEndpoint",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{dynamic}/published-schedule/",
+        "/api/grids/{dynamic}/schedule/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/participants/ParticipantScheduleOverlay.tsx",
+      "line": 547,
+      "expression": "`/api/placement-comments/?published_schedule_id=${encodeURIComponent(String(publishedScheduleId))}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/placement-comments/?published_schedule_id={id}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/participants/ParticipantScheduleOverlay.tsx",
+      "line": 847,
+      "expression": "\"/api/placement-comments/\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/placement-comments/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "lib/auth.ts",
+      "line": 10,
+      "expression": "\"/api/auth/whoami/\"",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/auth/whoami/"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "lib/backend.ts",
+      "line": 24,
+      "expression": "`${BASE}${path}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "{dynamic}{dynamic}"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "lib/backend.ts",
+      "line": 33,
+      "expression": "`${BASE}/api/auth/refresh/`",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "{dynamic}/api/auth/refresh/"
+      ],
+      "transport": "django"
+    },
+    {
+      "file": "lib/client-auth.ts",
+      "line": 17,
+      "expression": "input",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "lib/client-auth.ts",
+      "line": 26,
+      "expression": "\"/api/auth/refresh\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/auth/refresh"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "lib/grid-config.ts",
+      "line": 33,
+      "expression": "\"/api/grids/config/\"",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/config/"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "lib/network-auth.ts",
+      "line": 61,
+      "expression": "\"/api/auth/logout\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/auth/logout"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "lib/network-auth.ts",
+      "line": 100,
+      "expression": "input",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "lib/network-auth.ts",
+      "line": 111,
+      "expression": "input",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "{dynamic}"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "lib/screen-context.ts",
+      "line": 199,
+      "expression": "`/api/grids/${encodeURIComponent(String(gridId))}/screen-context/?view=${view}`",
+      "methods": [
+        "GET"
+      ],
+      "urls": [
+        "/api/grids/{id}/screen-context/?view=draft"
+      ],
+      "transport": "bff"
+    },
+    {
+      "file": "components/navigation/UserMenu.tsx",
+      "line": 248,
+      "expression": "\"/api/auth/logout\"",
+      "methods": [
+        "POST"
+      ],
+      "urls": [
+        "/api/auth/logout"
+      ],
+      "transport": "bff"
+    }
+  ],
+  "django": {
+    "checks": [
+      {
+        "method": "POST",
+        "path": "/api/auth/google/",
+        "query": "",
+        "file": "app/api/auth/google/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "google_login",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/login/",
+        "query": "",
+        "file": "app/api/auth/login/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_obtain_pair",
+        "action": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/auth/whoami/",
+        "query": "",
+        "file": "app/api/auth/password-change/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "options"
+        ],
+        "view": "whoami",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/password-change/",
+        "query": "",
+        "file": "app/api/auth/password-change/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "password_change",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/auth/password-change/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/password-reset/confirm/",
+        "query": "",
+        "file": "app/api/auth/password-reset/confirm/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "password_reset_confirm",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/password-reset/",
+        "query": "",
+        "file": "app/api/auth/password-reset/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "password_reset",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/auth/refresh/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/register/",
+        "query": "",
+        "file": "app/api/auth/register/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "register",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/verify-email/confirm/",
+        "query": "",
+        "file": "app/api/auth/verify-email/confirm/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "verify_email_confirm",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/verify-email/",
+        "query": "",
+        "file": "app/api/auth/verify-email/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "verify_email_request",
+        "action": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/availability-rules/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/availability_rules/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "availabilityrule-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/availability-rules/",
+        "query": "",
+        "file": "app/api/availability_rules/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "availabilityrule-list",
+        "action": "create"
+      },
+      {
+        "method": "GET",
+        "path": "/api/availability-rules/123/",
+        "query": "",
+        "file": "app/api/availability_rules/[id]/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "availabilityrule-detail",
+        "action": "retrieve"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/availability-rules/123/",
+        "query": "",
+        "file": "app/api/availability_rules/[id]/route.ts",
+        "frontendMethod": "PATCH",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "availabilityrule-detail",
+        "action": "partial_update"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/availability-rules/123/",
+        "query": "",
+        "file": "app/api/availability_rules/[id]/route.ts",
+        "frontendMethod": "DELETE",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "availabilityrule-detail",
+        "action": "destroy"
+      },
+      {
+        "method": "GET",
+        "path": "/api/bundles/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/bundles/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "bundle-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/bundles/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/bundles/",
+        "query": "",
+        "file": "app/api/bundles/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "bundle-list",
+        "action": "create"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/bundles/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/categories/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/categories/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "category-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/categories/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/categories/",
+        "query": "",
+        "file": "app/api/categories/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "category-list",
+        "action": "create"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/categories/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/categories/123/",
+        "query": "",
+        "file": "app/api/categories/[id]/route.ts",
+        "frontendMethod": "PATCH",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "category-detail",
+        "action": "partial_update"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/categories/123/",
+        "query": "",
+        "file": "app/api/categories/[id]/route.ts",
+        "frontendMethod": "DELETE",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "category-detail",
+        "action": "destroy"
+      },
+      {
+        "method": "GET",
+        "path": "/api/category-values/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/category_values/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "categoryvalue-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/category-values/",
+        "query": "",
+        "file": "app/api/category_values/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "categoryvalue-list",
+        "action": "create"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/category-values/123/",
+        "query": "",
+        "file": "app/api/category_values/[id]/route.ts",
+        "frontendMethod": "PATCH",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "categoryvalue-detail",
+        "action": "partial_update"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/category-values/123/",
+        "query": "",
+        "file": "app/api/category_values/[id]/route.ts",
+        "frontendMethod": "DELETE",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "categoryvalue-detail",
+        "action": "destroy"
+      },
+      {
+        "method": "POST",
+        "path": "/api/cells/bulk_create/",
+        "query": "",
+        "file": "app/api/cells/bulk_create/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "cell-bulk-create",
+        "action": "bulk_create"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/cells/bulk_create/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/cells/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/cells/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "cell-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/cells/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/cells/",
+        "query": "",
+        "file": "app/api/cells/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "cell-list",
+        "action": "create"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/cells/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/cells/123/extend_series/",
+        "query": "",
+        "file": "app/api/cells/[id]/extend_series/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "cell-extend-series",
+        "action": "extend_series"
+      },
+      {
+        "method": "GET",
+        "path": "/api/cells/123/form-bootstrap/",
+        "query": "",
+        "file": "app/api/cells/[id]/form-bootstrap/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "cell-form-bootstrap",
+        "action": "form_bootstrap"
+      },
+      {
+        "method": "GET",
+        "path": "/api/cells/123/",
+        "query": "",
+        "file": "app/api/cells/[id]/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "cell-detail",
+        "action": "retrieve"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/cells/[id]/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/cells/123/",
+        "query": "",
+        "file": "app/api/cells/[id]/route.ts",
+        "frontendMethod": "PATCH",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "cell-detail",
+        "action": "partial_update"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/cells/123/",
+        "query": "",
+        "file": "app/api/cells/[id]/route.ts",
+        "frontendMethod": "DELETE",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "cell-detail",
+        "action": "destroy"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/code/AUDITCODE/cells/456/place/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/cells/[cell_id]/place/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-place-cell-by-code",
+        "action": "place_cell_by_code"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/code/AUDITCODE/cells/456/placement-preview/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/cells/[cell_id]/placement-preview/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-cell-placement-preview-by-code",
+        "action": "cell_placement_preview_by_code"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/code/AUDITCODE/draft-structure/apply/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/draft-structure/apply/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-draft-structure-apply-by-code",
+        "action": "draft_structure_apply_by_code"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/code/AUDITCODE/draft-structure/preview/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/draft-structure/preview/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-draft-structure-preview-by-code",
+        "action": "draft_structure_preview_by_code"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/code/AUDITCODE/precheck/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/precheck/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-precheck-by-code",
+        "action": "precheck_by_code"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/code/AUDITCODE/published-schedule/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/grids/code/[code]/published-schedule/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-latest-published-schedule-by-code",
+        "action": "latest_published_schedule_by_code"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/code/AUDITCODE/published-schedules/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/grids/code/[code]/published-schedules/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-published-schedules-by-code",
+        "action": "published_schedules_by_code"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/code/AUDITCODE/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-by-code",
+        "action": "by_code"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/code/AUDITCODE/schedule/export/",
+        "query": "?grid=123&token=audit-token&view=draft",
+        "file": "app/api/grids/code/[code]/schedule/export/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-export-schedule-by-code",
+        "action": "export_schedule_by_code"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/code/AUDITCODE/schedule/history/redo/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/schedule/history/redo/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-schedule-history-redo-by-code",
+        "action": "schedule_history_redo_by_code"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/code/AUDITCODE/schedule/history/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/grids/code/[code]/schedule/history/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-schedule-history-by-code",
+        "action": "schedule_history_by_code"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/code/AUDITCODE/schedule/history/undo/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/schedule/history/undo/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-schedule-history-undo-by-code",
+        "action": "schedule_history_undo_by_code"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/code/AUDITCODE/schedule/placement-options/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/schedule/placement-options/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-placement-options-by-code",
+        "action": "placement_options_by_code"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/code/AUDITCODE/schedule/publish/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/schedule/publish/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-publish-schedule-by-code",
+        "action": "publish_schedule_by_code"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/code/AUDITCODE/schedule/restore-published/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/schedule/restore-published/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-restore-draft-from-published-by-code",
+        "action": "restore_draft_from_published_by_code"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/code/AUDITCODE/schedule/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/grids/code/[code]/schedule/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "grid-current-schedule-by-code",
+        "action": "current_schedule_by_code"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/code/AUDITCODE/schedule/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/schedule/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "grid-current-schedule-by-code",
+        "action": "current_schedule_by_code"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/grids/code/AUDITCODE/schedule/visual-order/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/schedule/visual-order/route.ts",
+        "frontendMethod": "PATCH",
+        "valid": true,
+        "allowed": [
+          "patch",
+          "put"
+        ],
+        "view": "grid-update-placement-visual-order-by-code",
+        "action": "update_placement_visual_order_by_code"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/code/AUDITCODE/screen-context/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/grids/code/[code]/screen-context/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-screen-context-by-code",
+        "action": "screen_context_by_code"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/code/AUDITCODE/solve-candidates/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/solve-candidates/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-solve-candidates-by-code",
+        "action": "solve_candidates_by_code"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/code/AUDITCODE/solve-candidates/789/choose/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/solve-candidates/[run_id]/choose/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-choose-candidate-by-code",
+        "action": "choose_candidate_by_code"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/code/AUDITCODE/solve-candidates/789/reject/",
+        "query": "",
+        "file": "app/api/grids/code/[code]/solve-candidates/[run_id]/reject/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-reject-candidate-by-code",
+        "action": "reject_candidate_by_code"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/config/",
+        "query": "",
+        "file": "app/api/grids/config/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-config",
+        "action": "config"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/grids/config/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/",
+        "query": "",
+        "file": "app/api/grids/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "grid-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/grids/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/",
+        "query": "",
+        "file": "app/api/grids/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "grid-list",
+        "action": "create"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/grids/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/cells/cards/",
+        "query": "",
+        "file": "app/api/grids/[id]/cells/cards/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-cell-cards",
+        "action": "cell_cards"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/cells/form-options/",
+        "query": "",
+        "file": "app/api/grids/[id]/cells/form-options/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-cell-form-options",
+        "action": "cell_form_options"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/cells/456/place/",
+        "query": "",
+        "file": "app/api/grids/[id]/cells/[cell_id]/place/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-place-cell",
+        "action": "place_cell"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/schedule/placement-options/",
+        "query": "",
+        "file": "app/api/grids/[id]/cells/[cell_id]/place/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-placement-options",
+        "action": "placement_options"
+      },
+      {
+        "method": "POST",
+        "path": "/api/schedule-placements/",
+        "query": "",
+        "file": "app/api/grids/[id]/cells/[cell_id]/place/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "schedule-placements-list",
+        "action": "create"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/cells/456/placement-preview/",
+        "query": "",
+        "file": "app/api/grids/[id]/cells/[cell_id]/placement-preview/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-cell-placement-preview",
+        "action": "cell_placement_preview"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/draft-structure/apply/",
+        "query": "",
+        "file": "app/api/grids/[id]/draft-structure/apply/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-draft-structure-apply",
+        "action": "draft_structure_apply"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/draft-structure/preview/",
+        "query": "",
+        "file": "app/api/grids/[id]/draft-structure/preview/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-draft-structure-preview",
+        "action": "draft_structure_preview"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/precheck/",
+        "query": "",
+        "file": "app/api/grids/[id]/precheck/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-precheck",
+        "action": "precheck"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/published-schedule/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/grids/[id]/published-schedule/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-latest-published-schedule",
+        "action": "latest_published_schedule"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/published-schedules/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/grids/[id]/published-schedules/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-published-schedules",
+        "action": "published_schedules"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/",
+        "query": "",
+        "file": "app/api/grids/[id]/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "grid-detail",
+        "action": "retrieve"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/grids/[id]/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/grids/123/",
+        "query": "",
+        "file": "app/api/grids/[id]/route.ts",
+        "frontendMethod": "PATCH",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "grid-detail",
+        "action": "partial_update"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/grids/[id]/route.ts",
+        "frontendMethod": "PATCH",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/grids/123/",
+        "query": "",
+        "file": "app/api/grids/[id]/route.ts",
+        "frontendMethod": "DELETE",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "grid-detail",
+        "action": "destroy"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/grids/[id]/route.ts",
+        "frontendMethod": "DELETE",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/schedule/export/",
+        "query": "?grid=123&token=audit-token&view=draft",
+        "file": "app/api/grids/[id]/schedule/export/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-export-schedule",
+        "action": "export_schedule"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/schedule/history/redo/",
+        "query": "",
+        "file": "app/api/grids/[id]/schedule/history/redo/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-schedule-history-redo",
+        "action": "schedule_history_redo"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/schedule/history/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/grids/[id]/schedule/history/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-schedule-history",
+        "action": "schedule_history"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/schedule/history/undo/",
+        "query": "",
+        "file": "app/api/grids/[id]/schedule/history/undo/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-schedule-history-undo",
+        "action": "schedule_history_undo"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/schedule/placement-options/",
+        "query": "",
+        "file": "app/api/grids/[id]/schedule/placement-options/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-placement-options",
+        "action": "placement_options"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/schedule/publish/",
+        "query": "",
+        "file": "app/api/grids/[id]/schedule/publish/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-publish-schedule",
+        "action": "publish_schedule"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/schedule/restore-published/",
+        "query": "",
+        "file": "app/api/grids/[id]/schedule/restore-published/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-restore-draft-from-published",
+        "action": "restore_draft_from_published"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/schedule/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/grids/[id]/schedule/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "grid-current-schedule",
+        "action": "current_schedule"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/schedule/",
+        "query": "",
+        "file": "app/api/grids/[id]/schedule/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "grid-current-schedule",
+        "action": "current_schedule"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/grids/123/schedule/visual-order/",
+        "query": "",
+        "file": "app/api/grids/[id]/schedule/visual-order/route.ts",
+        "frontendMethod": "PATCH",
+        "valid": true,
+        "allowed": [
+          "patch",
+          "put"
+        ],
+        "view": "grid-update-placement-visual-order",
+        "action": "update_placement_visual_order"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/screen-context/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/grids/[id]/screen-context/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-screen-context",
+        "action": "screen_context"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/solutions/",
+        "query": "",
+        "file": "app/api/grids/[id]/solutions/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-solutions",
+        "action": "solutions"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/solve/",
+        "query": "",
+        "file": "app/api/grids/[id]/solve/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-solve",
+        "action": "solve"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/solve-candidates/",
+        "query": "",
+        "file": "app/api/grids/[id]/solve-candidates/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-solve-candidates",
+        "action": "solve_candidates"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/solve-candidates/789/choose/",
+        "query": "",
+        "file": "app/api/grids/[id]/solve-candidates/[run_id]/choose/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-choose-candidate",
+        "action": "choose_candidate"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/solve-candidates/789/reject/",
+        "query": "",
+        "file": "app/api/grids/[id]/solve-candidates/[run_id]/reject/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-reject-candidate",
+        "action": "reject_candidate"
+      },
+      {
+        "method": "POST",
+        "path": "/api/grids/123/solver-wizard/",
+        "query": "",
+        "file": "app/api/grids/[id]/solver-wizard/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "grid-solver-wizard",
+        "action": "solver_wizard"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grid-memberships/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/grid_memberships/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "gridmembership-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/grid_memberships/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/invitations/accept/",
+        "query": "",
+        "file": "app/api/invitations/accept/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "invitation-accept",
+        "action": "accept"
+      },
+      {
+        "method": "POST",
+        "path": "/api/invitations/accept-link/",
+        "query": "",
+        "file": "app/api/invitations/accept/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "invitation-accept-link",
+        "action": "accept_link"
+      },
+      {
+        "method": "POST",
+        "path": "/api/invitations/decline/",
+        "query": "",
+        "file": "app/api/invitations/decline/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "invitation-decline",
+        "action": "decline"
+      },
+      {
+        "method": "GET",
+        "path": "/api/invitations/incoming/",
+        "query": "",
+        "file": "app/api/invitations/incoming/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "invitation-incoming",
+        "action": "incoming"
+      },
+      {
+        "method": "GET",
+        "path": "/api/invitations/resolve/",
+        "query": "?token=audit-token",
+        "file": "app/api/invitations/resolve/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "invitation-resolve",
+        "action": "resolve"
+      },
+      {
+        "method": "GET",
+        "path": "/api/invitations/resolve-link/",
+        "query": "?token=audit-token",
+        "file": "app/api/invitations/resolve/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "invitation-resolve-link",
+        "action": "resolve_link"
+      },
+      {
+        "method": "GET",
+        "path": "/api/invitations/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/invitations/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "invitation-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/invitations/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/invitations/",
+        "query": "",
+        "file": "app/api/invitations/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "invitation-list",
+        "action": "create"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/invitations/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/invitations/123/cancel/",
+        "query": "",
+        "file": "app/api/invitations/[id]/cancel/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "invitation-cancel",
+        "action": "cancel"
+      },
+      {
+        "method": "POST",
+        "path": "/api/invitations/123/resend/",
+        "query": "",
+        "file": "app/api/invitations/[id]/resend/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post"
+        ],
+        "view": "invitation-resend",
+        "action": "resend"
+      },
+      {
+        "method": "GET",
+        "path": "/api/participants/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/participants/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "participant-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/participants/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/participants/",
+        "query": "",
+        "file": "app/api/participants/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "participant-list",
+        "action": "create"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/participants/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/participants/123/",
+        "query": "",
+        "file": "app/api/participants/[id]/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "participant-detail",
+        "action": "retrieve"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/participants/123/",
+        "query": "",
+        "file": "app/api/participants/[id]/route.ts",
+        "frontendMethod": "PUT",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "participant-detail",
+        "action": "update"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/participants/123/",
+        "query": "",
+        "file": "app/api/participants/[id]/route.ts",
+        "frontendMethod": "PATCH",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "participant-detail",
+        "action": "partial_update"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/participants/123/",
+        "query": "",
+        "file": "app/api/participants/[id]/route.ts",
+        "frontendMethod": "DELETE",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "participant-detail",
+        "action": "destroy"
+      },
+      {
+        "method": "GET",
+        "path": "/api/placement-comments/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/placement-comments/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "placement-comments-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/placement-comments/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/placement-comments/",
+        "query": "",
+        "file": "app/api/placement-comments/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "placement-comments-list",
+        "action": "create"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/placement-comments/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/placement-comments/123/",
+        "query": "",
+        "file": "app/api/placement-comments/[id]/route.ts",
+        "frontendMethod": "PATCH",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "placement-comments-detail",
+        "action": "partial_update"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/placement-comments/123/",
+        "query": "",
+        "file": "app/api/placement-comments/[id]/route.ts",
+        "frontendMethod": "DELETE",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "placement-comments-detail",
+        "action": "destroy"
+      },
+      {
+        "method": "GET",
+        "path": "/api/schedule-blockages/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/schedule-blockages/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "schedule-blockages-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/schedule-blockages/",
+        "query": "",
+        "file": "app/api/schedule-blockages/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "schedule-blockages-list",
+        "action": "create"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/schedule-blockages/123/",
+        "query": "",
+        "file": "app/api/schedule-blockages/[id]/route.ts",
+        "frontendMethod": "PATCH",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "schedule-blockages-detail",
+        "action": "partial_update"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/schedule-blockages/123/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/schedule-blockages/[id]/route.ts",
+        "frontendMethod": "DELETE",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "schedule-blockages-detail",
+        "action": "destroy"
+      },
+      {
+        "method": "GET",
+        "path": "/api/schedule-placements/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/schedule-placements/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "schedule-placements-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/schedule-placements/",
+        "query": "",
+        "file": "app/api/schedule-placements/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "schedule-placements-list",
+        "action": "create"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/schedule-placements/123/",
+        "query": "",
+        "file": "app/api/schedule-placements/[id]/route.ts",
+        "frontendMethod": "PATCH",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "schedule-placements-detail",
+        "action": "partial_update"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/schedule-placements/123/",
+        "query": "",
+        "file": "app/api/schedule-placements/[id]/route.ts",
+        "frontendMethod": "DELETE",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "schedule-placements-detail",
+        "action": "destroy"
+      },
+      {
+        "method": "GET",
+        "path": "/api/staff-members/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/staff-members/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "staffmember-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/staff-members/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/staff-members/",
+        "query": "",
+        "file": "app/api/staff-members/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "staffmember-list",
+        "action": "create"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/staff-members/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/staffs/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/staffs/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "staff-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/staffs/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/staffs/",
+        "query": "",
+        "file": "app/api/staffs/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "staff-list",
+        "action": "create"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/staffs/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/time-ranges/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/time_ranges/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "timerange-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/time_ranges/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/time-ranges/",
+        "query": "",
+        "file": "app/api/time_ranges/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "timerange-list",
+        "action": "create"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/time_ranges/route.ts",
+        "frontendMethod": "POST",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/time-ranges/123/",
+        "query": "",
+        "file": "app/api/time_ranges/[id]/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "timerange-detail",
+        "action": "retrieve"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/time_ranges/[id]/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/time-ranges/123/",
+        "query": "",
+        "file": "app/api/time_ranges/[id]/route.ts",
+        "frontendMethod": "PATCH",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "timerange-detail",
+        "action": "partial_update"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/time_ranges/[id]/route.ts",
+        "frontendMethod": "PATCH",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/time-ranges/123/",
+        "query": "",
+        "file": "app/api/time_ranges/[id]/route.ts",
+        "frontendMethod": "DELETE",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "view": "timerange-detail",
+        "action": "destroy"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/time_ranges/[id]/route.ts",
+        "frontendMethod": "DELETE",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/units/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/units/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "unit-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/units/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/users/",
+        "query": "?grid=123&token=audit-token",
+        "file": "app/api/users/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "users-list",
+        "action": "list"
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/users/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/auth/whoami/",
+        "query": "",
+        "file": "app/api/whoami/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "options"
+        ],
+        "view": "whoami",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/whoami/route.ts",
+        "frontendMethod": "GET",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "PUT",
+        "path": "/api/auth/whoami/",
+        "query": "",
+        "file": "app/api/whoami/route.ts",
+        "frontendMethod": "PUT",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "options"
+        ],
+        "view": "whoami",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/whoami/route.ts",
+        "frontendMethod": "PUT",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/auth/whoami/",
+        "query": "",
+        "file": "app/api/whoami/route.ts",
+        "frontendMethod": "PATCH",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "options"
+        ],
+        "view": "whoami",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "query": "",
+        "file": "app/api/whoami/route.ts",
+        "frontendMethod": "PATCH",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      },
+      {
+        "method": "GET",
+        "path": "/api/grid-memberships/",
+        "file": "app/grid/[code]/categories/page.tsx",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "gridmembership-list",
+        "action": "list"
+      },
+      {
+        "method": "GET",
+        "path": "/api/categories/",
+        "file": "app/grid/[code]/categories/page.tsx",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "category-list",
+        "action": "list"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/cells/cards/",
+        "file": "app/grid/[code]/cells/page.tsx",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-cell-cards",
+        "action": "cell_cards"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grid-memberships/",
+        "file": "app/grid/[code]/cells/page.tsx",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "gridmembership-list",
+        "action": "list"
+      },
+      {
+        "method": "GET",
+        "path": "/api/participants/",
+        "file": "app/grid/[code]/cells/page.tsx",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "participant-list",
+        "action": "list"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/screen-context/",
+        "file": "app/grid/[code]/history/page.tsx",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-screen-context",
+        "action": "screen_context"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grid-memberships/",
+        "file": "app/grid/[code]/history/page.tsx",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "gridmembership-list",
+        "action": "list"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grid-memberships/",
+        "file": "app/grid/[code]/layout.tsx",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "gridmembership-list",
+        "action": "list"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/published-schedule/",
+        "file": "app/grid/[code]/layout.tsx",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-latest-published-schedule",
+        "action": "latest_published_schedule"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/screen-context/",
+        "file": "app/grid/[code]/page.tsx",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-screen-context",
+        "action": "screen_context"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grid-memberships/",
+        "file": "app/grid/[code]/page.tsx",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "gridmembership-list",
+        "action": "list"
+      },
+      {
+        "method": "GET",
+        "path": "/api/participants/",
+        "file": "app/grid/[code]/participants/page.tsx",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "participant-list",
+        "action": "list"
+      },
+      {
+        "method": "GET",
+        "path": "/api/participants/",
+        "file": "app/grid/[code]/participants/page.tsx",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "participant-list",
+        "action": "list"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/participants/123/",
+        "file": "app/grid/[code]/participants/page.tsx",
+        "valid": true,
+        "allowed": [
+          "get",
+          "patch",
+          "delete"
+        ],
+        "view": "grid-participant-by-grid-scoped-id",
+        "action": "participant_by_grid_scoped_id"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grid-memberships/",
+        "file": "app/grid/[code]/participants/page.tsx",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "gridmembership-list",
+        "action": "list"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grid-memberships/",
+        "file": "app/grid/[code]/settings/page.tsx",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "gridmembership-list",
+        "action": "list"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/code/123/",
+        "file": "app/grid/[code]/_helpers.ts",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-by-code",
+        "action": "by_code"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/code/123/schedule/",
+        "file": "app/grid/[code]/_helpers.ts",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "grid-current-schedule-by-code",
+        "action": "current_schedule_by_code"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/code/123/published-schedule/",
+        "file": "app/grid/[code]/_helpers.ts",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-latest-published-schedule-by-code",
+        "action": "latest_published_schedule_by_code"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/schedule/",
+        "file": "app/grid/[code]/_helpers.ts",
+        "valid": true,
+        "allowed": [
+          "get",
+          "post"
+        ],
+        "view": "grid-current-schedule",
+        "action": "current_schedule"
+      },
+      {
+        "method": "GET",
+        "path": "/api/grids/123/published-schedule/",
+        "file": "app/grid/[code]/_helpers.ts",
+        "valid": true,
+        "allowed": [
+          "get"
+        ],
+        "view": "grid-latest-published-schedule",
+        "action": "latest_published_schedule"
+      },
+      {
+        "method": "GET",
+        "path": "/api/auth/whoami/",
+        "file": "lib/auth.ts",
+        "valid": true,
+        "allowed": [
+          "get",
+          "put",
+          "patch",
+          "options"
+        ],
+        "view": "whoami",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/refresh/",
+        "file": "lib/backend.ts",
+        "valid": true,
+        "allowed": [
+          "post",
+          "options"
+        ],
+        "view": "token_refresh",
+        "action": null
+      }
+    ],
+    "endpoints": [
+      {
+        "pattern": "api/debug-env/",
+        "methods": [
+          "get"
+        ],
+        "name": null
+      },
+      {
+        "pattern": "api/health/",
+        "methods": [
+          "options",
+          "get"
+        ],
+        "name": "health"
+      },
+      {
+        "pattern": "api/schema/",
+        "methods": [
+          "get",
+          "options"
+        ],
+        "name": "schema"
+      },
+      {
+        "pattern": "api/docs/",
+        "methods": [
+          "get",
+          "options"
+        ],
+        "name": null
+      },
+      {
+        "pattern": "api/^users/$",
+        "methods": [
+          "get"
+        ],
+        "name": "users-list"
+      },
+      {
+        "pattern": "api/^users/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get"
+        ],
+        "name": "users-detail"
+      },
+      {
+        "pattern": "api/^schedules/$",
+        "methods": [
+          "get"
+        ],
+        "name": "schedules-list"
+      },
+      {
+        "pattern": "api/^schedules/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get"
+        ],
+        "name": "schedules-detail"
+      },
+      {
+        "pattern": "api/^schedules/(?P<pk>[^/.]+)/apply-manual-learning/$",
+        "methods": [
+          "post"
+        ],
+        "name": "schedules-apply-manual-learning"
+      },
+      {
+        "pattern": "api/^schedule-placements/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "schedule-placements-list"
+      },
+      {
+        "pattern": "api/^schedule-placements/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "schedule-placements-detail"
+      },
+      {
+        "pattern": "api/^schedule-blockages/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "schedule-blockages-list"
+      },
+      {
+        "pattern": "api/^schedule-blockages/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "schedule-blockages-detail"
+      },
+      {
+        "pattern": "api/^placement-comments/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "placement-comments-list"
+      },
+      {
+        "pattern": "api/^placement-comments/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "placement-comments-detail"
+      },
+      {
+        "pattern": "api/^solver-feedback-signals/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "solver-feedback-signals-list"
+      },
+      {
+        "pattern": "api/^solver-feedback-signals/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "solver-feedback-signals-detail"
+      },
+      {
+        "pattern": "api/^grids/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "grid-list"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/$",
+        "methods": [
+          "get"
+        ],
+        "name": "grid-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/cells/(?P<cell_id>[^/.]+)/placement-preview/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-cell-placement-preview-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/solve-candidates/(?P<run_id>[^/.]+)/choose/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-choose-candidate-by-code"
+      },
+      {
+        "pattern": "api/^grids/config/$",
+        "methods": [
+          "get"
+        ],
+        "name": "grid-config"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/schedule/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "grid-current-schedule-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/draft-structure/apply/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-draft-structure-apply-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/draft-structure/preview/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-draft-structure-preview-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/schedule/export/$",
+        "methods": [
+          "get"
+        ],
+        "name": "grid-export-schedule-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/published-schedule/$",
+        "methods": [
+          "get"
+        ],
+        "name": "grid-latest-published-schedule-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/cells/(?P<cell_id>[^/.]+)/place/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-place-cell-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/schedule/placement-options/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-placement-options-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/precheck/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-precheck-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/schedule/publish/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-publish-schedule-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/published-schedules/$",
+        "methods": [
+          "get"
+        ],
+        "name": "grid-published-schedules-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/solve-candidates/(?P<run_id>[^/.]+)/reject/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-reject-candidate-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/schedule/restore-published/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-restore-draft-from-published-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/schedule/history/$",
+        "methods": [
+          "get"
+        ],
+        "name": "grid-schedule-history-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/schedule/history/redo/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-schedule-history-redo-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/schedule/history/undo/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-schedule-history-undo-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/screen-context/$",
+        "methods": [
+          "get"
+        ],
+        "name": "grid-screen-context-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/solutions/$",
+        "methods": [
+          "get"
+        ],
+        "name": "grid-solutions-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/solve/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-solve-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/solve-candidates/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-solve-candidates-by-code"
+      },
+      {
+        "pattern": "api/^grids/code/(?P<grid_code>[^/.]+)/schedule/visual-order/$",
+        "methods": [
+          "patch",
+          "put"
+        ],
+        "name": "grid-update-placement-visual-order-by-code"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "grid-detail"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/cells/cards/$",
+        "methods": [
+          "get"
+        ],
+        "name": "grid-cell-cards"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/cells/form-options/$",
+        "methods": [
+          "get"
+        ],
+        "name": "grid-cell-form-options"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/cells/(?P<cell_id>[^/.]+)/placement-preview/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-cell-placement-preview"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/solve-candidates/(?P<run_id>[^/.]+)/choose/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-choose-candidate"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/schedule/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "grid-current-schedule"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/draft-structure/apply/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-draft-structure-apply"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/draft-structure/preview/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-draft-structure-preview"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/schedule/export/$",
+        "methods": [
+          "get"
+        ],
+        "name": "grid-export-schedule"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/published-schedule/$",
+        "methods": [
+          "get"
+        ],
+        "name": "grid-latest-published-schedule"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/participants/(?P<grid_participant_id>\\d+)/$",
+        "methods": [
+          "get",
+          "patch",
+          "delete"
+        ],
+        "name": "grid-participant-by-grid-scoped-id"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/cells/(?P<cell_id>[^/.]+)/place/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-place-cell"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/schedule/placement-options/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-placement-options"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/precheck/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-precheck"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/schedule/publish/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-publish-schedule"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/published-schedules/$",
+        "methods": [
+          "get"
+        ],
+        "name": "grid-published-schedules"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/solve-candidates/(?P<run_id>[^/.]+)/reject/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-reject-candidate"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/schedule/restore-published/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-restore-draft-from-published"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/schedule/history/$",
+        "methods": [
+          "get"
+        ],
+        "name": "grid-schedule-history"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/schedule/history/redo/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-schedule-history-redo"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/schedule/history/undo/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-schedule-history-undo"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/screen-context/$",
+        "methods": [
+          "get"
+        ],
+        "name": "grid-screen-context"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/solutions/$",
+        "methods": [
+          "get"
+        ],
+        "name": "grid-solutions"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/solve/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-solve"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/solve-candidates/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-solve-candidates"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/solver-wizard/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-solver-wizard"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/toggle-tiers/$",
+        "methods": [
+          "post"
+        ],
+        "name": "grid-toggle-tiers"
+      },
+      {
+        "pattern": "api/^grids/(?P<pk>[^/.]+)/schedule/visual-order/$",
+        "methods": [
+          "patch",
+          "put"
+        ],
+        "name": "grid-update-placement-visual-order"
+      },
+      {
+        "pattern": "api/^grid-memberships/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "gridmembership-list"
+      },
+      {
+        "pattern": "api/^grid-memberships/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "gridmembership-detail"
+      },
+      {
+        "pattern": "api/^participants/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "participant-list"
+      },
+      {
+        "pattern": "api/^participants/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "participant-detail"
+      },
+      {
+        "pattern": "api/^staffs/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "staff-list"
+      },
+      {
+        "pattern": "api/^staffs/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "staff-detail"
+      },
+      {
+        "pattern": "api/^staff-members/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "staffmember-list"
+      },
+      {
+        "pattern": "api/^staff-members/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "staffmember-detail"
+      },
+      {
+        "pattern": "api/^categories/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "category-list"
+      },
+      {
+        "pattern": "api/^categories/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "category-detail"
+      },
+      {
+        "pattern": "api/^category-values/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "categoryvalue-list"
+      },
+      {
+        "pattern": "api/^category-values/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "categoryvalue-detail"
+      },
+      {
+        "pattern": "api/^time-ranges/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "timerange-list"
+      },
+      {
+        "pattern": "api/^time-ranges/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "timerange-detail"
+      },
+      {
+        "pattern": "api/^units/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "unit-list"
+      },
+      {
+        "pattern": "api/^units/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "unit-detail"
+      },
+      {
+        "pattern": "api/^bundles/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "bundle-list"
+      },
+      {
+        "pattern": "api/^bundles/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "bundle-detail"
+      },
+      {
+        "pattern": "api/^availability-rules/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "availabilityrule-list"
+      },
+      {
+        "pattern": "api/^availability-rules/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "availabilityrule-detail"
+      },
+      {
+        "pattern": "api/^cells/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "cell-list"
+      },
+      {
+        "pattern": "api/^cells/bulk_create/$",
+        "methods": [
+          "post"
+        ],
+        "name": "cell-bulk-create"
+      },
+      {
+        "pattern": "api/^cells/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "cell-detail"
+      },
+      {
+        "pattern": "api/^cells/(?P<pk>[^/.]+)/extend_series/$",
+        "methods": [
+          "post"
+        ],
+        "name": "cell-extend-series"
+      },
+      {
+        "pattern": "api/^cells/(?P<pk>[^/.]+)/form-bootstrap/$",
+        "methods": [
+          "get"
+        ],
+        "name": "cell-form-bootstrap"
+      },
+      {
+        "pattern": "api/^invitations/$",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "invitation-list"
+      },
+      {
+        "pattern": "api/^invitations/accept/$",
+        "methods": [
+          "post"
+        ],
+        "name": "invitation-accept"
+      },
+      {
+        "pattern": "api/^invitations/accept-link/$",
+        "methods": [
+          "post"
+        ],
+        "name": "invitation-accept-link"
+      },
+      {
+        "pattern": "api/^invitations/decline/$",
+        "methods": [
+          "post"
+        ],
+        "name": "invitation-decline"
+      },
+      {
+        "pattern": "api/^invitations/incoming/$",
+        "methods": [
+          "get"
+        ],
+        "name": "invitation-incoming"
+      },
+      {
+        "pattern": "api/^invitations/resolve/$",
+        "methods": [
+          "get"
+        ],
+        "name": "invitation-resolve"
+      },
+      {
+        "pattern": "api/^invitations/resolve-link/$",
+        "methods": [
+          "get"
+        ],
+        "name": "invitation-resolve-link"
+      },
+      {
+        "pattern": "api/^invitations/(?P<pk>[^/.]+)/$",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "delete"
+        ],
+        "name": "invitation-detail"
+      },
+      {
+        "pattern": "api/^invitations/(?P<pk>[^/.]+)/cancel/$",
+        "methods": [
+          "post"
+        ],
+        "name": "invitation-cancel"
+      },
+      {
+        "pattern": "api/^invitations/(?P<pk>[^/.]+)/resend/$",
+        "methods": [
+          "post"
+        ],
+        "name": "invitation-resend"
+      },
+      {
+        "pattern": "api/auth/whoami/",
+        "methods": [
+          "get",
+          "put",
+          "patch",
+          "options"
+        ],
+        "name": "whoami"
+      },
+      {
+        "pattern": "api/auth/login/",
+        "methods": [
+          "post",
+          "options"
+        ],
+        "name": "token_obtain_pair"
+      },
+      {
+        "pattern": "api/auth/refresh/",
+        "methods": [
+          "post",
+          "options"
+        ],
+        "name": "token_refresh"
+      },
+      {
+        "pattern": "api/auth/google/",
+        "methods": [
+          "post",
+          "options"
+        ],
+        "name": "google_login"
+      },
+      {
+        "pattern": "api/auth/google/link/",
+        "methods": [
+          "post",
+          "options"
+        ],
+        "name": "google_link"
+      },
+      {
+        "pattern": "api/auth/register/",
+        "methods": [
+          "post",
+          "options"
+        ],
+        "name": "register"
+      },
+      {
+        "pattern": "api/auth/verify-email/",
+        "methods": [
+          "post",
+          "options"
+        ],
+        "name": "verify_email_request"
+      },
+      {
+        "pattern": "api/auth/verify-email/confirm/",
+        "methods": [
+          "post",
+          "options"
+        ],
+        "name": "verify_email_confirm"
+      },
+      {
+        "pattern": "api/auth/verify-email/activate/",
+        "methods": [
+          "get",
+          "options"
+        ],
+        "name": "verify_email_activate"
+      },
+      {
+        "pattern": "api/auth/verify-email/exchange/",
+        "methods": [
+          "post",
+          "options"
+        ],
+        "name": "verify_email_exchange"
+      },
+      {
+        "pattern": "api/auth/password-reset/",
+        "methods": [
+          "post",
+          "options"
+        ],
+        "name": "password_reset"
+      },
+      {
+        "pattern": "api/auth/password-reset/confirm/",
+        "methods": [
+          "post",
+          "options"
+        ],
+        "name": "password_reset_confirm"
+      },
+      {
+        "pattern": "api/auth/password-change/",
+        "methods": [
+          "post",
+          "options"
+        ],
+        "name": "password_change"
+      }
+    ]
+  },
+  "missing": [],
+  "errors": []
+}

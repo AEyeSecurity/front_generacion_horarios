@@ -23,11 +23,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
     };
 
     const encoded = encodeURIComponent(code);
-    let res = await fetch(`${B}/api/grids/code/${encoded}/`, { headers, cache: "no-store" });
-    if (res.status === 404) {
-      res = await fetch(`${B}/api/grids/code/${encoded}`, { headers, cache: "no-store" });
-    }
-    return res;
+    return fetch(`${B}/api/grids/code/${encoded}/`, { headers, cache: "no-store" });
   };
 
   let res = await fetchWithToken(access);
