@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken } from "@/lib/cookies";
@@ -6,7 +7,7 @@ const B = getApiBaseUrlNormalized();
 
 export async function GET(req: NextRequest) {
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
   const url = new URL(req.url);
   const qs = url.searchParams.toString();
   const res = await fetch(`${B}/api/schedule-placements/${qs ? `?${qs}` : ""}`, {
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
   const body = await req.text();
   const res = await fetch(`${B}/api/schedule-placements/`, {
     method: "POST",

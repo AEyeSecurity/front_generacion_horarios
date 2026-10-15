@@ -1,4 +1,6 @@
 "use client";
+import { normalizeApiError, LocalizedApiError } from "@/lib/api-errors";
+
 
 import { useEffect, useState } from "react";
 import {
@@ -27,8 +29,6 @@ type Props = {
   onOpenChange: (v: boolean) => void;
   onCreated?: () => void;
 };
-
-const AVAILABILITY_RULE_CREATED_EVENT = "shift:onboarding-availability-rule-created";
 
 const PREFS = ["preferred", "impossible"] as const;
 type PreferenceValue = (typeof PREFS)[number];
@@ -119,40 +119,7 @@ const collectErrorMessages = (value: unknown): string[] => {
   return [String(value)];
 };
 
-const toFriendlyRuleError = (raw: unknown, fallback: string, translateFn?: (key: I18nKey) => string): string => {
-  let parsed: unknown = raw;
-  if (typeof raw === "string") {
-    const text = raw.trim();
-    if (!text) return fallback;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = text;
-    }
-  }
-
-  const message = collectErrorMessages(parsed)
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .join(" ");
-  if (!message) return fallback;
-  const normalized = message.toLowerCase();
-
-  if (normalized.includes("overlapping availability rule already exists")) {
-    return translateFn?.("availability_rule.overlap_message") ??
-      "This rule overlaps another rule on the same day. Try moving or resizing it.";
-  }
-  if (normalized.includes("end") && normalized.includes("start")) {
-    return translateFn?.("availability_rule.end_must_be_later_than_start") ?? "End time must be later than start time.";
-  }
-  if (normalized.includes("grid bounds") || normalized.includes("within grid bounds")) {
-    return translateFn?.("availability_rule.within_grid_range_message") ?? "The rule must stay inside the grid time range.";
-  }
-  if (normalized.includes("required")) {
-    return translateFn?.("availability_rule.required_fields_message") ?? "Please complete all required rule fields.";
-  }
-  return message;
-};
+const toFriendlyRuleError = (raw: unknown, fallback: string, translateFn?: (key: I18nKey) => string): string => { return normalizeApiError(raw, "", { translate: translateFn }); };
 
 export default function AddAvailabilityRuleDialog({
   participantId,
@@ -234,11 +201,11 @@ export default function AddAvailabilityRuleDialog({
       if (!res.ok) {
         const rawError = await res.text().catch(() => "");
         if (res.status !== 400) {
-          throw new Error(toFriendlyRuleError(rawError || `Error creating rule (${res.status})`, "Could not create rule.", t));
+          throw new LocalizedApiError(toFriendlyRuleError(rawError || `Error creating rule (${res.status})`, "Could not create rule.", t));
         }
 
         const rulesRes = await fetch(`/api/availability_rules?participant=${participantId}`, { cache: "no-store" });
-        if (!rulesRes.ok) throw new Error(rawError || t("add_rule.error_creating_status", { status: res.status }));
+        if (!rulesRes.ok) throw new LocalizedApiError(normalizeApiError(rawError, t("add_rule.error_creating_status", { status: res.status })));
         const rulesData = await rulesRes.json().catch(() => null);
         const rulesList = normalizeAvailabilityRulesResponse(rulesData);
 
@@ -284,7 +251,7 @@ export default function AddAvailabilityRuleDialog({
         }
 
         if (toMerge.size === 0) {
-          throw new Error(toFriendlyRuleError(rawError || "Could not create rule.", "Could not create rule.", t));
+          throw new LocalizedApiError(toFriendlyRuleError(rawError || "Could not create rule.", "Could not create rule.", t));
         }
 
         const sortedToMerge = [...toMerge.values()].sort(
@@ -346,7 +313,7 @@ export default function AddAvailabilityRuleDialog({
 
           if (!deletedAll) {
             for (const deletedRule of deletedRules) await recreateRule(deletedRule);
-            throw new Error(
+            throw new LocalizedApiError(
               toFriendlyRuleError(rawError || "Could not merge with adjacent rule.", "Could not merge with adjacent rule.", t),
             );
           }
@@ -362,7 +329,7 @@ export default function AddAvailabilityRuleDialog({
             });
             if (!patchAfterDelete.ok) {
               for (const deletedRule of deletedRules) await recreateRule(deletedRule);
-              throw new Error(
+              throw new LocalizedApiError(
                 toFriendlyRuleError(rawError || "Could not merge with adjacent rule.", "Could not merge with adjacent rule.", t),
               );
             }
@@ -372,17 +339,14 @@ export default function AddAvailabilityRuleDialog({
         }
 
         if (!mergedOk) {
-          throw new Error(toFriendlyRuleError(rawError || "Could not create rule.", "Could not create rule.", t));
+          throw new LocalizedApiError(toFriendlyRuleError(rawError || "Could not create rule.", "Could not create rule.", t));
         }
       }
       toast(t("add_rule.created_toast"));
       onOpenChange(false);
       onCreated?.();
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent(AVAILABILITY_RULE_CREATED_EVENT));
-      }
     } catch (e: unknown) {
-      toast.error(toFriendlyRuleError(e instanceof Error ? e.message : "", t("add_rule.error_creating"), t));
+      toast.error(toFriendlyRuleError(e, t("add_rule.error_creating"), t));
     } finally {
       setLoading(false);
     }
@@ -390,7 +354,7 @@ export default function AddAvailabilityRuleDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl p-0" data-onboarding-target="availability-rule-dialog">
+      <DialogContent className="max-w-2xl p-0">
         <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
         <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
           <DialogTitle>{t("add_rule.title")}</DialogTitle>

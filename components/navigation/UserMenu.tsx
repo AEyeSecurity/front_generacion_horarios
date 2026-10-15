@@ -1,4 +1,6 @@
 "use client";
+import { normalizeApiError } from "@/lib/api-errors";
+
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -68,7 +70,7 @@ export default function UserMenu({ me }: { me: User }) {
     });
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      return { ok: false as const, error: payload.error || t("user_menu.language_save_error") };
+      return { ok: false as const, error: normalizeApiError(payload, t("user_menu.language_save_error"), { status: response.status, translate: t }) };
     }
     const payload = (await response.json().catch(() => ({}))) as { preferred_language?: unknown };
     return { ok: true as const, language: parsePreferredLanguage(payload.preferred_language) ?? nextLanguage };

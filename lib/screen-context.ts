@@ -1,3 +1,4 @@
+import { ApiError } from "@/lib/api-errors";
 import type { ScheduleViewMode } from "@/lib/schedule-view";
 import { authFetch } from "@/lib/client-auth";
 import type { DraftPlacementCacheChange } from "@/lib/draft-mutation";
@@ -211,7 +212,7 @@ export async function fetchGridScreenContext(
 
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      throw new Error(txt || `Failed to load screen context (${res.status})`);
+      throw new ApiError(res.status, txt);
     }
 
     const data = (await res.json().catch(() => ({}))) as ScreenContextData;

@@ -146,7 +146,6 @@ export default function SidePanel({
               {tab === "participants" ? (
                 <>
                   <button
-                    data-onboarding-target="participants-add-button"
                     onClick={() => setShowPerson(true)}
                     className={`w-full py-2 rounded bg-black text-white text-sm transition-shadow ${
                       highlightAddParticipant ? "ring-4 ring-amber-300 ring-offset-2 animate-pulse" : ""
@@ -170,7 +169,6 @@ export default function SidePanel({
               ) : (
                 <>
                   <button
-                    data-onboarding-target="categories-add-button"
                     onClick={() => setShowCategory(true)}
                     className="w-full py-2 rounded bg-black text-white text-sm"
                   >

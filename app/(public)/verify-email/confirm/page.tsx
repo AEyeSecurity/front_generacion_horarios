@@ -1,4 +1,6 @@
 "use client";
+import { normalizeApiError } from "@/lib/api-errors";
+
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -50,7 +52,7 @@ export default function VerifyEmailConfirmPage() {
           let msg = t("verify_email_confirm.verification_failed");
           try {
             const j = await r.json();
-            msg = j?.error || j?.detail || msg;
+            msg = normalizeApiError(j, msg, { status: r.status, translate: t });
           } catch {}
           if (!cancelled) {
             setStatus("error");
@@ -69,7 +71,7 @@ export default function VerifyEmailConfirmPage() {
       } catch (err: unknown) {
         if (!cancelled) {
           setStatus("error");
-          setError(err instanceof Error ? err.message : t("verify_email_confirm.verification_failed"));
+          setError(normalizeApiError(err, t("verify_email_confirm.verification_failed")));
         }
       }
     })();

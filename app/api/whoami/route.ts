@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
@@ -75,7 +76,7 @@ async function proxyWhoAmI(method: "GET" | "PATCH" | "PUT", payload?: unknown) {
   if (!access) {
     const refreshed = await refreshTokens();
     if (!refreshed) {
-      const out = NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+      const out = NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
       out.cookies.delete(ACCESS);
       out.cookies.delete(REFRESH);
       return out;
@@ -89,7 +90,7 @@ async function proxyWhoAmI(method: "GET" | "PATCH" | "PUT", payload?: unknown) {
   if (!res.ok && res.status === 401) {
     const refreshed = await refreshTokens();
     if (!refreshed) {
-      const out = NextResponse.json({ error: "refresh_failed" }, { status: 401 });
+      const out = NextResponse.json(apiErrorPayload({ error: "refresh_failed" }, 401), { status: 401 });
       out.cookies.delete(ACCESS);
       out.cookies.delete(REFRESH);
       return out;

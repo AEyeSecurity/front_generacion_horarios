@@ -1,4 +1,6 @@
 "use client";
+import { normalizeApiError } from "@/lib/api-errors";
+
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -75,7 +77,7 @@ export default function GoogleSignInButton({
             try {
               const j = await r.json();
               const status = (j && j.status) || r.status;
-              code = (j?.code || j?.error || j?.message || code) + (status ? ` (${status})` : "");
+              code = normalizeApiError(j, code, { status, translate: t });
               // eslint-disable-next-line no-console
               console.error("/api/auth/google error", j);
             } catch {
@@ -98,7 +100,7 @@ export default function GoogleSignInButton({
       });
       setRendered(true);
     } catch (error: unknown) {
-      setErr(error instanceof Error && error.message ? error.message : t("auth.google_init_failed"));
+      setErr(normalizeApiError(error, t("auth.google_init_failed")));
     }
   }, [context, next, ready, router, t]);
 

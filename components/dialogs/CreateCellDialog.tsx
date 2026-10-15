@@ -1,4 +1,6 @@
 "use client";
+import { ApiError, LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import * as React from "react";
 import {
@@ -157,36 +159,9 @@ function flattenErrorMessages(value: unknown): string[] {
   return [];
 }
 
-function parseStructuredApiError(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const source = payload as Record<string, unknown>;
-  const preferred = LOCK_VALIDATION_KEYS.flatMap((key) =>
-    flattenErrorMessages(source[key]).map((message) => `${key}: ${message}`)
-  );
-  if (preferred.length > 0) return preferred.join("\n");
+function parseStructuredApiError(payload: unknown): string | null { return normalizeApiError(payload); }
 
-  const detail = flattenErrorMessages(source.detail);
-  if (detail.length > 0) return detail.join("\n");
-
-  const generic = Object.entries(source).flatMap(([key, value]) =>
-    flattenErrorMessages(value).map((message) => `${key}: ${message}`)
-  );
-  return generic.length > 0 ? generic.join("\n") : null;
-}
-
-function buildApiErrorMessage(raw: string, status: number, fallback: string): string {
-  const trimmed = raw.trim();
-  if (trimmed) {
-    if (/^<!doctype/i.test(trimmed) || /^<html/i.test(trimmed)) return `${fallback} (${status})`;
-    try {
-      const parsed = JSON.parse(trimmed) as unknown;
-      const structured = parseStructuredApiError(parsed);
-      if (structured) return structured;
-    } catch {}
-    return trimmed;
-  }
-  return `${fallback} (${status})`;
-}
+function buildApiErrorMessage(raw: string, status: number, fallback: string): string { return normalizeApiError(raw, fallback, { status }); }
 
 function buildStaffingError(
   t: DialogTranslate,
@@ -681,7 +656,7 @@ export default function CreateCellDialog({
     (async () => {
       try {
         const response = await authFetch(gridCellFormOptionsPath(gridId), { cache: "no-store" });
-        if (!response.ok) throw new Error(`${t("create_cell.failed_load_data")} (${response.status})`);
+        if (!response.ok) throw new ApiError(response.status, await response.text().catch(() => ""));
         const bootstrap = normalizeCellFormBootstrap(await response.json());
         const g = { ...bootstrap.options, ...bootstrap.grid } as GridConfig;
           const configuredCellMinutes = Number(g?.cell_size_min ?? g?.cell_size_minutes ?? g?.slot_min);
@@ -722,7 +697,7 @@ export default function CreateCellDialog({
         setLoadedOptionsGridId(gridId);
 
       } catch (e: any) {
-        setOptionsLoadError(e?.message || t("create_cell.failed_load_data"));
+        setOptionsLoadError(normalizeApiError(e, t("create_cell.failed_load_data")));
       } finally {
         setOptionsLoading(false);
       }
@@ -947,10 +922,7 @@ export default function CreateCellDialog({
       }
 
       if (!res.ok) {
-        const detail =
-          typeof data === "string" && data.trim()
-            ? data.trim()
-            : parseStructuredApiError(data) || `status ${res.status}`;
+        const detail = normalizeApiError(data, "", { status: res.status });
         attemptErrors.push(detail);
         continue;
       }
@@ -960,9 +932,9 @@ export default function CreateCellDialog({
     }
 
     if (attemptErrors.length > 0) {
-      throw new Error(t("errors.failed_resolve_bundle_details", { details: attemptErrors[attemptErrors.length - 1] }));
+      throw new LocalizedApiError(t("errors.failed_resolve_bundle_details", { details: attemptErrors[attemptErrors.length - 1] }));
     }
-    throw new Error(t("errors.failed_resolve_bundle"));
+    throw new LocalizedApiError(t("errors.failed_resolve_bundle"));
   }
 
   async function submit(e: React.FormEvent) {
@@ -1050,7 +1022,7 @@ export default function CreateCellDialog({
       });
       if (!res.ok) {
         const raw = await res.text().catch(() => "");
-        throw new Error(buildApiErrorMessage(raw, res.status, t("create_cell.failed_create")));
+        throw new LocalizedApiError(buildApiErrorMessage(raw, res.status, t("create_cell.failed_create")));
       }
       invalidateGridResource(gridId, "cells");
       invalidateGridResource(gridId, "bundles");
@@ -1058,7 +1030,7 @@ export default function CreateCellDialog({
       onOpenChange(false);
       await onCreated?.();
     } catch (e: any) {
-      setErr(e?.message || t("create_cell.failed_create"));
+      setErr(normalizeApiError(e, t("create_cell.failed_create")));
     } finally {
       setSaving(false);
     }
@@ -1066,7 +1038,7 @@ export default function CreateCellDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-[900px] p-0 z-[1801]" data-onboarding-target="cell-dialog">
+        <DialogContent className="max-w-[900px] p-0 z-[1801]">
           <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
           <DialogHeader className="relative min-h-[72px] shrink-0 border-b px-6 py-4 pr-12">
             <DialogTitle>{t("create_cell.title")}</DialogTitle>

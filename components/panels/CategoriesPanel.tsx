@@ -1,4 +1,6 @@
 "use client";
+import { ApiError, LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
@@ -45,7 +47,7 @@ export default function CategoriesPanel({
         force,
         fallback: async () => {
           const res = await fetch(`/api/categories?grid=${gridId}`, { cache: "no-store" });
-          if (!res.ok) throw new Error(t("errors.failed_status", { status: res.status }));
+          if (!res.ok) throw new ApiError(res.status, await res.text().catch(() => ""));
           const data = await res.json();
           return Array.isArray(data) ? data : data.results ?? [];
         },
@@ -53,7 +55,7 @@ export default function CategoriesPanel({
       setList(items);
       onParents?.(items.map((c: Category) => ({ id: c.id, name: c.name })));
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "Error");
+      setErr(normalizeApiError(e, "Error"));
     } finally {
       setLoading(false);
     }
@@ -75,10 +77,6 @@ export default function CategoriesPanel({
       }, {}),
     [list],
   );
-  const latestCategoryId = useMemo(() => {
-    if (list.length === 0) return null;
-    return Math.max(...list.map((item) => Number(item.id) || 0));
-  }, [list]);
 
   async function toggleHidden(category: Category) {
     const nextHidden = !Boolean(category.hidden);
@@ -112,20 +110,20 @@ export default function CategoriesPanel({
               .slice(0, 6)
               .map((unit) => `- ${unit}`);
             message = [
-              payload.detail || t("category_panel.hide_blocked_by_blockages"),
+              normalizeApiError(payload, t("category_panel.hide_blocked_by_blockages")),
               lines.length > 0 ? `${t("category_panel.affected_blockages")}\n${lines.join("\n")}` : "",
             ]
               .filter(Boolean)
               .join("\n\n");
           } else if (payload.detail) {
-            message = payload.detail;
+            message = normalizeApiError(payload);
           }
         } catch {
           if (text.trim() && !/^<!doctype/i.test(text.trim()) && !/^<html/i.test(text.trim())) {
-            message = text.trim();
+            message = normalizeApiError(text, message);
           }
         }
-        throw new Error(message);
+        throw new LocalizedApiError(message);
       }
       const nextList = list.map((item) =>
         item.id === category.id ? { ...item, hidden: nextHidden } : item,
@@ -135,14 +133,14 @@ export default function CategoriesPanel({
       invalidateGridScreenContext(gridId, "draft");
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CATEGORY_VALUES_UPDATED_EVENT));
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : t("category_panel.failed_toggle_visibility"));
+      toast.error(normalizeApiError(error, t("category_panel.failed_toggle_visibility")));
     } finally {
       setBusyCategoryId(null);
     }
   }
 
   return (
-    <div className="h-full" data-onboarding-target="categories-panel">
+    <div className="h-full">
       <PanelShell title={t("category_panel.title")} error={err}>
         <input
           className="w-full border rounded px-3 py-2 text-sm"
@@ -160,7 +158,6 @@ export default function CategoriesPanel({
             {filtered.map((c) => (
               <li key={c.id}>
                 <div
-                  data-onboarding-target={Number(c.id) === latestCategoryId ? "categories-latest-row" : undefined}
                   className="flex items-center gap-2 rounded border p-2 text-sm hover:bg-gray-50"
                 >
                   <button

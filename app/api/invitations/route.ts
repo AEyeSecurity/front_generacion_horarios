@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 // Proxy for /api/invitations -> NEXT_PUBLIC_API_URL/api/invitations
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
@@ -32,11 +33,11 @@ export async function GET(req: Request) {
   if (r.ok) return NextResponse.json(await r.json(), { status: r.status });
   if (r.status !== 401) {
     const text = await r.text().catch(() => "error");
-    return NextResponse.json({ error: text }, { status: r.status });
+    return NextResponse.json(apiErrorPayload({ error: text }, r.status), { status: r.status });
   }
   const refreshed = await refreshTokens();
   if ("error" in refreshed) {
-    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+    const out = NextResponse.json(apiErrorPayload({ error: refreshed.error }, 401), { status: 401 });
     out.cookies.delete(ACCESS); out.cookies.delete(REFRESH);
     return out;
   }
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
   }
   const refreshed = await refreshTokens();
   if ("error" in refreshed) {
-    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+    const out = NextResponse.json(apiErrorPayload({ error: refreshed.error }, 401), { status: 401 });
     out.cookies.delete(ACCESS); out.cookies.delete(REFRESH);
     return out;
   }

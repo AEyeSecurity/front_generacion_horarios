@@ -1,4 +1,6 @@
 "use client";
+import { LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -238,68 +240,13 @@ function normalizeTimeWindowMode(value: unknown): TimeWindowMode {
 }
 
 function flattenApiError(value: unknown): string[] {
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed ? [trimmed] : [];
-  }
-  if (Array.isArray(value)) return value.flatMap((entry) => flattenApiError(entry));
-  if (value && typeof value === "object") {
-    return Object.values(value as Record<string, unknown>).flatMap((entry) => flattenApiError(entry));
-  }
-  return [];
+  if (Array.isArray(value)) return value.map((item) => normalizeApiError(item));
+  return value == null ? [] : [normalizeApiError(value)];
 }
 
-function parseApiErrorMessage(raw: string, fallback: string): string {
-  const text = raw.trim();
-  if (!text) return fallback;
-  if (/^<!doctype/i.test(text) || /^<html[\s>]/i.test(text)) {
-    if (process.env.NODE_ENV !== "production") {
-      console.error("API returned HTML error body:", text);
-    }
-    return fallback;
-  }
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      (parsed as { code?: unknown }).code === "GRID_DELETE_PROTECTED"
-    ) {
-      return fallback;
-    }
-    const flattened = flattenApiError(parsed);
-    if (flattened.length > 0) return flattened.join(" ");
-  } catch {
-    return text;
-  }
-  return fallback;
-}
+function parseApiErrorMessage(raw: string, fallback: string): string { return normalizeApiError(raw, fallback); }
 
-function parseGridDeleteErrorMessage(raw: string, fallback: string, protectedFallback: string): string {
-  const text = raw.trim();
-  if (!text) return fallback;
-  if (/^<!doctype/i.test(text) || /^<html[\s>]/i.test(text)) {
-    if (process.env.NODE_ENV !== "production") {
-      console.error("Grid delete returned HTML error body:", text);
-    }
-    return fallback;
-  }
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      (parsed as { code?: unknown }).code === "GRID_DELETE_PROTECTED"
-    ) {
-      return protectedFallback;
-    }
-    const flattened = flattenApiError(parsed);
-    if (flattened.length > 0) return flattened.join(" ");
-  } catch {
-    return text;
-  }
-  return fallback;
-}
+function parseGridDeleteErrorMessage(raw: string, fallback: string, protectedFallback: string): string { return normalizeApiError(raw, fallback); }
 
 function parseJsonObject<T extends object>(raw: string): T {
   if (!raw.trim()) return {} as T;
@@ -341,9 +288,7 @@ function formatUnknownValue(value: unknown): string {
       raw.cell ??
       raw.source_cell_name ??
       raw.title ??
-      raw.detail ??
-      raw.message ??
-      raw.reason;
+      ((raw.type || raw.code || raw.detail || raw.message) ? normalizeApiError(raw) : raw.reason);
     const day = raw.day ?? raw.day_label ?? raw.day_name ?? raw.day_index;
     const start = raw.start_time ?? raw.start ?? raw.start_slot;
     const end = raw.end_time ?? raw.end ?? raw.end_slot;
@@ -1171,7 +1116,7 @@ export default function GridSettingsTabs({
             const response = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}`, { cache: "no-store" });
             if (!response.ok) {
               const raw = await response.text().catch(() => "");
-              throw new Error(parseApiErrorMessage(raw, tt("grid_settings.load_failed", "Could not load grid settings.")));
+              throw new LocalizedApiError(parseApiErrorMessage(raw, tt("grid_settings.load_failed", "Could not load grid settings.")));
             }
             return response.json().catch(() => ({}));
           },
@@ -1335,7 +1280,7 @@ export default function GridSettingsTabs({
       }
       setDayHeatmapValues(normalizedHeatmap);
     } catch (error: unknown) {
-      setLoadingError(error instanceof Error ? error.message : tt("grid_settings.load_failed", "Could not load grid settings."));
+      setLoadingError(normalizeApiError(error, tt("grid_settings.load_failed", "Could not load grid settings.")));
     } finally {
       setLoading(false);
     }
@@ -1354,7 +1299,7 @@ export default function GridSettingsTabs({
       });
       if (!response.ok) {
         const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, tt(fallbackErrorKey, "Could not save settings.")));
+        throw new LocalizedApiError(parseApiErrorMessage(raw, tt(fallbackErrorKey, "Could not save settings.")));
       }
       const data = await response.json().catch(() => ({}));
       invalidateGridResource(gridId, "grid");
@@ -1436,7 +1381,7 @@ export default function GridSettingsTabs({
         });
         const rawText = await response.text().catch(() => "");
         if (!response.ok) {
-          throw new Error(parseApiErrorMessage(rawText, tt("grid_settings.draft_structure_apply_failed", "Could not update draft structure.")));
+          throw new LocalizedApiError(parseApiErrorMessage(rawText, tt("grid_settings.draft_structure_apply_failed", "Could not update draft structure.")));
         }
         const data = parseJsonObject<Record<string, unknown>>(rawText);
 
@@ -1461,9 +1406,7 @@ export default function GridSettingsTabs({
         router.refresh();
       } catch (error: unknown) {
         const msg =
-          error instanceof Error
-            ? error.message
-            : tt("grid_settings.draft_structure_apply_failed", "Could not update draft structure.");
+          normalizeApiError(error, tt("grid_settings.draft_structure_apply_failed", "Could not update draft structure."));
         setTabError(msg);
         toast.error(msg);
       } finally {
@@ -1514,7 +1457,7 @@ export default function GridSettingsTabs({
         toast.success(msg);
         router.refresh();
       } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : tt("grid_settings.save_principal_failed", "Could not save principal settings.");
+        const msg = normalizeApiError(error, tt("grid_settings.save_principal_failed", "Could not save principal settings."));
         setTabError(msg);
         toast.error(msg);
       } finally {
@@ -1533,16 +1476,14 @@ export default function GridSettingsTabs({
       });
       const rawText = await response.text().catch(() => "");
       if (!response.ok) {
-        throw new Error(parseApiErrorMessage(rawText, tt("grid_settings.draft_structure_preview_failed", "Could not preview draft structure changes.")));
+        throw new LocalizedApiError(parseApiErrorMessage(rawText, tt("grid_settings.draft_structure_preview_failed", "Could not preview draft structure changes.")));
       }
       const data = parseJsonObject<DraftStructurePreviewResponse>(rawText);
       setDraftStructurePreview(data);
       setDraftStructureDialogOpen(true);
     } catch (error: unknown) {
       const msg =
-        error instanceof Error
-          ? error.message
-          : tt("grid_settings.draft_structure_preview_failed", "Could not preview draft structure changes.");
+        normalizeApiError(error, tt("grid_settings.draft_structure_preview_failed", "Could not preview draft structure changes."));
       setTabError(msg);
       toast.error(msg);
     } finally {
@@ -1751,7 +1692,7 @@ export default function GridSettingsTabs({
       setTabSaved(msg);
       toast.success(msg);
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : tt("grid_settings.save_principal_failed", "Could not save principal settings.");
+      const msg = normalizeApiError(error, tt("grid_settings.save_principal_failed", "Could not save principal settings."));
       setTabError(msg);
       toast.error(msg);
     } finally {
@@ -1803,7 +1744,7 @@ export default function GridSettingsTabs({
       setTabSaved(msg);
       toast.success(msg);
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : tt("grid_settings.save_solver_failed", "Could not save solver settings.");
+      const msg = normalizeApiError(error, tt("grid_settings.save_solver_failed", "Could not save solver settings."));
       setTabError(msg);
       toast.error(msg);
     } finally {
@@ -1841,7 +1782,7 @@ export default function GridSettingsTabs({
       toast.success(msg);
     } catch (error: unknown) {
       const msg =
-        error instanceof Error ? error.message : tt("grid_settings.save_participants_failed", "Could not save participant settings.");
+        normalizeApiError(error, tt("grid_settings.save_participants_failed", "Could not save participant settings."));
       setTabError(msg);
       toast.error(msg);
     } finally {
@@ -1862,7 +1803,7 @@ export default function GridSettingsTabs({
       const response = await fetch(`/api/grids/${id}`, { method: "DELETE" });
       if (!response.ok) {
         const raw = await response.text().catch(() => "");
-        throw new Error(
+        throw new LocalizedApiError(
           parseGridDeleteErrorMessage(
             raw,
             tt("grid_settings.delete_grid_failed", "Could not delete grid."),
@@ -1880,7 +1821,7 @@ export default function GridSettingsTabs({
       router.refresh();
     } catch (error: unknown) {
       const message =
-        error instanceof Error ? error.message : tt("grid_settings.delete_grid_failed", "Could not delete grid.");
+        normalizeApiError(error, tt("grid_settings.delete_grid_failed", "Could not delete grid."));
       setTabError(message);
       toast.error(message);
     } finally {

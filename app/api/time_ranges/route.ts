@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
@@ -37,18 +38,18 @@ export async function GET(req: Request) {
       cache: "no-store",
     });
   } catch {
-    return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+    return NextResponse.json(apiErrorPayload({ error: "upstream_unreachable" }, 502), { status: 502 });
   }
 
   if (r.ok) return NextResponse.json(await r.json(), { status: r.status });
   if (r.status !== 401) {
     const text = await r.text().catch(() => "error");
-    return NextResponse.json({ error: text }, { status: r.status });
+    return NextResponse.json(apiErrorPayload({ error: text }, r.status), { status: r.status });
   }
 
   const refreshed = await refreshTokens();
   if ("error" in refreshed) {
-    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+    const out = NextResponse.json(apiErrorPayload({ error: refreshed.error }, 401), { status: 401 });
     out.cookies.delete(ACCESS);
     out.cookies.delete(REFRESH);
     return out;
@@ -61,7 +62,7 @@ export async function GET(req: Request) {
       cache: "no-store",
     });
   } catch {
-    return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+    return NextResponse.json(apiErrorPayload({ error: "upstream_unreachable" }, 502), { status: 502 });
   }
 
   const data = await r.json().catch(() => ({}));
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
       cache: "no-store",
     });
   } catch {
-    return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+    return NextResponse.json(apiErrorPayload({ error: "upstream_unreachable" }, 502), { status: 502 });
   }
 
   if (r.ok) return NextResponse.json(await r.json(), { status: 201 });
@@ -103,7 +104,7 @@ export async function POST(req: Request) {
 
   const refreshed = await refreshTokens();
   if ("error" in refreshed) {
-    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+    const out = NextResponse.json(apiErrorPayload({ error: refreshed.error }, 401), { status: 401 });
     out.cookies.delete(ACCESS);
     out.cookies.delete(REFRESH);
     return out;
@@ -118,7 +119,7 @@ export async function POST(req: Request) {
       cache: "no-store",
     });
   } catch {
-    return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+    return NextResponse.json(apiErrorPayload({ error: "upstream_unreachable" }, 502), { status: 502 });
   }
 
   const text = await r.text().catch(() => "");

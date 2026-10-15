@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
 
@@ -5,7 +6,7 @@ const B = getApiBaseUrlNormalized();
 
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token") || "";
-  if (!token) return NextResponse.json({ error: "token is required" }, { status: 400 });
+  if (!token) return NextResponse.json(apiErrorPayload({ error: "token is required" }, 400), { status: 400 });
 
   let res = await fetch(`${B}/api/invitations/resolve/?token=${encodeURIComponent(token)}`, {
     cache: "no-store",

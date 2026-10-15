@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken } from "@/lib/cookies";
@@ -7,7 +8,7 @@ const B = getApiBaseUrlNormalized();
 export async function GET(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
 
   const viewRaw = req.nextUrl.searchParams.get("view");
   const view = viewRaw === "published" ? "published" : "draft";
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
 
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
-    return NextResponse.json({ error: txt || "export_failed" }, { status: res.status });
+    return NextResponse.json(apiErrorPayload({ error: txt || "export_failed" }, res.status), { status: res.status });
   }
 
   const buf = await res.arrayBuffer();

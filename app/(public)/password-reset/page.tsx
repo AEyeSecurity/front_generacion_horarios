@@ -1,4 +1,6 @@
 "use client";
+import { normalizeApiError } from "@/lib/api-errors";
+
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -54,7 +56,7 @@ export default function PasswordResetPage() {
         let msg = t("auth.request_process_failed");
         try {
           const j = await r.json();
-          msg = j?.error || j?.detail || msg;
+          msg = normalizeApiError(j, msg, { status: r.status, translate: t });
         } catch {
           // ignore parse failures
         }
@@ -63,7 +65,7 @@ export default function PasswordResetPage() {
       }
       setMessage(t("auth.reset_email_sent"));
     } catch (submitError: unknown) {
-      setError(submitError instanceof Error ? submitError.message : t("auth.request_process_failed"));
+      setError(normalizeApiError(submitError, t("auth.request_process_failed")));
     } finally {
       setLoading(false);
     }

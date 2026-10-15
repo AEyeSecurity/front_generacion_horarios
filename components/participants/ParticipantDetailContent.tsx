@@ -1,4 +1,6 @@
 "use client";
+import { ApiError, LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -125,39 +127,7 @@ const collectErrorMessages = (value: unknown): string[] => {
   return [String(value)];
 };
 
-const humanizeAvailabilityRuleError = (raw: unknown, fallback: string): string => {
-  let parsed: unknown = raw;
-  if (typeof raw === "string") {
-    const text = raw.trim();
-    if (!text) return fallback;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = text;
-    }
-  }
-
-  const message = collectErrorMessages(parsed)
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .join(" ");
-  if (!message) return fallback;
-
-  const normalized = message.toLowerCase();
-  if (normalized.includes("overlapping availability rule already exists")) {
-    return "This rule overlaps another rule for this participant and day. Try moving or resizing it.";
-  }
-  if (normalized.includes("end") && normalized.includes("start")) {
-    return "End time must be later than start time.";
-  }
-  if (normalized.includes("grid bounds") || normalized.includes("within grid bounds")) {
-    return "The rule must stay inside the grid time range.";
-  }
-  if (normalized.includes("required")) {
-    return "Please complete all required rule fields.";
-  }
-  return message;
-};
+const humanizeAvailabilityRuleError = (raw: unknown, fallback: string): string => { return normalizeApiError(raw); };
 
 export default function ParticipantDetailContent({
   gridId,
@@ -350,9 +320,9 @@ export default function ParticipantDetailContent({
 
   const loadParticipantForEdit = useCallback(async () => {
     const res = await fetch(`/api/participants/${encodeURIComponent(String(participantId))}`, { cache: "no-store" });
-    if (!res.ok) throw new Error(t("participant_detail.failed_status", { status: res.status }));
+    if (!res.ok) throw new ApiError(res.status, await res.text().catch(() => ""));
     const payload = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!payload) throw new Error(t("participant_detail.invalid_payload"));
+    if (!payload) throw new LocalizedApiError(t("participant_detail.invalid_payload"));
     const next: EditableParticipant = {
       id: Number(payload.id ?? participantId),
       name: String(payload.name ?? "").trim(),
@@ -469,7 +439,7 @@ export default function ParticipantDetailContent({
 
   const fetchParticipantRules = useCallback(async (): Promise<Rule[]> => {
     const res = await fetch(`/api/availability_rules?participant=${participantId}`, { cache: "no-store" });
-    if (!res.ok) throw new Error(t("participant_detail.failed_fetch_rules_status", { status: res.status }));
+    if (!res.ok) throw new ApiError(res.status, await res.text().catch(() => ""));
     const data = await res.json().catch(() => ([]));
     const list = Array.isArray(data) ? data : data.results ?? [];
     return list.map(normalizeRuleRecord).filter((value: Rule | null): value is Rule => Boolean(value));
@@ -996,7 +966,7 @@ export default function ParticipantDetailContent({
         });
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
-          throw new Error(humanizeAvailabilityRuleError(txt || `Failed to update rule (${res.status})`, "Could not resize rule."));
+          throw new LocalizedApiError(humanizeAvailabilityRuleError(txt || `Failed to update rule (${res.status})`, "Could not resize rule."));
         }
         await mergeAdjacentSameTypeRules();
         await reloadParticipantRules();
@@ -1008,7 +978,7 @@ export default function ParticipantDetailContent({
               : rule,
           ),
         );
-        toast.error(humanizeAvailabilityRuleError(e instanceof Error ? e.message : "", "Could not resize rule."));
+        toast.error(humanizeAvailabilityRuleError(e, "Could not resize rule."));
       } finally {
         setRuleDraftBoundsById((prev) => {
           const next = { ...prev };
@@ -1152,11 +1122,11 @@ export default function ParticipantDetailContent({
           const res = await fetch(`/api/availability_rules/${ruleMove.ruleId}`, { method: "DELETE" });
           if (!res.ok && res.status !== 204) {
             const txt = await res.text().catch(() => "");
-            throw new Error(humanizeAvailabilityRuleError(txt || `Failed to delete rule (${res.status})`, "Could not delete rule."));
+            throw new LocalizedApiError(humanizeAvailabilityRuleError(txt || `Failed to delete rule (${res.status})`, "Could not delete rule."));
           }
           await reloadParticipantRules();
         } catch (e: unknown) {
-          toast.error(humanizeAvailabilityRuleError(e instanceof Error ? e.message : "", "Could not delete rule."));
+          toast.error(humanizeAvailabilityRuleError(e, "Could not delete rule."));
         } finally {
           setRuleResizeBusy(false);
         }
@@ -1177,12 +1147,12 @@ export default function ParticipantDetailContent({
         });
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
-          throw new Error(humanizeAvailabilityRuleError(txt || `Failed to move rule (${res.status})`, "Could not move rule."));
+          throw new LocalizedApiError(humanizeAvailabilityRuleError(txt || `Failed to move rule (${res.status})`, "Could not move rule."));
         }
         await mergeAdjacentSameTypeRules();
         await reloadParticipantRules();
       } catch (e: unknown) {
-        toast.error(humanizeAvailabilityRuleError(e instanceof Error ? e.message : "", "Could not move rule."));
+        toast.error(humanizeAvailabilityRuleError(e, "Could not move rule."));
       } finally {
         setRuleResizeBusy(false);
       }
@@ -1270,10 +1240,6 @@ export default function ParticipantDetailContent({
     () => rulesState.filter((r) => daysIdx.includes(r.day_of_week)),
     [daysIdx, rulesState],
   );
-  const latestVisibleRuleId = useMemo(
-    () => visibleRules.reduce<number | null>((latest, rule) => (latest == null || rule.id > latest ? rule.id : latest), null),
-    [visibleRules],
-  );
 
   const hasMergeCandidates = useMemo(() => {
     type CompactRule = {
@@ -1333,7 +1299,7 @@ export default function ParticipantDetailContent({
   }, [autoMergeBusy, autoMergeSignature, canManageRules, hasMergeCandidates, mergeAdjacentSameTypeRules, ruleResizeBusy]);
 
   return (
-    <div className="w-[80%] mx-auto" data-onboarding-target="participant-detail-page">
+    <div className="w-[80%] mx-auto">
       <div
         className="pointer-events-none fixed inset-x-0 border-b border-gray-200 bg-gray-50"
         style={{ top: GRID_TOP_BAR_HEIGHT_PX, height: PARTICIPANT_BAR_MASK_HEIGHT_PX, zIndex: 1290 }}
@@ -1473,7 +1439,6 @@ export default function ParticipantDetailContent({
       {canViewRules && view === "rules" && (
         <div
           className="relative z-0 mt-4 mb-8 border rounded-lg bg-white overflow-hidden shadow-sm"
-          data-onboarding-target="participant-rules-workspace"
         >
           <div
             ref={rulesHeaderScrollRef}
@@ -1498,7 +1463,6 @@ export default function ParticipantDetailContent({
 
           <div
             data-schedule-scroll
-            data-onboarding-target="participant-rules-timetable"
             ref={rulesScrollRef}
             className={`relative ${compactHorizontal ? "overflow-x-auto" : "overflow-x-hidden"} overflow-y-auto hide-scrollbar`}
             onScroll={(event) => {
@@ -1610,7 +1574,6 @@ export default function ParticipantDetailContent({
                 return (
                   <motion.div
                     key={r.id}
-                    data-onboarding-target={r.id === latestVisibleRuleId ? "availability-rule-latest" : undefined}
                     className={`absolute pointer-events-auto ${isDraggingRule ? "overflow-visible" : "overflow-hidden"} ${
                       isDraggingRule || ruleResize?.ruleId === r.id ? "" : "transition-[top,height] duration-150 ease-out"
                     }`}

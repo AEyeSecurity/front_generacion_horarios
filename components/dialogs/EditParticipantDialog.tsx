@@ -1,4 +1,6 @@
 "use client";
+import { LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import * as React from "react";
 import { type Tier } from "@/components/badges/TierBadge";
@@ -142,7 +144,7 @@ export default function EditParticipantDialog({
         try {
           parsed = JSON.parse(txt);
         } catch {}
-        throw new Error(typeof parsed === "string" ? parsed : JSON.stringify(parsed));
+        throw new LocalizedApiError(normalizeApiError(parsed));
       }
 
       invalidateGridResource(gridId, "participants");
@@ -150,7 +152,7 @@ export default function EditParticipantDialog({
       onUpdated?.();
       onOpenChange(false);
     } catch (error: unknown) {
-      setErr(error instanceof Error ? error.message : t("edit_participant.failed_update"));
+      setErr(normalizeApiError(error, t("edit_participant.failed_update")));
     } finally {
       setSaving(false);
     }

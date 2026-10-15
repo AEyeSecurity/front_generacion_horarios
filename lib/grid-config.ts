@@ -1,3 +1,4 @@
+import { ApiError } from "@/lib/api-errors";
 export type GridConfigResponse = {
   allowed_cell_sizes_min?: unknown;
   allowed_cell_size_minutes?: unknown;
@@ -32,7 +33,7 @@ export function normalizeAllowedCellSizesFromConfig(source: unknown): number[] {
 export async function fetchGridConfig(): Promise<GridConfigResponse> {
   const response = await fetch("/api/grids/config/", { cache: "no-store" });
   if (!response.ok) {
-    throw new Error(`Could not load grid configuration (${response.status}).`);
+    throw new ApiError(response.status, await response.text().catch(() => ""));
   }
   return (await response.json().catch(() => ({}))) as GridConfigResponse;
 }

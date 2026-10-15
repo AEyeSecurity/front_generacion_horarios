@@ -1,4 +1,6 @@
 "use client";
+import { LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -275,7 +277,7 @@ export default function NewGridPage() {
         if (!active) return;
         const sizes = normalizeAllowedCellSizesFromConfig(config);
         if (sizes.length === 0) {
-          throw new Error(tt("grid_new.cell_size_config_error", "Could not load supported cell sizes."));
+          throw new LocalizedApiError(tt("grid_new.cell_size_config_error", "Could not load supported cell sizes."));
         }
         setAllowedCellSizes(sizes);
         setCellMinutes((current) => (sizes.includes(current) ? current : sizes.includes(60) ? 60 : sizes[0]));
@@ -500,22 +502,19 @@ export default function NewGridPage() {
 
       if (!createRes.ok) {
         const raw = await createRes.text().catch(() => "");
-        throw new Error(raw || tt("grid_new.failed_create_status", "Failed to create grid ({status})", { status: createRes.status }));
+        throw new LocalizedApiError(normalizeApiError(raw, tt("grid_new.failed_create_status", "Failed to create grid ({status})", { status: createRes.status })));
       }
 
       const rawGrid = await createRes.json();
       const grid = extractCreatedGrid(rawGrid);
       if (!grid) {
-        throw new Error(tt("solver_wizard.create_failed", "Could not create grid."));
+        throw new LocalizedApiError(tt("solver_wizard.create_failed", "Could not create grid."));
       }
       const gridId = Number(grid?.id ?? 0);
       const target = String(grid?.grid_code || grid?.code || grid?.id || "");
-      if (typeof window !== "undefined" && Number.isFinite(gridId) && gridId > 0) {
-        window.localStorage.removeItem(`onboarding-done-grid-${gridId}`);
-      }
-      router.replace(`/grid/${encodeURIComponent(target || String(gridId))}?onboarding=1`);
+      router.replace(`/grid/${encodeURIComponent(target || String(gridId))}`);
     } catch (error: unknown) {
-      setErr(error instanceof Error ? error.message : tt("solver_wizard.create_failed", "Could not create grid."));
+      setErr(normalizeApiError(error, tt("solver_wizard.create_failed", "Could not create grid.")));
     } finally {
       setLoading(false);
     }

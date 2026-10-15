@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 // app/api/grids/route.ts
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
@@ -30,7 +31,7 @@ export async function GET() {
     if (e instanceof ApiError && e.status === 401)
       return refreshAndRetryJSON("/api/grids/");
     const err = e as any;
-    return NextResponse.json({ error: err?.message || "error" }, { status: err?.status || 500 });
+    return NextResponse.json(apiErrorPayload({ error: err?.message || "error" }, err?.status || 500), { status: err?.status || 500 });
   }
 }
 
@@ -55,13 +56,13 @@ export async function POST(req: Request) {
     const body = await res.text().catch(() => "");
     let detail: any = body;
     try { detail = JSON.parse(body); } catch {}
-    return NextResponse.json({ error: "validation", detail }, { status: res.status });
+    return NextResponse.json(apiErrorPayload({ error: "validation", detail }, res.status), { status: res.status });
   }
 
   // --- 2) 401 -> refresh y reintento ---
   const refresh = await getRefreshToken();
   if (!refresh) {
-    const out = NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+    const out = NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
     out.cookies.delete(ACCESS);
     out.cookies.delete(REFRESH);
     return out;
@@ -75,7 +76,7 @@ export async function POST(req: Request) {
   });
 
   if (!rf.ok) {
-    const out = NextResponse.json({ error: "refresh_failed" }, { status: 401 });
+    const out = NextResponse.json(apiErrorPayload({ error: "refresh_failed" }, 401), { status: 401 });
     out.cookies.delete(ACCESS);
     out.cookies.delete(REFRESH);
     return out;
@@ -111,7 +112,7 @@ export async function POST(req: Request) {
 async function refreshAndRetryJSON(path: string) {
   const refresh = await getRefreshToken();
   if (!refresh) {
-    const out = NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+    const out = NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
     out.cookies.delete(ACCESS);
     out.cookies.delete(REFRESH);
     return out;
@@ -125,7 +126,7 @@ async function refreshAndRetryJSON(path: string) {
   });
 
   if (!rf.ok) {
-    const out = NextResponse.json({ error: "refresh_failed" }, { status: 401 });
+    const out = NextResponse.json(apiErrorPayload({ error: "refresh_failed" }, 401), { status: 401 });
     out.cookies.delete(ACCESS);
     out.cookies.delete(REFRESH);
     return out;

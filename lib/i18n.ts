@@ -1,6 +1,8 @@
+import { ERROR_EN, ERROR_ES } from "./api-error-translations";
 import { normalizePreferredLanguage, type PreferredLanguage } from "@/lib/language";
 
 const EN_US = {
+  ...ERROR_EN,
   "app.metadata_title": "Shift Scheduler",
   "common.language": "Language",
   "common.english": "English",
@@ -204,6 +206,7 @@ const EN_US = {
   "grid_schedule.could_not_remove_participant": "Could not remove participant from placement.",
 
   "cells.title":"Cells",
+  "cells.subtitle":"Double-click on any card to modify it",
 
   "solve_overlay.comments": "Comments",
   "solve_overlay.loading_blockages": "Loading...",
@@ -1215,7 +1218,7 @@ const EN_US = {
   "cell_staffing.participants_board": "Participants board",
   "cell_staffing.headcount": "Headcount",
   "cell_staffing.inferred_headcount": "Inferred headcount: {count}",
-  "cell_staffing.long_press_chip": "Long-press any eligible chip to start.",
+  "cell_staffing.long_press_chip": "Long-press any eligible chip to create a staff group.",
   "cell_staffing.no_participants_tier": "No participants in this tier.",
   "cell_staffing.staff_groups": "Staff groups",
   "cell_staffing.available_staff_groups": "Available",
@@ -1364,6 +1367,7 @@ type Dictionary = Record<I18nKey, string>;
 
 const ES_AR: Dictionary = {
   ...EN_US,
+  ...ERROR_ES,
   "app.metadata_title": "Planificador Shift",
   "add_rule.validation_slot_aligned": "Los horarios deben coincidir con el tamano de celda ({minutes} minutos).",
   "common.language": "Idioma",
@@ -2218,6 +2222,7 @@ const ES_AR: Dictionary = {
   "grid_schedule.drop_to_remove_participant": "Solta aqui para quitar este participante de la asignacion",
 
   "cells.title":"Celdas",
+  "cells.subtitle":"Haz doble click en cualquier tarjeta para modificarla",
 
   "grid_solver_settings.day_heatmap_title": "Heatmap diario",
   "grid_solver_settings.day_heatmap_help":
@@ -2409,7 +2414,7 @@ const ES_AR: Dictionary = {
   "cell_staffing.participants_board": "Panel de participantes",
   "cell_staffing.headcount": "Cantidad de participantes",
   "cell_staffing.inferred_headcount": "Participantes inferidos: {count}",
-  "cell_staffing.long_press_chip": "Mantén presionado cualquier usuario elegible para empezar.",
+  "cell_staffing.long_press_chip": "Mantén presionado cualquier usuario elegible para crear un grupo predeterminado.",
   "cell_staffing.no_participants_tier": "No hay participantes en este nivel.",
   "cell_staffing.staff_groups": "Grupos de Staff",
   "cell_staffing.available_staff_groups": "Disponibles",

@@ -1,4 +1,6 @@
 "use client";
+import { LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
@@ -67,22 +69,7 @@ function flattenApiError(value: unknown): string[] {
   return [];
 }
 
-function parseApiErrorMessage(raw: string, fallback: string): string {
-  const text = raw.trim();
-  if (!text) return fallback;
-  if (/^<!doctype html/i.test(text) || /^<html[\s>]/i.test(text)) {
-    if (process.env.NODE_ENV !== "production") console.error("Unexpected HTML API error:", text);
-    return fallback;
-  }
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    const flattened = flattenApiError(parsed);
-    if (flattened.length > 0) return flattened.join(" ");
-  } catch {
-    return text;
-  }
-  return fallback;
-}
+function parseApiErrorMessage(raw: string, fallback: string): string { return normalizeApiError(raw, fallback); }
 
 function parseTimeRangeDeleteError(raw: string, status: number, fallback: string): string {
   const text = raw.trim();
@@ -94,16 +81,13 @@ function parseTimeRangeDeleteError(raw: string, status: number, fallback: string
         referencing_cells?: Array<{ id?: unknown; name?: unknown }>;
       };
       if (status === 409 && parsed.code === "TIME_RANGE_IN_USE") {
-        const detail =
-          typeof parsed.detail === "string" && parsed.detail.trim()
-            ? parsed.detail.trim()
-            : "This time range cannot be deleted because it is used by existing cells.";
+        const detail = normalizeApiError(parsed);
         const cells = Array.isArray(parsed.referencing_cells)
           ? parsed.referencing_cells
               .map((cell) => String(cell?.name ?? cell?.id ?? "").trim())
               .filter(Boolean)
           : [];
-        return cells.length > 0 ? `${detail}\n\nUsed by:\n${cells.map((name) => `- ${name}`).join("\n")}` : detail;
+        return cells.length > 0 ? `${detail}\n\n${cells.map((name) => `- ${name}`).join("\n")}` : detail;
       }
     } catch {
       // Fall back to generic parsing below.
@@ -156,7 +140,7 @@ export default function TimeRangesPanel({
       const response = await fetch(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`, { cache: "no-store" });
       if (!response.ok) {
         const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, t("time_ranges.error_loading")));
+        throw new LocalizedApiError(parseApiErrorMessage(raw, t("time_ranges.error_loading")));
       }
       const payload = await response.json().catch(() => ({}));
       const list = (Array.isArray(payload) ? payload : payload.results ?? []) as TimeRange[];
@@ -173,7 +157,7 @@ export default function TimeRangesPanel({
       setItems(sorted);
       emitCurrentStats();
     } catch (error: unknown) {
-      setErr(error instanceof Error ? error.message : t("time_ranges.error_loading"));
+      setErr(normalizeApiError(error, t("time_ranges.error_loading")));
     } finally {
       setLoading(false);
     }
@@ -269,7 +253,7 @@ export default function TimeRangesPanel({
       });
       if (!response.ok) {
         const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, t("grid_solver_settings.time_ranges_create_failed")));
+        throw new LocalizedApiError(parseApiErrorMessage(raw, t("grid_solver_settings.time_ranges_create_failed")));
       }
       setNewName("");
       setNewStart("08:00");
@@ -278,7 +262,7 @@ export default function TimeRangesPanel({
       emitCurrentStats();
     } catch (error: unknown) {
       setErr(
-        error instanceof Error ? error.message : t("grid_solver_settings.time_ranges_create_failed"),
+        normalizeApiError(error, t("grid_solver_settings.time_ranges_create_failed")),
       );
     } finally {
       setCreating(false);
@@ -331,13 +315,13 @@ export default function TimeRangesPanel({
       });
       if (!response.ok) {
         const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, t("grid_solver_settings.time_ranges_save_failed")));
+        throw new LocalizedApiError(parseApiErrorMessage(raw, t("grid_solver_settings.time_ranges_save_failed")));
       }
       await load();
       emitCurrentStats();
     } catch (error: unknown) {
       const msg =
-        error instanceof Error ? error.message : t("grid_solver_settings.time_ranges_save_failed");
+        normalizeApiError(error, t("grid_solver_settings.time_ranges_save_failed"));
       setItems((prev) => prev.map((entry) => (entry.id === id ? { ...entry, rowError: msg } : entry)));
     } finally {
       setBusy(id, false);
@@ -353,13 +337,13 @@ export default function TimeRangesPanel({
       });
       if (response.status !== 204) {
         const raw = await response.text().catch(() => "");
-        throw new Error(parseTimeRangeDeleteError(raw, response.status, t("grid_solver_settings.time_ranges_delete_failed")));
+        throw new LocalizedApiError(parseTimeRangeDeleteError(raw, response.status, t("grid_solver_settings.time_ranges_delete_failed")));
       }
       await load();
       emitCurrentStats();
     } catch (error: unknown) {
       setErr(
-        error instanceof Error ? error.message : t("grid_solver_settings.time_ranges_delete_failed"),
+        normalizeApiError(error, t("grid_solver_settings.time_ranges_delete_failed")),
       );
     } finally {
       setBusy(id, false);
@@ -560,7 +544,7 @@ export default function TimeRangesPanel({
                       <span className="truncate font-medium text-gray-800">{segment.name}</span>
                       <span className="text-gray-500">{`${segment.start}-${segment.end}`}</span>
                       <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600">
-                        {placementCount != null ? t("time_ranges.cells_count", { count: placementCount }) : "—"}
+                        {placementCount != null ? t("time_ranges.cells_count", { count: placementCount }) : "â€”"}
                       </span>
                       <span className="text-gray-500">{formatPercent(segment.ratio)}</span>
                     </div>

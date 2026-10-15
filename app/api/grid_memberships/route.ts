@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 import { NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getRefreshToken, getAccessToken } from "@/lib/cookies";
@@ -21,11 +22,11 @@ export async function GET(req: Request) {
   }
   // Refresh on 401 and retry
   const refresh = await getRefreshToken();
-  if (!refresh) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!refresh) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
   const rf = await fetch(`${base}/api/auth/refresh/`, {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ refresh }), cache: "no-store",
   });
-  if (!rf.ok) return NextResponse.json({ error: "refresh_failed" }, { status: 401 });
+  if (!rf.ok) return NextResponse.json(apiErrorPayload({ error: "refresh_failed" }, 401), { status: 401 });
   const tokens = (await rf.json()) as { access: string; refresh?: string };
   // Retry once
   r = await fetch(`${base}/api/grid-memberships/${qs ? `?${qs}` : ""}`, { cache: "no-store", headers: { Authorization: `Bearer ${tokens.access}` } });

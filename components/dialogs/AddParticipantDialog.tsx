@@ -1,4 +1,6 @@
 "use client";
+import { LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import * as React from "react";
 import { type Tier } from "@/components/badges/TierBadge";
@@ -79,7 +81,7 @@ export default function AddParticipantDialog({
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        throw new Error(typeof j === "object" ? JSON.stringify(j) : String(j));
+        throw new LocalizedApiError(normalizeApiError(j));
       }
       setFirst("");
       setLast("");
@@ -89,7 +91,7 @@ export default function AddParticipantDialog({
       onCreated?.();
       onOpenChange(false);
     } catch (e: any) {
-      setErr(e.message || t("add_participant.failed_create"));
+      setErr(normalizeApiError(e, t("add_participant.failed_create")));
     } finally {
       setSaving(false);
     }
@@ -97,7 +99,7 @@ export default function AddParticipantDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-[720px] p-0" data-onboarding-target="participant-dialog">
+        <DialogContent className="max-w-[720px] p-0">
           <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
           <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
             <DialogTitle>{t("add_participant.title")}</DialogTitle>

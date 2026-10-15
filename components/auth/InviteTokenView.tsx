@@ -1,4 +1,6 @@
 "use client";
+import { LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -245,17 +247,12 @@ function statusLowercase(value: string | null): string {
   return String(value ?? "").toLowerCase();
 }
 
-function resolveErrorMessage(raw: unknown, fallback: string): string {
-  const obj = asObject(raw);
-  const error = obj ? readString(obj.error) : null;
-  const detail = obj ? readString(obj.detail) : null;
-  return error || detail || fallback;
-}
+function resolveErrorMessage(raw: unknown, fallback: string): string { return normalizeApiError(raw, fallback); }
 
 function resolveInactiveError(raw: unknown): boolean {
   const obj = asObject(raw);
   const message = String((obj ? readString(obj.error) : null) ?? (obj ? readString(obj.detail) : null) ?? "").toLowerCase();
-  return message.includes("inactive");
+  return obj?.code === "INVITATION_INVALID" || (!obj?.code && message.includes("inactive"));
 }
 
 function gridTargetFromResolved(data: ResolveData | null): { code: string | null; id: number | string | null } {
@@ -379,7 +376,7 @@ export default function InviteTokenView({ token }: { token: string }) {
         }
         if (!cancelled) setResolved(resolvedFromApi);
       } catch (e: unknown) {
-        if (!cancelled) setError(e instanceof Error ? e.message : t("invite_token.could_not_resolve"));
+        if (!cancelled) setError(normalizeApiError(e, t("invite_token.could_not_resolve")));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -429,7 +426,7 @@ export default function InviteTokenView({ token }: { token: string }) {
           router.push(`/login?next=${encodeURIComponent(`/invite/${token}`)}`);
           return;
         }
-        throw new Error(acceptedData.error || acceptedData.detail || t("invite_token.could_not_accept"));
+        throw new LocalizedApiError(normalizeApiError(acceptRaw, t("invite_token.could_not_accept"), { status: r.status }));
       }
       setAccepted(true);
       router.refresh();
@@ -457,7 +454,7 @@ export default function InviteTokenView({ token }: { token: string }) {
         router.refresh();
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t("invite_token.could_not_accept"));
+      setError(normalizeApiError(e, t("invite_token.could_not_accept")));
     } finally {
       setAccepting(false);
     }

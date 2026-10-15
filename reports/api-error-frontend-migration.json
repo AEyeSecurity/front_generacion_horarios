@@ -1,0 +1,716 @@
+[
+  {
+    "file": "components\\actions\\DeleteGridBubble.tsx",
+    "line": 8,
+    "kind": "central-parser",
+    "before": "{\r\n  const text = raw.trim();\r\n  if (/^<!doctype/i.test(text) || /^<html[\\s>]/i.test(text)) {\r\n    if (process.env.NODE_ENV !== \"production\") {\r\n      console.error(\"Grid delete returned HTML:\", text);\r\n    }\r\n    return t(\"grid_actions.could_not_delete_grid\");\r\n  }\r\n  try {\r\n    const parsed = JSON.parse(text) as { code?: string; detail?: unknown };\r\n    if (parsed.code === \"GRID_DELETE_PROTECTED\") {\r\n      return t(\"grid_actions.delete_protected\");\r\n    }\r\n    if (typeof parsed.detail === \"string\" && parsed.detail.trim()) return parsed.detail.trim();\r\n  } catch {}\r\n  return t(\"grid_actions.delete_failed_status\", { status });\r\n}",
+    "after": "{ return normalizeApiError(raw, t(\"grid_actions.could_not_delete_grid\"), { status, translate: t }); }"
+  },
+  {
+    "file": "components\\auth\\InviteTokenView.tsx",
+    "line": 248,
+    "kind": "central-parser",
+    "before": "{\r\n  const obj = asObject(raw);\r\n  const error = obj ? readString(obj.error) : null;\r\n  const detail = obj ? readString(obj.detail) : null;\r\n  return error || detail || fallback;\r\n}",
+    "after": "{ return normalizeApiError(raw, fallback); }"
+  },
+  {
+    "file": "components\\dialogs\\AddCategoryDialog.tsx",
+    "line": 18,
+    "kind": "central-parser",
+    "before": "{\r\n  const trimmed = raw.trim();\r\n  if (!trimmed) return fallback;\r\n  if (/^<!doctype/i.test(trimmed) || /^<html/i.test(trimmed)) return fallback;\r\n  return trimmed;\r\n}",
+    "after": "{ return normalizeApiError(raw, fallback); }"
+  },
+  {
+    "file": "components\\dialogs\\AddCategoryDialog.tsx",
+    "line": 78,
+    "kind": "raw-error",
+    "before": "new Error(typeof j === \"object\" ? JSON.stringify(j) : String(j))",
+    "after": "new LocalizedApiError(normalizeApiError(j))"
+  },
+  {
+    "file": "components\\dialogs\\AddCategoryDialog.tsx",
+    "line": 152,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\AddCategoryDialog.tsx",
+    "line": 171,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\AddCategoryDialog.tsx",
+    "line": 207,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\AddParticipantDialog.tsx",
+    "line": 82,
+    "kind": "raw-error",
+    "before": "new Error(typeof j === \"object\" ? JSON.stringify(j) : String(j))",
+    "after": "new LocalizedApiError(normalizeApiError(j))"
+  },
+  {
+    "file": "components\\dialogs\\AddRuleDialog.tsx",
+    "line": 122,
+    "kind": "central-parser",
+    "before": "{\r\n  let parsed: unknown = raw;\r\n  if (typeof raw === \"string\") {\r\n    const text = raw.trim();\r\n    if (!text) return fallback;\r\n    try {\r\n      parsed = JSON.parse(text);\r\n    } catch {\r\n      parsed = text;\r\n    }\r\n  }\r\n\r\n  const message = collectErrorMessages(parsed)\r\n    .map((part) => part.trim())\r\n    .filter(Boolean)\r\n    .join(\" \");\r\n  if (!message) return fallback;\r\n  const normalized = message.toLowerCase();\r\n\r\n  if (normalized.includes(\"overlapping availability rule already exists\")) {\r\n    return translateFn?.(\"availability_rule.overlap_message\") ??\r\n      \"This rule overlaps another rule on the same day. Try moving or resizing it.\";\r\n  }\r\n  if (normalized.includes(\"end\") && normalized.includes(\"start\")) {\r\n    return translateFn?.(\"availability_rule.end_must_be_later_than_start\") ?? \"End time must be later than start time.\";\r\n  }\r\n  if (normalized.includes(\"grid bounds\") || normalized.includes(\"within grid bounds\")) {\r\n    return translateFn?.(\"availability_rule.within_grid_range_message\") ?? \"The rule must stay inside the grid time range.\";\r\n  }\r\n  if (normalized.includes(\"required\")) {\r\n    return translateFn?.(\"availability_rule.required_fields_message\") ?? \"Please complete all required rule fields.\";\r\n  }\r\n  return message;\r\n}",
+    "after": "{ return normalizeApiError(raw, \"\", { translate: translateFn }); }"
+  },
+  {
+    "file": "components\\dialogs\\AddRuleDialog.tsx",
+    "line": 237,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\AddRuleDialog.tsx",
+    "line": 241,
+    "kind": "raw-error",
+    "before": "new Error(rawError || t(\"add_rule.error_creating_status\", { status: res.status }))",
+    "after": "new LocalizedApiError(normalizeApiError(rawError, t(\"add_rule.error_creating_status\", { status: res.status })))"
+  },
+  {
+    "file": "components\\dialogs\\AddRuleDialog.tsx",
+    "line": 287,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\AddRuleDialog.tsx",
+    "line": 349,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\AddRuleDialog.tsx",
+    "line": 365,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\AddRuleDialog.tsx",
+    "line": 375,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\CategoryDialog.tsx",
+    "line": 18,
+    "kind": "central-parser",
+    "before": "{\r\n  const trimmed = raw.trim();\r\n  if (!trimmed) return fallback;\r\n  if (/^<!doctype/i.test(trimmed) || /^<html/i.test(trimmed)) return fallback;\r\n  return trimmed;\r\n}",
+    "after": "{ return normalizeApiError(raw, fallback); }"
+  },
+  {
+    "file": "components\\dialogs\\CategoryDialog.tsx",
+    "line": 85,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\CategoryDialog.tsx",
+    "line": 131,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\CreateCellDialog.tsx",
+    "line": 160,
+    "kind": "central-parser",
+    "before": "{\r\n  if (!payload || typeof payload !== \"object\") return null;\r\n  const source = payload as Record<string, unknown>;\r\n  const preferred = LOCK_VALIDATION_KEYS.flatMap((key) =>\r\n    flattenErrorMessages(source[key]).map((message) => `${key}: ${message}`)\r\n  );\r\n  if (preferred.length > 0) return preferred.join(\"\\n\");\r\n\r\n  const detail = flattenErrorMessages(source.detail);\r\n  if (detail.length > 0) return detail.join(\"\\n\");\r\n\r\n  const generic = Object.entries(source).flatMap(([key, value]) =>\r\n    flattenErrorMessages(value).map((message) => `${key}: ${message}`)\r\n  );\r\n  return generic.length > 0 ? generic.join(\"\\n\") : null;\r\n}",
+    "after": "{ return normalizeApiError(payload); }"
+  },
+  {
+    "file": "components\\dialogs\\CreateCellDialog.tsx",
+    "line": 177,
+    "kind": "central-parser",
+    "before": "{\r\n  const trimmed = raw.trim();\r\n  if (trimmed) {\r\n    if (/^<!doctype/i.test(trimmed) || /^<html/i.test(trimmed)) return `${fallback} (${status})`;\r\n    try {\r\n      const parsed = JSON.parse(trimmed) as unknown;\r\n      const structured = parseStructuredApiError(parsed);\r\n      if (structured) return structured;\r\n    } catch {}\r\n    return trimmed;\r\n  }\r\n  return `${fallback} (${status})`;\r\n}",
+    "after": "{ return normalizeApiError(raw, fallback, { status }); }"
+  },
+  {
+    "file": "components\\dialogs\\CreateCellDialog.tsx",
+    "line": 1053,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\EditCellDialog.tsx",
+    "line": 219,
+    "kind": "central-parser",
+    "before": "{\r\n  if (!payload || typeof payload !== \"object\") return null;\r\n  const source = payload as Record<string, unknown>;\r\n  const preferred = LOCK_VALIDATION_KEYS.flatMap((key) =>\r\n    flattenErrorMessages(source[key]).map((message) => `${key}: ${message}`)\r\n  );\r\n  if (preferred.length > 0) return preferred.join(\"\\n\");\r\n\r\n  const detail = flattenErrorMessages(source.detail);\r\n  if (detail.length > 0) return detail.join(\"\\n\");\r\n\r\n  const generic = Object.entries(source).flatMap(([key, value]) =>\r\n    flattenErrorMessages(value).map((message) => `${key}: ${message}`)\r\n  );\r\n  return generic.length > 0 ? generic.join(\"\\n\") : null;\r\n}",
+    "after": "{ return normalizeApiError(payload); }"
+  },
+  {
+    "file": "components\\dialogs\\EditCellDialog.tsx",
+    "line": 236,
+    "kind": "central-parser",
+    "before": "{\r\n  const trimmed = raw.trim();\r\n  if (trimmed) {\r\n    if (/^<!doctype/i.test(trimmed) || /^<html/i.test(trimmed)) return `${fallback} (${status})`;\r\n    try {\r\n      const parsed = JSON.parse(trimmed) as unknown;\r\n      const structured = parseStructuredApiError(parsed);\r\n      if (structured) return structured;\r\n    } catch {}\r\n    return trimmed;\r\n  }\r\n  return `${fallback} (${status})`;\r\n}",
+    "after": "{ return normalizeApiError(raw, fallback, { status }); }"
+  },
+  {
+    "file": "components\\dialogs\\EditCellDialog.tsx",
+    "line": 1330,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\EditCellDialog.tsx",
+    "line": 1340,
+    "kind": "raw-error",
+    "before": "new Error(txt || t(\"errors.failed_status\", { status: res.status }))",
+    "after": "new LocalizedApiError(normalizeApiError(txt, t(\"errors.failed_status\", { status: res.status })))"
+  },
+  {
+    "file": "components\\dialogs\\EditCellDialog.tsx",
+    "line": 1516,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\EditorInviteDialog.tsx",
+    "line": 123,
+    "kind": "raw-error",
+    "before": "new Error(typeof j === \"object\" ? JSON.stringify(j) : String(j))",
+    "after": "new LocalizedApiError(normalizeApiError(j))"
+  },
+  {
+    "file": "components\\dialogs\\EditorInviteDialog.tsx",
+    "line": 174,
+    "kind": "raw-error",
+    "before": "new Error(lastMessage || t(\"editor_invite.failed_link_participant\"))",
+    "after": "new LocalizedApiError(normalizeApiError(lastMessage, t(\"editor_invite.failed_link_participant\")))"
+  },
+  {
+    "file": "components\\dialogs\\EditParticipantDialog.tsx",
+    "line": 145,
+    "kind": "raw-error",
+    "before": "new Error(typeof parsed === \"string\" ? parsed : JSON.stringify(parsed))",
+    "after": "new LocalizedApiError(normalizeApiError(parsed))"
+  },
+  {
+    "file": "components\\dialogs\\EditRuleDialog.tsx",
+    "line": 31,
+    "kind": "central-parser",
+    "before": "{\r\n  const raw = error instanceof Error ? error.message : \"\";\r\n  let parsed: unknown = raw;\r\n  if (typeof raw === \"string\") {\r\n    const text = raw.trim();\r\n    if (!text) return fallback;\r\n    try {\r\n      parsed = JSON.parse(text);\r\n    } catch {\r\n      parsed = text;\r\n    }\r\n  }\r\n  const message = collectErrorMessages(parsed)\r\n    .map((part) => part.trim())\r\n    .filter(Boolean)\r\n    .join(\" \");\r\n  if (!message) return fallback;\r\n  const normalized = message.toLowerCase();\r\n  if (normalized.includes(\"overlapping availability rule already exists\")) {\r\n    return translateFn?.(\"availability_rule.overlap_message\") ?? fallback;\r\n  }\r\n  if (normalized.includes(\"end\") && normalized.includes(\"start\")) {\r\n    return translateFn?.(\"availability_rule.end_must_be_later_than_start\") ?? fallback;\r\n  }\r\n  if (normalized.includes(\"grid bounds\") || normalized.includes(\"within grid bounds\")) {\r\n    return translateFn?.(\"availability_rule.within_grid_range_message\") ?? fallback;\r\n  }\r\n  if (normalized.includes(\"required\")) {\r\n    return translateFn?.(\"availability_rule.required_fields_message\") ?? fallback;\r\n  }\r\n  return message;\r\n}",
+    "after": "{ return normalizeApiError(error, \"\", { translate: translateFn }); }"
+  },
+  {
+    "file": "components\\dialogs\\EditRuleDialog.tsx",
+    "line": 119,
+    "kind": "raw-error",
+    "before": "new Error(txt || t(\"edit_rule.failed_update_status\", { status: res.status }))",
+    "after": "new LocalizedApiError(normalizeApiError(txt, t(\"edit_rule.failed_update_status\", { status: res.status })))"
+  },
+  {
+    "file": "components\\dialogs\\EditRuleDialog.tsx",
+    "line": 138,
+    "kind": "raw-error",
+    "before": "new Error(txt || t(\"edit_rule.failed_delete_status\", { status: res.status }))",
+    "after": "new LocalizedApiError(normalizeApiError(txt, t(\"edit_rule.failed_delete_status\", { status: res.status })))"
+  },
+  {
+    "file": "components\\dialogs\\InviteDialog.tsx",
+    "line": 249,
+    "kind": "central-parser",
+    "before": "{\r\n  const raw = asObject(data);\r\n  const error = raw ? readString(raw.error) : null;\r\n  const detail = raw ? readString(raw.detail) : null;\r\n  if (error || detail) return error || detail || fallback;\r\n  if (raw) {\r\n    const lines = Object.entries(raw)\r\n      .flatMap(([key, value]) => {\r\n        if (typeof value === \"string\") return [`${key}: ${value}`];\r\n        if (Array.isArray(value)) {\r\n          return value\r\n            .filter((entry): entry is string => typeof entry === \"string\")\r\n            .map((entry) => `${key}: ${entry}`);\r\n        }\r\n        return [];\r\n      });\r\n    if (lines.length > 0) return lines.join(\"\\n\");\r\n  }\r\n  return fallback;\r\n}",
+    "after": "{ return normalizeApiError(data, fallback); }"
+  },
+  {
+    "file": "components\\dialogs\\InviteDialog.tsx",
+    "line": 557,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\InviteDialog.tsx",
+    "line": 625,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSchedulePanel.tsx",
+    "line": 352,
+    "kind": "central-parser",
+    "before": "const normalizeApiError = (raw: unknown, fallback: string): string => {\r\n  if (raw == null) return fallback;\r\n  if (typeof raw === \"string\") {\r\n    const text = raw.trim();\r\n    if (!text) return fallback;\r\n    try {\r\n      const parsed = JSON.parse(text);\r\n      return normalizeApiError(parsed, fallback);\r\n    } catch {\r\n      const normalized = text.toLowerCase();\r\n      if (\r\n        normalized.startsWith(\"<!doctype html\") ||\r\n        normalized.startsWith(\"<html\") ||\r\n        normalized.startsWith(\"&lt;!doctype html\") ||\r\n        normalized.startsWith(\"&lt;html\")\r\n      ) {\r\n        return fallback;\r\n      }\r\n      if (\r\n        normalized.includes(\"schedule, source_cell, bundle, day_index, start_slot must make a unique set\") ||\r\n        normalized.includes(\"must make a unique set\")\r\n      ) {\r\n        return fallback;\r\n      }\r\n      if (text.toLowerCase().includes(\"overlap\")) {\r\n        return fallback;\r\n      }\r\n      return text;\r\n    }\r\n  }\r\n  if (Array.isArray(raw)) {\r\n    const merged: string = raw.map((item) => normalizeApiError(item, \"\")).filter(Boolean).join(\" \");\r\n    return merged || fallback;\r\n  }\r\n  if (typeof raw === \"object\") {\r\n    const values = Object.values(raw as Record<string, unknown>);\r\n    const merged: string = values.map((item) => normalizeApiError(item, \"\")).filter(Boolean).join(\" \");\r\n    return merged || fallback;\r\n  }\r\n  return fallback;\r\n}",
+    "after": ""
+  },
+  {
+    "file": "components\\grid\\GridSchedulePanel.tsx",
+    "line": 2067,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSchedulePanel.tsx",
+    "line": 2142,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSchedulePanel.tsx",
+    "line": 2396,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSchedulePanel.tsx",
+    "line": 2419,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSchedulePanel.tsx",
+    "line": 2482,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSchedulePanel.tsx",
+    "line": 2594,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSchedulePanel.tsx",
+    "line": 2662,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSchedulePanel.tsx",
+    "line": 2676,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSettingsTabs.tsx",
+    "line": 252,
+    "kind": "central-parser",
+    "before": "{\r\n  const text = raw.trim();\r\n  if (!text) return fallback;\r\n  if (/^<!doctype/i.test(text) || /^<html[\\s>]/i.test(text)) {\r\n    if (process.env.NODE_ENV !== \"production\") {\r\n      console.error(\"API returned HTML error body:\", text);\r\n    }\r\n    return fallback;\r\n  }\r\n  try {\r\n    const parsed = JSON.parse(text) as unknown;\r\n    if (\r\n      parsed &&\r\n      typeof parsed === \"object\" &&\r\n      (parsed as { code?: unknown }).code === \"GRID_DELETE_PROTECTED\"\r\n    ) {\r\n      return fallback;\r\n    }\r\n    const flattened = flattenApiError(parsed);\r\n    if (flattened.length > 0) return flattened.join(\" \");\r\n  } catch {\r\n    return text;\r\n  }\r\n  return fallback;\r\n}",
+    "after": "{ return normalizeApiError(raw, fallback); }"
+  },
+  {
+    "file": "components\\grid\\GridSettingsTabs.tsx",
+    "line": 278,
+    "kind": "central-parser",
+    "before": "{\r\n  const text = raw.trim();\r\n  if (!text) return fallback;\r\n  if (/^<!doctype/i.test(text) || /^<html[\\s>]/i.test(text)) {\r\n    if (process.env.NODE_ENV !== \"production\") {\r\n      console.error(\"Grid delete returned HTML error body:\", text);\r\n    }\r\n    return fallback;\r\n  }\r\n  try {\r\n    const parsed = JSON.parse(text) as unknown;\r\n    if (\r\n      parsed &&\r\n      typeof parsed === \"object\" &&\r\n      (parsed as { code?: unknown }).code === \"GRID_DELETE_PROTECTED\"\r\n    ) {\r\n      return protectedFallback;\r\n    }\r\n    const flattened = flattenApiError(parsed);\r\n    if (flattened.length > 0) return flattened.join(\" \");\r\n  } catch {\r\n    return text;\r\n  }\r\n  return fallback;\r\n}",
+    "after": "{ return normalizeApiError(raw, fallback); }"
+  },
+  {
+    "file": "components\\grid\\GridSettingsTabs.tsx",
+    "line": 1174,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSettingsTabs.tsx",
+    "line": 1357,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSettingsTabs.tsx",
+    "line": 1439,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSettingsTabs.tsx",
+    "line": 1536,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSettingsTabs.tsx",
+    "line": 1865,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSolverSettingsForm.tsx",
+    "line": 155,
+    "kind": "central-parser",
+    "before": "{\r\n  const text = raw.trim();\r\n  if (!text) return fallback;\r\n  if (/^<!doctype html/i.test(text) || /^<html[\\s>]/i.test(text)) {\r\n    if (process.env.NODE_ENV !== \"production\") console.error(\"Unexpected HTML API error:\", text);\r\n    return fallback;\r\n  }\r\n  try {\r\n    const parsed = JSON.parse(text) as unknown;\r\n    const flattened = flattenApiError(parsed);\r\n    if (flattened.length > 0) return flattened.join(\" \");\r\n  } catch {\r\n    return text;\r\n  }\r\n  return fallback;\r\n}",
+    "after": "{ return normalizeApiError(raw, fallback); }"
+  },
+  {
+    "file": "components\\grid\\GridSolverSettingsForm.tsx",
+    "line": 687,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSolverSettingsForm.tsx",
+    "line": 720,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSolverSettingsForm.tsx",
+    "line": 792,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSolverSettingsForm.tsx",
+    "line": 937,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSolverSettingsForm.tsx",
+    "line": 973,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSolverSettingsForm.tsx",
+    "line": 1024,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\GridSolverSettingsForm.tsx",
+    "line": 1055,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 666,
+    "kind": "central-parser",
+    "before": "{\r\n  const text = raw.trim();\r\n  if (!text) return fallback;\r\n  if (isLikelyHtmlResponse(text)) return fallback;\r\n  try {\r\n    const parsed = JSON.parse(text) as unknown;\r\n    const flattened = flattenErrorText(parsed);\r\n    if (flattened.length > 0) return boundApiErrorMessage(flattened.join(\" \"), fallback);\r\n  } catch {\r\n    return boundApiErrorMessage(text, fallback);\r\n  }\r\n  return fallback;\r\n}",
+    "after": "{ return normalizeApiError(raw, fallback); }"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 869,
+    "kind": "central-parser",
+    "before": "{\r\n  const typeText = typeof violation.type === \"string\" && violation.type.trim() ? violation.type.trim() : \"\";\r\n  const detailText = typeof violation.detail === \"string\" && violation.detail.trim() ? violation.detail.trim() : \"\";\r\n  if (typeText && detailText) return `${typeText}: ${detailText}`;\r\n  if (detailText) return detailText;\r\n  if (typeText) return typeText;\r\n  return \"\";\r\n}",
+    "after": "{ return normalizeApiError(violation); }"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 2026,
+    "kind": "central-parser",
+    "before": "{\r\n    const explicit = typeof reason.message === \"string\" && reason.message.trim()\r\n      ? reason.message.trim()\r\n      : typeof reason.detail === \"string\" && reason.detail.trim()\r\n      ? reason.detail.trim()\r\n      : \"\";\r\n    if (explicit) return explicit;\r\n    const typeText = typeof reason.type === \"string\" ? reason.type.replace(/_/g, \" \").toLowerCase() : \"\";\r\n    const required = Number(reason.required_headcount);\r\n    const assignable = Number(reason.assignable_count);\r\n    if (Number.isFinite(required) && Number.isFinite(assignable)) {\r\n      return `${typeText || \"headcount\"}: ${assignable}/${required}`;\r\n    }\r\n    const distance = Number(reason.distance_slots);\r\n    if (Number.isFinite(distance) && typeText) {\r\n      return `${typeText}: ${distance} slots`;\r\n    }\r\n    return typeText || t(\"solve_overlay.no_reasons_available\");\r\n  }",
+    "after": "{ return normalizeApiError(reason, t(\"solve_overlay.no_reasons_available\")); }"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 2559,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 2692,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 2824,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 3042,
+    "kind": "raw-error",
+    "before": "new Error(txt || t(\"solve_overlay.failed_load_schedule_status\", { status: r.status }))",
+    "after": "new LocalizedApiError(normalizeApiError(txt, t(\"solve_overlay.failed_load_schedule_status\", { status: r.status })))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 3276,
+    "kind": "raw-error",
+    "before": "new Error(txt || t(\"solve_overlay.failed_load_published_versions_status\", { status: res.status }))",
+    "after": "new LocalizedApiError(normalizeApiError(txt, t(\"solve_overlay.failed_load_published_versions_status\", { status: res.status })))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 3496,
+    "kind": "raw-error",
+    "before": "new Error(txt || t(\"solve_overlay.failed_load_blockages_status\", { status: r.status }))",
+    "after": "new LocalizedApiError(normalizeApiError(txt, t(\"solve_overlay.failed_load_blockages_status\", { status: r.status })))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 4165,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 4300,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 4355,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 4908,
+    "kind": "raw-error",
+    "before": "new Error(detail || t(\"grid_schedule.visual_order_save_failed\"))",
+    "after": "new LocalizedApiError(normalizeApiError(detail, t(\"grid_schedule.visual_order_save_failed\")))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 5966,
+    "kind": "raw-error",
+    "before": "new Error(txt || t(\"solve_overlay.failed_export_schedule_status\", { status: res.status }))",
+    "after": "new LocalizedApiError(normalizeApiError(txt, t(\"solve_overlay.failed_export_schedule_status\", { status: res.status })))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 6006,
+    "kind": "raw-error",
+    "before": "new Error(txt || `${t(\"solve_overlay.could_not_restore_draft\")} (${res.status})`)",
+    "after": "new LocalizedApiError(normalizeApiError(txt, `${t(\"solve_overlay.could_not_restore_draft\")} (${res.status})`))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 6765,
+    "kind": "raw-error",
+    "before": "new Error(txt || t(\"solve_overlay.failed_add_comment_status\", { status: res.status }))",
+    "after": "new LocalizedApiError(normalizeApiError(txt, t(\"solve_overlay.failed_add_comment_status\", { status: res.status })))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 6849,
+    "kind": "raw-error",
+    "before": "new Error(txt || t(\"solve_overlay.failed_update_lock_status\", { status: res.status }))",
+    "after": "new LocalizedApiError(normalizeApiError(txt, t(\"solve_overlay.failed_update_lock_status\", { status: res.status })))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 6925,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 6960,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 6995,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 7028,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 7142,
+    "kind": "raw-error",
+    "before": "new Error(txt || `${t(\"solve_overlay.could_not_remove_placement\")} (${deleteRes.status})`)",
+    "after": "new LocalizedApiError(normalizeApiError(txt, `${t(\"solve_overlay.could_not_remove_placement\")} (${deleteRes.status})`))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 7156,
+    "kind": "raw-error",
+    "before": "new Error(txt || `${t(\"solve_overlay.could_not_update_placement\")} (${patchRes.status})`)",
+    "after": "new LocalizedApiError(normalizeApiError(txt, `${t(\"solve_overlay.could_not_update_placement\")} (${patchRes.status})`))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 7194,
+    "kind": "raw-error",
+    "before": "new Error(txt || `${t(\"solve_overlay.could_not_remove_placement\")} (${res.status})`)",
+    "after": "new LocalizedApiError(normalizeApiError(txt, `${t(\"solve_overlay.could_not_remove_placement\")} (${res.status})`))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 8876,
+    "kind": "raw-error",
+    "before": "new Error(txt || t(\"solve_overlay.failed_publish_schedule_status\", { status: res.status }))",
+    "after": "new LocalizedApiError(normalizeApiError(txt, t(\"solve_overlay.failed_publish_schedule_status\", { status: res.status })))"
+  },
+  {
+    "file": "components\\grid\\TimeRangesEditor.tsx",
+    "line": 103,
+    "kind": "central-parser",
+    "before": "{\r\n  const text = raw.trim();\r\n  if (!text) return fallback;\r\n  if (/^<!doctype html/i.test(text) || /^<html[\\s>]/i.test(text)) {\r\n    if (process.env.NODE_ENV !== \"production\") console.error(\"Unexpected HTML API error:\", text);\r\n    return fallback;\r\n  }\r\n  try {\r\n    const parsed = JSON.parse(text) as unknown;\r\n    const flattened = flattenApiError(parsed);\r\n    if (flattened.length > 0) return flattened.join(\" \");\r\n  } catch {\r\n    return text;\r\n  }\r\n  return fallback;\r\n}",
+    "after": "{ return normalizeApiError(raw, fallback); }"
+  },
+  {
+    "file": "components\\grid\\TimeRangesEditor.tsx",
+    "line": 292,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\TimeRangesEditor.tsx",
+    "line": 377,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\TimeRangesEditor.tsx",
+    "line": 412,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\TimeRangesEditor.tsx",
+    "line": 444,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\invitations\\InvitesMenu.tsx",
+    "line": 383,
+    "kind": "central-parser",
+    "before": "{\r\n  const raw = asObject(data);\r\n  const error = raw ? readString(raw.error) : null;\r\n  const detail = raw ? readString(raw.detail) : null;\r\n  return error || detail || fallback;\r\n}",
+    "after": "{ return normalizeApiError(data, fallback); }"
+  },
+  {
+    "file": "components\\layout\\TimeRangesPanel.tsx",
+    "line": 70,
+    "kind": "central-parser",
+    "before": "{\r\n  const text = raw.trim();\r\n  if (!text) return fallback;\r\n  if (/^<!doctype html/i.test(text) || /^<html[\\s>]/i.test(text)) {\r\n    if (process.env.NODE_ENV !== \"production\") console.error(\"Unexpected HTML API error:\", text);\r\n    return fallback;\r\n  }\r\n  try {\r\n    const parsed = JSON.parse(text) as unknown;\r\n    const flattened = flattenApiError(parsed);\r\n    if (flattened.length > 0) return flattened.join(\" \");\r\n  } catch {\r\n    return text;\r\n  }\r\n  return fallback;\r\n}",
+    "after": "{ return normalizeApiError(raw, fallback); }"
+  },
+  {
+    "file": "components\\layout\\TimeRangesPanel.tsx",
+    "line": 159,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\layout\\TimeRangesPanel.tsx",
+    "line": 272,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\layout\\TimeRangesPanel.tsx",
+    "line": 334,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\layout\\TimeRangesPanel.tsx",
+    "line": 356,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\participants\\ParticipantDetailContent.tsx",
+    "line": 128,
+    "kind": "central-parser",
+    "before": "{\r\n  let parsed: unknown = raw;\r\n  if (typeof raw === \"string\") {\r\n    const text = raw.trim();\r\n    if (!text) return fallback;\r\n    try {\r\n      parsed = JSON.parse(text);\r\n    } catch {\r\n      parsed = text;\r\n    }\r\n  }\r\n\r\n  const message = collectErrorMessages(parsed)\r\n    .map((part) => part.trim())\r\n    .filter(Boolean)\r\n    .join(\" \");\r\n  if (!message) return fallback;\r\n\r\n  const normalized = message.toLowerCase();\r\n  if (normalized.includes(\"overlapping availability rule already exists\")) {\r\n    return \"This rule overlaps another rule for this participant and day. Try moving or resizing it.\";\r\n  }\r\n  if (normalized.includes(\"end\") && normalized.includes(\"start\")) {\r\n    return \"End time must be later than start time.\";\r\n  }\r\n  if (normalized.includes(\"grid bounds\") || normalized.includes(\"within grid bounds\")) {\r\n    return \"The rule must stay inside the grid time range.\";\r\n  }\r\n  if (normalized.includes(\"required\")) {\r\n    return \"Please complete all required rule fields.\";\r\n  }\r\n  return message;\r\n}",
+    "after": "{ return normalizeApiError(raw); }"
+  },
+  {
+    "file": "components\\participants\\ParticipantDetailContent.tsx",
+    "line": 999,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\participants\\ParticipantDetailContent.tsx",
+    "line": 1155,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\participants\\ParticipantDetailContent.tsx",
+    "line": 1180,
+    "kind": "translated-error",
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\participants\\ParticipantScheduleOverlay.tsx",
+    "line": 854,
+    "kind": "raw-error",
+    "before": "new Error(txt || t(\"solve_overlay.could_not_add_comment\"))",
+    "after": "new LocalizedApiError(normalizeApiError(txt, t(\"solve_overlay.could_not_add_comment\")))"
+  },
+  {
+    "file": "app\\grid\\new\\page.tsx",
+    "line": 503,
+    "kind": "raw-error",
+    "before": "new Error(raw || tt(\"grid_new.failed_create_status\", \"Failed to create grid ({status})\", { status: createRes.status }))",
+    "after": "new LocalizedApiError(normalizeApiError(raw, tt(\"grid_new.failed_create_status\", \"Failed to create grid ({status})\", { status: createRes.status })))"
+  },
+  {
+    "file": "lib\\screen-context.ts",
+    "line": 214,
+    "kind": "raw-error",
+    "before": "new Error(txt || `Failed to load screen context (${res.status})`)",
+    "after": "new LocalizedApiError(normalizeApiError(txt, `Failed to load screen context (${res.status})`))"
+  }
+]

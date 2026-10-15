@@ -1,4 +1,6 @@
 "use client";
+import { normalizeApiError } from "@/lib/api-errors";
+
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -380,12 +382,7 @@ function senderFromInvite(inv: Invite): InviteUser {
   };
 }
 
-function parseApiError(data: unknown, fallback: string): string {
-  const raw = asObject(data);
-  const error = raw ? readString(raw.error) : null;
-  const detail = raw ? readString(raw.detail) : null;
-  return error || detail || fallback;
-}
+function parseApiError(data: unknown, fallback: string): string { return normalizeApiError(data, fallback); }
 
 type AcceptInviteResponse = {
   error: string | null;
@@ -602,9 +599,10 @@ export default function InvitesMenu({ me }: { me: User }) {
       body: JSON.stringify({ token }),
     });
 
-    const data = normalizeAcceptInviteResponse(await r.json().catch(() => null));
+    const raw = await r.json().catch(() => null);
+    const data = normalizeAcceptInviteResponse(raw);
     if (!r.ok) {
-      setError(data.error || data.detail || "Could not accept invitation.");
+      setError(normalizeApiError(raw, "", { status: r.status, translate: t }));
       return;
     }
 

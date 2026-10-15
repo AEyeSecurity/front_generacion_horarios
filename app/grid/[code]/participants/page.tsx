@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { backendFetchJSON } from "@/lib/backend";
 import { isAuthApiError, requireUserOrRedirect } from "@/lib/auth";
 import type { Grid, Role } from "@/lib/types";
-import OnboardingGuide from "@/components/grid/OnboardingGuide";
 import ParticipantDetailContent from "@/components/participants/ParticipantDetailContent";
 import { ParticipantsHeader } from "@/components/grid/headers";
 import { resolveGridByCode } from "../_helpers";
@@ -91,11 +90,10 @@ function getParticipantUserId(participant: any): number | string | null {
   );
 }
 
-function buildParticipantsHref(code: string, pid: string | number, view: "schedule" | "rules", onboarding?: string) {
+function buildParticipantsHref(code: string, pid: string | number, view: "schedule" | "rules") {
   const params = new URLSearchParams();
   params.set("pid", String(pid));
   params.set("view", view);
-  if (onboarding) params.set("onboarding", onboarding);
   return `/grid/${encodeURIComponent(code)}/participants?${params.toString()}`;
 }
 
@@ -104,16 +102,15 @@ export default async function ParticipantsPage({
   searchParams,
 }: {
   params: Promise<{ code: string }>;
-  searchParams?: Promise<{ pid?: string | string[]; view?: string | string[]; onboarding?: string | string[] }>;
+  searchParams?: Promise<{ pid?: string | string[]; view?: string | string[] }>;
 }) {
   const { code } = await params;
   const sp = await searchParams;
   const rawPid = Array.isArray(sp?.pid) ? sp?.pid[0] : sp?.pid;
   const rawView = Array.isArray(sp?.view) ? sp?.view[0] : sp?.view;
-  const onboarding = Array.isArray(sp?.onboarding) ? sp?.onboarding[0] : sp?.onboarding;
   const initialView = rawView === "rules" ? "rules" : "schedule";
   const nextPath = rawPid
-    ? buildParticipantsHref(code, rawPid, initialView, onboarding)
+    ? buildParticipantsHref(code, rawPid, initialView)
     : `/grid/${encodeURIComponent(code)}/participants`;
 
   let grid: Grid;
@@ -138,7 +135,7 @@ export default async function ParticipantsPage({
   const gridId = String(grid.id);
   const gridCode = String(grid.grid_code || code);
   const resolvedNextPath = rawPid
-    ? buildParticipantsHref(gridCode, rawPid, initialView, onboarding)
+    ? buildParticipantsHref(gridCode, rawPid, initialView)
     : `/grid/${encodeURIComponent(gridCode)}/participants`;
   const me = await requireUserOrRedirect(resolvedNextPath);
   const t = (key: Parameters<typeof getTranslation>[1]) => getTranslation(me?.preferred_language, key);
@@ -152,7 +149,7 @@ export default async function ParticipantsPage({
       participants[0] ??
       null;
     if (mine) {
-      redirect(buildParticipantsHref(gridCode, mine.grid_participant_id ?? mine.id, "schedule", onboarding));
+      redirect(buildParticipantsHref(gridCode, mine.grid_participant_id ?? mine.id, "schedule"));
     }
   }
 
@@ -193,12 +190,6 @@ export default async function ParticipantsPage({
 
   return (
     <div className="relative px-4 pb-4">
-      <OnboardingGuide
-        gridId={Number(grid.id)}
-        gridCode={gridCode}
-        show={onboarding === "1" || onboarding === "true"}
-        unitNature={grid.unit_nature ?? null}
-      />
       <ParticipantDetailContent
         gridId={Number(grid.id)}
         gridCode={gridCode}

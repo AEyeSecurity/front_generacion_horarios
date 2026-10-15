@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
   const payload = await req.text();
   const access = await getAccessToken();
   if (!access) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(apiErrorPayload({ error: "Unauthorized" }, 401), { status: 401 });
   }
 
   let activeAccess = access;
@@ -66,7 +67,7 @@ export async function POST(req: Request) {
   if (whoRes.status === 401) {
     const refreshed = await refreshAccess();
     if (!refreshed) {
-      const out = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      const out = NextResponse.json(apiErrorPayload({ error: "Unauthorized" }, 401), { status: 401 });
       out.cookies.delete(ACCESS);
       out.cookies.delete(REFRESH);
       return out;
@@ -78,13 +79,13 @@ export async function POST(req: Request) {
   }
 
   if (!whoRes.ok) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: whoRes.status || 401 });
+    return NextResponse.json(apiErrorPayload({ error: "Unauthorized" }, whoRes.status || 401), { status: whoRes.status || 401 });
   }
 
   const me = await whoRes.json().catch(() => ({}));
   if (!canChangePassword(me)) {
     const out = NextResponse.json(
-      { error: "Google accounts must change password in Google." },
+      apiErrorPayload({ code: "GOOGLE_PASSWORD_CHANGE_REQUIRED", detail: "Google accounts must change password in Google.", params: {} }, 403),
       { status: 403 }
     );
     if (refreshedTokens) {
@@ -98,14 +99,14 @@ export async function POST(req: Request) {
 
   if (res.status === 401) {
     if (refreshedTokens) {
-      const out = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      const out = NextResponse.json(apiErrorPayload({ error: "Unauthorized" }, 401), { status: 401 });
       out.cookies.delete(ACCESS);
       out.cookies.delete(REFRESH);
       return out;
     }
     const refreshedAgain = await refreshAccess();
     if (!refreshedAgain) {
-      const out = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      const out = NextResponse.json(apiErrorPayload({ error: "Unauthorized" }, 401), { status: 401 });
       out.cookies.delete(ACCESS);
       out.cookies.delete(REFRESH);
       return out;
@@ -130,7 +131,7 @@ export async function POST(req: Request) {
 
   const responseBody = res.ok
     ? { ok: true, detail: detail || apiMessage || "Password updated successfully" }
-    : { error: detail || apiError || text || "Password change failed" };
+    : apiErrorPayload(data, res.status);
 
   const out = NextResponse.json(responseBody, { status: res.status });
   if (refreshedTokens) {

@@ -1,4 +1,6 @@
 "use client";
+import { ApiError, LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import * as React from "react";
 import {
@@ -216,36 +218,9 @@ function flattenErrorMessages(value: unknown): string[] {
   return [];
 }
 
-function parseStructuredApiError(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const source = payload as Record<string, unknown>;
-  const preferred = LOCK_VALIDATION_KEYS.flatMap((key) =>
-    flattenErrorMessages(source[key]).map((message) => `${key}: ${message}`)
-  );
-  if (preferred.length > 0) return preferred.join("\n");
+function parseStructuredApiError(payload: unknown): string | null { return normalizeApiError(payload); }
 
-  const detail = flattenErrorMessages(source.detail);
-  if (detail.length > 0) return detail.join("\n");
-
-  const generic = Object.entries(source).flatMap(([key, value]) =>
-    flattenErrorMessages(value).map((message) => `${key}: ${message}`)
-  );
-  return generic.length > 0 ? generic.join("\n") : null;
-}
-
-function buildApiErrorMessage(raw: string, status: number, fallback: string): string {
-  const trimmed = raw.trim();
-  if (trimmed) {
-    if (/^<!doctype/i.test(trimmed) || /^<html/i.test(trimmed)) return `${fallback} (${status})`;
-    try {
-      const parsed = JSON.parse(trimmed) as unknown;
-      const structured = parseStructuredApiError(parsed);
-      if (structured) return structured;
-    } catch {}
-    return trimmed;
-  }
-  return `${fallback} (${status})`;
-}
+function buildApiErrorMessage(raw: string, status: number, fallback: string): string { return normalizeApiError(raw, fallback, { status }); }
 
 function hasOwnField<T extends object>(source: T, key: string) {
   return Object.prototype.hasOwnProperty.call(source, key);
@@ -874,7 +849,7 @@ export default function EditCellDialog({
     (async () => {
       try {
         const response = await authFetch(cellFormBootstrapPath(cell.id), { cache: "no-store" });
-        if (!response.ok) throw new Error(`${t("create_cell.failed_load_data")} (${response.status})`);
+        if (!response.ok) throw new ApiError(response.status, await response.text().catch(() => ""));
         const bootstrap = normalizeCellFormBootstrap(await response.json());
         if (!active) return;
 
@@ -1131,7 +1106,7 @@ export default function EditCellDialog({
         setInitialStaffGroupsSerialized(serializeStaffGroups(groups));
         setLoadedBootstrapCellId(String(cell.id));
       } catch (error: unknown) {
-        if (active) setFormLoadError(error instanceof Error ? error.message : t("create_cell.failed_load_data"));
+        if (active) setFormLoadError(normalizeApiError(error, t("create_cell.failed_load_data")));
       } finally {
         if (active) {
           setFormLoading(false);
@@ -1327,7 +1302,7 @@ export default function EditCellDialog({
     });
     if (!res.ok) {
       const raw = await res.text().catch(() => "");
-      throw new Error(buildApiErrorMessage(raw, res.status, t("edit_cell.failed_update_cell")));
+      throw new LocalizedApiError(buildApiErrorMessage(raw, res.status, t("edit_cell.failed_update_cell")));
     }
   }
 
@@ -1337,7 +1312,7 @@ export default function EditCellDialog({
     });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      throw new Error(txt || t("errors.failed_status", { status: res.status }));
+      throw new LocalizedApiError(normalizeApiError(txt, t("errors.failed_status", { status: res.status })));
     }
   }
 
@@ -1395,10 +1370,7 @@ export default function EditCellDialog({
       }
 
       if (!res.ok) {
-        const detail =
-          typeof data === "string" && data.trim()
-            ? data.trim()
-            : parseStructuredApiError(data) || `status ${res.status}`;
+        const detail = normalizeApiError(data, "", { status: res.status });
         attemptErrors.push(detail);
         continue;
       }
@@ -1422,9 +1394,9 @@ export default function EditCellDialog({
     }
 
     if (attemptErrors.length > 0) {
-      throw new Error(t("errors.failed_resolve_bundle_details", { details: attemptErrors[attemptErrors.length - 1] }));
+      throw new LocalizedApiError(t("errors.failed_resolve_bundle_details", { details: attemptErrors[attemptErrors.length - 1] }));
     }
-    throw new Error(t("errors.failed_resolve_bundle"));
+    throw new LocalizedApiError(t("errors.failed_resolve_bundle"));
   }
 
   async function submit(e: React.FormEvent) {
@@ -1513,11 +1485,11 @@ export default function EditCellDialog({
         });
         if (!res.ok) {
           const raw = await res.text().catch(() => "");
-          throw new Error(buildApiErrorMessage(raw, res.status, t("edit_cell.failed_update_cell")));
+          throw new LocalizedApiError(buildApiErrorMessage(raw, res.status, t("edit_cell.failed_update_cell")));
         }
       } else {
         if (seriesCells.length > 1 && desiredSets.length > seriesCells.length) {
-          throw new Error(t("edit_cell.bulk_series_add_unsupported"));
+          throw new LocalizedApiError(t("edit_cell.bulk_series_add_unsupported"));
         }
 
         const desiredBundleIds = await Promise.all(desiredSets.map((set) => ensureBundleId(set)));
@@ -1543,7 +1515,7 @@ export default function EditCellDialog({
       requestClose();
       onSaved?.();
     } catch (e: any) {
-      setErr(e?.message || t("edit_cell.failed_update_cell"));
+      setErr(normalizeApiError(e, t("edit_cell.failed_update_cell")));
     } finally {
       setSaving(false);
     }

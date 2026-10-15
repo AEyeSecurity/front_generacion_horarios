@@ -1,4 +1,6 @@
 "use client";
+import { ApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import { useEffect, useState } from "react";
 import RecentProjects from "@/components/dashboard/RecentProjects";
@@ -17,8 +19,8 @@ export default function ClientRecentProjects({ meId }: ClientRecentProjectsProps
 
   useEffect(() => {
     fetch("/api/grids", { cache: "no-store" })
-      .then((res) => {
-        if (!res.ok) throw new Error(`${res.status}`);
+      .then(async (res) => {
+        if (!res.ok) throw new ApiError(res.status, await res.text().catch(() => ""));
         return res.json();
       })
       .then((data: any) => {
@@ -27,7 +29,7 @@ export default function ClientRecentProjects({ meId }: ClientRecentProjectsProps
         setLoading(false);
       })
       .catch((err) => {
-        setError(err.message);
+        setError(normalizeApiError(err));
         setLoading(false);
       });
   }, []);

@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
 import { normalizePreferredLanguage } from "@/lib/language";
@@ -41,17 +42,7 @@ export async function POST(req: Request) {
   let data: any = text; try { data = JSON.parse(text); } catch {}
 
   if (!res.ok) {
-    // Normalize errors to a clean JSON shape
-    let message = "Google login failed";
-    if (typeof data === "string") message = text.slice(0, 500) || message;
-    else message = data?.error || data?.detail || data?.code || message;
-
-    return NextResponse.json(
-      { error: message, status: res.status, raw: typeof data === "string" ? text.slice(0, 200) : undefined, ...(
-        typeof data === "object" ? data : {}
-      ) },
-      { status: res.status }
-    );
+    return NextResponse.json(apiErrorPayload(data, res.status), { status: res.status });
   }
 
   // Success -> set cookies with tokens

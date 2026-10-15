@@ -1,0 +1,4441 @@
+[
+  {
+    "file": "api/password_validation.py",
+    "line": 18,
+    "start": 26,
+    "end_line": 18,
+    "end": 73,
+    "source": "_(\"Password must contain at least one number.\")",
+    "code": "PASSWORD_NUMBER_REQUIRED",
+    "inner": "\"Password must contain at least one number.\""
+  },
+  {
+    "file": "api/password_validation.py",
+    "line": 20,
+    "start": 26,
+    "end_line": 20,
+    "end": 83,
+    "source": "_(\"Password must contain at least one lowercase letter.\")",
+    "code": "PASSWORD_LOWERCASE_REQUIRED",
+    "inner": "\"Password must contain at least one lowercase letter.\""
+  },
+  {
+    "file": "api/password_validation.py",
+    "line": 22,
+    "start": 26,
+    "end_line": 22,
+    "end": 83,
+    "source": "_(\"Password must contain at least one uppercase letter.\")",
+    "code": "PASSWORD_UPPERCASE_REQUIRED",
+    "inner": "\"Password must contain at least one uppercase letter.\""
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 206,
+    "start": 42,
+    "end_line": 206,
+    "end": 74,
+    "source": "\"organization_type is required.\"",
+    "code": "REQUIRED",
+    "inner": "\"organization_type is required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 213,
+    "start": 36,
+    "end_line": 213,
+    "end": 62,
+    "source": "\"unit_nature is required.\"",
+    "code": "REQUIRED",
+    "inner": "\"unit_nature is required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 245,
+    "start": 16,
+    "end_line": 245,
+    "end": 90,
+    "source": "\"other_context_description is required when organization_type is 'other'.\"",
+    "code": "REQUIRED",
+    "inner": "\"other_context_description is required when organization_type is 'other'.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 257,
+    "start": 41,
+    "end_line": 257,
+    "end": 87,
+    "source": "\"time_window_mode must be one of: SOFT, HARD.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "\"time_window_mode must be one of: SOFT, HARD.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 261,
+    "start": 34,
+    "end_line": 261,
+    "end": 79,
+    "source": "\"day_start must be aligned to whole minutes.\"",
+    "code": "GRID_TIME_ALIGNMENT",
+    "inner": "\"day_start must be aligned to whole minutes.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 263,
+    "start": 32,
+    "end_line": 263,
+    "end": 75,
+    "source": "\"day_end must be aligned to whole minutes.\"",
+    "code": "GRID_TIME_ALIGNMENT",
+    "inner": "\"day_end must be aligned to whole minutes.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 100,
+    "start": 16,
+    "end_line": 100,
+    "end": 90,
+    "source": "f\"Invalid slot size. Allowed values: {','.join(str(v) for v in allowed)}.\"",
+    "code": "GRID_SLOT_SIZE_INVALID",
+    "inner": "f\"Invalid slot size. Allowed values: {','.join(str(v) for v in allowed)}.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 108,
+    "start": 46,
+    "end_line": 108,
+    "end": 92,
+    "source": "\"time_window_mode must be one of: SOFT, HARD.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "\"time_window_mode must be one of: SOFT, HARD.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 117,
+    "start": 63,
+    "end_line": 117,
+    "end": 115,
+    "source": "\"days_enabled must be a list of day indexes (0..6).\"",
+    "code": "INVALID_LIST",
+    "inner": "\"days_enabled must be a list of day indexes (0..6).\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 187,
+    "start": 24,
+    "end_line": 188,
+    "end": 84,
+    "source": "f\"Heatmap budget exceeded: you used {used_upgrade_points} upgrade points, \"\n                        f\"max allowed is {max_upgrade_points} for {day_count} days.\"",
+    "code": "HEATMAP_BUDGET_EXCEEDED",
+    "inner": "f\"Heatmap budget exceeded: you used {used_upgrade_points} upgrade points, \"\n                        f\"max allowed is {max_upgrade_points} for {day_count} days.\"",
+    "params": {
+      "used_upgrade_points": "used_upgrade_points",
+      "max_upgrade_points": "max_upgrade_points",
+      "day_count": "day_count"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 209,
+    "start": 16,
+    "end_line": 209,
+    "end": 89,
+    "source": "f\"organization_type must be one of: {sorted(GRID_ORGANIZATION_CHOICES)}.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "f\"organization_type must be one of: {sorted(GRID_ORGANIZATION_CHOICES)}.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 216,
+    "start": 16,
+    "end_line": 216,
+    "end": 82,
+    "source": "f\"unit_nature must be one of: {sorted(GRID_UNIT_NATURE_CHOICES)}.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "f\"unit_nature must be one of: {sorted(GRID_UNIT_NATURE_CHOICES)}.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 223,
+    "start": 20,
+    "end_line": 224,
+    "end": 58,
+    "source": "f\"unit_nature '{unit_nature}' is not allowed for organization_type '{organization}'. \"\n                    f\"Allowed values: {list(allowed_q2)}.\"",
+    "code": "ORGANIZATION_UNIT_MISMATCH",
+    "inner": "f\"unit_nature '{unit_nature}' is not allowed for organization_type '{organization}'. \"\n                    f\"Allowed values: {list(allowed_q2)}.\"",
+    "params": {
+      "unit_nature": "unit_nature",
+      "organization": "organization"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 266,
+    "start": 36,
+    "end_line": 266,
+    "end": 70,
+    "source": "\"day_end must be after day_start.\"",
+    "code": "TIME_END_BEFORE_START",
+    "inner": "\"day_end must be after day_start.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 505,
+    "start": 24,
+    "end_line": 505,
+    "end": 115,
+    "source": "\"Provide min_cells_week_override or max_cells_week_override when cells_week_mode='custom'.\"",
+    "code": "WEEK_LIMIT_CUSTOM_REQUIRED",
+    "inner": "\"Provide min_cells_week_override or max_cells_week_override when cells_week_mode='custom'.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 511,
+    "start": 38,
+    "end_line": 511,
+    "end": 111,
+    "source": "\"min_cells_week_override cannot be greater than max_cells_week_override.\"",
+    "code": "WEEK_LIMIT_CONFLICT",
+    "inner": "\"min_cells_week_override cannot be greater than max_cells_week_override.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 538,
+    "start": 25,
+    "end_line": 538,
+    "end": 85,
+    "source": "\"Provide a name or participant_ids to create a staff group.\"",
+    "code": "STAFF_NAME_OR_MEMBERS_REQUIRED",
+    "inner": "\"Provide a name or participant_ids to create a staff group.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 628,
+    "start": 46,
+    "end_line": 628,
+    "end": 97,
+    "source": "\"Unit must include at most one value per category.\"",
+    "code": "UNIT_CATEGORY_DUPLICATE",
+    "inner": "\"Unit must include at most one value per category.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 782,
+    "start": 62,
+    "end_line": 782,
+    "end": 94,
+    "source": "\"tier_counts must be an object.\"",
+    "code": "INVALID_TYPE",
+    "inner": "\"tier_counts must be an object.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 852,
+    "start": 34,
+    "end_line": 852,
+    "end": 70,
+    "source": "f\"Participants not found: {missing}\"",
+    "code": "PARTICIPANT_NOT_FOUND",
+    "inner": "f\"Participants not found: {missing}\"",
+    "params": {
+      "missing": "missing"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 856,
+    "start": 34,
+    "end_line": 856,
+    "end": 104,
+    "source": "\"All participants in staff_options must belong to the same cell grid.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"All participants in staff_options must belong to the same cell grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 864,
+    "start": 64,
+    "end_line": 864,
+    "end": 95,
+    "source": "\"staff_options must be a list.\"",
+    "code": "INVALID_LIST",
+    "inner": "\"staff_options must be a list.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 934,
+    "start": 46,
+    "end_line": 934,
+    "end": 104,
+    "source": "\"Provide only one of units, bundles, or bundle_unit_sets.\"",
+    "code": "CELL_BUNDLE_SOURCE_EXCLUSIVE",
+    "inner": "\"Provide only one of units, bundles, or bundle_unit_sets.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 978,
+    "start": 60,
+    "end_line": 978,
+    "end": 85,
+    "source": "\"headcount must be >= 1.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "\"headcount must be >= 1.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1329,
+    "start": 67,
+    "end_line": 1329,
+    "end": 102,
+    "source": "\"bundle_unit_sets cannot be empty.\"",
+    "code": "BLANK",
+    "inner": "\"bundle_unit_sets cannot be empty.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1457,
+    "start": 30,
+    "end_line": 1457,
+    "end": 99,
+    "source": "\"link_kind is not supported. For link invites, use type='link' only.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "\"link_kind is not supported. For link invites, use type='link' only.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1472,
+    "start": 56,
+    "end_line": 1472,
+    "end": 112,
+    "source": "\"Email cannot be changed after the invitation was used.\"",
+    "code": "INVITATION_IMMUTABLE",
+    "inner": "\"Email cannot be changed after the invitation was used.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1493,
+    "start": 61,
+    "end_line": 1493,
+    "end": 96,
+    "source": "\"expires_at must be in the future.\"",
+    "code": "EXPIRY_IN_PAST",
+    "inner": "\"expires_at must be in the future.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1496,
+    "start": 65,
+    "end_line": 1496,
+    "end": 108,
+    "source": "\"Participant must belong to the same grid.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"Participant must belong to the same grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1583,
+    "start": 57,
+    "end_line": 1583,
+    "end": 81,
+    "source": "\"breaks must be a list.\"",
+    "code": "INVALID_LIST",
+    "inner": "\"breaks must be a list.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1614,
+    "start": 27,
+    "end_line": 1614,
+    "end": 95,
+    "source": "\"Total break duration cannot exceed half of the placement duration.\"",
+    "code": "BREAK_TOTAL_EXCEEDED",
+    "inner": "\"Total break duration cannot exceed half of the placement duration.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1638,
+    "start": 59,
+    "end_line": 1638,
+    "end": 82,
+    "source": "\"schedule is required.\"",
+    "code": "REQUIRED",
+    "inner": "\"schedule is required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1640,
+    "start": 62,
+    "end_line": 1640,
+    "end": 117,
+    "source": "\"source_cell must belong to the same grid as schedule.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"source_cell must belong to the same grid as schedule.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1642,
+    "start": 57,
+    "end_line": 1642,
+    "end": 107,
+    "source": "\"bundle must belong to the same grid as schedule.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"bundle must belong to the same grid as schedule.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1723,
+    "start": 59,
+    "end_line": 1723,
+    "end": 82,
+    "source": "\"schedule is required.\"",
+    "code": "REQUIRED",
+    "inner": "\"schedule is required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1730,
+    "start": 30,
+    "end_line": 1730,
+    "end": 95,
+    "source": "f\"day_index must be between 0 and {max(0, len(day_labels) - 1)}.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "f\"day_index must be between 0 and {max(0, len(day_labels) - 1)}.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1733,
+    "start": 68,
+    "end_line": 1733,
+    "end": 102,
+    "source": "\"start_slot/end_slot are invalid.\"",
+    "code": "PLACEMENT_OUT_OF_BOUNDS",
+    "inner": "\"start_slot/end_slot are invalid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1735,
+    "start": 59,
+    "end_line": 1735,
+    "end": 102,
+    "source": "f\"end_slot must be <= horizon ({horizon}).\"",
+    "code": "PLACEMENT_OUT_OF_BOUNDS",
+    "inner": "f\"end_slot must be <= horizon ({horizon}).\"",
+    "params": {
+      "horizon": "horizon"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1737,
+    "start": 68,
+    "end_line": 1737,
+    "end": 112,
+    "source": "\"Blockage duration must be at least 1 cell.\"",
+    "code": "BLOCKAGE_TOO_SHORT",
+    "inner": "\"Blockage duration must be at least 1 cell.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1742,
+    "start": 59,
+    "end_line": 1742,
+    "end": 85,
+    "source": "\"unit_ids must be a list.\"",
+    "code": "INVALID_LIST",
+    "inner": "\"unit_ids must be a list.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1780,
+    "start": 38,
+    "end_line": 1780,
+    "end": 92,
+    "source": "f\"Overlaps existing placement {overlap_placement.id}.\"",
+    "code": "BLOCKAGE_OVERLAPS_PLACEMENT",
+    "inner": "f\"Overlaps existing placement {overlap_placement.id}.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2028,
+    "start": 32,
+    "end_line": 2028,
+    "end": 105,
+    "source": "f\"Invalid reason_code. Allowed: {sorted(REJECTION_REASON_DELTAS.keys())}\"",
+    "code": "REJECTION_REASON_INVALID",
+    "inner": "f\"Invalid reason_code. Allowed: {sorted(REJECTION_REASON_DELTAS.keys())}\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2034,
+    "start": 69,
+    "end_line": 2034,
+    "end": 108,
+    "source": "\"weight_adjustments must be an object.\"",
+    "code": "INVALID_TYPE",
+    "inner": "\"weight_adjustments must be an object.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2047,
+    "start": 38,
+    "end_line": 2047,
+    "end": 82,
+    "source": "\"Provide reason_code or weight_adjustments.\"",
+    "code": "SOLVER_FEEDBACK_REQUIRED",
+    "inner": "\"Provide reason_code or weight_adjustments.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2051,
+    "start": 56,
+    "end_line": 2051,
+    "end": 78,
+    "source": "\"Invalid scope value.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "\"Invalid scope value.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2053,
+    "start": 57,
+    "end_line": 2053,
+    "end": 80,
+    "source": "\"Invalid source value.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "\"Invalid source value.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2055,
+    "start": 54,
+    "end_line": 2055,
+    "end": 89,
+    "source": "\"run must belong to the same grid.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"run must belong to the same grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2057,
+    "start": 61,
+    "end_line": 2057,
+    "end": 96,
+    "source": "\"expires_at must be in the future.\"",
+    "code": "EXPIRY_IN_PAST",
+    "inner": "\"expires_at must be in the future.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2278,
+    "start": 42,
+    "end_line": 2278,
+    "end": 121,
+    "source": "\"published_schedule_id is required. Draft schedule comments are not supported.\"",
+    "code": "COMMENT_PUBLISHED_REQUIRED",
+    "inner": "\"published_schedule_id is required. Draft schedule comments are not supported.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2344,
+    "start": 65,
+    "end_line": 2344,
+    "end": 90,
+    "source": "\"This field is required.\"",
+    "code": "REQUIRED",
+    "inner": "\"This field is required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2347,
+    "start": 65,
+    "end_line": 2347,
+    "end": 98,
+    "source": "\"source_cell_id cannot be empty.\"",
+    "code": "BLANK",
+    "inner": "\"source_cell_id cannot be empty.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2351,
+    "start": 60,
+    "end_line": 2351,
+    "end": 85,
+    "source": "\"day_index must be >= 0.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "\"day_index must be >= 0.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2353,
+    "start": 61,
+    "end_line": 2353,
+    "end": 87,
+    "source": "\"start_slot must be >= 0.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "\"start_slot must be >= 0.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2355,
+    "start": 59,
+    "end_line": 2355,
+    "end": 102,
+    "source": "\"end_slot must be greater than start_slot.\"",
+    "code": "TIME_END_BEFORE_START",
+    "inner": "\"end_slot must be greater than start_slot.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2357,
+    "start": 55,
+    "end_line": 2357,
+    "end": 78,
+    "source": "\"text cannot be empty.\"",
+    "code": "BLANK",
+    "inner": "\"text cannot be empty.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2361,
+    "start": 39,
+    "end_line": 2361,
+    "end": 114,
+    "source": "\"schedule_placement must belong to the same grid as published_schedule_id.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"schedule_placement must belong to the same grid as published_schedule_id.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2366,
+    "start": 27,
+    "end_line": 2366,
+    "end": 90,
+    "source": "\"bundle must belong to the same grid as published_schedule_id.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"bundle must belong to the same grid as published_schedule_id.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2383,
+    "start": 24,
+    "end_line": 2383,
+    "end": 121,
+    "source": "\"No placement matches published_schedule_id/source_cell_id/bundle/day_index/start_slot/end_slot.\"",
+    "code": "COMMENT_PLACEMENT_NOT_FOUND",
+    "inner": "\"No placement matches published_schedule_id/source_cell_id/bundle/day_index/start_slot/end_slot.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 96,
+    "start": 46,
+    "end_line": 96,
+    "end": 81,
+    "source": "\"cell_size_min must be an integer.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"cell_size_min must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 126,
+    "start": 67,
+    "end_line": 126,
+    "end": 116,
+    "source": "f\"Day index '{day_idx}' must be between 0 and 6.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "f\"Day index '{day_idx}' must be between 0 and 6.\"",
+    "params": {
+      "day_idx": "day_idx"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 177,
+    "start": 62,
+    "end_line": 177,
+    "end": 102,
+    "source": "\"day_heatmap must be an object or list.\"",
+    "code": "INVALID_TYPE",
+    "inner": "\"day_heatmap must be an object or list.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 240,
+    "start": 20,
+    "end_line": 240,
+    "end": 79,
+    "source": "\"other_context_description must be at most 500 characters.\"",
+    "code": "CONTEXT_DESCRIPTION_TOO_LONG",
+    "inner": "\"other_context_description must be at most 500 characters.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 272,
+    "start": 24,
+    "end_line": 272,
+    "end": 104,
+    "source": "\"The interval between day_start and day_end must be divisible by cell_size_min.\"",
+    "code": "GRID_TIME_RANGE_NOT_DIVISIBLE_BY_CELL_SIZE",
+    "inner": "\"The interval between day_start and day_end must be divisible by cell_size_min.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 435,
+    "start": 32,
+    "end_line": 435,
+    "end": 88,
+    "source": "\"A user can only be linked to one participant per grid.\"",
+    "code": "PARTICIPANT_ALREADY_LINKED",
+    "inner": "\"A user can only be linked to one participant per grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 443,
+    "start": 59,
+    "end_line": 443,
+    "end": 106,
+    "source": "\"tier is required when grid tiers are enabled.\"",
+    "code": "PARTICIPANT_TIER_REQUIRED",
+    "inner": "\"tier is required when grid tiers are enabled.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 445,
+    "start": 59,
+    "end_line": 445,
+    "end": 106,
+    "source": "\"tier is required when grid tiers are enabled.\"",
+    "code": "PARTICIPANT_TIER_REQUIRED",
+    "inner": "\"tier is required when grid tiers are enabled.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 468,
+    "start": 48,
+    "end_line": 468,
+    "end": 93,
+    "source": "\"Use null when cells_week_mode is 'default'.\"",
+    "code": "WEEK_LIMIT_DEFAULT",
+    "inner": "\"Use null when cells_week_mode is 'default'.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 472,
+    "start": 48,
+    "end_line": 472,
+    "end": 93,
+    "source": "\"Use null when cells_week_mode is 'default'.\"",
+    "code": "WEEK_LIMIT_DEFAULT",
+    "inner": "\"Use null when cells_week_mode is 'default'.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 483,
+    "start": 28,
+    "end_line": 483,
+    "end": 109,
+    "source": "\"For cells_week_mode='not_available', min_cells_week_override must be 0 or null.\"",
+    "code": "WEEK_LIMIT_UNAVAILABLE",
+    "inner": "\"For cells_week_mode='not_available', min_cells_week_override must be 0 or null.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 491,
+    "start": 28,
+    "end_line": 491,
+    "end": 109,
+    "source": "\"For cells_week_mode='not_available', max_cells_week_override must be 0 or null.\"",
+    "code": "WEEK_LIMIT_UNAVAILABLE",
+    "inner": "\"For cells_week_mode='not_available', max_cells_week_override must be 0 or null.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 789,
+    "start": 36,
+    "end_line": 789,
+    "end": 94,
+    "source": "f\"Invalid tier key '{k}'. Use Primary/Secondary/Tertiary.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "f\"Invalid tier key '{k}'. Use Primary/Secondary/Tertiary.\"",
+    "params": {
+      "k": "k"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 799,
+    "start": 36,
+    "end_line": 799,
+    "end": 71,
+    "source": "f\"tier_counts['{k}'] must be >= 0.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "f\"tier_counts['{k}'] must be >= 0.\"",
+    "params": {
+      "k": "k"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 874,
+    "start": 38,
+    "end_line": 874,
+    "end": 71,
+    "source": "f\"Item #{idx} must be an object.\"",
+    "code": "INVALID_TYPE",
+    "inner": "f\"Item #{idx} must be an object.\"",
+    "params": {
+      "idx": "idx"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 984,
+    "start": 70,
+    "end_line": 984,
+    "end": 123,
+    "source": "\"split_parts_min must contain at least one duration.\"",
+    "code": "CELL_SPLIT_EMPTY",
+    "inner": "\"split_parts_min must contain at least one duration.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 989,
+    "start": 37,
+    "end_line": 989,
+    "end": 84,
+    "source": "\"duration_min must equal sum(split_parts_min).\"",
+    "code": "CELL_SPLIT_SUM_MISMATCH",
+    "inner": "\"duration_min must equal sum(split_parts_min).\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 993,
+    "start": 38,
+    "end_line": 993,
+    "end": 86,
+    "source": "\"division_days must equal len(split_parts_min).\"",
+    "code": "CELL_SPLIT_COUNT_MISMATCH",
+    "inner": "\"division_days must equal len(split_parts_min).\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1077,
+    "start": 38,
+    "end_line": 1077,
+    "end": 102,
+    "source": "f\"division_days must be <= number of enabled days ({num_days}).\"",
+    "code": "CELL_SPLIT_EXCEEDS_DAYS",
+    "inner": "f\"division_days must be <= number of enabled days ({num_days}).\"",
+    "params": {
+      "num_days": "num_days"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1088,
+    "start": 46,
+    "end_line": 1088,
+    "end": 104,
+    "source": "\"eligible_participants must be a list of participant IDs.\"",
+    "code": "INVALID_LIST",
+    "inner": "\"eligible_participants must be a list of participant IDs.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1151,
+    "start": 46,
+    "end_line": 1151,
+    "end": 104,
+    "source": "\"eligible_participants must be a list of participant IDs.\"",
+    "code": "INVALID_LIST",
+    "inner": "\"eligible_participants must be a list of participant IDs.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1184,
+    "start": 36,
+    "end_line": 1184,
+    "end": 97,
+    "source": "\"Exact rule: sum(tier_counts.values()) must equal headcount.\"",
+    "code": "CELL_TIER_HEADCOUNT_MISMATCH",
+    "inner": "\"Exact rule: sum(tier_counts.values()) must equal headcount.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1203,
+    "start": 42,
+    "end_line": 1203,
+    "end": 121,
+    "source": "\"Provide at least one staffing source: eligible_participants or staff_options.\"",
+    "code": "STAFF_SOURCE_REQUIRED",
+    "inner": "\"Provide at least one staffing source: eligible_participants or staff_options.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1311,
+    "start": 20,
+    "end_line": 1311,
+    "end": 75,
+    "source": "f\"bundle_unit_sets[{idx}] contains duplicate unit IDs.\"",
+    "code": "UNIQUE",
+    "inner": "f\"bundle_unit_sets[{idx}] contains duplicate unit IDs.\"",
+    "params": {
+      "idx": "idx"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1483,
+    "start": 60,
+    "end_line": 1483,
+    "end": 102,
+    "source": "\"Email is required for email invitations.\"",
+    "code": "REQUIRED",
+    "inner": "\"Email is required for email invitations.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1523,
+    "start": 37,
+    "end_line": 1523,
+    "end": 97,
+    "source": "\"participant_tier is only supported for editor invitations.\"",
+    "code": "INVITATION_TIER_EDITOR_ONLY",
+    "inner": "\"participant_tier is only supported for editor invitations.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1587,
+    "start": 61,
+    "end_line": 1587,
+    "end": 96,
+    "source": "f\"breaks[{idx}] must be an object.\"",
+    "code": "INVALID_TYPE",
+    "inner": "f\"breaks[{idx}] must be an object.\"",
+    "params": {
+      "idx": "idx"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1597,
+    "start": 31,
+    "end_line": 1597,
+    "end": 101,
+    "source": "f\"breaks[{idx}].duration_min must be a positive multiple of 5 (>= 5).\"",
+    "code": "BREAK_DURATION_INVALID",
+    "inner": "f\"breaks[{idx}].duration_min must be a positive multiple of 5 (>= 5).\"",
+    "params": {
+      "idx": "idx"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1601,
+    "start": 31,
+    "end_line": 1601,
+    "end": 96,
+    "source": "f\"breaks[{idx}].offset_min must be a non-negative multiple of 5.\"",
+    "code": "BREAK_OFFSET_INVALID",
+    "inner": "f\"breaks[{idx}].offset_min must be a non-negative multiple of 5.\"",
+    "params": {
+      "idx": "idx"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1605,
+    "start": 31,
+    "end_line": 1605,
+    "end": 83,
+    "source": "f\"breaks[{idx}] must fit inside placement duration.\"",
+    "code": "BREAK_OUTSIDE_PLACEMENT",
+    "inner": "f\"breaks[{idx}] must fit inside placement duration.\"",
+    "params": {
+      "idx": "idx"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1622,
+    "start": 61,
+    "end_line": 1622,
+    "end": 91,
+    "source": "\"Break ranges cannot overlap.\"",
+    "code": "BREAK_OVERLAP",
+    "inner": "\"Break ranges cannot overlap.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1653,
+    "start": 46,
+    "end_line": 1653,
+    "end": 95,
+    "source": "f\"Participants not found in this grid: {missing}\"",
+    "code": "PARTICIPANT_NOT_FOUND",
+    "inner": "f\"Participants not found in this grid: {missing}\"",
+    "params": {
+      "missing": "missing"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1750,
+    "start": 63,
+    "end_line": 1750,
+    "end": 105,
+    "source": "f\"Units not found in this grid: {missing}\"",
+    "code": "UNIT_NOT_FOUND",
+    "inner": "f\"Units not found in this grid: {missing}\"",
+    "params": {
+      "missing": "missing"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 124,
+    "start": 67,
+    "end_line": 124,
+    "end": 96,
+    "source": "f\"Invalid day index '{raw}'.\"",
+    "code": "GRID_DAYS_INVALID",
+    "inner": "f\"Invalid day index '{raw}'.\"",
+    "params": {
+      "raw": "raw"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 145,
+    "start": 70,
+    "end_line": 145,
+    "end": 117,
+    "source": "f\"Day key '{day_idx}' must be between 0 and 6.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "f\"Day key '{day_idx}' must be between 0 and 6.\"",
+    "params": {
+      "day_idx": "day_idx"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 151,
+    "start": 70,
+    "end_line": 151,
+    "end": 129,
+    "source": "f\"Heatmap value for day {day_idx} must be between 1 and 3.\"",
+    "code": "HEATMAP_INVALID",
+    "inner": "f\"Heatmap value for day {day_idx} must be between 1 and 3.\"",
+    "params": {
+      "day_idx": "day_idx"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 795,
+    "start": 36,
+    "end_line": 795,
+    "end": 77,
+    "source": "f\"tier_counts['{k}'] must be an integer.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "f\"tier_counts['{k}'] must be an integer.\"",
+    "params": {
+      "k": "k"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 891,
+    "start": 42,
+    "end_line": 891,
+    "end": 82,
+    "source": "f\"Staff Group {staff_id} was not found.\"",
+    "code": "STAFF_GROUP_NOT_FOUND",
+    "inner": "f\"Staff Group {staff_id} was not found.\"",
+    "params": {
+      "staff_id": "staff_id"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 896,
+    "start": 42,
+    "end_line": 896,
+    "end": 112,
+    "source": "f\"Staff Group {staff_id} contains participants outside the cell grid.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "f\"Staff Group {staff_id} contains participants outside the cell grid.\"",
+    "params": {
+      "staff_id": "staff_id"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 900,
+    "start": 42,
+    "end_line": 900,
+    "end": 98,
+    "source": "f\"Staff Group {staff_id} must have at least one member.\"",
+    "code": "STAFF_GROUP_EMPTY",
+    "inner": "f\"Staff Group {staff_id} must have at least one member.\"",
+    "params": {
+      "staff_id": "staff_id"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 908,
+    "start": 42,
+    "end_line": 908,
+    "end": 95,
+    "source": "f\"Item #{idx} must include non-empty 'members' list.\"",
+    "code": "INVALID_LIST",
+    "inner": "f\"Item #{idx} must include non-empty 'members' list.\"",
+    "params": {
+      "idx": "idx"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 952,
+    "start": 45,
+    "end_line": 952,
+    "end": 115,
+    "source": "f\"bundle_unit_sets[{idx}] contains units outside the grid: {missing}.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "f\"bundle_unit_sets[{idx}] contains units outside the grid: {missing}.\"",
+    "params": {
+      "idx": "idx",
+      "missing": "missing"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1003,
+    "start": 71,
+    "end_line": 1003,
+    "end": 98,
+    "source": "\"duration_min is required.\"",
+    "code": "REQUIRED",
+    "inner": "\"duration_min is required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1094,
+    "start": 46,
+    "end_line": 1094,
+    "end": 99,
+    "source": "\"eligible_participants must contain participant IDs.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"eligible_participants must contain participant IDs.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1101,
+    "start": 50,
+    "end_line": 1101,
+    "end": 99,
+    "source": "f\"Participant {participant.id} must have a tier.\"",
+    "code": "PARTICIPANT_TIER_REQUIRED",
+    "inner": "f\"Participant {participant.id} must have a tier.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1113,
+    "start": 69,
+    "end_line": 1113,
+    "end": 100,
+    "source": "\"tier_pools must be an object.\"",
+    "code": "INVALID_TYPE",
+    "inner": "\"tier_pools must be an object.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1157,
+    "start": 46,
+    "end_line": 1157,
+    "end": 99,
+    "source": "\"eligible_participants must contain participant IDs.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"eligible_participants must contain participant IDs.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1200,
+    "start": 46,
+    "end_line": 1200,
+    "end": 114,
+    "source": "\"Provide at least one staffing source: tier_pools or staff_options.\"",
+    "code": "STAFF_SOURCE_REQUIRED",
+    "inner": "\"Provide at least one staffing source: tier_pools or staff_options.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1211,
+    "start": 32,
+    "end_line": 1211,
+    "end": 104,
+    "source": "f\"eligible_participants must include at least {headcount} participants.\"",
+    "code": "CELL_INSUFFICIENT_PARTICIPANTS",
+    "inner": "f\"eligible_participants must include at least {headcount} participants.\"",
+    "params": {
+      "headcount": "headcount"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1320,
+    "start": 24,
+    "end_line": 1321,
+    "end": 67,
+    "source": "f\"bundle_unit_sets[{i}] and bundle_unit_sets[{j}] share units {overlap}. \"\n                        \"Series cells must use disjoint unit sets.\"",
+    "code": "CELL_SERIES_UNITS_OVERLAP",
+    "inner": "f\"bundle_unit_sets[{i}] and bundle_unit_sets[{j}] share units {overlap}. \"\n                        \"Series cells must use disjoint unit sets.\"",
+    "params": {
+      "i": "i",
+      "j": "j",
+      "overlap": "overlap"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1487,
+    "start": 29,
+    "end_line": 1487,
+    "end": 73,
+    "source": "\"Link invitations only support viewer role.\"",
+    "code": "INVITATION_VIEWER_ONLY",
+    "inner": "\"Link invitations only support viewer role.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1505,
+    "start": 45,
+    "end_line": 1505,
+    "end": 108,
+    "source": "\"participant_tier is not allowed when grid tiers are disabled.\"",
+    "code": "INVITATION_TIER_DISABLED",
+    "inner": "\"participant_tier is not allowed when grid tiers are disabled.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1511,
+    "start": 45,
+    "end_line": 1511,
+    "end": 131,
+    "source": "\"participant_tier is required for editor invites when participant_id is not provided.\"",
+    "code": "REQUIRED",
+    "inner": "\"participant_tier is required for editor invites when participant_id is not provided.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1515,
+    "start": 45,
+    "end_line": 1515,
+    "end": 105,
+    "source": "\"participant_tier must match the selected participant tier.\"",
+    "code": "INVITATION_TIER_MISMATCH",
+    "inner": "\"participant_tier must match the selected participant tier.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1593,
+    "start": 31,
+    "end_line": 1593,
+    "end": 97,
+    "source": "f\"breaks[{idx}] must include integer offset_min and duration_min.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "f\"breaks[{idx}] must include integer offset_min and duration_min.\"",
+    "params": {
+      "idx": "idx"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2042,
+    "start": 56,
+    "end_line": 2042,
+    "end": 100,
+    "source": "\"weight_adjustments values must be numbers.\"",
+    "code": "INVALID_NUMBER",
+    "inner": "\"weight_adjustments values must be numbers.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 2262,
+    "start": 32,
+    "end_line": 2262,
+    "end": 77,
+    "source": "\"Anchor fields are immutable after creation.\"",
+    "code": "COMMENT_ANCHOR_IMMUTABLE",
+    "inner": "\"Anchor fields are immutable after creation.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 143,
+    "start": 70,
+    "end_line": 143,
+    "end": 101,
+    "source": "f\"Invalid day key '{raw_key}'.\"",
+    "code": "GRID_DAYS_INVALID",
+    "inner": "f\"Invalid day key '{raw_key}'.\"",
+    "params": {
+      "raw_key": "raw_key"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 149,
+    "start": 70,
+    "end_line": 149,
+    "end": 124,
+    "source": "f\"Heatmap value for day {day_idx} must be an integer.\"",
+    "code": "HEATMAP_INVALID",
+    "inner": "f\"Heatmap value for day {day_idx} must be an integer.\"",
+    "params": {
+      "day_idx": "day_idx"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 163,
+    "start": 28,
+    "end_line": 163,
+    "end": 113,
+    "source": "\"day_heatmap list must have 7 values (Mon..Sun) or match the number of enabled days.\"",
+    "code": "HEATMAP_INVALID",
+    "inner": "\"day_heatmap list must have 7 values (Mon..Sun) or match the number of enabled days.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 174,
+    "start": 70,
+    "end_line": 174,
+    "end": 129,
+    "source": "f\"Heatmap value for day {day_idx} must be between 1 and 3.\"",
+    "code": "HEATMAP_INVALID",
+    "inner": "f\"Heatmap value for day {day_idx} must be between 1 and 3.\"",
+    "params": {
+      "day_idx": "day_idx"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 882,
+    "start": 42,
+    "end_line": 882,
+    "end": 88,
+    "source": "f\"Item #{idx} staff must be a Staff Group ID.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "f\"Item #{idx} staff must be a Staff Group ID.\"",
+    "params": {
+      "idx": "idx"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 914,
+    "start": 42,
+    "end_line": 914,
+    "end": 89,
+    "source": "f\"Item #{idx} members must be participant IDs.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "f\"Item #{idx} members must be participant IDs.\"",
+    "params": {
+      "idx": "idx"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1047,
+    "start": 36,
+    "end_line": 1049,
+    "end": 53,
+    "source": "f\"Cell duration ({int(derived_duration_min)} min) exceeds its time range \"\n                                    f\"window ({window_size_minutes} min). Reduce the duration or widen/remove \"\n                                    \"the time range.\"",
+    "code": "CELL_DURATION_EXCEEDS_TIME_RANGE",
+    "inner": "f\"Cell duration ({int(derived_duration_min)} min) exceeds its time range \"\n                                    f\"window ({window_size_minutes} min). Reduce the duration or widen/remove \"\n                                    \"the time range.\"",
+    "params": {
+      "window_size_minutes": "window_size_minutes"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1120,
+    "start": 43,
+    "end_line": 1120,
+    "end": 101,
+    "source": "f\"Invalid tier key '{k}'. Use Primary/Secondary/Tertiary.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "f\"Invalid tier key '{k}'. Use Primary/Secondary/Tertiary.\"",
+    "params": {
+      "k": "k"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1124,
+    "start": 43,
+    "end_line": 1124,
+    "end": 98,
+    "source": "f\"tier_pools['{k}'] must be a list of participant IDs.\"",
+    "code": "INVALID_LIST",
+    "inner": "f\"tier_pools['{k}'] must be a list of participant IDs.\"",
+    "params": {
+      "k": "k"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1520,
+    "start": 77,
+    "end_line": 1520,
+    "end": 130,
+    "source": "\"This participant is already linked to another user.\"",
+    "code": "PARTICIPANT_ALREADY_LINKED",
+    "inner": "\"This participant is already linked to another user.\"",
+    "params": {}
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 172,
+    "start": 70,
+    "end_line": 172,
+    "end": 124,
+    "source": "f\"Heatmap value for day {day_idx} must be an integer.\"",
+    "code": "HEATMAP_INVALID",
+    "inner": "f\"Heatmap value for day {day_idx} must be an integer.\"",
+    "params": {
+      "day_idx": "day_idx"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1059,
+    "start": 40,
+    "end_line": 1061,
+    "end": 88,
+    "source": "f\"Cell split part duration ({max_split_part_min} min) exceeds its time \"\n                                        f\"range window ({window_size_minutes} min). Reduce the duration, increase \"\n                                        \"division_days, or widen/remove the time range.\"",
+    "code": "CELL_DURATION_EXCEEDS_TIME_RANGE",
+    "inner": "f\"Cell split part duration ({max_split_part_min} min) exceeds its time \"\n                                        f\"range window ({window_size_minutes} min). Reduce the duration, increase \"\n                                        \"division_days, or widen/remove the time range.\"",
+    "params": {
+      "max_split_part_min": "max_split_part_min",
+      "window_size_minutes": "window_size_minutes"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1130,
+    "start": 43,
+    "end_line": 1130,
+    "end": 93,
+    "source": "f\"tier_pools['{k}'] must contain participant IDs.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "f\"tier_pools['{k}'] must contain participant IDs.\"",
+    "params": {
+      "k": "k"
+    }
+  },
+  {
+    "file": "api/serializers.py",
+    "line": 1138,
+    "start": 40,
+    "end_line": 1139,
+    "end": 58,
+    "source": "f\"Participant {p.id} tier is '{p.tier}', expected '{mapped}' \"\n                                        f\"for pool '{k}'.\"",
+    "code": "PARTICIPANT_TIER_MISMATCH",
+    "inner": "f\"Participant {p.id} tier is '{p.tier}', expected '{mapped}' \"\n                                        f\"for pool '{k}'.\"",
+    "params": {
+      "mapped": "mapped",
+      "k": "k"
+    }
+  },
+  {
+    "file": "api/views.py",
+    "line": 53,
+    "start": 21,
+    "end_line": 53,
+    "end": 65,
+    "source": "\"Verification code already used or invalid.\"",
+    "code": "VERIFICATION_TOKEN_INVALID",
+    "inner": "\"Verification code already used or invalid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 59,
+    "start": 21,
+    "end_line": 59,
+    "end": 49,
+    "source": "\"Invalid verification code.\"",
+    "code": "VERIFICATION_TOKEN_INVALID",
+    "inner": "\"Invalid verification code.\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 48,
+    "start": 21,
+    "end_line": 48,
+    "end": 60,
+    "source": "\"Invalid or expired verification code.\"",
+    "code": "VERIFICATION_TOKEN_INVALID",
+    "inner": "\"Invalid or expired verification code.\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 103,
+    "start": 39,
+    "end_line": 103,
+    "end": 57,
+    "source": "\"Missing id_token\"",
+    "code": "GOOGLE_TOKEN_REQUIRED",
+    "inner": "\"Missing id_token\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 206,
+    "start": 39,
+    "end_line": 206,
+    "end": 57,
+    "source": "\"Missing id_token\"",
+    "code": "GOOGLE_TOKEN_REQUIRED",
+    "inner": "\"Missing id_token\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 294,
+    "start": 39,
+    "end_line": 294,
+    "end": 72,
+    "source": "\"email and password are required\"",
+    "code": "REQUIRED",
+    "inner": "\"email and password are required\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 301,
+    "start": 39,
+    "end_line": 301,
+    "end": 78,
+    "source": "\"Password confirmation does not match.\"",
+    "code": "PASSWORD_CONFIRMATION_MISMATCH",
+    "inner": "\"Password confirmation does not match.\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 304,
+    "start": 39,
+    "end_line": 304,
+    "end": 61,
+    "source": "\"Email already in use\"",
+    "code": "EMAIL_IN_USE",
+    "inner": "\"Email already in use\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 346,
+    "start": 39,
+    "end_line": 346,
+    "end": 58,
+    "source": "\"email is required\"",
+    "code": "REQUIRED",
+    "inner": "\"email is required\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 386,
+    "start": 39,
+    "end_line": 386,
+    "end": 67,
+    "source": "\"uid and token are required\"",
+    "code": "REQUIRED",
+    "inner": "\"uid and token are required\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 396,
+    "start": 39,
+    "end_line": 396,
+    "end": 78,
+    "source": "\"Invalid or expired verification token\"",
+    "code": "VERIFICATION_TOKEN_INVALID",
+    "inner": "\"Invalid or expired verification token\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 494,
+    "start": 39,
+    "end_line": 494,
+    "end": 57,
+    "source": "\"code is required\"",
+    "code": "REQUIRED",
+    "inner": "\"code is required\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 523,
+    "start": 39,
+    "end_line": 523,
+    "end": 58,
+    "source": "\"email is required\"",
+    "code": "REQUIRED",
+    "inner": "\"email is required\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 550,
+    "start": 27,
+    "end_line": 550,
+    "end": 69,
+    "source": "\"uid, token and new_password are required\"",
+    "code": "REQUIRED",
+    "inner": "\"uid, token and new_password are required\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 559,
+    "start": 39,
+    "end_line": 559,
+    "end": 78,
+    "source": "\"Password confirmation does not match.\"",
+    "code": "PASSWORD_CONFIRMATION_MISMATCH",
+    "inner": "\"Password confirmation does not match.\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 569,
+    "start": 39,
+    "end_line": 569,
+    "end": 71,
+    "source": "\"Invalid or expired reset token\"",
+    "code": "RESET_TOKEN_INVALID",
+    "inner": "\"Invalid or expired reset token\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 573,
+    "start": 27,
+    "end_line": 573,
+    "end": 86,
+    "source": "\"New password must be different from the current password.\"",
+    "code": "PASSWORD_UNCHANGED",
+    "inner": "\"New password must be different from the current password.\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 600,
+    "start": 27,
+    "end_line": 600,
+    "end": 75,
+    "source": "\"current_password and new_password are required\"",
+    "code": "REQUIRED",
+    "inner": "\"current_password and new_password are required\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 609,
+    "start": 39,
+    "end_line": 609,
+    "end": 78,
+    "source": "\"Password confirmation does not match.\"",
+    "code": "PASSWORD_CONFIRMATION_MISMATCH",
+    "inner": "\"Password confirmation does not match.\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 613,
+    "start": 39,
+    "end_line": 613,
+    "end": 71,
+    "source": "\"Current password is incorrect.\"",
+    "code": "CURRENT_PASSWORD_INCORRECT",
+    "inner": "\"Current password is incorrect.\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 617,
+    "start": 27,
+    "end_line": 617,
+    "end": 86,
+    "source": "\"New password must be different from the current password.\"",
+    "code": "PASSWORD_UNCHANGED",
+    "inner": "\"New password must be different from the current password.\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 647,
+    "start": 27,
+    "end_line": 647,
+    "end": 60,
+    "source": "\"preferred_language is required.\"",
+    "code": "REQUIRED",
+    "inner": "\"preferred_language is required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 133,
+    "start": 33,
+    "end_line": 133,
+    "end": 49,
+    "source": "\"Invalid issuer\"",
+    "code": "GOOGLE_TOKEN_INVALID",
+    "inner": "\"Invalid issuer\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 141,
+    "start": 33,
+    "end_line": 141,
+    "end": 61,
+    "source": "\"Email not present in token\"",
+    "code": "GOOGLE_TOKEN_INVALID",
+    "inner": "\"Email not present in token\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 160,
+    "start": 34,
+    "end_line": 160,
+    "end": 103,
+    "source": "\"Account with this email exists. Login and link your Google account.\"",
+    "code": "account_exists_requires_link",
+    "inner": "\"Account with this email exists. Login and link your Google account.\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 188,
+    "start": 34,
+    "end_line": 188,
+    "end": 59,
+    "source": "\"Invalid Google ID token\"",
+    "code": "GOOGLE_TOKEN_INVALID",
+    "inner": "\"Invalid Google ID token\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 226,
+    "start": 33,
+    "end_line": 226,
+    "end": 49,
+    "source": "\"Invalid issuer\"",
+    "code": "GOOGLE_TOKEN_INVALID",
+    "inner": "\"Invalid issuer\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 233,
+    "start": 33,
+    "end_line": 233,
+    "end": 49,
+    "source": "\"Missing claims\"",
+    "code": "GOOGLE_TOKEN_INVALID",
+    "inner": "\"Missing claims\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 241,
+    "start": 31,
+    "end_line": 241,
+    "end": 87,
+    "source": "\"This Google account is already linked to another user.\"",
+    "code": "GOOGLE_ACCOUNT_LINKED",
+    "inner": "\"This Google account is already linked to another user.\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 273,
+    "start": 39,
+    "end_line": 273,
+    "end": 64,
+    "source": "\"Invalid Google ID token\"",
+    "code": "GOOGLE_TOKEN_INVALID",
+    "inner": "\"Invalid Google ID token\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 393,
+    "start": 39,
+    "end_line": 393,
+    "end": 66,
+    "source": "\"Invalid verification link\"",
+    "code": "VERIFICATION_TOKEN_INVALID",
+    "inner": "\"Invalid verification link\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 566,
+    "start": 39,
+    "end_line": 566,
+    "end": 59,
+    "source": "\"Invalid reset link\"",
+    "code": "RESET_TOKEN_INVALID",
+    "inner": "\"Invalid reset link\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 112,
+    "start": 31,
+    "end_line": 112,
+    "end": 66,
+    "source": "\"Google Sign-In dependency missing\"",
+    "code": "UNEXPECTED_ERROR",
+    "inner": "\"Google Sign-In dependency missing\"",
+    "params": {}
+  },
+  {
+    "file": "api/views.py",
+    "line": 214,
+    "start": 31,
+    "end_line": 214,
+    "end": 66,
+    "source": "\"Google Sign-In dependency missing\"",
+    "code": "UNEXPECTED_ERROR",
+    "inner": "\"Google Sign-In dependency missing\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 839,
+    "start": 31,
+    "end_line": 839,
+    "end": 84,
+    "source": "\"Editors/viewers can only delete their own comments.\"",
+    "code": "COMMENT_DELETE_FORBIDDEN",
+    "inner": "\"Editors/viewers can only delete their own comments.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2650,
+    "start": 27,
+    "end_line": 2650,
+    "end": 44,
+    "source": "\"Q1 is required.\"",
+    "code": "REQUIRED",
+    "inner": "\"Q1 is required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4926,
+    "start": 19,
+    "end_line": 4926,
+    "end": 44,
+    "source": "\"Invitation is inactive.\"",
+    "code": "INVITATION_INVALID",
+    "inner": "\"Invitation is inactive.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4928,
+    "start": 19,
+    "end_line": 4928,
+    "end": 47,
+    "source": "\"Invitation is not pending.\"",
+    "code": "INVITATION_NOT_PENDING",
+    "inner": "\"Invitation is not pending.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4930,
+    "start": 19,
+    "end_line": 4930,
+    "end": 64,
+    "source": "\"Only viewer link invitations are supported.\"",
+    "code": "INVITATION_VIEWER_ONLY",
+    "inner": "\"Only viewer link invitations are supported.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4936,
+    "start": 19,
+    "end_line": 4936,
+    "end": 44,
+    "source": "\"Invitation has expired.\"",
+    "code": "INVITATION_EXPIRED",
+    "inner": "\"Invitation has expired.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4938,
+    "start": 19,
+    "end_line": 4938,
+    "end": 54,
+    "source": "\"Invitation has already been used.\"",
+    "code": "INVITATION_NOT_PENDING",
+    "inner": "\"Invitation has already been used.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 209,
+    "start": 35,
+    "end_line": 209,
+    "end": 62,
+    "source": "\"Supervisor role required.\"",
+    "code": "SUPERVISOR_REQUIRED",
+    "inner": "\"Supervisor role required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 220,
+    "start": 27,
+    "end_line": 220,
+    "end": 113,
+    "source": "\"Schedule must be linked to a chosen solve-candidates run to learn from manual edits.\"",
+    "code": "MANUAL_LEARNING_SOURCE_REQUIRED",
+    "inner": "\"Schedule must be linked to a chosen solve-candidates run to learn from manual edits.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 229,
+    "start": 61,
+    "end_line": 229,
+    "end": 104,
+    "source": "\"Chosen candidate not found in source run.\"",
+    "code": "CANDIDATE_NOT_FOUND",
+    "inner": "\"Chosen candidate not found in source run.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 303,
+    "start": 35,
+    "end_line": 303,
+    "end": 88,
+    "source": "\"Supervisor role required for manual schedule edits.\"",
+    "code": "SUPERVISOR_REQUIRED",
+    "inner": "\"Supervisor role required for manual schedule edits.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 378,
+    "start": 35,
+    "end_line": 378,
+    "end": 88,
+    "source": "\"Supervisor role required for manual schedule edits.\"",
+    "code": "SUPERVISOR_REQUIRED",
+    "inner": "\"Supervisor role required for manual schedule edits.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 481,
+    "start": 56,
+    "end_line": 481,
+    "end": 110,
+    "source": "f\"Overlaps existing placement {overlap_placement.id}.\"",
+    "code": "BLOCKAGE_OVERLAPS_PLACEMENT",
+    "inner": "f\"Overlaps existing placement {overlap_placement.id}.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 658,
+    "start": 51,
+    "end_line": 658,
+    "end": 78,
+    "source": "\"delete_scope is required.\"",
+    "code": "REQUIRED",
+    "inner": "\"delete_scope is required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 661,
+    "start": 51,
+    "end_line": 661,
+    "end": 102,
+    "source": "\"delete_scope must be GLOBAL or CURRENT_UNIT_ONLY.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "\"delete_scope must be GLOBAL or CURRENT_UNIT_ONLY.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 822,
+    "start": 35,
+    "end_line": 822,
+    "end": 80,
+    "source": "\"Membership required for placement comments.\"",
+    "code": "MEMBERSHIP_REQUIRED",
+    "inner": "\"Membership required for placement comments.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 829,
+    "start": 35,
+    "end_line": 829,
+    "end": 72,
+    "source": "\"Only supervisors can edit comments.\"",
+    "code": "SUPERVISOR_REQUIRED",
+    "inner": "\"Only supervisors can edit comments.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 892,
+    "start": 35,
+    "end_line": 892,
+    "end": 100,
+    "source": "\"Supervisor role required for this operation on the target grid.\"",
+    "code": "SUPERVISOR_REQUIRED",
+    "inner": "\"Supervisor role required for this operation on the target grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1025,
+    "start": 35,
+    "end_line": 1025,
+    "end": 82,
+    "source": "\"Supervisor role required to update this grid.\"",
+    "code": "SUPERVISOR_REQUIRED",
+    "inner": "\"Supervisor role required to update this grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1051,
+    "start": 35,
+    "end_line": 1051,
+    "end": 82,
+    "source": "\"Supervisor role required to delete this grid.\"",
+    "code": "SUPERVISOR_REQUIRED",
+    "inner": "\"Supervisor role required to delete this grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1059,
+    "start": 35,
+    "end_line": 1059,
+    "end": 82,
+    "source": "\"Supervisor role required to delete this grid.\"",
+    "code": "SUPERVISOR_REQUIRED",
+    "inner": "\"Supervisor role required to delete this grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1107,
+    "start": 27,
+    "end_line": 1107,
+    "end": 44,
+    "source": "\"Grid not found.\"",
+    "code": "GRID_NOT_FOUND",
+    "inner": "\"Grid not found.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1113,
+    "start": 27,
+    "end_line": 1113,
+    "end": 72,
+    "source": "\"No materialized schedule for this grid yet.\"",
+    "code": "NO_DRAFT_SCHEDULE",
+    "inner": "\"No materialized schedule for this grid yet.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1149,
+    "start": 35,
+    "end_line": 1149,
+    "end": 62,
+    "source": "\"Supervisor role required.\"",
+    "code": "SUPERVISOR_REQUIRED",
+    "inner": "\"Supervisor role required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1170,
+    "start": 58,
+    "end_line": 1170,
+    "end": 93,
+    "source": "\"grid_participant_id must be >= 1.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "\"grid_participant_id must be >= 1.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1177,
+    "start": 27,
+    "end_line": 1177,
+    "end": 64,
+    "source": "\"Participant not found in this grid.\"",
+    "code": "PARTICIPANT_NOT_FOUND",
+    "inner": "\"Participant not found in this grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1250,
+    "start": 52,
+    "end_line": 1250,
+    "end": 100,
+    "source": "\"tiers_enabled is required and must be boolean.\"",
+    "code": "REQUIRED",
+    "inner": "\"tiers_enabled is required and must be boolean.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1253,
+    "start": 52,
+    "end_line": 1253,
+    "end": 84,
+    "source": "\"tiers_enabled must be boolean.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "\"tiers_enabled must be boolean.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1278,
+    "start": 49,
+    "end_line": 1278,
+    "end": 77,
+    "source": "\"placements must be a list.\"",
+    "code": "INVALID_LIST",
+    "inner": "\"placements must be a list.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1412,
+    "start": 27,
+    "end_line": 1412,
+    "end": 69,
+    "source": "\"No published schedule for this grid yet.\"",
+    "code": "NO_PUBLISHED_SCHEDULE",
+    "inner": "\"No published schedule for this grid yet.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1510,
+    "start": 27,
+    "end_line": 1510,
+    "end": 69,
+    "source": "\"No published schedule for this grid yet.\"",
+    "code": "NO_PUBLISHED_SCHEDULE",
+    "inner": "\"No published schedule for this grid yet.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1640,
+    "start": 43,
+    "end_line": 1640,
+    "end": 81,
+    "source": "\"view must be 'draft' or 'published'.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "\"view must be 'draft' or 'published'.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2347,
+    "start": 27,
+    "end_line": 2347,
+    "end": 57,
+    "source": "\"Cell not found in this grid.\"",
+    "code": "CELL_NOT_FOUND",
+    "inner": "\"Cell not found in this grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2408,
+    "start": 50,
+    "end_line": 2408,
+    "end": 89,
+    "source": "\"schedule_id must belong to this grid.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"schedule_id must belong to this grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2417,
+    "start": 53,
+    "end_line": 2417,
+    "end": 95,
+    "source": "\"source_cell_id must belong to this grid.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"source_cell_id must belong to this grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2636,
+    "start": 35,
+    "end_line": 2636,
+    "end": 91,
+    "source": "\"Supervisor or editor role required to solve this grid.\"",
+    "code": "SOLVE_ROLE_REQUIRED",
+    "inner": "\"Supervisor or editor role required to solve this grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2641,
+    "start": 45,
+    "end_line": 2641,
+    "end": 92,
+    "source": "\"Wizard answers payload must be a JSON object.\"",
+    "code": "INVALID_TYPE",
+    "inner": "\"Wizard answers payload must be a JSON object.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2652,
+    "start": 27,
+    "end_line": 2652,
+    "end": 82,
+    "source": "f\"Q1 must be one of: {sorted(WIZARD_PROFILE_CHOICES)}.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "f\"Q1 must be one of: {sorted(WIZARD_PROFILE_CHOICES)}.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2659,
+    "start": 31,
+    "end_line": 2659,
+    "end": 90,
+    "source": "f\"Q2 must be one of: {sorted(WIZARD_UNIT_NATURE_CHOICES)}.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "f\"Q2 must be one of: {sorted(WIZARD_UNIT_NATURE_CHOICES)}.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2667,
+    "start": 20,
+    "end_line": 2668,
+    "end": 58,
+    "source": "f\"Q2='{normalized['Q2']}' is not allowed for Q1='{normalized['Q1']}'. \"\n                    f\"Allowed values: {list(allowed_q2)}.\"",
+    "code": "ORGANIZATION_UNIT_MISMATCH",
+    "inner": "f\"Q2='{normalized['Q2']}' is not allowed for Q1='{normalized['Q1']}'. \"\n                    f\"Allowed values: {list(allowed_q2)}.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2675,
+    "start": 20,
+    "end_line": 2675,
+    "end": 79,
+    "source": "\"other_context_description is required when Q1 is 'other'.\"",
+    "code": "REQUIRED",
+    "inner": "\"other_context_description is required when Q1 is 'other'.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2733,
+    "start": 40,
+    "end_line": 2733,
+    "end": 85,
+    "source": "\"Q_min_cells must be an object (dictionary).\"",
+    "code": "INVALID_TYPE",
+    "inner": "\"Q_min_cells must be an object (dictionary).\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2780,
+    "start": 36,
+    "end_line": 2780,
+    "end": 108,
+    "source": "f\"{slider_id} must be an integer between {slider_min} and {slider_max}.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "f\"{slider_id} must be an integer between {slider_min} and {slider_max}.\"",
+    "params": {
+      "slider_id": "slider_id",
+      "slider_min": "slider_min",
+      "slider_max": "slider_max"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2788,
+    "start": 36,
+    "end_line": 2788,
+    "end": 97,
+    "source": "f\"{slider_id} must be between {slider_min} and {slider_max}.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "f\"{slider_id} must be between {slider_min} and {slider_max}.\"",
+    "params": {
+      "slider_id": "slider_id",
+      "slider_min": "slider_min",
+      "slider_max": "slider_max"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 3086,
+    "start": 24,
+    "end_line": 3087,
+    "end": 83,
+    "source": "\"allow_overstaffing is not supported inside solver_params. \"\n                        \"Use grid.allow_overstaffing plus cell.allow_overstaffing.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "\"allow_overstaffing is not supported inside solver_params. \"\n                        \"Use grid.allow_overstaffing plus cell.allow_overstaffing.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 3097,
+    "start": 24,
+    "end_line": 3098,
+    "end": 61,
+    "source": "\"day_load_weights/day_heatmap are not supported inside solver_params. \"\n                        \"Configure grid.day_heatmap instead.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "\"day_load_weights/day_heatmap are not supported inside solver_params. \"\n                        \"Configure grid.day_heatmap instead.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 3547,
+    "start": 27,
+    "end_line": 3547,
+    "end": 53,
+    "source": "\"Candidate run not found.\"",
+    "code": "CANDIDATE_NOT_FOUND",
+    "inner": "\"Candidate run not found.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 3565,
+    "start": 27,
+    "end_line": 3565,
+    "end": 90,
+    "source": "\"Candidate run already rejected. Generate a new candidate run.\"",
+    "code": "CANDIDATE_RUN_REJECTED",
+    "inner": "\"Candidate run already rejected. Generate a new candidate run.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 3576,
+    "start": 54,
+    "end_line": 3576,
+    "end": 125,
+    "source": "f\"candidate_index must be between 0 and {max(0, len(candidates) - 1)}.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "f\"candidate_index must be between 0 and {max(0, len(candidates) - 1)}.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 3581,
+    "start": 54,
+    "end_line": 3581,
+    "end": 99,
+    "source": "\"Selected candidate is not feasible/optimal.\"",
+    "code": "CANDIDATE_NOT_FEASIBLE",
+    "inner": "\"Selected candidate is not feasible/optimal.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 3644,
+    "start": 27,
+    "end_line": 3644,
+    "end": 53,
+    "source": "\"Candidate run not found.\"",
+    "code": "CANDIDATE_NOT_FOUND",
+    "inner": "\"Candidate run not found.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 3647,
+    "start": 45,
+    "end_line": 3647,
+    "end": 104,
+    "source": "\"Candidate already chosen for this run; cannot reject now.\"",
+    "code": "CANDIDATE_ALREADY_CHOSEN",
+    "inner": "\"Candidate already chosen for this run; cannot reject now.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 3653,
+    "start": 50,
+    "end_line": 3653,
+    "end": 76,
+    "source": "\"reason_code is required.\"",
+    "code": "REQUIRED",
+    "inner": "\"reason_code is required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 3656,
+    "start": 50,
+    "end_line": 3656,
+    "end": 92,
+    "source": "f\"Invalid reason_code. Allowed: {allowed}\"",
+    "code": "REJECTION_REASON_INVALID",
+    "inner": "f\"Invalid reason_code. Allowed: {allowed}\"",
+    "params": {
+      "allowed": "allowed"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 3985,
+    "start": 43,
+    "end_line": 3985,
+    "end": 81,
+    "source": "\"view must be 'draft' or 'published'.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "\"view must be 'draft' or 'published'.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 3993,
+    "start": 43,
+    "end_line": 3993,
+    "end": 81,
+    "source": "\"view must be 'draft' or 'published'.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "\"view must be 'draft' or 'published'.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4591,
+    "start": 24,
+    "end_line": 4593,
+    "end": 70,
+    "source": "f\"Cannot delete category '{instance.name}' because it is linked to \"\n                        f\"cells through units/bundles: {self._format_linked_cells(linked_cells)}. \"\n                        \"Unlink those cells from their bundles first.\"",
+    "code": "CATEGORY_IN_USE",
+    "inner": "f\"Cannot delete category '{instance.name}' because it is linked to \"\n                        f\"cells through units/bundles: {self._format_linked_cells(linked_cells)}. \"\n                        \"Unlink those cells from their bundles first.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4618,
+    "start": 24,
+    "end_line": 4620,
+    "end": 70,
+    "source": "f\"Cannot delete category value '{instance.name}' because it is linked to \"\n                        f\"cells through units/bundles: {CategoryViewSet._format_linked_cells(linked_cells)}. \"\n                        \"Unlink those cells from their bundles first.\"",
+    "code": "CATEGORY_IN_USE",
+    "inner": "f\"Cannot delete category value '{instance.name}' because it is linked to \"\n                        f\"cells through units/bundles: {CategoryViewSet._format_linked_cells(linked_cells)}. \"\n                        \"Unlink those cells from their bundles first.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4775,
+    "start": 27,
+    "end_line": 4775,
+    "end": 100,
+    "source": "\"Template must omit 'units' and 'bundles'. Use bundle_unit_sets instead.\"",
+    "code": "CELL_SERIES_TEMPLATE_UNITS",
+    "inner": "\"Template must omit 'units' and 'bundles'. Use bundle_unit_sets instead.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4785,
+    "start": 35,
+    "end_line": 4785,
+    "end": 100,
+    "source": "\"Supervisor role required for this operation on the target grid.\"",
+    "code": "SUPERVISOR_REQUIRED",
+    "inner": "\"Supervisor role required for this operation on the target grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4799,
+    "start": 35,
+    "end_line": 4799,
+    "end": 100,
+    "source": "\"Supervisor role required for this operation on the target grid.\"",
+    "code": "SUPERVISOR_REQUIRED",
+    "inner": "\"Supervisor role required for this operation on the target grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4809,
+    "start": 27,
+    "end_line": 4809,
+    "end": 100,
+    "source": "\"Template must omit 'units' and 'bundles'. Use bundle_unit_sets instead.\"",
+    "code": "CELL_SERIES_TEMPLATE_UNITS",
+    "inner": "\"Template must omit 'units' and 'bundles'. Use bundle_unit_sets instead.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4949,
+    "start": 35,
+    "end_line": 4949,
+    "end": 91,
+    "source": "\"Authentication is required to accept link invitations.\"",
+    "code": "AUTHENTICATION_REQUIRED",
+    "inner": "\"Authentication is required to accept link invitations.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4953,
+    "start": 45,
+    "end_line": 4953,
+    "end": 75,
+    "source": "\"Invitation email is missing.\"",
+    "code": "INVITATION_EMAIL_REQUIRED",
+    "inner": "\"Invitation email is missing.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4988,
+    "start": 35,
+    "end_line": 4988,
+    "end": 85,
+    "source": "\"Supervisor role required to invite to this grid.\"",
+    "code": "SUPERVISOR_REQUIRED",
+    "inner": "\"Supervisor role required to invite to this grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4999,
+    "start": 56,
+    "end_line": 4999,
+    "end": 96,
+    "source": "\"This user already belongs to the grid.\"",
+    "code": "INVITATION_MEMBER_EXISTS",
+    "inner": "\"This user already belongs to the grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 5037,
+    "start": 48,
+    "end_line": 5037,
+    "end": 68,
+    "source": "\"token is required.\"",
+    "code": "REQUIRED",
+    "inner": "\"token is required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 5042,
+    "start": 27,
+    "end_line": 5042,
+    "end": 68,
+    "source": "\"Invitation link is invalid or inactive.\"",
+    "code": "INVITATION_INVALID",
+    "inner": "\"Invitation link is invalid or inactive.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 5059,
+    "start": 48,
+    "end_line": 5059,
+    "end": 68,
+    "source": "\"token is required.\"",
+    "code": "REQUIRED",
+    "inner": "\"token is required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 5090,
+    "start": 48,
+    "end_line": 5090,
+    "end": 68,
+    "source": "\"token is required.\"",
+    "code": "REQUIRED",
+    "inner": "\"token is required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 5130,
+    "start": 48,
+    "end_line": 5130,
+    "end": 76,
+    "source": "\"Invitation is not pending.\"",
+    "code": "INVITATION_NOT_PENDING",
+    "inner": "\"Invitation is not pending.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 5138,
+    "start": 35,
+    "end_line": 5138,
+    "end": 71,
+    "source": "\"You cannot cancel this invitation.\"",
+    "code": "INVITATION_PERMISSION_DENIED",
+    "inner": "\"You cannot cancel this invitation.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 5155,
+    "start": 35,
+    "end_line": 5155,
+    "end": 71,
+    "source": "\"You cannot resend this invitation.\"",
+    "code": "INVITATION_PERMISSION_DENIED",
+    "inner": "\"You cannot resend this invitation.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 5157,
+    "start": 48,
+    "end_line": 5157,
+    "end": 96,
+    "source": "\"Only active pending invitations can be resent.\"",
+    "code": "INVITATION_NOT_PENDING",
+    "inner": "\"Only active pending invitations can be resent.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 5163,
+    "start": 48,
+    "end_line": 5163,
+    "end": 73,
+    "source": "\"Invitation has expired.\"",
+    "code": "INVITATION_EXPIRED",
+    "inner": "\"Invitation has expired.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 5165,
+    "start": 48,
+    "end_line": 5165,
+    "end": 81,
+    "source": "\"Invitation has no email target.\"",
+    "code": "INVITATION_EMAIL_REQUIRED",
+    "inner": "\"Invitation has no email target.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 225,
+    "start": 61,
+    "end_line": 225,
+    "end": 94,
+    "source": "\"Invalid source_candidate_index.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"Invalid source_candidate_index.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 250,
+    "start": 47,
+    "end_line": 250,
+    "end": 96,
+    "source": "\"strength must be a number between 0.05 and 1.0.\"",
+    "code": "INVALID_NUMBER",
+    "inner": "\"strength must be a number between 0.05 and 1.0.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 676,
+    "start": 50,
+    "end_line": 676,
+    "end": 93,
+    "source": "\"unit_id must belong to the blockage grid.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"unit_id must belong to the blockage grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 751,
+    "start": 47,
+    "end_line": 751,
+    "end": 82,
+    "source": "f\"{field_name} must be an integer.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "f\"{field_name} must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1075,
+    "start": 30,
+    "end_line": 1075,
+    "end": 104,
+    "source": "\"This grid cannot be deleted because it still has protected related data.\"",
+    "code": "GRID_DELETE_PROTECTED",
+    "inner": "\"This grid cannot be deleted because it still has protected related data.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1168,
+    "start": 58,
+    "end_line": 1168,
+    "end": 99,
+    "source": "\"grid_participant_id must be an integer.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"grid_participant_id must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1283,
+    "start": 53,
+    "end_line": 1283,
+    "end": 88,
+    "source": "f\"Item #{index} must be an object.\"",
+    "code": "INVALID_TYPE",
+    "inner": "f\"Item #{index} must be an object.\"",
+    "params": {
+      "index": "index"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1291,
+    "start": 53,
+    "end_line": 1291,
+    "end": 107,
+    "source": "f\"Item #{index} must include a positive placement_id.\"",
+    "code": "REQUIRED",
+    "inner": "f\"Item #{index} must include a positive placement_id.\"",
+    "params": {
+      "index": "index"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1297,
+    "start": 53,
+    "end_line": 1297,
+    "end": 107,
+    "source": "f\"Item #{index} must include a positive placement_id.\"",
+    "code": "REQUIRED",
+    "inner": "f\"Item #{index} must include a positive placement_id.\"",
+    "params": {
+      "index": "index"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1299,
+    "start": 53,
+    "end_line": 1299,
+    "end": 98,
+    "source": "f\"Placement id {placement_id} is duplicated.\"",
+    "code": "UNIQUE",
+    "inner": "f\"Placement id {placement_id} is duplicated.\"",
+    "params": {
+      "placement_id": "placement_id"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1301,
+    "start": 53,
+    "end_line": 1301,
+    "end": 96,
+    "source": "f\"Item #{index} must include visual_order.\"",
+    "code": "REQUIRED",
+    "inner": "f\"Item #{index} must include visual_order.\"",
+    "params": {
+      "index": "index"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1326,
+    "start": 31,
+    "end_line": 1326,
+    "end": 82,
+    "source": "\"No materialized draft schedule for this grid yet.\"",
+    "code": "NO_DRAFT_SCHEDULE",
+    "inner": "\"No materialized draft schedule for this grid yet.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1338,
+    "start": 34,
+    "end_line": 1338,
+    "end": 94,
+    "source": "\"Every placement must belong to the current draft schedule.\"",
+    "code": "PLACEMENT_DRAFT_REQUIRED",
+    "inner": "\"Every placement must belong to the current draft schedule.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1491,
+    "start": 31,
+    "end_line": 1491,
+    "end": 76,
+    "source": "\"Published schedule not found for this grid.\"",
+    "code": "PUBLISHED_SCHEDULE_NOT_FOUND",
+    "inner": "\"Published schedule not found for this grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1501,
+    "start": 31,
+    "end_line": 1501,
+    "end": 84,
+    "source": "\"Published schedule version not found for this grid.\"",
+    "code": "PUBLISHED_SCHEDULE_NOT_FOUND",
+    "inner": "\"Published schedule version not found for this grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1649,
+    "start": 31,
+    "end_line": 1649,
+    "end": 82,
+    "source": "\"No materialized draft schedule for this grid yet.\"",
+    "code": "NO_DRAFT_SCHEDULE",
+    "inner": "\"No materialized draft schedule for this grid yet.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1662,
+    "start": 31,
+    "end_line": 1662,
+    "end": 73,
+    "source": "\"No published schedule for this grid yet.\"",
+    "code": "NO_PUBLISHED_SCHEDULE",
+    "inner": "\"No published schedule for this grid yet.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1785,
+    "start": 39,
+    "end_line": 1785,
+    "end": 75,
+    "source": "\"Membership required for this grid.\"",
+    "code": "MEMBERSHIP_REQUIRED",
+    "inner": "\"Membership required for this grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2339,
+    "start": 46,
+    "end_line": 2339,
+    "end": 75,
+    "source": "\"cell_id must be an integer.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"cell_id must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2405,
+    "start": 50,
+    "end_line": 2405,
+    "end": 99,
+    "source": "\"schedule_id is required and must be an integer.\"",
+    "code": "REQUIRED",
+    "inner": "\"schedule_id is required and must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2414,
+    "start": 53,
+    "end_line": 2414,
+    "end": 105,
+    "source": "\"source_cell_id is required and must be an integer.\"",
+    "code": "REQUIRED",
+    "inner": "\"source_cell_id is required and must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2428,
+    "start": 52,
+    "end_line": 2428,
+    "end": 89,
+    "source": "\"bundle_id must belong to this grid.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"bundle_id must belong to this grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2435,
+    "start": 56,
+    "end_line": 2435,
+    "end": 115,
+    "source": "\"day_index, start_slot and end_slot are required integers.\"",
+    "code": "REQUIRED",
+    "inner": "\"day_index, start_slot and end_slot are required integers.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2449,
+    "start": 64,
+    "end_line": 2449,
+    "end": 110,
+    "source": "\"assigned_participants must be a list of IDs.\"",
+    "code": "INVALID_LIST",
+    "inner": "\"assigned_participants must be a list of IDs.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2681,
+    "start": 24,
+    "end_line": 2681,
+    "end": 83,
+    "source": "\"other_context_description is required when Q1 is 'other'.\"",
+    "code": "REQUIRED",
+    "inner": "\"other_context_description is required when Q1 is 'other'.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2709,
+    "start": 35,
+    "end_line": 2709,
+    "end": 65,
+    "source": "f\"{bool_key} must be boolean.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "f\"{bool_key} must be boolean.\"",
+    "params": {
+      "bool_key": "bool_key"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2718,
+    "start": 31,
+    "end_line": 2718,
+    "end": 76,
+    "source": "\"Q5 must be a number of hours >= 0, or null.\"",
+    "code": "INVALID_NUMBER",
+    "inner": "\"Q5 must be a number of hours >= 0, or null.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2785,
+    "start": 36,
+    "end_line": 2785,
+    "end": 108,
+    "source": "f\"{slider_id} must be an integer between {slider_min} and {slider_max}.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "f\"{slider_id} must be an integer between {slider_min} and {slider_max}.\"",
+    "params": {
+      "slider_id": "slider_id",
+      "slider_min": "slider_min",
+      "slider_max": "slider_max"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 3544,
+    "start": 45,
+    "end_line": 3544,
+    "end": 73,
+    "source": "\"run_id must be an integer.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"run_id must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 3572,
+    "start": 54,
+    "end_line": 3572,
+    "end": 107,
+    "source": "\"candidate_index is required and must be an integer.\"",
+    "code": "REQUIRED",
+    "inner": "\"candidate_index is required and must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 3640,
+    "start": 45,
+    "end_line": 3640,
+    "end": 73,
+    "source": "\"run_id must be an integer.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"run_id must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4652,
+    "start": 30,
+    "end_line": 4652,
+    "end": 103,
+    "source": "\"This time range cannot be deleted because it is used by existing cells.\"",
+    "code": "TIME_RANGE_IN_USE",
+    "inner": "\"This time range cannot be deleted because it is used by existing cells.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4713,
+    "start": 39,
+    "end_line": 4713,
+    "end": 65,
+    "source": "\"Participant is required.\"",
+    "code": "REQUIRED",
+    "inner": "\"Participant is required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4717,
+    "start": 39,
+    "end_line": 4717,
+    "end": 121,
+    "source": "\"You can only create availability for your own participant or as grid supervisor.\"",
+    "code": "AVAILABILITY_PERMISSION_DENIED",
+    "inner": "\"You can only create availability for your own participant or as grid supervisor.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4726,
+    "start": 39,
+    "end_line": 4726,
+    "end": 65,
+    "source": "\"Participant is required.\"",
+    "code": "REQUIRED",
+    "inner": "\"Participant is required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4730,
+    "start": 39,
+    "end_line": 4730,
+    "end": 105,
+    "source": "\"You can only update your own availability or as grid supervisor.\"",
+    "code": "AVAILABILITY_PERMISSION_DENIED",
+    "inner": "\"You can only update your own availability or as grid supervisor.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4738,
+    "start": 39,
+    "end_line": 4738,
+    "end": 65,
+    "source": "\"Participant is required.\"",
+    "code": "REQUIRED",
+    "inner": "\"Participant is required.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4742,
+    "start": 39,
+    "end_line": 4742,
+    "end": 105,
+    "source": "\"You can only delete your own availability or as grid supervisor.\"",
+    "code": "AVAILABILITY_PERMISSION_DENIED",
+    "inner": "\"You can only delete your own availability or as grid supervisor.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4914,
+    "start": 49,
+    "end_line": 4914,
+    "end": 87,
+    "source": "\"Participant is not in the same grid.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"Participant is not in the same grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4916,
+    "start": 49,
+    "end_line": 4916,
+    "end": 97,
+    "source": "\"Participant is already linked to another user.\"",
+    "code": "PARTICIPANT_ALREADY_LINKED",
+    "inner": "\"Participant is already linked to another user.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 5010,
+    "start": 60,
+    "end_line": 5010,
+    "end": 126,
+    "source": "\"An active invitation is already pending for this email and grid.\"",
+    "code": "INVITATION_ALREADY_PENDING",
+    "inner": "\"An active invitation is already pending for this email and grid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 5066,
+    "start": 31,
+    "end_line": 5066,
+    "end": 60,
+    "source": "\"Invitation link is invalid.\"",
+    "code": "INVITATION_INVALID",
+    "inner": "\"Invitation link is invalid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 5095,
+    "start": 31,
+    "end_line": 5095,
+    "end": 60,
+    "source": "\"Invitation link is invalid.\"",
+    "code": "INVITATION_INVALID",
+    "inner": "\"Invitation link is invalid.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 673,
+    "start": 50,
+    "end_line": 673,
+    "end": 117,
+    "source": "\"unit_id is required for CURRENT_UNIT_ONLY and must be an integer.\"",
+    "code": "REQUIRED",
+    "inner": "\"unit_id is required for CURRENT_UNIT_ONLY and must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1295,
+    "start": 53,
+    "end_line": 1295,
+    "end": 107,
+    "source": "f\"Item #{index} must include a positive placement_id.\"",
+    "code": "REQUIRED",
+    "inner": "f\"Item #{index} must include a positive placement_id.\"",
+    "params": {
+      "index": "index"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1309,
+    "start": 39,
+    "end_line": 1309,
+    "end": 108,
+    "source": "f\"Item #{index}.visual_order must be null or a non-negative integer.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "f\"Item #{index}.visual_order must be null or a non-negative integer.\"",
+    "params": {
+      "index": "index"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1319,
+    "start": 39,
+    "end_line": 1319,
+    "end": 108,
+    "source": "f\"Item #{index}.visual_order must be null or a non-negative integer.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "f\"Item #{index}.visual_order must be null or a non-negative integer.\"",
+    "params": {
+      "index": "index"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1488,
+    "start": 64,
+    "end_line": 1488,
+    "end": 107,
+    "source": "\"published_schedule_id must be an integer.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"published_schedule_id must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1498,
+    "start": 60,
+    "end_line": 1498,
+    "end": 99,
+    "source": "\"published_version must be an integer.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"published_version must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2425,
+    "start": 52,
+    "end_line": 2425,
+    "end": 91,
+    "source": "\"bundle_id must be an integer or null.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"bundle_id must be an integer or null.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2443,
+    "start": 55,
+    "end_line": 2443,
+    "end": 89,
+    "source": "\"placement_id must be an integer.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"placement_id must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2453,
+    "start": 64,
+    "end_line": 2453,
+    "end": 108,
+    "source": "\"assigned_participants must be integer IDs.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"assigned_participants must be integer IDs.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2598,
+    "start": 34,
+    "end_line": 2598,
+    "end": 109,
+    "source": "\"assigned_participants does not satisfy current cell staffing constraints.\"",
+    "code": "STAFFING_CONSTRAINTS_NOT_MET",
+    "inner": "\"assigned_participants does not satisfy current cell staffing constraints.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2685,
+    "start": 24,
+    "end_line": 2685,
+    "end": 83,
+    "source": "\"other_context_description must be at most 500 characters.\"",
+    "code": "CONTEXT_DESCRIPTION_TOO_LONG",
+    "inner": "\"other_context_description must be at most 500 characters.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2697,
+    "start": 24,
+    "end_line": 2697,
+    "end": 83,
+    "source": "\"other_context_description must be at most 500 characters.\"",
+    "code": "CONTEXT_DESCRIPTION_TOO_LONG",
+    "inner": "\"other_context_description must be at most 500 characters.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4945,
+    "start": 43,
+    "end_line": 4945,
+    "end": 91,
+    "source": "\"This invitation was sent to a different email.\"",
+    "code": "INVITATION_EMAIL_MISMATCH",
+    "inner": "\"This invitation was sent to a different email.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 5104,
+    "start": 43,
+    "end_line": 5104,
+    "end": 91,
+    "source": "\"This invitation was sent to a different email.\"",
+    "code": "INVITATION_EMAIL_MISMATCH",
+    "inner": "\"This invitation was sent to a different email.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 1315,
+    "start": 39,
+    "end_line": 1315,
+    "end": 108,
+    "source": "f\"Item #{index}.visual_order must be null or a non-negative integer.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "f\"Item #{index}.visual_order must be null or a non-negative integer.\"",
+    "params": {
+      "index": "index"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2723,
+    "start": 35,
+    "end_line": 2723,
+    "end": 80,
+    "source": "\"Q5 must be a number of hours >= 0, or null.\"",
+    "code": "INVALID_NUMBER",
+    "inner": "\"Q5 must be a number of hours >= 0, or null.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2726,
+    "start": 39,
+    "end_line": 2726,
+    "end": 57,
+    "source": "\"Q5 must be >= 0.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "\"Q5 must be >= 0.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2747,
+    "start": 28,
+    "end_line": 2747,
+    "end": 87,
+    "source": "\"Q_min_cells keys must be PRIMARY, SECONDARY, or TERTIARY.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "\"Q_min_cells keys must be PRIMARY, SECONDARY, or TERTIARY.\"",
+    "params": {}
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2755,
+    "start": 28,
+    "end_line": 2755,
+    "end": 89,
+    "source": "f\"Q_min_cells['{tier_key}'] must be an integer >= 0 or null.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "f\"Q_min_cells['{tier_key}'] must be an integer >= 0 or null.\"",
+    "params": {
+      "tier_key": "tier_key"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2767,
+    "start": 28,
+    "end_line": 2767,
+    "end": 70,
+    "source": "f\"Q_min_cells['{tier_key}'] must be >= 0.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "f\"Q_min_cells['{tier_key}'] must be >= 0.\"",
+    "params": {
+      "tier_key": "tier_key"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 2762,
+    "start": 28,
+    "end_line": 2762,
+    "end": 89,
+    "source": "f\"Q_min_cells['{tier_key}'] must be an integer >= 0 or null.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "f\"Q_min_cells['{tier_key}'] must be an integer >= 0 or null.\"",
+    "params": {
+      "tier_key": "tier_key"
+    }
+  },
+  {
+    "file": "api/viewsets.py",
+    "line": 4907,
+    "start": 57,
+    "end_line": 4907,
+    "end": 116,
+    "source": "\"Existing participant tier conflicts with invitation tier.\"",
+    "code": "INVITATION_TIER_MISMATCH",
+    "inner": "\"Existing participant tier conflicts with invitation tier.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/models.py",
+    "line": 89,
+    "start": 34,
+    "end_line": 89,
+    "end": 82,
+    "source": "f\"Invalid slot size. Allowed values: {allowed}.\"",
+    "code": "GRID_SLOT_SIZE_INVALID",
+    "inner": "f\"Invalid slot size. Allowed values: {allowed}.\"",
+    "params": {
+      "allowed": "allowed"
+    }
+  },
+  {
+    "file": "scheduler/models.py",
+    "line": 94,
+    "start": 54,
+    "end_line": 94,
+    "end": 99,
+    "source": "\"day_start must be aligned to whole minutes.\"",
+    "code": "GRID_TIME_ALIGNMENT",
+    "inner": "\"day_start must be aligned to whole minutes.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/models.py",
+    "line": 96,
+    "start": 52,
+    "end_line": 96,
+    "end": 95,
+    "source": "\"day_end must be aligned to whole minutes.\"",
+    "code": "GRID_TIME_ALIGNMENT",
+    "inner": "\"day_end must be aligned to whole minutes.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/models.py",
+    "line": 337,
+    "start": 53,
+    "end_line": 337,
+    "end": 96,
+    "source": "\"end_time must be greater than start_time.\"",
+    "code": "TIME_END_BEFORE_START",
+    "inner": "\"end_time must be greater than start_time.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/models.py",
+    "line": 351,
+    "start": 24,
+    "end_line": 351,
+    "end": 96,
+    "source": "\"Overlapping availability rule already exists for this participant/day.\"",
+    "code": "AVAILABILITY_OVERLAP",
+    "inner": "\"Overlapping availability rule already exists for this participant/day.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/models.py",
+    "line": 99,
+    "start": 56,
+    "end_line": 99,
+    "end": 90,
+    "source": "\"day_end must be after day_start.\"",
+    "code": "TIME_END_BEFORE_START",
+    "inner": "\"day_end must be after day_start.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/models.py",
+    "line": 104,
+    "start": 28,
+    "end_line": 104,
+    "end": 108,
+    "source": "\"The interval between day_start and day_end must be divisible by cell_size_min.\"",
+    "code": "GRID_TIME_RANGE_NOT_DIVISIBLE_BY_CELL_SIZE",
+    "inner": "\"The interval between day_start and day_end must be divisible by cell_size_min.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/models.py",
+    "line": 115,
+    "start": 33,
+    "end_line": 115,
+    "end": 73,
+    "source": "\"Unable to generate a unique grid_code.\"",
+    "code": "UNEXPECTED_ERROR",
+    "inner": "\"Unable to generate a unique grid_code.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/cell_series.py",
+    "line": 255,
+    "start": 25,
+    "end_line": 255,
+    "end": 60,
+    "source": "\"bundle_unit_sets cannot be empty.\"",
+    "code": "BLANK",
+    "inner": "\"bundle_unit_sets cannot be empty.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/cell_series.py",
+    "line": 261,
+    "start": 25,
+    "end_line": 261,
+    "end": 75,
+    "source": "\"Template grid must match the existing cell grid.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"Template grid must match the existing cell grid.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/cell_series.py",
+    "line": 54,
+    "start": 29,
+    "end_line": 54,
+    "end": 72,
+    "source": "f\"bundle_unit_sets[{idx}] cannot be empty.\"",
+    "code": "BLANK",
+    "inner": "f\"bundle_unit_sets[{idx}] cannot be empty.\"",
+    "params": {
+      "idx": "idx"
+    }
+  },
+  {
+    "file": "scheduler/services/cell_series.py",
+    "line": 80,
+    "start": 29,
+    "end_line": 80,
+    "end": 76,
+    "source": "f\"Units not found in grid {grid.id}: {missing}\"",
+    "code": "UNIT_NOT_FOUND",
+    "inner": "f\"Units not found in grid {grid.id}: {missing}\"",
+    "params": {
+      "missing": "missing"
+    }
+  },
+  {
+    "file": "scheduler/services/cell_series.py",
+    "line": 92,
+    "start": 16,
+    "end_line": 93,
+    "end": 73,
+    "source": "f\"Duplicate canonical bundle '{bundle.name}' generated from bundle_unit_sets. \"\n                \"Each series cell must map to a unique canonical bundle.\"",
+    "code": "CELL_SERIES_BUNDLE_DUPLICATE",
+    "inner": "f\"Duplicate canonical bundle '{bundle.name}' generated from bundle_unit_sets. \"\n                \"Each series cell must map to a unique canonical bundle.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/cell_series.py",
+    "line": 60,
+    "start": 20,
+    "end_line": 61,
+    "end": 63,
+    "source": "f\"bundle_unit_sets[{idx}] and bundle_unit_sets[{prev_idx}] share units {overlap}. \"\n                    \"Series cells must use disjoint unit sets.\"",
+    "code": "CELL_SERIES_UNITS_OVERLAP",
+    "inner": "f\"bundle_unit_sets[{idx}] and bundle_unit_sets[{prev_idx}] share units {overlap}. \"\n                    \"Series cells must use disjoint unit sets.\"",
+    "params": {
+      "idx": "idx",
+      "prev_idx": "prev_idx",
+      "overlap": "overlap"
+    }
+  },
+  {
+    "file": "scheduler/services/cell_series.py",
+    "line": 68,
+    "start": 20,
+    "end_line": 69,
+    "end": 63,
+    "source": "f\"bundle_unit_sets[{idx}] overlaps existing series cell #{prev_idx + 1} on units {overlap}. \"\n                    \"Series cells must use disjoint unit sets.\"",
+    "code": "CELL_SERIES_UNITS_OVERLAP",
+    "inner": "f\"bundle_unit_sets[{idx}] overlaps existing series cell #{prev_idx + 1} on units {overlap}. \"\n                    \"Series cells must use disjoint unit sets.\"",
+    "params": {
+      "idx": "idx",
+      "overlap": "overlap"
+    }
+  },
+  {
+    "file": "scheduler/services/draft_history.py",
+    "line": 64,
+    "start": 25,
+    "end_line": 64,
+    "end": 46,
+    "source": "\"Schedule not found.\"",
+    "code": "SCHEDULE_NOT_FOUND",
+    "inner": "\"Schedule not found.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_history.py",
+    "line": 102,
+    "start": 25,
+    "end_line": 102,
+    "end": 46,
+    "source": "\"Schedule not found.\"",
+    "code": "SCHEDULE_NOT_FOUND",
+    "inner": "\"Schedule not found.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_history.py",
+    "line": 104,
+    "start": 25,
+    "end_line": 104,
+    "end": 73,
+    "source": "\"source_published must belong to the same grid.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"source_published must belong to the same grid.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_history.py",
+    "line": 183,
+    "start": 25,
+    "end_line": 183,
+    "end": 76,
+    "source": "\"No materialized draft schedule for this grid yet.\"",
+    "code": "NO_DRAFT_SCHEDULE",
+    "inner": "\"No materialized draft schedule for this grid yet.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_history.py",
+    "line": 189,
+    "start": 25,
+    "end_line": 189,
+    "end": 43,
+    "source": "\"Nothing to undo.\"",
+    "code": "NOTHING_TO_UNDO",
+    "inner": "\"Nothing to undo.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_history.py",
+    "line": 193,
+    "start": 25,
+    "end_line": 193,
+    "end": 80,
+    "source": "\"Draft history is inconsistent: undo snapshot missing.\"",
+    "code": "HISTORY_INCONSISTENT",
+    "inner": "\"Draft history is inconsistent: undo snapshot missing.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_history.py",
+    "line": 217,
+    "start": 25,
+    "end_line": 217,
+    "end": 76,
+    "source": "\"No materialized draft schedule for this grid yet.\"",
+    "code": "NO_DRAFT_SCHEDULE",
+    "inner": "\"No materialized draft schedule for this grid yet.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_history.py",
+    "line": 223,
+    "start": 25,
+    "end_line": 223,
+    "end": 43,
+    "source": "\"Nothing to redo.\"",
+    "code": "NOTHING_TO_REDO",
+    "inner": "\"Nothing to redo.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_history.py",
+    "line": 227,
+    "start": 25,
+    "end_line": 227,
+    "end": 80,
+    "source": "\"Draft history is inconsistent: redo snapshot missing.\"",
+    "code": "HISTORY_INCONSISTENT",
+    "inner": "\"Draft history is inconsistent: redo snapshot missing.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_structure.py",
+    "line": 87,
+    "start": 25,
+    "end_line": 87,
+    "end": 55,
+    "source": "f\"{field_name} must be HH:MM.\"",
+    "code": "INVALID_TIME",
+    "inner": "f\"{field_name} must be HH:MM.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_structure.py",
+    "line": 90,
+    "start": 25,
+    "end_line": 90,
+    "end": 55,
+    "source": "f\"{field_name} must be HH:MM.\"",
+    "code": "INVALID_TIME",
+    "inner": "f\"{field_name} must be HH:MM.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_structure.py",
+    "line": 97,
+    "start": 25,
+    "end_line": 97,
+    "end": 62,
+    "source": "f\"{field_name} must be a valid time.\"",
+    "code": "INVALID_TIME",
+    "inner": "f\"{field_name} must be a valid time.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_structure.py",
+    "line": 103,
+    "start": 25,
+    "end_line": 103,
+    "end": 47,
+    "source": "\"days must be a list.\"",
+    "code": "INVALID_LIST",
+    "inner": "\"days must be a list.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_structure.py",
+    "line": 125,
+    "start": 25,
+    "end_line": 125,
+    "end": 62,
+    "source": "\"days must include at least one day.\"",
+    "code": "GRID_DAYS_INVALID",
+    "inner": "\"days must include at least one day.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_structure.py",
+    "line": 140,
+    "start": 25,
+    "end_line": 140,
+    "end": 58,
+    "source": "\"Request body must be an object.\"",
+    "code": "INVALID_TYPE",
+    "inner": "\"Request body must be an object.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_structure.py",
+    "line": 152,
+    "start": 25,
+    "end_line": 152,
+    "end": 72,
+    "source": "f\"cell_size_minutes must be one of: {allowed}.\"",
+    "code": "GRID_SLOT_SIZE_INVALID",
+    "inner": "f\"cell_size_minutes must be one of: {allowed}.\"",
+    "params": {
+      "allowed": "allowed"
+    }
+  },
+  {
+    "file": "scheduler/services/draft_structure.py",
+    "line": 154,
+    "start": 25,
+    "end_line": 154,
+    "end": 61,
+    "source": "\"end_time must be after start_time.\"",
+    "code": "TIME_END_BEFORE_START",
+    "inner": "\"end_time must be after start_time.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_structure.py",
+    "line": 84,
+    "start": 29,
+    "end_line": 84,
+    "end": 78,
+    "source": "f\"{field_name} must be aligned to whole minutes.\"",
+    "code": "GRID_TIME_ALIGNMENT",
+    "inner": "f\"{field_name} must be aligned to whole minutes.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_structure.py",
+    "line": 95,
+    "start": 25,
+    "end_line": 95,
+    "end": 55,
+    "source": "f\"{field_name} must be HH:MM.\"",
+    "code": "INVALID_TIME",
+    "inner": "f\"{field_name} must be HH:MM.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_structure.py",
+    "line": 121,
+    "start": 29,
+    "end_line": 121,
+    "end": 75,
+    "source": "f\"Day index {parsed} must be between 0 and 6.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "f\"Day index {parsed} must be between 0 and 6.\"",
+    "params": {
+      "parsed": "parsed"
+    }
+  },
+  {
+    "file": "scheduler/services/draft_structure.py",
+    "line": 148,
+    "start": 25,
+    "end_line": 148,
+    "end": 64,
+    "source": "\"cell_size_minutes must be an integer.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"cell_size_minutes must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/draft_structure.py",
+    "line": 114,
+    "start": 33,
+    "end_line": 114,
+    "end": 61,
+    "source": "f\"Invalid day value: {item}\"",
+    "code": "GRID_DAYS_INVALID",
+    "inner": "f\"Invalid day value: {item}\"",
+    "params": {
+      "item": "item"
+    }
+  },
+  {
+    "file": "scheduler/services/draft_structure.py",
+    "line": 119,
+    "start": 33,
+    "end_line": 119,
+    "end": 61,
+    "source": "f\"Invalid day value: {item}\"",
+    "code": "GRID_DAYS_INVALID",
+    "inner": "f\"Invalid day value: {item}\"",
+    "params": {
+      "item": "item"
+    }
+  },
+  {
+    "file": "scheduler/services/grouping.py",
+    "line": 49,
+    "start": 25,
+    "end_line": 49,
+    "end": 54,
+    "source": "\"Units list cannot be empty.\"",
+    "code": "BLANK",
+    "inner": "\"Units list cannot be empty.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/grouping.py",
+    "line": 51,
+    "start": 25,
+    "end_line": 51,
+    "end": 66,
+    "source": "\"All units must belong to the same grid.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"All units must belong to the same grid.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/grouping.py",
+    "line": 72,
+    "start": 25,
+    "end_line": 72,
+    "end": 61,
+    "source": "\"Participants list cannot be empty.\"",
+    "code": "BLANK",
+    "inner": "\"Participants list cannot be empty.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/grouping.py",
+    "line": 75,
+    "start": 25,
+    "end_line": 75,
+    "end": 73,
+    "source": "\"All participants must belong to the same grid.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"All participants must belong to the same grid.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/placement_commit.py",
+    "line": 61,
+    "start": 26,
+    "end_line": 61,
+    "end": 83,
+    "source": "\"selected_participant_ids must match the Cell headcount.\"",
+    "code": "PLACEMENT_HEADCOUNT_MISMATCH",
+    "inner": "\"selected_participant_ids must match the Cell headcount.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/placement_commit.py",
+    "line": 72,
+    "start": 26,
+    "end_line": 72,
+    "end": 118,
+    "source": "\"selected_participant_ids includes participants that are not assignable for this placement.\"",
+    "code": "PLACEMENT_PARTICIPANTS_NOT_ASSIGNABLE",
+    "inner": "\"selected_participant_ids includes participants that are not assignable for this placement.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/placement_commit.py",
+    "line": 112,
+    "start": 26,
+    "end_line": 112,
+    "end": 81,
+    "source": "\"Participant selection is required for this placement.\"",
+    "code": "PLACEMENT_SELECTION_REQUIRED",
+    "inner": "\"Participant selection is required for this placement.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/placement_commit.py",
+    "line": 120,
+    "start": 26,
+    "end_line": 120,
+    "end": 82,
+    "source": "\"Unable to auto-select participants for this placement.\"",
+    "code": "PLACEMENT_AUTO_SELECTION_FAILED",
+    "inner": "\"Unable to auto-select participants for this placement.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/placement_commit.py",
+    "line": 168,
+    "start": 26,
+    "end_line": 168,
+    "end": 51,
+    "source": "\"Placement is not valid.\"",
+    "code": "PLACEMENT_INVALID",
+    "inner": "\"Placement is not valid.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/placement_commit.py",
+    "line": 85,
+    "start": 30,
+    "end_line": 85,
+    "end": 119,
+    "source": "\"Staff groups are atomic; selected_participant_ids cannot include a partial Staff group.\"",
+    "code": "STAFF_GROUP_ATOMIC",
+    "inner": "\"Staff groups are atomic; selected_participant_ids cannot include a partial Staff group.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/placement_commit.py",
+    "line": 179,
+    "start": 50,
+    "end_line": 179,
+    "end": 102,
+    "source": "\"MOVE_ASSIGNED_CELL requires an existing placement.\"",
+    "code": "PLACEMENT_MOVE_TARGET_REQUIRED",
+    "inner": "\"MOVE_ASSIGNED_CELL requires an existing placement.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/placement_commit.py",
+    "line": 201,
+    "start": 46,
+    "end_line": 201,
+    "end": 73,
+    "source": "f\"Unsupported mode: {mode}\"",
+    "code": "INVALID_CHOICE",
+    "inner": "f\"Unsupported mode: {mode}\"",
+    "params": {
+      "mode": "mode"
+    }
+  },
+  {
+    "file": "scheduler/services/placement_preview.py",
+    "line": 72,
+    "start": 25,
+    "end_line": 72,
+    "end": 72,
+    "source": "\"No materialized draft schedule for this grid.\"",
+    "code": "NO_DRAFT_SCHEDULE",
+    "inner": "\"No materialized draft schedule for this grid.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/placement_preview.py",
+    "line": 128,
+    "start": 25,
+    "end_line": 128,
+    "end": 70,
+    "source": "f\"mode must be one of {sorted(VALID_MODES)}.\"",
+    "code": "INVALID_CHOICE",
+    "inner": "f\"mode must be one of {sorted(VALID_MODES)}.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/placement_preview.py",
+    "line": 133,
+    "start": 25,
+    "end_line": 133,
+    "end": 105,
+    "source": "\"MOVE_ASSIGNED_CELL requires an existing unambiguous placement or placement_id.\"",
+    "code": "PLACEMENT_MOVE_TARGET_REQUIRED",
+    "inner": "\"MOVE_ASSIGNED_CELL requires an existing unambiguous placement or placement_id.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/placement_preview.py",
+    "line": 68,
+    "start": 29,
+    "end_line": 68,
+    "end": 74,
+    "source": "\"solution_id/schedule_id must be an integer.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"solution_id/schedule_id must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/placement_preview.py",
+    "line": 91,
+    "start": 29,
+    "end_line": 91,
+    "end": 63,
+    "source": "\"placement_id must be an integer.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"placement_id must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/placement_preview.py",
+    "line": 103,
+    "start": 29,
+    "end_line": 103,
+    "end": 60,
+    "source": "\"bundle_id must be an integer.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"bundle_id must be an integer.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/placement_preview.py",
+    "line": 106,
+    "start": 29,
+    "end_line": 106,
+    "end": 66,
+    "source": "\"bundle_id must belong to this grid.\"",
+    "code": "SAME_GRID_REQUIRED",
+    "inner": "\"bundle_id must belong to this grid.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/published_schedule.py",
+    "line": 19,
+    "start": 25,
+    "end_line": 19,
+    "end": 76,
+    "source": "\"No materialized draft schedule for this grid yet.\"",
+    "code": "NO_DRAFT_SCHEDULE",
+    "inner": "\"No materialized draft schedule for this grid yet.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/schedule_state.py",
+    "line": 420,
+    "start": 22,
+    "end_line": 420,
+    "end": 87,
+    "source": "f\"day_index must be between 0 and {max(0, len(day_labels) - 1)}.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "f\"day_index must be between 0 and {max(0, len(day_labels) - 1)}.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/schedule_state.py",
+    "line": 423,
+    "start": 22,
+    "end_line": 423,
+    "end": 56,
+    "source": "\"start_slot/end_slot are invalid.\"",
+    "code": "PLACEMENT_OUT_OF_BOUNDS",
+    "inner": "\"start_slot/end_slot are invalid.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/schedule_state.py",
+    "line": 426,
+    "start": 22,
+    "end_line": 426,
+    "end": 65,
+    "source": "f\"end_slot must be <= horizon ({horizon}).\"",
+    "code": "PLACEMENT_OUT_OF_BOUNDS",
+    "inner": "f\"end_slot must be <= horizon ({horizon}).\"",
+    "params": {
+      "horizon": "horizon"
+    }
+  },
+  {
+    "file": "scheduler/services/schedule_state.py",
+    "line": 472,
+    "start": 12,
+    "end_line": 472,
+    "end": 127,
+    "source": "f\"Placement overlaps blockage {blockage.id}: blocked slots [{int(blockage.start_slot)}, {int(blockage.end_slot)}).\"",
+    "code": "PLACEMENT_OVERLAPS_BLOCKED_RANGE",
+    "inner": "f\"Placement overlaps blockage {blockage.id}: blocked slots [{int(blockage.start_slot)}, {int(blockage.end_slot)}).\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/schedule_state.py",
+    "line": 339,
+    "start": 16,
+    "end_line": 341,
+    "end": 103,
+    "source": "\"Cannot materialize schedule: row overlaps a blockage \"\n                f\"(day_index={day_index}, start_slot={start_slot}, end_slot={end_slot}, \"\n                f\"blockage=[{int(blocking.get('start_slot', 0))},{int(blocking.get('end_slot', 0))})).\"",
+    "code": "PLACEMENT_OVERLAPS_BLOCKED_RANGE",
+    "inner": "\"Cannot materialize schedule: row overlaps a blockage \"\n                f\"(day_index={day_index}, start_slot={start_slot}, end_slot={end_slot}, \"\n                f\"blockage=[{int(blocking.get('start_slot', 0))},{int(blocking.get('end_slot', 0))})).\"",
+    "params": {
+      "day_index": "day_index",
+      "start_slot": "start_slot",
+      "end_slot": "end_slot"
+    }
+  },
+  {
+    "file": "scheduler/services/schedule_state.py",
+    "line": 438,
+    "start": 16,
+    "end_line": 438,
+    "end": 134,
+    "source": "f\"Participant {pid} has impossible availability at day={day_label} slots={sorted(occupied.intersection(impossible))}.\"",
+    "code": "PARTICIPANT_UNAVAILABLE",
+    "inner": "f\"Participant {pid} has impossible availability at day={day_label} slots={sorted(occupied.intersection(impossible))}.\"",
+    "params": {
+      "pid": "pid",
+      "day_label": "day_label"
+    }
+  },
+  {
+    "file": "scheduler/services/schedule_state.py",
+    "line": 453,
+    "start": 16,
+    "end_line": 453,
+    "end": 149,
+    "source": "f\"Participant overlap with placement {other.id}: shared participants {sorted(target_participants.intersection(other_participants))}.\"",
+    "code": "PARTICIPANT_OVERLAP",
+    "inner": "f\"Participant overlap with placement {other.id}: shared participants {sorted(target_participants.intersection(other_participants))}.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/schedule_tabs.py",
+    "line": 268,
+    "start": 26,
+    "end_line": 268,
+    "end": 92,
+    "source": "\"Unit-specific blockages below a hidden category are not allowed.\"",
+    "code": "BLOCKAGE_UNIT_SCOPE_INVALID",
+    "inner": "\"Unit-specific blockages below a hidden category are not allowed.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/solver_wizard.py",
+    "line": 388,
+    "start": 21,
+    "end_line": 388,
+    "end": 73,
+    "source": "\"Invalid organization_type/unit_nature combination.\"",
+    "code": "ORGANIZATION_UNIT_MISMATCH",
+    "inner": "\"Invalid organization_type/unit_nature combination.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/solver_wizard.py",
+    "line": 364,
+    "start": 25,
+    "end_line": 364,
+    "end": 77,
+    "source": "\"Invalid organization_type/unit_nature combination.\"",
+    "code": "ORGANIZATION_UNIT_MISMATCH",
+    "inner": "\"Invalid organization_type/unit_nature combination.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/split_parts.py",
+    "line": 8,
+    "start": 25,
+    "end_line": 8,
+    "end": 53,
+    "source": "\"duration_min must be >= 1.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "\"duration_min must be >= 1.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/split_parts.py",
+    "line": 10,
+    "start": 25,
+    "end_line": 10,
+    "end": 102,
+    "source": "\"duration_min must be >= division_days when split_parts_min is not provided.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "\"duration_min must be >= division_days when split_parts_min is not provided.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/validation.py",
+    "line": 116,
+    "start": 31,
+    "end_line": 116,
+    "end": 77,
+    "source": "\"start_time must be aligned to whole minutes.\"",
+    "code": "GRID_TIME_ALIGNMENT",
+    "inner": "\"start_time must be aligned to whole minutes.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/validation.py",
+    "line": 118,
+    "start": 29,
+    "end_line": 118,
+    "end": 73,
+    "source": "\"end_time must be aligned to whole minutes.\"",
+    "code": "GRID_TIME_ALIGNMENT",
+    "inner": "\"end_time must be aligned to whole minutes.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/validation.py",
+    "line": 123,
+    "start": 29,
+    "end_line": 123,
+    "end": 72,
+    "source": "\"end_time must be greater than start_time.\"",
+    "code": "TIME_END_BEFORE_START",
+    "inner": "\"end_time must be greater than start_time.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/validation.py",
+    "line": 25,
+    "start": 47,
+    "end_line": 25,
+    "end": 85,
+    "source": "\"duration_min must be greater than 0.\"",
+    "code": "OUT_OF_RANGE",
+    "inner": "\"duration_min must be greater than 0.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/validation.py",
+    "line": 33,
+    "start": 20,
+    "end_line": 33,
+    "end": 97,
+    "source": "f\"duration_min must be divisible by the grid slot size ({slot_min} minutes).\"",
+    "code": "CELL_DURATION_NOT_MULTIPLE_OF_SLOT",
+    "inner": "f\"duration_min must be divisible by the grid slot size ({slot_min} minutes).\"",
+    "params": {
+      "slot_min": "slot_min",
+      "slot_minutes": "slot_min"
+    }
+  },
+  {
+    "file": "scheduler/services/validation.py",
+    "line": 90,
+    "start": 20,
+    "end_line": 90,
+    "end": 112,
+    "source": "\"Provide at least one staffing source: staff_options, eligible_participants, or tier_pools.\"",
+    "code": "STAFF_SOURCE_REQUIRED",
+    "inner": "\"Provide at least one staffing source: staff_options, eligible_participants, or tier_pools.\"",
+    "params": {}
+  },
+  {
+    "file": "scheduler/services/validation.py",
+    "line": 97,
+    "start": 38,
+    "end_line": 97,
+    "end": 88,
+    "source": "f\"{message} Duplicate participant IDs: {overlap}.\"",
+    "code": "STAFF_SOURCE_OVERLAP",
+    "inner": "f\"{message} Duplicate participant IDs: {overlap}.\"",
+    "params": {
+      "overlap": "overlap"
+    }
+  },
+  {
+    "file": "scheduler/services/validation.py",
+    "line": 127,
+    "start": 35,
+    "end_line": 127,
+    "end": 103,
+    "source": "f\"start_time must align to the grid slot size ({slot_min} minutes).\"",
+    "code": "AVAILABILITY_SLOT_ALIGNMENT",
+    "inner": "f\"start_time must align to the grid slot size ({slot_min} minutes).\"",
+    "params": {
+      "slot_min": "slot_min",
+      "slot_minutes": "slot_min"
+    }
+  },
+  {
+    "file": "scheduler/services/validation.py",
+    "line": 129,
+    "start": 33,
+    "end_line": 129,
+    "end": 99,
+    "source": "f\"end_time must align to the grid slot size ({slot_min} minutes).\"",
+    "code": "AVAILABILITY_SLOT_ALIGNMENT",
+    "inner": "f\"end_time must align to the grid slot size ({slot_min} minutes).\"",
+    "params": {
+      "slot_min": "slot_min",
+      "slot_minutes": "slot_min"
+    }
+  },
+  {
+    "file": "scheduler/services/validation.py",
+    "line": 132,
+    "start": 16,
+    "end_line": 132,
+    "end": 108,
+    "source": "f\"Availability rule duration must be a multiple of the grid slot size ({slot_min} minutes).\"",
+    "code": "AVAILABILITY_SLOT_ALIGNMENT",
+    "inner": "f\"Availability rule duration must be a multiple of the grid slot size ({slot_min} minutes).\"",
+    "params": {
+      "slot_min": "slot_min",
+      "slot_minutes": "slot_min"
+    }
+  },
+  {
+    "file": "scheduler/services/validation.py",
+    "line": 23,
+    "start": 47,
+    "end_line": 23,
+    "end": 81,
+    "source": "\"duration_min must be an integer.\"",
+    "code": "INVALID_INTEGER",
+    "inner": "\"duration_min must be an integer.\"",
+    "params": {}
+  }
+]

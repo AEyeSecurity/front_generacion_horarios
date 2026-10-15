@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
@@ -8,13 +9,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
   const { code } = await params;
   if (!code || code === "undefined") {
     return NextResponse.json(
-      { error: "bad_request", detail: "Missing or invalid grid code in route param." },
+      apiErrorPayload({ error: "bad_request", detail: "Missing or invalid grid code in route param." }, 400),
       { status: 400 }
     );
   }
 
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
 
   const fetchWithToken = async (token: string) => {
     const headers: HeadersInit = {
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
   let res = await fetchWithToken(access);
   if (res.status === 401) {
     const refresh = await getRefreshToken();
-    if (!refresh) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+    if (!refresh) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
 
     const rf = await fetch(`${B}/api/auth/refresh/`, {
       method: "POST",
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
       body: JSON.stringify({ refresh }),
       cache: "no-store",
     });
-    if (!rf.ok) return NextResponse.json({ error: "refresh_failed" }, { status: 401 });
+    if (!rf.ok) return NextResponse.json(apiErrorPayload({ error: "refresh_failed" }, 401), { status: 401 });
     const { access: newAccess } = await rf.json();
     res = await fetchWithToken(newAccess);
   }

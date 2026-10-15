@@ -1,4 +1,6 @@
 "use client";
+import { ApiError, LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -548,7 +550,7 @@ export default function ParticipantScheduleOverlay({
           `/api/placement-comments/?published_schedule_id=${encodeURIComponent(String(publishedScheduleId))}`,
           { cache: "no-store" },
         );
-        if (!res.ok) throw new Error(t("solve_overlay.failed_load_comments_status", { status: res.status }));
+        if (!res.ok) throw new ApiError(res.status, await res.text().catch(() => ""));
         const data = await res.json().catch(() => ([]));
         const list = Array.isArray(data) ? data : data.results ?? [];
         const normalized = list
@@ -851,7 +853,7 @@ export default function ParticipantScheduleOverlay({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || t("solve_overlay.could_not_add_comment"));
+        throw new LocalizedApiError(normalizeApiError(txt, t("solve_overlay.could_not_add_comment")));
       }
       const raw = await res.json().catch(() => ({}));
       const bundleRaw =
@@ -891,7 +893,7 @@ export default function ParticipantScheduleOverlay({
       setPlacementComments((prev) => [next, ...prev]);
       setCommentDraft("");
     } catch (error: unknown) {
-      setCommentError(error instanceof Error ? error.message : t("solve_overlay.could_not_add_comment"));
+      setCommentError(normalizeApiError(error, t("solve_overlay.could_not_add_comment")));
     } finally {
       setCommentBusy(false);
     }

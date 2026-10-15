@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
 import { normalizePreferredLanguage } from "@/lib/language";
@@ -53,20 +54,5 @@ export async function POST(req: Request) {
     return out;
   }
 
-  // Error: normalize to JSON { error }
-  let message = "Registration failed";
-  if (ct.includes("application/json")) {
-    try {
-      const err = JSON.parse(text);
-      message = typeof err === "string" ? err : err.detail || err.error || JSON.stringify(err);
-    } catch {
-      message = text || message;
-    }
-  } else if (ct.includes("text/html")) {
-    message = `${res.status} ${res.statusText || "Error"}`;
-  } else {
-    message = text || message;
-  }
-
-  return NextResponse.json({ error: message }, { status: res.status });
+  return NextResponse.json(apiErrorPayload(text, res.status), { status: res.status });
 }

@@ -1,6 +1,7 @@
-// components/GridActions.tsx
 "use client";
 
+// components/GridActions.tsx
+import { normalizeApiError } from "@/lib/api-errors";
 import { useRouter } from "next/navigation";
 import { MoreVertical, FileDown, Settings } from "lucide-react";
 import {
@@ -58,7 +59,7 @@ export default function GridActions({
     });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      alert(t("grid_actions.export_failed", { view, status: res.status, details: txt || "" }));
+      alert(t("grid_actions.export_failed", { view, status: res.status, details: normalizeApiError(txt, "", { status: res.status }) }));
       return;
     }
 

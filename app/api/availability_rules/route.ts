@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 // Proxy: /api/availability_rules -> NEXT_PUBLIC_API_URL/api/availability-rules
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
@@ -13,7 +14,7 @@ const hhmm = (t: unknown) => {
 
 export async function GET(req: NextRequest) {
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
 
   const qs = req.nextUrl.search || "";
   const res = await fetch(`${B}/api/availability-rules/${qs}`, {
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
 
   const payload = await req.json().catch(() => ({}));
   if (payload?.start_time) payload.start_time = hhmm(payload.start_time);

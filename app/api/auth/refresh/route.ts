@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 import { NextResponse } from 'next/server';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { getRefreshToken } from '@/lib/cookies';
@@ -18,7 +19,7 @@ const cookieOptions = {
 export async function POST() {
   const refresh = await getRefreshToken();
   if (!refresh) {
-    const out = NextResponse.json({ error: 'No refresh token' }, { status: 401 });
+    const out = NextResponse.json(apiErrorPayload({ error: 'No refresh token' }, 401), { status: 401 });
     out.cookies.delete(ACCESS);
     out.cookies.delete(REFRESH);
     return out;
@@ -32,7 +33,7 @@ export async function POST() {
   });
 
   if (!res.ok) {
-    const out = NextResponse.json({ error: 'Refresh failed' }, { status: 401 });
+    const out = NextResponse.json(apiErrorPayload({ error: 'Refresh failed' }, 401), { status: 401 });
     out.cookies.delete(ACCESS);
     out.cookies.delete(REFRESH);
     return out;

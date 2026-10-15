@@ -1,4 +1,6 @@
 "use client";
+import { ApiError, LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -663,19 +665,7 @@ const flattenErrorText = (value: unknown): string[] => {
   return [];
 };
 
-const parseApiErrorMessage = (raw: string, fallback: string) => {
-  const text = raw.trim();
-  if (!text) return fallback;
-  if (isLikelyHtmlResponse(text)) return fallback;
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    const flattened = flattenErrorText(parsed);
-    if (flattened.length > 0) return boundApiErrorMessage(flattened.join(" "), fallback);
-  } catch {
-    return boundApiErrorMessage(text, fallback);
-  }
-  return fallback;
-};
+const parseApiErrorMessage = (raw: string, fallback: string) => { return normalizeApiError(raw, fallback); };
 
 const parseJsonObjectResponse = (raw: string, contentType: string, endpointFallback: string, parseFallback: string) => {
   const text = raw.trim();
@@ -866,14 +856,7 @@ const getPrecheckDiagnostics = (precheck: PrecheckResponse | null) => {
   return { all, errors, warnings, hasBlockingErrors };
 };
 
-const formatPrecheckViolation = (violation: PrecheckViolation) => {
-  const typeText = typeof violation.type === "string" && violation.type.trim() ? violation.type.trim() : "";
-  const detailText = typeof violation.detail === "string" && violation.detail.trim() ? violation.detail.trim() : "";
-  if (typeText && detailText) return `${typeText}: ${detailText}`;
-  if (detailText) return detailText;
-  if (typeText) return typeText;
-  return "";
-};
+const formatPrecheckViolation = (violation: PrecheckViolation) => { return normalizeApiError(violation); };
 
 const extractAuthorIdFromValue = (author: unknown): string | number | undefined => {
   if (author == null) return undefined;
@@ -2023,25 +2006,7 @@ export default function SolveOverlay({
     };
   };
 
-  const formatPlacementReasonMessage = (reason: PlacementReason) => {
-    const explicit = typeof reason.message === "string" && reason.message.trim()
-      ? reason.message.trim()
-      : typeof reason.detail === "string" && reason.detail.trim()
-      ? reason.detail.trim()
-      : "";
-    if (explicit) return explicit;
-    const typeText = typeof reason.type === "string" ? reason.type.replace(/_/g, " ").toLowerCase() : "";
-    const required = Number(reason.required_headcount);
-    const assignable = Number(reason.assignable_count);
-    if (Number.isFinite(required) && Number.isFinite(assignable)) {
-      return `${typeText || "headcount"}: ${assignable}/${required}`;
-    }
-    const distance = Number(reason.distance_slots);
-    if (Number.isFinite(distance) && typeText) {
-      return `${typeText}: ${distance} slots`;
-    }
-    return typeText || t("solve_overlay.no_reasons_available");
-  };
+  const formatPlacementReasonMessage = (reason: PlacementReason) => { return normalizeApiError(reason, t("solve_overlay.no_reasons_available")); };
 
   const formatPlacementPreviewMessage = (item: PlacementPreviewItem | null | undefined, fallback: string) => {
     if (!item) return fallback;
@@ -2050,7 +2015,7 @@ export default function SolveOverlay({
       .filter((message) => message.trim().length > 0);
     if (reasonMessages.length > 0) return reasonMessages.join(" ");
     const assignmentReason = item.assignment_preview?.reason;
-    if (assignmentReason && assignmentReason.trim()) return assignmentReason.trim();
+    if (assignmentReason && assignmentReason.trim()) return normalizeApiError({ code: "PLACEMENT_SELECTION_REQUIRED" });
     const distance = item.classification.time_range_distance_slots;
     if (typeof distance === "number" && distance > 0) {
       return t("solve_overlay.placement_preview_distance_warning", { distance });
@@ -2556,7 +2521,7 @@ export default function SolveOverlay({
       });
       if (!res.ok) {
         const raw = await res.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, t("solve_overlay.precheck_could_not_run")));
+        throw new LocalizedApiError(parseApiErrorMessage(raw, t("solve_overlay.precheck_could_not_run")));
       }
       const rawPayload = (await res.json().catch(() => ({}))) as unknown;
       const normalized = normalizePrecheckResponse(rawPayload);
@@ -2687,9 +2652,9 @@ export default function SolveOverlay({
       const contentType = res.headers.get("content-type") || "";
       if (!res.ok) {
         if (isLikelyHtmlResponse(rawText, contentType)) {
-          throw new Error(t("solve_overlay.placement_preview_endpoint_not_reached"));
+          throw new LocalizedApiError(t("solve_overlay.placement_preview_endpoint_not_reached"));
         }
-        throw new Error(parseApiErrorMessage(rawText, t("solve_overlay.placement_preview_failed")));
+        throw new LocalizedApiError(parseApiErrorMessage(rawText, t("solve_overlay.placement_preview_failed")));
       }
       const raw = parseJsonObjectResponse(
         rawText,
@@ -2819,9 +2784,9 @@ export default function SolveOverlay({
       const contentType = res.headers.get("content-type") || "";
       if (!res.ok) {
         if (isLikelyHtmlResponse(rawText, contentType)) {
-          throw new Error(t("solve_overlay.placement_endpoint_not_reached"));
+          throw new LocalizedApiError(t("solve_overlay.placement_endpoint_not_reached"));
         }
-        throw new Error(parseApiErrorMessage(rawText, t("grid_schedule.could_not_place_cell")));
+        throw new LocalizedApiError(parseApiErrorMessage(rawText, t("grid_schedule.could_not_place_cell")));
       }
       const raw = parseJsonObjectResponse(
         rawText,
@@ -3039,7 +3004,7 @@ export default function SolveOverlay({
     if (r.status === 404) return null;
     if (!r.ok) {
       const txt = await r.text().catch(() => "");
-      throw new Error(txt || t("solve_overlay.failed_load_schedule_status", { status: r.status }));
+      throw new LocalizedApiError(normalizeApiError(txt, t("solve_overlay.failed_load_schedule_status", { status: r.status })));
     }
     const raw = await r.json().catch(() => ({} as Record<string, unknown>));
     return normalizeScheduleResource(raw);
@@ -3131,7 +3096,7 @@ export default function SolveOverlay({
             : await ensureDraftSchedule();
         const scheduleId = scheduleForPreview?.id ?? currentSchedule?.id;
         if (!scheduleId) {
-          throw new Error(t("grid_schedule.no_draft_schedule_error"));
+          throw new LocalizedApiError(t("grid_schedule.no_draft_schedule_error"));
         }
         const candidatePlacements = buildPlacementCandidateRequests(args.durationSlots);
         const scheduleRevisionCacheId = getScheduleRevisionCacheId(gridId, scheduleId);
@@ -3164,7 +3129,7 @@ export default function SolveOverlay({
         const bundleApiId = toApiEntityId(args.bundleId ?? null);
         const placementApiId = toApiEntityId(args.placementId ?? null);
         if (args.mode === "MOVE_ASSIGNED_CELL" && !isConfirmedPlacementId(placementApiId)) {
-          throw new Error(t("solve_overlay.placement_pending_wait"));
+          throw new LocalizedApiError(t("solve_overlay.placement_pending_wait"));
         }
         const payload: PlacementPreviewRequest = {
           mode: args.mode,
@@ -3207,7 +3172,7 @@ export default function SolveOverlay({
         }
       } catch (error: unknown) {
         if (placementPreviewRequestRef.current !== requestId) return;
-        const message = error instanceof Error ? error.message : t("solve_overlay.placement_preview_failed");
+        const message = normalizeApiError(error, t("solve_overlay.placement_preview_failed"));
         if (placementPreviewVisibleRequestRef.current === requestId) {
           setPendingDropWhilePreviewLoading(null);
           setPlacementPreviewBySlot({});
@@ -3273,7 +3238,7 @@ export default function SolveOverlay({
         const res = await authFetch(`/api/grids/${gridId}/published-schedules/`, { cache: "no-store" });
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
-          throw new Error(txt || t("solve_overlay.failed_load_published_versions_status", { status: res.status }));
+          throw new LocalizedApiError(normalizeApiError(txt, t("solve_overlay.failed_load_published_versions_status", { status: res.status })));
         }
         const payload = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         const listRaw = Array.isArray(payload)
@@ -3350,7 +3315,7 @@ export default function SolveOverlay({
         setSelectedHistoryKey("");
         setCurrentSchedule(null);
         setHistoryPanelError(
-          error instanceof Error ? error.message : t("solve_overlay.could_not_load_published_versions"),
+          normalizeApiError(error, t("solve_overlay.could_not_load_published_versions")),
         );
       } finally {
         if (active) setHistoryPanelBusy(false);
@@ -3395,7 +3360,7 @@ export default function SolveOverlay({
           `/api/placement-comments/?published_schedule_id=${encodeURIComponent(String(activePublishedScheduleId))}`,
           { cache: "no-store" },
         );
-        if (!r.ok) throw new Error(t("solve_overlay.failed_load_comments_status", { status: r.status }));
+        if (!r.ok) throw new ApiError(r.status, await r.text().catch(() => ""));
         const data = await r.json().catch(() => ([]));
         const list = Array.isArray(data) ? data : data.results ?? [];
         const normalized: PlacementComment[] = list
@@ -3493,7 +3458,7 @@ export default function SolveOverlay({
         });
         if (!r.ok) {
           const txt = await r.text().catch(() => "");
-          throw new Error(txt || t("solve_overlay.failed_load_blockages_status", { status: r.status }));
+          throw new LocalizedApiError(normalizeApiError(txt, t("solve_overlay.failed_load_blockages_status", { status: r.status })));
         }
         const data = await r.json().catch(() => ([]));
         const list = Array.isArray(data) ? data : data.results ?? [];
@@ -4065,7 +4030,7 @@ export default function SolveOverlay({
         if ((err as { name?: string })?.name === "AbortError") return;
         setPrecheck(null);
         setPrecheckError(
-          err instanceof Error ? err.message : t("solve_overlay.precheck_could_not_run"),
+          normalizeApiError(err, t("solve_overlay.precheck_could_not_run")),
         );
       } finally {
         if (active) {
@@ -4162,7 +4127,7 @@ export default function SolveOverlay({
         const fallback = r.status >= 500
           ? t("solve_overlay.solver_internal_error")
           : t("solve_overlay.solve_candidates_failed_status", { status: r.status });
-        throw new Error(parseApiErrorMessage(txt, fallback));
+        throw new LocalizedApiError(parseApiErrorMessage(txt, fallback));
       }
       const data = (await r.json()) as SolveCandidatesResponse;
       const responsePrecheck = data.precheck ? normalizePrecheckResponse(data.precheck) : null;
@@ -4252,7 +4217,7 @@ export default function SolveOverlay({
         setError(t("solve_overlay.all_three_candidates_failed"));
       }
     } catch (e: any) {
-      setError(e?.message || t("solve_overlay.solver_error"));
+      setError(normalizeApiError(e, t("solve_overlay.solver_error")));
     } finally {
       setPrecheckBusy(false);
       setIsSolving(false);
@@ -4297,7 +4262,7 @@ export default function SolveOverlay({
       );
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(
+        throw new LocalizedApiError(
           parseApiErrorMessage(txt, t("solve_overlay.failed_choose_candidate_status", { status: res.status })),
         );
       }
@@ -4320,7 +4285,7 @@ export default function SolveOverlay({
       clearResolvedCandidateRun();
       notifyDraftMutation({ draftHistory: readDraftHistoryPayload(chosen) });
     } catch (e: any) {
-      setCandidateError(e?.message || t("solve_overlay.could_not_choose_candidate"));
+      setCandidateError(normalizeApiError(e, t("solve_overlay.could_not_choose_candidate")));
     } finally {
       setCandidateBusy(false);
     }
@@ -4352,7 +4317,7 @@ export default function SolveOverlay({
       );
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(
+        throw new LocalizedApiError(
           parseApiErrorMessage(txt, t("solve_overlay.failed_reject_candidates_status", { status: res.status })),
         );
       }
@@ -4361,7 +4326,7 @@ export default function SolveOverlay({
       persistPendingCandidateRun(null);
       hardReloadGridView("draft");
     } catch (e: any) {
-      setCandidateError(e?.message || t("solve_overlay.could_not_reject_candidates"));
+      setCandidateError(normalizeApiError(e, t("solve_overlay.could_not_reject_candidates")));
     } finally {
       setCandidateBusy(false);
     }
@@ -4905,15 +4870,13 @@ export default function SolveOverlay({
         );
         if (!response.ok) {
           const detail = await response.text().catch(() => "");
-          throw new Error(detail || t("grid_schedule.visual_order_save_failed"));
+          throw new LocalizedApiError(normalizeApiError(detail, t("grid_schedule.visual_order_save_failed")));
         }
         invalidateGridScreenContext(gridId, "draft");
       } catch (error: unknown) {
         applyOrders(previousOrderByPlacementId);
         setPinError(
-          error instanceof Error && error.message
-            ? error.message
-            : t("grid_schedule.visual_order_save_failed"),
+          normalizeApiError(error, t("grid_schedule.visual_order_save_failed")),
         );
       } finally {
         setVisualOrderBusy(false);
@@ -5963,7 +5926,7 @@ export default function SolveOverlay({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || t("solve_overlay.failed_export_schedule_status", { status: res.status }));
+        throw new LocalizedApiError(normalizeApiError(txt, t("solve_overlay.failed_export_schedule_status", { status: res.status })));
       }
       const blob = await res.blob();
       const versionLabel =
@@ -5981,7 +5944,7 @@ export default function SolveOverlay({
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (error: unknown) {
-      setHistoryPanelError(error instanceof Error ? error.message : t("solve_overlay.could_not_export_version"));
+      setHistoryPanelError(normalizeApiError(error, t("solve_overlay.could_not_export_version")));
     } finally {
       setExportingHistoryVersion(false);
     }
@@ -6003,7 +5966,7 @@ export default function SolveOverlay({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || `${t("solve_overlay.could_not_restore_draft")} (${res.status})`);
+        throw new LocalizedApiError(normalizeApiError(txt, `${t("solve_overlay.could_not_restore_draft")} (${res.status})`));
       }
       writeGridScheduleViewMode(gridId, "draft");
       invalidateGridScreenContext(gridId, "draft");
@@ -6011,7 +5974,7 @@ export default function SolveOverlay({
       router.refresh();
     } catch (error: unknown) {
       setHistoryPanelError(
-        error instanceof Error ? error.message : t("solve_overlay.could_not_restore_published_version"),
+        normalizeApiError(error, t("solve_overlay.could_not_restore_published_version")),
       );
     } finally {
       setRestoringHistoryVersion(false);
@@ -6762,7 +6725,7 @@ export default function SolveOverlay({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || t("solve_overlay.failed_add_comment_status", { status: res.status }));
+        throw new LocalizedApiError(normalizeApiError(txt, t("solve_overlay.failed_add_comment_status", { status: res.status })));
       }
       const raw = await res.json().catch(() => ({}));
       const bundleRaw =
@@ -6802,7 +6765,7 @@ export default function SolveOverlay({
       setPlacementComments((prev) => [next, ...prev]);
       setCommentDraft("");
     } catch (e: unknown) {
-      setCommentError(e instanceof Error ? e.message : t("solve_overlay.could_not_add_comment"));
+      setCommentError(normalizeApiError(e, t("solve_overlay.could_not_add_comment")));
     } finally {
       setCommentBusy(false);
     }
@@ -6846,7 +6809,7 @@ export default function SolveOverlay({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || t("solve_overlay.failed_update_lock_status", { status: res.status }));
+        throw new LocalizedApiError(normalizeApiError(txt, t("solve_overlay.failed_update_lock_status", { status: res.status })));
       }
       notifyDraftMutation();
       setPrecheckRefreshTick((prev) => prev + 1);
@@ -6859,7 +6822,7 @@ export default function SolveOverlay({
             }
           : prev,
       );
-      setPinError(e instanceof Error ? e.message : t("solve_overlay.could_not_update_placement_lock"));
+      setPinError(normalizeApiError(e, t("solve_overlay.could_not_update_placement_lock")));
     } finally {
       setPinOptimisticByCard((prev) => {
         if (!(cardKey in prev)) return prev;
@@ -6893,7 +6856,7 @@ export default function SolveOverlay({
       await applyPlacementBreaks(breakDialogState.placementId, normalized);
       setBreakDialogState((prev) => ({ ...prev, open: false }));
     } catch (error: unknown) {
-      setBreakDialogError(error instanceof Error ? error.message : t("break_dialog.update_failed"));
+      setBreakDialogError(normalizeApiError(error, t("break_dialog.update_failed")));
     } finally {
       setBreakDialogBusy(false);
     }
@@ -6922,7 +6885,7 @@ export default function SolveOverlay({
         });
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
-          throw new Error(parseApiErrorMessage(txt, `Failed to update breaks (${res.status})`));
+          throw new LocalizedApiError(parseApiErrorMessage(txt, `Failed to update breaks (${res.status})`));
         }
         notifyDraftMutation();
       } catch (error: unknown) {
@@ -6957,7 +6920,7 @@ export default function SolveOverlay({
       );
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(txt, `Failed to update blockage (${res.status})`));
+        throw new LocalizedApiError(parseApiErrorMessage(txt, `Failed to update blockage (${res.status})`));
       }
       notifyDraftMutation();
       setBlockagesRefreshTick((prev) => prev + 1);
@@ -6992,7 +6955,7 @@ export default function SolveOverlay({
       );
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(txt, `Failed to create blockage (${res.status})`));
+        throw new LocalizedApiError(parseApiErrorMessage(txt, `Failed to create blockage (${res.status})`));
       }
       await res.json().catch(() => ({}));
       notifyDraftMutation();
@@ -7025,7 +6988,7 @@ export default function SolveOverlay({
         );
         if (!res.ok && res.status !== 204) {
           const txt = await res.text().catch(() => "");
-          throw new Error(parseApiErrorMessage(txt, `Failed to delete blockage (${res.status})`));
+          throw new LocalizedApiError(parseApiErrorMessage(txt, `Failed to delete blockage (${res.status})`));
         }
         const rawText = await res.text().catch(() => "");
         if (rawText.trim() && currentSchedule?.id != null) {
@@ -7139,7 +7102,7 @@ export default function SolveOverlay({
             );
             if (!deleteRes.ok) {
               const txt = await deleteRes.text().catch(() => "");
-              throw new Error(txt || `${t("solve_overlay.could_not_remove_placement")} (${deleteRes.status})`);
+              throw new LocalizedApiError(normalizeApiError(txt, `${t("solve_overlay.could_not_remove_placement")} (${deleteRes.status})`));
             }
           } else {
             const patchRes = await withScheduleActionLoading("assigning", () =>
@@ -7153,7 +7116,7 @@ export default function SolveOverlay({
             );
             if (!patchRes.ok) {
               const txt = await patchRes.text().catch(() => "");
-              throw new Error(txt || `${t("solve_overlay.could_not_update_placement")} (${patchRes.status})`);
+              throw new LocalizedApiError(normalizeApiError(txt, `${t("solve_overlay.could_not_update_placement")} (${patchRes.status})`));
             }
           }
           notifyDraftMutation();
@@ -7168,7 +7131,7 @@ export default function SolveOverlay({
               : prev,
           );
           removePendingPlacementIds([placementId]);
-          setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_remove_participant"));
+          setPinError(normalizeApiError(error, t("solve_overlay.could_not_remove_participant")));
         }
         return;
       }
@@ -7191,7 +7154,7 @@ export default function SolveOverlay({
         );
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
-          throw new Error(txt || `${t("solve_overlay.could_not_remove_placement")} (${res.status})`);
+          throw new LocalizedApiError(normalizeApiError(txt, `${t("solve_overlay.could_not_remove_placement")} (${res.status})`));
         }
         const mutationPayload =
           res.status === 204
@@ -7213,7 +7176,7 @@ export default function SolveOverlay({
           : prev,
         );
         removePendingPlacementIds([placementId]);
-        setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_remove_placement"));
+        setPinError(normalizeApiError(error, t("solve_overlay.could_not_remove_placement")));
       }
     },
     [
@@ -7503,7 +7466,7 @@ export default function SolveOverlay({
           );
         }
         removePendingPlacementIds([pendingOptimisticPlacementId]);
-        setPinError(error instanceof Error ? error.message : t("grid_schedule.could_not_place_cell"));
+        setPinError(normalizeApiError(error, t("grid_schedule.could_not_place_cell")));
       }
     },
     [
@@ -7571,7 +7534,7 @@ export default function SolveOverlay({
         restoreSuppressedUnassignedCell(pendingPlacementRequest.sourceCellId);
       } catch (error: unknown) {
         restoreSuppressedUnassignedCell(pendingPlacementRequest.sourceCellId);
-        setPinError(error instanceof Error ? error.message : t("grid_schedule.could_not_place_cell"));
+        setPinError(normalizeApiError(error, t("grid_schedule.could_not_place_cell")));
       }
     })();
   }, [
@@ -7625,7 +7588,7 @@ export default function SolveOverlay({
         restoreSuppressedUnassignedCell(request.sourceCellId);
       } catch (error: unknown) {
         restoreSuppressedUnassignedCell(request.sourceCellId);
-        setPinError(error instanceof Error ? error.message : t("grid_schedule.could_not_place_cell"));
+        setPinError(normalizeApiError(error, t("grid_schedule.could_not_place_cell")));
       }
     })();
   }, [
@@ -7756,9 +7719,7 @@ export default function SolveOverlay({
             : prev,
         );
         setPinError(
-          error instanceof Error
-            ? error.message
-            : formatPlacementPreviewMessage(previewItem, t("grid_schedule.could_not_move_placement")),
+          normalizeApiError(error, formatPlacementPreviewMessage(previewItem, t("grid_schedule.could_not_move_placement"))),
         );
       }
     },
@@ -7844,7 +7805,7 @@ export default function SolveOverlay({
       const finalized = blockageDraft;
       setBlockageDraft(null);
       void createBlockage(finalized.dayIndex, finalized.startSlot, finalized.endSlot).catch((error: unknown) => {
-        setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_create_blockage"));
+        setPinError(normalizeApiError(error, t("solve_overlay.could_not_create_blockage")));
       });
     };
     const onPointerCancel = (event: PointerEvent) => {
@@ -7918,7 +7879,7 @@ export default function SolveOverlay({
           prev.map((entry) => (entry.id === original.id ? original : entry)),
         );
         void deleteBlockage(original).catch((error: unknown) => {
-          setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_delete_blockage"));
+          setPinError(normalizeApiError(error, t("solve_overlay.could_not_delete_blockage")));
         });
         return;
       }
@@ -7935,7 +7896,7 @@ export default function SolveOverlay({
           );
         })
         .catch((error: unknown) => {
-          setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_update_blockage"));
+          setPinError(normalizeApiError(error, t("solve_overlay.could_not_update_blockage")));
         })
         .finally(() => {
           setBlockageMutationBusy(false);
@@ -8166,7 +8127,7 @@ export default function SolveOverlay({
               }),
             );
             if (!res.ok) {
-              throw new Error(t("solve_overlay.could_not_assign_participant"));
+              throw new ApiError(res.status, await res.text().catch(() => ""));
             }
             notifyDraftMutation();
             removePendingPlacementIds([placementId]);
@@ -8180,7 +8141,7 @@ export default function SolveOverlay({
                 : prev,
             );
             removePendingPlacementIds([placementId]);
-            setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_assign_participant"));
+            setPinError(normalizeApiError(error, t("solve_overlay.could_not_assign_participant")));
           }
         })();
         return;
@@ -8379,7 +8340,6 @@ export default function SolveOverlay({
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
-      if (target.closest("[data-onboarding-overlay]")) return;
       if (target.closest("[data-schedule-scroll]")) return;
       if (target.closest("[data-unit-tabs]")) return;
       if (target.closest("[data-left-delete-drop]")) return;
@@ -8873,7 +8833,7 @@ export default function SolveOverlay({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || t("solve_overlay.failed_publish_schedule_status", { status: res.status }));
+        throw new LocalizedApiError(normalizeApiError(txt, t("solve_overlay.failed_publish_schedule_status", { status: res.status })));
       }
 
       writeGridScheduleViewMode(gridId, "published");
@@ -8889,7 +8849,7 @@ export default function SolveOverlay({
 
       refreshGridView();
     } catch (e: any) {
-      setError(e?.message || t("solve_overlay.could_not_publish_schedule"));
+      setError(normalizeApiError(e, t("solve_overlay.could_not_publish_schedule")));
     } finally {
       setIsPublishing(false);
     }
@@ -9142,7 +9102,7 @@ export default function SolveOverlay({
                 onDoubleClick={() => {
                   if (!canEditBlockage) return;
                   void deleteBlockage(blockage.id).catch((error: unknown) => {
-                    setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_delete_blockage"));
+                    setPinError(normalizeApiError(error, t("solve_overlay.could_not_delete_blockage")));
                   });
                 }}
               >
@@ -9844,7 +9804,7 @@ export default function SolveOverlay({
                             }}
                             aria-label={t("common.delete")}
                           >
-                            ×
+                            Ã—
                           </button>
                           <div
                             className="absolute left-0 right-0 top-0 h-2 cursor-ns-resize"
@@ -9959,7 +9919,7 @@ export default function SolveOverlay({
                     void executeDeleteBlockage(pending.blockage, "CURRENT_UNIT_ONLY", pending.unitId)
                       .then(() => setPendingBlockageDelete(null))
                       .catch((error: unknown) => {
-                        setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_delete_blockage"));
+                        setPinError(normalizeApiError(error, t("solve_overlay.could_not_delete_blockage")));
                       })
                       .finally(() => setBlockageDeleteBusy(false));
                   }}
@@ -9977,7 +9937,7 @@ export default function SolveOverlay({
                     void executeDeleteBlockage(pending.blockage, "GLOBAL", pending.unitId)
                       .then(() => setPendingBlockageDelete(null))
                       .catch((error: unknown) => {
-                        setPinError(error instanceof Error ? error.message : t("solve_overlay.could_not_delete_blockage"));
+                        setPinError(normalizeApiError(error, t("solve_overlay.could_not_delete_blockage")));
                       })
                       .finally(() => setBlockageDeleteBusy(false));
                   }}
@@ -11388,7 +11348,7 @@ export default function SolveOverlay({
       )}
       {isJiggleMode && (
         <div className="pointer-events-none fixed inset-x-0 bottom-16 z-[210] flex justify-center px-4">
-          <div className="animate-in slide-in-from-bottom-4 fade-in rounded-full border border-gray-200 bg-gray-950/92 px-4 py-2 text-center text-sm font-medium text-white shadow-xl duration-300">
+          <div className="animate-in slide-in-from-bottom-4 fade-in rounded-full border border-gray-200 bg-gray-800/50 px-4 py-2 text-center text-sm font-medium text-white shadow-xl duration-300">
             {t("solve_overlay.exit_edit_mode_hint")}
           </div>
         </div>

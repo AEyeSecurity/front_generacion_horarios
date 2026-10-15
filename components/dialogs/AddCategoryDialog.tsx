@@ -1,4 +1,6 @@
 "use client";
+import { ApiError, LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import * as React from "react";
 import {
@@ -15,12 +17,7 @@ import { useI18n } from "@/lib/use-i18n";
 import { invalidateGridResource, invalidateGridScreenContext } from "@/lib/screen-context";
 const CATEGORY_VALUES_UPDATED_EVENT = "shift:category-values-updated";
 
-function safeApiText(raw: string, fallback: string) {
-  const trimmed = raw.trim();
-  if (!trimmed) return fallback;
-  if (/^<!doctype/i.test(trimmed) || /^<html/i.test(trimmed)) return fallback;
-  return trimmed;
-}
+function safeApiText(raw: string, fallback: string) { return normalizeApiError(raw, fallback); }
 
 export default function AddCategoryDialog({
   gridId,
@@ -48,11 +45,7 @@ export default function AddCategoryDialog({
   const [editingValueId, setEditingValueId] = React.useState<number | null>(null);
   const [editingValueName, setEditingValueName] = React.useState("");
   const [closing, setClosing] = React.useState(false);
-  const [onboardingCategoryStepActive, setOnboardingCategoryStepActive] = React.useState(false);
   const hasParentOptions = (parents ?? []).length > 0;
-  const onboardingStepKey = React.useMemo(() => `onboarding-step-grid-${gridId}`, [gridId]);
-  const onboardingDoneKey = React.useMemo(() => `onboarding-done-grid-${gridId}`, [gridId]);
-  const lockValueCreationCancel = Boolean(createdId) && onboardingCategoryStepActive;
 
   React.useEffect(() => {
     if (!hasParentOptions) setParent("");
@@ -75,11 +68,11 @@ export default function AddCategoryDialog({
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        throw new Error(typeof j === "object" ? JSON.stringify(j) : String(j));
+        throw new LocalizedApiError(normalizeApiError(j));
       }
       const created = await res.json().catch(() => ({}));
       const id = Number(created?.id);
-      if (!id) throw new Error(t("add_category.failed_resolve_id"));
+      if (!id) throw new LocalizedApiError(t("add_category.failed_resolve_id"));
       invalidateGridResource(gridId, "categories");
       invalidateGridResource(gridId, "category_values");
       invalidateGridScreenContext(gridId, "draft");
@@ -87,7 +80,7 @@ export default function AddCategoryDialog({
       setValues([]);
       setNewValue("");
     } catch (e: any) {
-      setErr(e.message || t("add_category.failed_create"));
+      setErr(normalizeApiError(e, t("add_category.failed_create")));
     } finally {
       setSaving(false);
     }
@@ -101,40 +94,19 @@ export default function AddCategoryDialog({
           setValues([]);
           return;
         }
-        throw new Error(t("errors.failed_status", { status: res.status }));
+        throw new ApiError(res.status, await res.text().catch(() => ""));
       }
       const data = await res.json().catch(() => ({}));
       const items = Array.isArray(data) ? data : data.results ?? [];
       setValues(items.filter((v: any) => Number(v.category) === Number(catId)));
     } catch (e: any) {
-      setErr(e?.message || t("add_category.failed_load_values"));
+      setErr(normalizeApiError(e, t("add_category.failed_load_values")));
     }
   }
 
   React.useEffect(() => {
     if (createdId) loadValues(createdId);
   }, [createdId]);
-
-  React.useEffect(() => {
-    if (!open) {
-      setOnboardingCategoryStepActive(false);
-      return;
-    }
-    if (typeof window === "undefined") return;
-    const sync = () => {
-      const active =
-        window.localStorage.getItem(onboardingDoneKey) !== "1" &&
-        window.localStorage.getItem(onboardingStepKey) === "2";
-      setOnboardingCategoryStepActive(active);
-    };
-    sync();
-    window.addEventListener("storage", sync);
-    const intervalId = window.setInterval(sync, 300);
-    return () => {
-      window.removeEventListener("storage", sync);
-      window.clearInterval(intervalId);
-    };
-  }, [onboardingDoneKey, onboardingStepKey, open]);
 
   async function addValue(e: React.FormEvent) {
     e.preventDefault();
@@ -149,7 +121,7 @@ export default function AddCategoryDialog({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(safeApiText(txt, t("add_category.failed_add_value")));
+        throw new LocalizedApiError(safeApiText(txt, t("add_category.failed_add_value")));
       }
       setNewValue("");
       await loadValues(createdId);
@@ -157,7 +129,7 @@ export default function AddCategoryDialog({
       invalidateGridScreenContext(gridId, "draft");
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CATEGORY_VALUES_UPDATED_EVENT));
     } catch (e: any) {
-      setErr(e?.message || t("add_category.failed_add_value"));
+      setErr(normalizeApiError(e, t("add_category.failed_add_value")));
     } finally {
       setAddingValue(false);
     }
@@ -168,7 +140,7 @@ export default function AddCategoryDialog({
     if (res.status === 404) return;
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      throw new Error(safeApiText(txt, `Failed (${res.status})`));
+      throw new LocalizedApiError(safeApiText(txt, `Failed (${res.status})`));
     }
   }
 
@@ -204,7 +176,7 @@ export default function AddCategoryDialog({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(safeApiText(txt, `Failed (${res.status})`));
+        throw new LocalizedApiError(safeApiText(txt, `Failed (${res.status})`));
       }
       setEditingValueId(null);
       setEditingValueName("");
@@ -213,7 +185,7 @@ export default function AddCategoryDialog({
       invalidateGridScreenContext(gridId, "draft");
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CATEGORY_VALUES_UPDATED_EVENT));
     } catch (error: any) {
-      setErr(error?.message || t("category_dialog.failed_update_value"));
+      setErr(normalizeApiError(error, t("category_dialog.failed_update_value")));
     } finally {
       setUpdatingValueId(null);
     }
@@ -244,7 +216,7 @@ export default function AddCategoryDialog({
         setClosing(true);
         await deleteCategory(createdId);
       } catch (e: any) {
-        setErr(e?.message || t("add_category.failed_delete_empty"));
+        setErr(normalizeApiError(e, t("add_category.failed_delete_empty")));
         return;
       } finally {
         setClosing(false);
@@ -261,22 +233,16 @@ export default function AddCategoryDialog({
       onOpenChange(true);
       return;
     }
-    if (lockValueCreationCancel) return;
     await cancelDialog();
   }
 
-  const latestValueId = React.useMemo(() => {
-    if (values.length === 0) return null;
-    return Math.max(...values.map((value) => Number(value.id) || 0));
-  }, [values]);
   const valueListItems = React.useMemo(() => values.map((value) => String(value.id)), [values]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent
           className={`max-w-[720px] p-0 ${createdId ? "sm:h-[460px]" : ""}`}
-          showCloseButton={!lockValueCreationCancel}
-          data-onboarding-target="category-dialog"
+          showCloseButton
         >
           <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
           <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
@@ -325,9 +291,8 @@ export default function AddCategoryDialog({
             <div className="flex h-full min-h-[320px] flex-col gap-4">
               <div className="text-sm text-gray-600">{t("add_category.add_one_value_required")}</div>
 
-              <form onSubmit={addValue} className="flex items-center gap-2" data-onboarding-target="category-value-add-row">
+              <form onSubmit={addValue} className="flex items-center gap-2">
                 <input
-                  data-onboarding-target="category-value-name-input"
                   className="flex-1 border rounded px-3 py-2 text-sm"
                   placeholder={t("add_category.new_value_name")}
                   value={newValue}
@@ -362,9 +327,6 @@ export default function AddCategoryDialog({
                       return (
                         <div
                           className="flex h-12 items-center justify-between rounded border border-gray-200 bg-white px-3 text-sm text-gray-900"
-                          data-onboarding-target={
-                            Number(values[index]?.id) === latestValueId ? "category-value-latest-row" : undefined
-                          }
                         >
                           {isEditing ? (
                             <input
@@ -461,13 +423,9 @@ export default function AddCategoryDialog({
           )}
           </div>
           <DialogFooter className="shrink-0 items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">
-            {!lockValueCreationCancel ? (
-              <button type="button" className="px-3 py-2 rounded border text-sm hover:bg-gray-50" disabled={closing} onClick={() => void cancelDialog()}>
-                {t("common.cancel")}
-              </button>
-            ) : (
-              <span />
-            )}
+            <button type="button" className="px-3 py-2 rounded border text-sm hover:bg-gray-50" disabled={closing} onClick={() => void cancelDialog()}>
+              {t("common.cancel")}
+            </button>
             {!createdId ? (
               <button
                 type="submit"

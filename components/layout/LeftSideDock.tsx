@@ -12,7 +12,6 @@ type Tab = "participants" | "categories" | "time-ranges";
 const SHEET_ANIM_MS = 240;
 const GRID_COMMENTS_PANEL_STATE_EVENT = "shift:grid-comments-panel-state";
 const GRID_LEFT_PANEL_STATE_EVENT = "shift:grid-left-panel-state";
-const GRID_ONBOARDING_LEFT_PANEL_REQUEST_EVENT = "shift:onboarding-left-panel-request";
 const DOCK_FEEDBACK_HIGHLIGHT_EVENT = "shift:dock-feedback-highlight";
 const PARTICIPANT_ADD_HIGHLIGHT_EVENT = "shift:participants-add-highlight";
 
@@ -22,7 +21,6 @@ function DockButton({
   highlighted,
   onClick,
   title,
-  onboardingTarget,
   children,
 }: {
   active?: boolean;
@@ -30,13 +28,11 @@ function DockButton({
   highlighted?: boolean;
   onClick?: (e: MouseEvent) => void;
   title: string;
-  onboardingTarget?: string;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
-      data-onboarding-target={onboardingTarget}
       data-state={locked ? "locked" : active ? "active" : "idle"}
       title={title}
       aria-disabled={locked ? "true" : undefined}
@@ -146,11 +142,7 @@ export default function LeftSideDock({
       triggerParticipantsFeedback(t("dock.create_participants_first"));
       return;
     }
-    const onboardingActive =
-      typeof window !== "undefined" &&
-      window.localStorage.getItem(`onboarding-step-grid-${gridId}`) != null &&
-      window.localStorage.getItem(`onboarding-done-grid-${gridId}`) !== "1";
-    router.push(`${gridBase}/cells${onboardingActive ? "?onboarding=1" : ""}`);
+    router.push(`${gridBase}/cells`);
   };
 
   useEffect(() => {
@@ -220,27 +212,6 @@ export default function LeftSideDock({
     }, 350);
   }, [gridBase, router, searchParams, t, triggerParticipantsFeedback]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onOnboardingPanelRequest = (event: Event) => {
-      const custom = event as CustomEvent<{ gridId?: string; open?: boolean; tab?: Tab | null }>;
-      if (custom.detail?.gridId !== String(gridId)) return;
-      lockRef.current = false;
-      pendingTabRef.current = null;
-      if (!custom.detail.open) {
-        setOpen(false);
-        return;
-      }
-      if (custom.detail.tab === "participants" || custom.detail.tab === "categories" || custom.detail.tab === "time-ranges") {
-        setTab(custom.detail.tab);
-        setOpen(true);
-      }
-    };
-    window.addEventListener(GRID_ONBOARDING_LEFT_PANEL_REQUEST_EVENT, onOnboardingPanelRequest as EventListener);
-    return () =>
-      window.removeEventListener(GRID_ONBOARDING_LEFT_PANEL_REQUEST_EVENT, onOnboardingPanelRequest as EventListener);
-  }, [gridId]);
-
   if (role === "viewer") return null;
   if (isNarrowMobile && commentsPanelOpen) return null;
 
@@ -248,14 +219,8 @@ export default function LeftSideDock({
     const gotoSelf = () => {
       const routeId = selfParticipantRouteId ?? selfParticipantId;
       if (!routeId) return;
-      const onboardingActive =
-        typeof window !== "undefined" &&
-        window.localStorage.getItem(`onboarding-step-grid-${gridId}`) != null &&
-        window.localStorage.getItem(`onboarding-done-grid-${gridId}`) !== "1";
       router.push(
-        `${gridBase}/participants?pid=${encodeURIComponent(String(routeId))}&view=schedule${
-          onboardingActive ? "&onboarding=1" : ""
-        }`,
+        `${gridBase}/participants?pid=${encodeURIComponent(String(routeId))}&view=schedule`,
       );
     };
     return (
@@ -284,7 +249,6 @@ export default function LeftSideDock({
       >
         <DockButton
           title={liveParticipantCount <= 0 ? t("dock.create_participants_first") : t("side_dock.cells")}
-          onboardingTarget="left-dock-cells"
           locked={liveParticipantCount <= 0}
           highlighted={highlightCells}
           onClick={gotoCells}
@@ -294,7 +258,6 @@ export default function LeftSideDock({
 
         <DockButton
           title={t("side_dock.participants")}
-          onboardingTarget="left-dock-participants"
           active={open && tab === "participants"}
           onClick={() => switchTo("participants")}
         >
@@ -303,7 +266,6 @@ export default function LeftSideDock({
 
         <DockButton
           title={t("side_dock.categories")}
-          onboardingTarget="left-dock-categories"
           active={open && tab === "categories"}
           onClick={() => switchTo("categories")}
         >
@@ -312,7 +274,6 @@ export default function LeftSideDock({
 
         <DockButton
           title={t("side_dock.time_ranges")}
-          onboardingTarget="left-dock-time-ranges"
           active={open && tab === "time-ranges"}
           onClick={() => switchTo("time-ranges")}
         >

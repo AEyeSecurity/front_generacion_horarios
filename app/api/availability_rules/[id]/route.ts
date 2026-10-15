@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 // Proxy: /api/availability_rules/:id -> NEXT_PUBLIC_API_URL/api/availability-rules/:id
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
@@ -8,7 +9,7 @@ const B = getApiBaseUrlNormalized();
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
   const res = await fetch(`${B}/api/availability-rules/${id}/`, {
     headers: { Authorization: `Bearer ${access}`, cookie: req.headers.get("cookie") || "" },
     cache: "no-store",
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
   const body = await req.text();
   const res = await fetch(`${B}/api/availability-rules/${id}/`, {
     method: "PATCH",
@@ -45,7 +46,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
   const res = await fetch(`${B}/api/availability-rules/${id}/`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${access}`, cookie: req.headers.get("cookie") || "" },

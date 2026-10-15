@@ -7,10 +7,10 @@ import { useI18n } from "@/lib/use-i18n";
 
 export type EntityPageHeaderProps = {
   title: string;
+  subtitle?: React.ReactNode;
   backHref: string;
   canCreate?: boolean;
   createLabel?: string;
-  createOnboardingTarget?: string;
   onCreateClick?: () => void;
   dialog?: ReactNode;
   rightSlot?: ReactNode;
@@ -18,9 +18,9 @@ export type EntityPageHeaderProps = {
 
 export default function EntityPageHeader({
   title,
+  subtitle,
   backHref,
   canCreate = false,
-  createOnboardingTarget,
   onCreateClick,
   dialog,
   rightSlot,
@@ -38,14 +38,18 @@ export default function EntityPageHeader({
           <ArrowLeft className="w-5 h-5 text-gray-600" />
         </Link>
       </div>
-
-      <h1 className="text-2xl font-semibold text-center">{title}</h1>
-
+      <div className="flex flex-col items-center">
+        <h1 className="text-2xl font-bold">{title}</h1>
+        {subtitle && (
+          <p className="text-xs text-gray-500">
+            {subtitle}
+          </p>
+        )}
+      </div>
       <div className="flex justify-end">
         {canCreate && onCreateClick ? (
           <button
             type="button"
-            data-onboarding-target={createOnboardingTarget}
             onClick={onCreateClick}
             className="inline-flex items-center gap-1 rounded bg-black px-3 py-2 text-sm text-white sm:gap-2 sm:px-4"
           >

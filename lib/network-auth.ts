@@ -1,4 +1,6 @@
 "use client";
+import { LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import { toast } from "sonner";
 import { getTranslation } from "@/lib/i18n";
@@ -13,14 +15,14 @@ const sessionExpiredMessage = () => getTranslation(readDocumentPreferredLanguage
 let sessionExpiryHandling = false;
 let offlineToastVisible = false;
 
-export class NetworkOfflineError extends Error {
+export class NetworkOfflineError extends LocalizedApiError {
   constructor(message = networkOfflineMessage()) {
     super(message);
     this.name = "NetworkOfflineError";
   }
 }
 
-export class SessionExpiredError extends Error {
+export class SessionExpiredError extends LocalizedApiError {
   constructor(message = sessionExpiredMessage()) {
     super(message);
     this.name = "SessionExpiredError";

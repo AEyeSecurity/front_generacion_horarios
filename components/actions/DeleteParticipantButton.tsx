@@ -1,4 +1,6 @@
 "use client";
+import { normalizeApiError } from "@/lib/api-errors";
+
 
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
@@ -26,7 +28,7 @@ export default function DeleteParticipantButton({
     const res = await fetch(`/api/participants/${encodeURIComponent(id)}`, { method: "DELETE" });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      alert(t("participants.delete_failed_status", { status: res.status, details: txt }));
+      alert(t("participants.delete_failed_status", { status: res.status, details: normalizeApiError(txt, "", { status: res.status }) }));
       return;
     }
     router.push(`/grid/${encodeURIComponent(gridCode || String(gridId))}`);

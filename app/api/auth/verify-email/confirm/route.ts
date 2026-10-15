@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
 
@@ -30,13 +31,7 @@ export async function POST(req: Request) {
   } catch {}
 
   if (!res.ok) {
-    const error =
-      data?.detail ||
-      data?.error ||
-      (typeof data === "string" ? data : "") ||
-      text ||
-      "Verification failed";
-    return NextResponse.json({ error }, { status: res.status });
+    return NextResponse.json(apiErrorPayload(data, res.status), { status: res.status });
   }
 
   const access = data?.access || data?.access_token || null;

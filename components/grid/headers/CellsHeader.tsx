@@ -12,10 +12,12 @@ export default function CellsHeader({
   gridId,
   backHref,
   canCreate,
+  hasCells,
 }: {
   gridId: number;
   backHref: string;
   canCreate: boolean;
+  hasCells: boolean;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -24,9 +26,9 @@ export default function CellsHeader({
   return (
     <EntityPageHeader
       title={t("cells.title")}
+      subtitle={hasCells ? t("cells.subtitle") : undefined}
       backHref={backHref}
       canCreate={canCreate}
-      createOnboardingTarget="cell-create-button"
       onCreateClick={() => setOpen(true)}
       dialog={<CreateCellDialog gridId={gridId} open={open} onOpenChange={setOpen} onCreated={() => router.refresh()} />}
     />

@@ -1,9 +1,11 @@
 "use client";
+import { LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import { dispatchSessionExpired, networkFetch } from "@/lib/network-auth";
 
-export class AuthExpiredError extends Error {
-  constructor(message = "Tu sesión ha expirado por inactividad") {
+export class AuthExpiredError extends LocalizedApiError {
+  constructor(message = normalizeApiError({ code: "SESSION_EXPIRED" })) {
     super(message);
   }
 }

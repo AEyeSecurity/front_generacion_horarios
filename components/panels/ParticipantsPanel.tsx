@@ -1,4 +1,6 @@
 "use client";
+import { ApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -74,7 +76,7 @@ export default function ParticipantsPanel({
           force,
           fallback: async () => {
             const response = await fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" });
-            if (!response.ok) throw new Error(t("errors.failed_status", { status: response.status }));
+            if (!response.ok) throw new ApiError(response.status, await response.text().catch(() => ""));
             const data = await response.json();
             return Array.isArray(data) ? data : data.results ?? [];
           },
@@ -99,7 +101,7 @@ export default function ParticipantsPanel({
       onCountChange?.(items.length);
     } catch (e: unknown) {
       if (requestId !== loadRequestRef.current) return;
-      setErr(e instanceof Error ? e.message : "Error");
+      setErr(normalizeApiError(e, "Error"));
     } finally {
       if (requestId === loadRequestRef.current) setLoading(false);
     }
@@ -120,14 +122,10 @@ export default function ParticipantsPanel({
       ),
     [list, q, tierEnabled, tierFilter],
   );
-  const latestParticipantId = useMemo(
-    () => list.reduce<number | null>((latest, p) => (latest == null || p.id > latest ? p.id : latest), null),
-    [list],
-  );
   const gridBase = `/grid/${encodeURIComponent(gridCode || String(gridId))}`;
 
   return (
-    <div className="h-full" data-onboarding-target="participants-panel">
+    <div className="h-full">
     <PanelShell title={t("entity.participants")} error={err}>
       <div className={`grid w-full ${tierEnabled ? "grid-cols-[minmax(0,1fr)_80px]" : "grid-cols-1"} gap-2`}>
         <input
@@ -178,19 +176,12 @@ export default function ParticipantsPanel({
           {filtered.map((p) => (
             <li key={p.id}>
               <button
-                data-onboarding-target={p.id === latestParticipantId ? "participants-latest-row" : undefined}
                 onClick={() => {
                   clearRowClickTimer();
                   rowClickTimerRef.current = window.setTimeout(() => {
                     const routeId = p.grid_participant_id ?? p.id;
-                    const onboardingActive =
-                      typeof window !== "undefined" &&
-                      window.localStorage.getItem(`onboarding-step-grid-${gridId}`) != null &&
-                      window.localStorage.getItem(`onboarding-done-grid-${gridId}`) !== "1";
                     router.push(
-                      `${gridBase}/participants?pid=${encodeURIComponent(String(routeId))}&view=schedule${
-                        onboardingActive ? "&onboarding=1" : ""
-                      }`,
+                      `${gridBase}/participants?pid=${encodeURIComponent(String(routeId))}&view=schedule`,
                     );
                     rowClickTimerRef.current = null;
                   }, 180);

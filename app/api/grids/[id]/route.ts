@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 // app/api/grids/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
@@ -9,13 +10,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   if (!id || id === "undefined") {
     return NextResponse.json(
-      { error: "bad_request", detail: "Missing or invalid grid id in route param." },
+      apiErrorPayload({ error: "bad_request", detail: "Missing or invalid grid id in route param." }, 400),
       { status: 400 }
     );
   }
 
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
 
   const del = async (token: string) => {
     const headers: HeadersInit = {
@@ -41,7 +42,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   }
 
   const refresh = await getRefreshToken();
-  if (!refresh) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!refresh) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
 
   const rf = await fetch(`${B}/api/auth/refresh/`, {
     method: "POST",
@@ -49,7 +50,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     body: JSON.stringify({ refresh }),
     cache: "no-store",
   });
-  if (!rf.ok) return NextResponse.json({ error: "refresh_failed" }, { status: 401 });
+  if (!rf.ok) return NextResponse.json(apiErrorPayload({ error: "refresh_failed" }, 401), { status: 401 });
 
   const { access: newAccess } = await rf.json();
   res = await del(newAccess);
@@ -67,13 +68,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   if (!id || id === "undefined") {
     return NextResponse.json(
-      { error: "bad_request", detail: "Missing or invalid grid id in route param." },
+      apiErrorPayload({ error: "bad_request", detail: "Missing or invalid grid id in route param." }, 400),
       { status: 400 }
     );
   }
 
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
 
   const headers: HeadersInit = {
     Authorization: `Bearer ${access}`,
@@ -84,12 +85,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     res = await fetch(`${B}/api/grids/${id}/`, { headers, cache: "no-store" });
   } catch {
-    return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+    return NextResponse.json(apiErrorPayload({ error: "upstream_unreachable" }, 502), { status: 502 });
   }
 
   if (res.status === 401) {
     const refresh = await getRefreshToken();
-    if (!refresh) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+    if (!refresh) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
 
     const rf = await fetch(`${B}/api/auth/refresh/`, {
       method: "POST",
@@ -97,7 +98,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       body: JSON.stringify({ refresh }),
       cache: "no-store",
     });
-    if (!rf.ok) return NextResponse.json({ error: "refresh_failed" }, { status: 401 });
+    if (!rf.ok) return NextResponse.json(apiErrorPayload({ error: "refresh_failed" }, 401), { status: 401 });
 
     const { access: newAccess } = await rf.json();
     const retryHeaders: HeadersInit = {
@@ -107,7 +108,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     try {
       res = await fetch(`${B}/api/grids/${id}/`, { headers: retryHeaders, cache: "no-store" });
     } catch {
-      return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+      return NextResponse.json(apiErrorPayload({ error: "upstream_unreachable" }, 502), { status: 502 });
     }
   }
 
@@ -122,13 +123,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   if (!id || id === "undefined") {
     return NextResponse.json(
-      { error: "bad_request", detail: "Missing or invalid grid id in route param." },
+      apiErrorPayload({ error: "bad_request", detail: "Missing or invalid grid id in route param." }, 400),
       { status: 400 }
     );
   }
 
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
 
   const body = await req.text();
   const headers: HeadersInit = {
@@ -146,12 +147,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       cache: "no-store",
     });
   } catch {
-    return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+    return NextResponse.json(apiErrorPayload({ error: "upstream_unreachable" }, 502), { status: 502 });
   }
 
   if (res.status === 401) {
     const refresh = await getRefreshToken();
-    if (!refresh) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+    if (!refresh) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
 
     const rf = await fetch(`${B}/api/auth/refresh/`, {
       method: "POST",
@@ -159,7 +160,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       body: JSON.stringify({ refresh }),
       cache: "no-store",
     });
-    if (!rf.ok) return NextResponse.json({ error: "refresh_failed" }, { status: 401 });
+    if (!rf.ok) return NextResponse.json(apiErrorPayload({ error: "refresh_failed" }, 401), { status: 401 });
 
     const { access: newAccess } = await rf.json();
     const retryHeaders: HeadersInit = {
@@ -175,7 +176,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         cache: "no-store",
       });
     } catch {
-      return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+      return NextResponse.json(apiErrorPayload({ error: "upstream_unreachable" }, 502), { status: 502 });
     }
   }
 

@@ -1,4 +1,6 @@
 "use client";
+import { LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
@@ -11,7 +13,6 @@ import {
 } from "@/lib/screen-context";
 
 const TIME_RANGE_STATS_EVENT = "shift:time-range-stats";
-const TIME_RANGE_SAVED_EVENT = "shift:onboarding-time-range-saved";
 const PIE_COLORS = ["#3B82F6", "#8B5CF6", "#F59E0B", "#10B981", "#EF4444", "#EC4899"];
 
 type TimeRangeApi = {
@@ -100,22 +101,7 @@ function flattenApiError(value: unknown): string[] {
   return [];
 }
 
-function parseApiErrorMessage(raw: string, fallback: string): string {
-  const text = raw.trim();
-  if (!text) return fallback;
-  if (/^<!doctype html/i.test(text) || /^<html[\s>]/i.test(text)) {
-    if (process.env.NODE_ENV !== "production") console.error("Unexpected HTML API error:", text);
-    return fallback;
-  }
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    const flattened = flattenApiError(parsed);
-    if (flattened.length > 0) return flattened.join(" ");
-  } catch {
-    return text;
-  }
-  return fallback;
-}
+function parseApiErrorMessage(raw: string, fallback: string): string { return normalizeApiError(raw, fallback); }
 
 function parseTimeRangeDeleteError(raw: string, status: number, fallback: string): string {
   const text = raw.trim();
@@ -127,16 +113,13 @@ function parseTimeRangeDeleteError(raw: string, status: number, fallback: string
         referencing_cells?: Array<{ id?: unknown; name?: unknown }>;
       };
       if (status === 409 && parsed.code === "TIME_RANGE_IN_USE") {
-        const detail =
-          typeof parsed.detail === "string" && parsed.detail.trim()
-            ? parsed.detail.trim()
-            : "This time range cannot be deleted because it is used by existing cells.";
+        const detail = normalizeApiError(parsed);
         const cells = Array.isArray(parsed.referencing_cells)
           ? parsed.referencing_cells
               .map((cell) => String(cell?.name ?? cell?.id ?? "").trim())
               .filter(Boolean)
           : [];
-        return cells.length > 0 ? `${detail}\n\nUsed by:\n${cells.map((name) => `- ${name}`).join("\n")}` : detail;
+        return cells.length > 0 ? `${detail}\n\n${cells.map((name) => `- ${name}`).join("\n")}` : detail;
       }
     } catch {
       // Fall back to generic parsing below.
@@ -289,7 +272,7 @@ export default function TimeRangesEditor({
           const res = await fetch(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`, { cache: "no-store" });
           if (!res.ok) {
             const raw = await res.text().catch(() => "");
-            throw new Error(parseApiErrorMessage(raw, t("time_ranges.error_loading")));
+            throw new LocalizedApiError(parseApiErrorMessage(raw, t("time_ranges.error_loading")));
           }
           const data = await res.json().catch(() => ({}));
           return (Array.isArray(data) ? data : data.results ?? []) as TimeRangeApi[];
@@ -300,7 +283,7 @@ export default function TimeRangesEditor({
         .sort((a, b) => a.startOffsetMin - b.startOffsetMin || a.endOffsetMin - b.endOffsetMin || a.id - b.id);
       setRanges(sorted);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t("time_ranges.error_loading"));
+      setError(normalizeApiError(err, t("time_ranges.error_loading")));
     } finally {
       setLoading(false);
     }
@@ -374,7 +357,7 @@ export default function TimeRangesEditor({
       });
       if (!res.ok) {
         const raw = await res.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, t("grid_solver_settings.time_ranges_save_failed")));
+        throw new LocalizedApiError(parseApiErrorMessage(raw, t("grid_solver_settings.time_ranges_save_failed")));
       }
       const next = ranges.map((entry) =>
           entry.id === id
@@ -389,13 +372,8 @@ export default function TimeRangesEditor({
       );
       setRanges(next);
       cacheTimeRanges(next);
-      window.dispatchEvent(
-        new CustomEvent(TIME_RANGE_SAVED_EVENT, {
-          detail: { gridId: String(gridId), rangeId: String(id) },
-        }),
-      );
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t("grid_solver_settings.time_ranges_save_failed");
+      const msg = normalizeApiError(err, t("grid_solver_settings.time_ranges_save_failed"));
       setRanges((prev) => prev.map((entry) => (entry.id === id ? { ...entry, rowError: msg } : entry)));
     } finally {
       setBusy(id, false);
@@ -409,13 +387,13 @@ export default function TimeRangesEditor({
       const res = await fetch(`/api/time_ranges/${encodeURIComponent(String(id))}`, { method: "DELETE" });
       if (res.status !== 204) {
         const raw = await res.text().catch(() => "");
-        throw new Error(parseTimeRangeDeleteError(raw, res.status, t("grid_solver_settings.time_ranges_delete_failed")));
+        throw new LocalizedApiError(parseTimeRangeDeleteError(raw, res.status, t("grid_solver_settings.time_ranges_delete_failed")));
       }
       const next = ranges.filter((entry) => entry.id !== id);
       setRanges(next);
       cacheTimeRanges(next);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t("grid_solver_settings.time_ranges_delete_failed"));
+      setError(normalizeApiError(err, t("grid_solver_settings.time_ranges_delete_failed")));
     } finally {
       setBusy(id, false);
     }
@@ -441,7 +419,7 @@ export default function TimeRangesEditor({
       });
       if (!res.ok) {
         const raw = await res.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, t("grid_solver_settings.time_ranges_create_failed")));
+        throw new LocalizedApiError(parseApiErrorMessage(raw, t("grid_solver_settings.time_ranges_create_failed")));
       }
       const created = (await res.json().catch(() => null)) as TimeRangeApi | null;
       setNewName("");
@@ -460,7 +438,7 @@ export default function TimeRangesEditor({
         await load(true);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t("grid_solver_settings.time_ranges_create_failed"));
+      setError(normalizeApiError(err, t("grid_solver_settings.time_ranges_create_failed")));
     } finally {
       setCreating(false);
     }
@@ -571,18 +549,10 @@ export default function TimeRangesEditor({
   const cx = chartSize / 2;
   const cy = chartSize / 2;
   const outerRadius = 126;
-  const latestRangeId = useMemo(
-    () => ranges.reduce<number | null>((latest, row) => (latest == null || row.id > latest ? row.id : latest), null),
-    [ranges],
-  );
-
   const toAngle = (offsetMin: number) => (offsetMin / horizonSpanMin) * 360 - 90;
 
   return (
-    <div
-      className="flex h-full min-h-0 w-full max-w-full flex-col gap-3 overflow-hidden overflow-x-hidden pr-1 pb-1"
-      data-onboarding-target="time-ranges-panel"
-    >
+    <div className="flex h-full min-h-0 w-full max-w-full flex-col gap-3 overflow-hidden overflow-x-hidden pr-1 pb-1">
       <div className="shrink-0">
         <h2 className="text-lg font-semibold text-gray-900">{t("entity.time_ranges")}</h2>
       </div>
@@ -611,7 +581,6 @@ export default function TimeRangesEditor({
                     <div
                       key={`time-range-card-${row.id}`}
                       className="w-full min-w-0 overflow-x-hidden rounded border p-3"
-                      data-onboarding-target={row.id === latestRangeId ? "time-range-latest-card" : undefined}
                     >
                       <div className="flex items-center gap-2">
                         <input
@@ -695,14 +664,10 @@ export default function TimeRangesEditor({
               </PanelAsyncState>
             </div>
 
-            <div
-              className="mt-3 shrink-0 border-t bg-white pt-3"
-              data-onboarding-target="time-ranges-add-row"
-            >
+            <div className="mt-3 shrink-0 border-t bg-white pt-3">
               <div className="flex items-center gap-2">
                 <input
                   className="w-full min-w-0 flex-1 rounded border px-2 py-1.5 text-sm"
-                  data-onboarding-target="time-ranges-name-input"
                   placeholder={t("common.name")}
                   value={newName}
                   onChange={(event) => setNewName(event.target.value)}

@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 import { NextResponse } from 'next/server';
 import { getApiBaseUrl } from "@/lib/api-base";
 import { normalizePreferredLanguage } from "@/lib/language";
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
 
   if (!res.ok) {
     const text = await res.text().catch(() => 'Invalid credentials');
-    return NextResponse.json({ error: text }, { status: res.status || 401 });
+    return NextResponse.json(apiErrorPayload(text, res.status || 401), { status: res.status || 401 });
   }
 
   const { access, refresh } = await res.json();

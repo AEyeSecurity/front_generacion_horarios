@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 // app/api/categories/route.ts
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
@@ -34,12 +35,12 @@ export async function GET(req: Request) {
 
   if (r.status !== 401) {
     const txt = await r.text().catch(()=> "error");
-    return NextResponse.json({ error: txt }, { status: r.status });
+    return NextResponse.json(apiErrorPayload({ error: txt }, r.status), { status: r.status });
   }
 
   const refreshed = await refreshTokens();
   if ("error" in refreshed) {
-    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+    const out = NextResponse.json(apiErrorPayload({ error: refreshed.error }, 401), { status: 401 });
     out.cookies.delete(ACCESS); out.cookies.delete(REFRESH);
     return out;
   }
@@ -66,12 +67,12 @@ export async function POST(req: Request) {
   if (r.status !== 401) {
     const txt = await r.text().catch(()=> "");
     let detail: any = txt; try { detail = JSON.parse(txt); } catch {}
-    return NextResponse.json({ error: "validation", detail }, { status: r.status });
+    return NextResponse.json(apiErrorPayload({ error: "validation", detail }, r.status), { status: r.status });
   }
 
   const refreshed = await refreshTokens();
   if ("error" in refreshed) {
-    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+    const out = NextResponse.json(apiErrorPayload({ error: refreshed.error }, 401), { status: 401 });
     out.cookies.delete(ACCESS); out.cookies.delete(REFRESH);
     return out;
   }

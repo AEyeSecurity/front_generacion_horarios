@@ -1,0 +1,680 @@
+[
+  {
+    "file": "components\\auth\\GoogleSignInButton.tsx",
+    "line": 103,
+    "before": "error instanceof Error && error.message ? error.message : t(\"auth.google_init_failed\")",
+    "after": "normalizeApiError(error, t(\"auth.google_init_failed\"))"
+  },
+  {
+    "file": "components\\auth\\InviteTokenView.tsx",
+    "line": 379,
+    "before": "e instanceof Error ? e.message : t(\"invite_token.could_not_resolve\")",
+    "after": "normalizeApiError(e, t(\"invite_token.could_not_resolve\"))"
+  },
+  {
+    "file": "components\\auth\\InviteTokenView.tsx",
+    "line": 457,
+    "before": "e instanceof Error ? e.message : t(\"invite_token.could_not_accept\")",
+    "after": "normalizeApiError(e, t(\"invite_token.could_not_accept\"))"
+  },
+  {
+    "file": "components\\dialogs\\AddCategoryDialog.tsx",
+    "line": 79,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\AddCategoryDialog.tsx",
+    "line": 87,
+    "before": "e.message || t(\"add_category.failed_create\")",
+    "after": "normalizeApiError(e, t(\"add_category.failed_create\"))"
+  },
+  {
+    "file": "components\\dialogs\\AddCategoryDialog.tsx",
+    "line": 101,
+    "before": "new Error(t(\"errors.failed_status\", { status: res.status }))",
+    "after": "new ApiError(res.status, await res.text().catch(() => \"\"))"
+  },
+  {
+    "file": "components\\dialogs\\AddCategoryDialog.tsx",
+    "line": 107,
+    "before": "e?.message || t(\"add_category.failed_load_values\")",
+    "after": "normalizeApiError(e, t(\"add_category.failed_load_values\"))"
+  },
+  {
+    "file": "components\\dialogs\\AddCategoryDialog.tsx",
+    "line": 157,
+    "before": "e?.message || t(\"add_category.failed_add_value\")",
+    "after": "normalizeApiError(e, t(\"add_category.failed_add_value\"))"
+  },
+  {
+    "file": "components\\dialogs\\AddCategoryDialog.tsx",
+    "line": 213,
+    "before": "error?.message || t(\"category_dialog.failed_update_value\")",
+    "after": "normalizeApiError(error, t(\"category_dialog.failed_update_value\"))"
+  },
+  {
+    "file": "components\\dialogs\\AddCategoryDialog.tsx",
+    "line": 244,
+    "before": "e?.message || t(\"add_category.failed_delete_empty\")",
+    "after": "normalizeApiError(e, t(\"add_category.failed_delete_empty\"))"
+  },
+  {
+    "file": "components\\dialogs\\AddParticipantDialog.tsx",
+    "line": 94,
+    "before": "e.message || t(\"add_participant.failed_create\")",
+    "after": "normalizeApiError(e, t(\"add_participant.failed_create\"))"
+  },
+  {
+    "file": "components\\dialogs\\CategoryDialog.tsx",
+    "line": 56,
+    "before": "new Error(t(\"errors.failed_status\", { status: res.status }))",
+    "after": "new ApiError(res.status, await res.text().catch(() => \"\"))"
+  },
+  {
+    "file": "components\\dialogs\\CategoryDialog.tsx",
+    "line": 61,
+    "before": "e.message || t(\"category_dialog.error_loading_values\")",
+    "after": "normalizeApiError(e, t(\"category_dialog.error_loading_values\"))"
+  },
+  {
+    "file": "components\\dialogs\\CategoryDialog.tsx",
+    "line": 90,
+    "before": "e.message || t(\"category_dialog.failed_add_value\")",
+    "after": "normalizeApiError(e, t(\"category_dialog.failed_add_value\"))"
+  },
+  {
+    "file": "components\\dialogs\\CategoryDialog.tsx",
+    "line": 137,
+    "before": "error?.message || t(\"category_dialog.failed_update_value\")",
+    "after": "normalizeApiError(error, t(\"category_dialog.failed_update_value\"))"
+  },
+  {
+    "file": "components\\dialogs\\CreateCellDialog.tsx",
+    "line": 659,
+    "before": "new Error(`${t(\"create_cell.failed_load_data\")} (${response.status})`)",
+    "after": "new ApiError(response.status, await response.text().catch(() => \"\"))"
+  },
+  {
+    "file": "components\\dialogs\\CreateCellDialog.tsx",
+    "line": 700,
+    "before": "e?.message || t(\"create_cell.failed_load_data\")",
+    "after": "normalizeApiError(e, t(\"create_cell.failed_load_data\"))"
+  },
+  {
+    "file": "components\\dialogs\\CreateCellDialog.tsx",
+    "line": 938,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\CreateCellDialog.tsx",
+    "line": 940,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\CreateCellDialog.tsx",
+    "line": 1036,
+    "before": "e?.message || t(\"create_cell.failed_create\")",
+    "after": "normalizeApiError(e, t(\"create_cell.failed_create\"))"
+  },
+  {
+    "file": "components\\dialogs\\EditCellDialog.tsx",
+    "line": 852,
+    "before": "new Error(`${t(\"create_cell.failed_load_data\")} (${response.status})`)",
+    "after": "new ApiError(response.status, await response.text().catch(() => \"\"))"
+  },
+  {
+    "file": "components\\dialogs\\EditCellDialog.tsx",
+    "line": 1109,
+    "before": "error instanceof Error ? error.message : t(\"create_cell.failed_load_data\")",
+    "after": "normalizeApiError(error, t(\"create_cell.failed_load_data\"))"
+  },
+  {
+    "file": "components\\dialogs\\EditCellDialog.tsx",
+    "line": 1400,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\EditCellDialog.tsx",
+    "line": 1402,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\EditCellDialog.tsx",
+    "line": 1495,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\EditCellDialog.tsx",
+    "line": 1521,
+    "before": "e?.message || t(\"edit_cell.failed_update_cell\")",
+    "after": "normalizeApiError(e, t(\"edit_cell.failed_update_cell\"))"
+  },
+  {
+    "file": "components\\dialogs\\EditorInviteDialog.tsx",
+    "line": 108,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\EditorInviteDialog.tsx",
+    "line": 130,
+    "before": "e?.message || t(\"editor_invite.failed_send_invite\")",
+    "after": "normalizeApiError(e, t(\"editor_invite.failed_send_invite\"))"
+  },
+  {
+    "file": "components\\dialogs\\EditorInviteDialog.tsx",
+    "line": 142,
+    "before": "new Error(t(\"editor_invite.failed_load_current_user\"))",
+    "after": "new ApiError(who.status, await who.text().catch(() => \"\"))"
+  },
+  {
+    "file": "components\\dialogs\\EditorInviteDialog.tsx",
+    "line": 147,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\EditorInviteDialog.tsx",
+    "line": 157,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\EditorInviteDialog.tsx",
+    "line": 181,
+    "before": "e?.message || t(\"editor_invite.failed_link_participant\")",
+    "after": "normalizeApiError(e, t(\"editor_invite.failed_link_participant\"))"
+  },
+  {
+    "file": "components\\dialogs\\EditParticipantDialog.tsx",
+    "line": 155,
+    "before": "error instanceof Error ? error.message : t(\"edit_participant.failed_update\")",
+    "after": "normalizeApiError(error, t(\"edit_participant.failed_update\"))"
+  },
+  {
+    "file": "components\\dialogs\\EditRuleDialog.tsx",
+    "line": 60,
+    "before": "new Error(t(\"errors.failed_status\", { status: r.status }))",
+    "after": "new ApiError(r.status, await r.text().catch(() => \"\"))"
+  },
+  {
+    "file": "components\\dialogs\\EditTimeRangeDialog.tsx",
+    "line": 59,
+    "before": "new Error(t(\"errors.failed_status\", { status: r.status }))",
+    "after": "new ApiError(r.status, await r.text().catch(() => \"\"))"
+  },
+  {
+    "file": "components\\dialogs\\EditTimeRangeDialog.tsx",
+    "line": 63,
+    "before": "e?.message || t(\"edit_time_range.failed_update\")",
+    "after": "normalizeApiError(e, t(\"edit_time_range.failed_update\"))"
+  },
+  {
+    "file": "components\\dialogs\\InviteDialog.tsx",
+    "line": 508,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\dialogs\\InviteDialog.tsx",
+    "line": 548,
+    "before": "e instanceof Error ? e.message : t(\"invite_dialog.save_general_access_failed\")",
+    "after": "normalizeApiError(e, t(\"invite_dialog.save_general_access_failed\"))"
+  },
+  {
+    "file": "components\\dialogs\\InviteDialog.tsx",
+    "line": 617,
+    "before": "firstReason instanceof Error ? firstReason.message : \"\"",
+    "after": "normalizeApiError(firstReason, \"\")"
+  },
+  {
+    "file": "components\\grid\\GridSchedulePanel.tsx",
+    "line": 1085,
+    "before": "new Error(t(\"grid_schedule.could_not_load_published_status\", { status: res.status }))",
+    "after": "new ApiError(res.status, await res.text().catch(() => \"\"))"
+  },
+  {
+    "file": "components\\grid\\GridSettingsTabs.tsx",
+    "line": 1283,
+    "before": "error instanceof Error ? error.message : tt(\"grid_settings.load_failed\", \"Could not load grid settings.\")",
+    "after": "normalizeApiError(error, tt(\"grid_settings.load_failed\", \"Could not load grid settings.\"))"
+  },
+  {
+    "file": "components\\grid\\GridSettingsTabs.tsx",
+    "line": 1409,
+    "before": "error instanceof Error\r\n            ? error.message\r\n            : tt(\"grid_settings.draft_structure_apply_failed\", \"Could not update draft structure.\")",
+    "after": "normalizeApiError(error, tt(\"grid_settings.draft_structure_apply_failed\", \"Could not update draft structure.\"))"
+  },
+  {
+    "file": "components\\grid\\GridSettingsTabs.tsx",
+    "line": 1462,
+    "before": "error instanceof Error ? error.message : tt(\"grid_settings.save_principal_failed\", \"Could not save principal settings.\")",
+    "after": "normalizeApiError(error, tt(\"grid_settings.save_principal_failed\", \"Could not save principal settings.\"))"
+  },
+  {
+    "file": "components\\grid\\GridSettingsTabs.tsx",
+    "line": 1488,
+    "before": "error instanceof Error\r\n          ? error.message\r\n          : tt(\"grid_settings.draft_structure_preview_failed\", \"Could not preview draft structure changes.\")",
+    "after": "normalizeApiError(error, tt(\"grid_settings.draft_structure_preview_failed\", \"Could not preview draft structure changes.\"))"
+  },
+  {
+    "file": "components\\grid\\GridSettingsTabs.tsx",
+    "line": 1699,
+    "before": "error instanceof Error ? error.message : tt(\"grid_settings.save_principal_failed\", \"Could not save principal settings.\")",
+    "after": "normalizeApiError(error, tt(\"grid_settings.save_principal_failed\", \"Could not save principal settings.\"))"
+  },
+  {
+    "file": "components\\grid\\GridSettingsTabs.tsx",
+    "line": 1751,
+    "before": "error instanceof Error ? error.message : tt(\"grid_settings.save_solver_failed\", \"Could not save solver settings.\")",
+    "after": "normalizeApiError(error, tt(\"grid_settings.save_solver_failed\", \"Could not save solver settings.\"))"
+  },
+  {
+    "file": "components\\grid\\GridSettingsTabs.tsx",
+    "line": 1789,
+    "before": "error instanceof Error ? error.message : tt(\"grid_settings.save_participants_failed\", \"Could not save participant settings.\")",
+    "after": "normalizeApiError(error, tt(\"grid_settings.save_participants_failed\", \"Could not save participant settings.\"))"
+  },
+  {
+    "file": "components\\grid\\GridSettingsTabs.tsx",
+    "line": 1828,
+    "before": "error instanceof Error ? error.message : tt(\"grid_settings.delete_grid_failed\", \"Could not delete grid.\")",
+    "after": "normalizeApiError(error, tt(\"grid_settings.delete_grid_failed\", \"Could not delete grid.\"))"
+  },
+  {
+    "file": "components\\grid\\GridSolverSettingsForm.tsx",
+    "line": 683,
+    "before": "error instanceof Error ? error.message : tt(\"time_ranges.error_loading\", \"Could not load time ranges.\")",
+    "after": "normalizeApiError(error, tt(\"time_ranges.error_loading\", \"Could not load time ranges.\"))"
+  },
+  {
+    "file": "components\\grid\\GridSolverSettingsForm.tsx",
+    "line": 757,
+    "before": "error instanceof Error ? error.message : tt(\"grid_solver_settings.load_failed\", \"Could not load settings.\")",
+    "after": "normalizeApiError(error, tt(\"grid_solver_settings.load_failed\", \"Could not load settings.\"))"
+  },
+  {
+    "file": "components\\grid\\GridSolverSettingsForm.tsx",
+    "line": 838,
+    "before": "error instanceof Error ? error.message : tt(\"grid_solver_settings.save_failed\", \"Could not save settings.\")",
+    "after": "normalizeApiError(error, tt(\"grid_solver_settings.save_failed\", \"Could not save settings.\"))"
+  },
+  {
+    "file": "components\\grid\\GridSolverSettingsForm.tsx",
+    "line": 887,
+    "before": "error instanceof Error ? error.message : tt(\"grid_solver_settings.save_failed\", \"Could not save settings.\")",
+    "after": "normalizeApiError(error, tt(\"grid_solver_settings.save_failed\", \"Could not save settings.\"))"
+  },
+  {
+    "file": "components\\grid\\GridSolverSettingsForm.tsx",
+    "line": 928,
+    "before": "error instanceof Error ? error.message : tt(\"grid_solver_settings.heatmap_save_failed\", \"Could not save day heatmap.\")",
+    "after": "normalizeApiError(error, tt(\"grid_solver_settings.heatmap_save_failed\", \"Could not save day heatmap.\"))"
+  },
+  {
+    "file": "components\\grid\\GridSolverSettingsForm.tsx",
+    "line": 965,
+    "before": "error instanceof Error ? error.message : tt(\"grid_solver_settings.time_ranges_create_failed\", \"Could not create time range.\")",
+    "after": "normalizeApiError(error, tt(\"grid_solver_settings.time_ranges_create_failed\", \"Could not create time range.\"))"
+  },
+  {
+    "file": "components\\grid\\GridSolverSettingsForm.tsx",
+    "line": 1019,
+    "before": "error instanceof Error ? error.message : tt(\"grid_solver_settings.time_ranges_save_failed\", \"Could not save time range.\")",
+    "after": "normalizeApiError(error, tt(\"grid_solver_settings.time_ranges_save_failed\", \"Could not save time range.\"))"
+  },
+  {
+    "file": "components\\grid\\GridSolverSettingsForm.tsx",
+    "line": 1047,
+    "before": "error instanceof Error ? error.message : tt(\"grid_solver_settings.time_ranges_delete_failed\", \"Could not delete time range.\")",
+    "after": "normalizeApiError(error, tt(\"grid_solver_settings.time_ranges_delete_failed\", \"Could not delete time range.\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 2655,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 2787,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 3099,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 3132,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 3175,
+    "before": "error instanceof Error ? error.message : t(\"solve_overlay.placement_preview_failed\")",
+    "after": "normalizeApiError(error, t(\"solve_overlay.placement_preview_failed\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 3318,
+    "before": "error instanceof Error ? error.message : t(\"solve_overlay.could_not_load_published_versions\")",
+    "after": "normalizeApiError(error, t(\"solve_overlay.could_not_load_published_versions\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 3363,
+    "before": "new Error(t(\"solve_overlay.failed_load_comments_status\", { status: r.status }))",
+    "after": "new ApiError(r.status, await r.text().catch(() => \"\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 4033,
+    "before": "err instanceof Error ? err.message : t(\"solve_overlay.precheck_could_not_run\")",
+    "after": "normalizeApiError(err, t(\"solve_overlay.precheck_could_not_run\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 4220,
+    "before": "e?.message || t(\"solve_overlay.solver_error\")",
+    "after": "normalizeApiError(e, t(\"solve_overlay.solver_error\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 4288,
+    "before": "e?.message || t(\"solve_overlay.could_not_choose_candidate\")",
+    "after": "normalizeApiError(e, t(\"solve_overlay.could_not_choose_candidate\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 4329,
+    "before": "e?.message || t(\"solve_overlay.could_not_reject_candidates\")",
+    "after": "normalizeApiError(e, t(\"solve_overlay.could_not_reject_candidates\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 4879,
+    "before": "error instanceof Error && error.message\r\n            ? error.message\r\n            : t(\"grid_schedule.visual_order_save_failed\")",
+    "after": "normalizeApiError(error, t(\"grid_schedule.visual_order_save_failed\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 5949,
+    "before": "error instanceof Error ? error.message : t(\"solve_overlay.could_not_export_version\")",
+    "after": "normalizeApiError(error, t(\"solve_overlay.could_not_export_version\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 5979,
+    "before": "error instanceof Error ? error.message : t(\"solve_overlay.could_not_restore_published_version\")",
+    "after": "normalizeApiError(error, t(\"solve_overlay.could_not_restore_published_version\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 6770,
+    "before": "e instanceof Error ? e.message : t(\"solve_overlay.could_not_add_comment\")",
+    "after": "normalizeApiError(e, t(\"solve_overlay.could_not_add_comment\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 6827,
+    "before": "e instanceof Error ? e.message : t(\"solve_overlay.could_not_update_placement_lock\")",
+    "after": "normalizeApiError(e, t(\"solve_overlay.could_not_update_placement_lock\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 6861,
+    "before": "error instanceof Error ? error.message : t(\"break_dialog.update_failed\")",
+    "after": "normalizeApiError(error, t(\"break_dialog.update_failed\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 7136,
+    "before": "error instanceof Error ? error.message : t(\"solve_overlay.could_not_remove_participant\")",
+    "after": "normalizeApiError(error, t(\"solve_overlay.could_not_remove_participant\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 7181,
+    "before": "error instanceof Error ? error.message : t(\"solve_overlay.could_not_remove_placement\")",
+    "after": "normalizeApiError(error, t(\"solve_overlay.could_not_remove_placement\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 7471,
+    "before": "error instanceof Error ? error.message : t(\"grid_schedule.could_not_place_cell\")",
+    "after": "normalizeApiError(error, t(\"grid_schedule.could_not_place_cell\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 7539,
+    "before": "error instanceof Error ? error.message : t(\"grid_schedule.could_not_place_cell\")",
+    "after": "normalizeApiError(error, t(\"grid_schedule.could_not_place_cell\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 7593,
+    "before": "error instanceof Error ? error.message : t(\"grid_schedule.could_not_place_cell\")",
+    "after": "normalizeApiError(error, t(\"grid_schedule.could_not_place_cell\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 7724,
+    "before": "error instanceof Error\r\n            ? error.message\r\n            : formatPlacementPreviewMessage(previewItem, t(\"grid_schedule.could_not_move_placement\"))",
+    "after": "normalizeApiError(error, formatPlacementPreviewMessage(previewItem, t(\"grid_schedule.could_not_move_placement\")))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 7812,
+    "before": "error instanceof Error ? error.message : t(\"solve_overlay.could_not_create_blockage\")",
+    "after": "normalizeApiError(error, t(\"solve_overlay.could_not_create_blockage\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 7886,
+    "before": "error instanceof Error ? error.message : t(\"solve_overlay.could_not_delete_blockage\")",
+    "after": "normalizeApiError(error, t(\"solve_overlay.could_not_delete_blockage\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 7903,
+    "before": "error instanceof Error ? error.message : t(\"solve_overlay.could_not_update_blockage\")",
+    "after": "normalizeApiError(error, t(\"solve_overlay.could_not_update_blockage\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 8134,
+    "before": "new Error(t(\"solve_overlay.could_not_assign_participant\"))",
+    "after": "new ApiError(res.status, await res.text().catch(() => \"\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 8148,
+    "before": "error instanceof Error ? error.message : t(\"solve_overlay.could_not_assign_participant\")",
+    "after": "normalizeApiError(error, t(\"solve_overlay.could_not_assign_participant\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 8857,
+    "before": "e?.message || t(\"solve_overlay.could_not_publish_schedule\")",
+    "after": "normalizeApiError(e, t(\"solve_overlay.could_not_publish_schedule\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 9110,
+    "before": "error instanceof Error ? error.message : t(\"solve_overlay.could_not_delete_blockage\")",
+    "after": "normalizeApiError(error, t(\"solve_overlay.could_not_delete_blockage\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 9927,
+    "before": "error instanceof Error ? error.message : t(\"solve_overlay.could_not_delete_blockage\")",
+    "after": "normalizeApiError(error, t(\"solve_overlay.could_not_delete_blockage\"))"
+  },
+  {
+    "file": "components\\grid\\SolveOverlay.tsx",
+    "line": 9945,
+    "before": "error instanceof Error ? error.message : t(\"solve_overlay.could_not_delete_blockage\")",
+    "after": "normalizeApiError(error, t(\"solve_overlay.could_not_delete_blockage\"))"
+  },
+  {
+    "file": "components\\grid\\TimeRangesEditor.tsx",
+    "line": 287,
+    "before": "err instanceof Error ? err.message : t(\"time_ranges.error_loading\")",
+    "after": "normalizeApiError(err, t(\"time_ranges.error_loading\"))"
+  },
+  {
+    "file": "components\\grid\\TimeRangesEditor.tsx",
+    "line": 382,
+    "before": "err instanceof Error ? err.message : t(\"grid_solver_settings.time_ranges_save_failed\")",
+    "after": "normalizeApiError(err, t(\"grid_solver_settings.time_ranges_save_failed\"))"
+  },
+  {
+    "file": "components\\grid\\TimeRangesEditor.tsx",
+    "line": 402,
+    "before": "err instanceof Error ? err.message : t(\"grid_solver_settings.time_ranges_delete_failed\")",
+    "after": "normalizeApiError(err, t(\"grid_solver_settings.time_ranges_delete_failed\"))"
+  },
+  {
+    "file": "components\\grid\\TimeRangesEditor.tsx",
+    "line": 447,
+    "before": "err instanceof Error ? err.message : t(\"grid_solver_settings.time_ranges_create_failed\")",
+    "after": "normalizeApiError(err, t(\"grid_solver_settings.time_ranges_create_failed\"))"
+  },
+  {
+    "file": "components\\layout\\TimeRangesPanel.tsx",
+    "line": 160,
+    "before": "error instanceof Error ? error.message : t(\"time_ranges.error_loading\")",
+    "after": "normalizeApiError(error, t(\"time_ranges.error_loading\"))"
+  },
+  {
+    "file": "components\\layout\\TimeRangesPanel.tsx",
+    "line": 265,
+    "before": "error instanceof Error ? error.message : t(\"grid_solver_settings.time_ranges_create_failed\")",
+    "after": "normalizeApiError(error, t(\"grid_solver_settings.time_ranges_create_failed\"))"
+  },
+  {
+    "file": "components\\layout\\TimeRangesPanel.tsx",
+    "line": 324,
+    "before": "error instanceof Error ? error.message : t(\"grid_solver_settings.time_ranges_save_failed\")",
+    "after": "normalizeApiError(error, t(\"grid_solver_settings.time_ranges_save_failed\"))"
+  },
+  {
+    "file": "components\\layout\\TimeRangesPanel.tsx",
+    "line": 346,
+    "before": "error instanceof Error ? error.message : t(\"grid_solver_settings.time_ranges_delete_failed\")",
+    "after": "normalizeApiError(error, t(\"grid_solver_settings.time_ranges_delete_failed\"))"
+  },
+  {
+    "file": "components\\panels\\CategoriesPanel.tsx",
+    "line": 50,
+    "before": "new Error(t(\"errors.failed_status\", { status: res.status }))",
+    "after": "new ApiError(res.status, await res.text().catch(() => \"\"))"
+  },
+  {
+    "file": "components\\panels\\CategoriesPanel.tsx",
+    "line": 58,
+    "before": "e instanceof Error ? e.message : \"Error\"",
+    "after": "normalizeApiError(e, \"Error\")"
+  },
+  {
+    "file": "components\\panels\\CategoriesPanel.tsx",
+    "line": 140,
+    "before": "error instanceof Error ? error.message : t(\"category_panel.failed_toggle_visibility\")",
+    "after": "normalizeApiError(error, t(\"category_panel.failed_toggle_visibility\"))"
+  },
+  {
+    "file": "components\\panels\\ParticipantsPanel.tsx",
+    "line": 77,
+    "before": "new Error(t(\"errors.failed_status\", { status: response.status }))",
+    "after": "new ApiError(response.status, await response.text().catch(() => \"\"))"
+  },
+  {
+    "file": "components\\panels\\ParticipantsPanel.tsx",
+    "line": 102,
+    "before": "e instanceof Error ? e.message : \"Error\"",
+    "after": "normalizeApiError(e, \"Error\")"
+  },
+  {
+    "file": "components\\participants\\ParticipantDetailContent.tsx",
+    "line": 323,
+    "before": "new Error(t(\"participant_detail.failed_status\", { status: res.status }))",
+    "after": "new ApiError(res.status, await res.text().catch(() => \"\"))"
+  },
+  {
+    "file": "components\\participants\\ParticipantDetailContent.tsx",
+    "line": 325,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "components\\participants\\ParticipantDetailContent.tsx",
+    "line": 442,
+    "before": "new Error(t(\"participant_detail.failed_fetch_rules_status\", { status: res.status }))",
+    "after": "new ApiError(res.status, await res.text().catch(() => \"\"))"
+  },
+  {
+    "file": "components\\participants\\ParticipantScheduleOverlay.tsx",
+    "line": 553,
+    "before": "new Error(t(\"solve_overlay.failed_load_comments_status\", { status: res.status }))",
+    "after": "new ApiError(res.status, await res.text().catch(() => \"\"))"
+  },
+  {
+    "file": "components\\participants\\ParticipantScheduleOverlay.tsx",
+    "line": 896,
+    "before": "error instanceof Error ? error.message : t(\"solve_overlay.could_not_add_comment\")",
+    "after": "normalizeApiError(error, t(\"solve_overlay.could_not_add_comment\"))"
+  },
+  {
+    "file": "app\\(public)\\password-reset\\page.tsx",
+    "line": 68,
+    "before": "submitError instanceof Error ? submitError.message : t(\"auth.request_process_failed\")",
+    "after": "normalizeApiError(submitError, t(\"auth.request_process_failed\"))"
+  },
+  {
+    "file": "app\\(public)\\verify-email\\confirm\\page.tsx",
+    "line": 74,
+    "before": "err instanceof Error ? err.message : t(\"verify_email_confirm.verification_failed\")",
+    "after": "normalizeApiError(err, t(\"verify_email_confirm.verification_failed\"))"
+  },
+  {
+    "file": "app\\(site)\\dashboard\\ClientRecentProjects.tsx",
+    "line": 21,
+    "before": "new Error(`${res.status}`)",
+    "after": "new ApiError(res.status, await res.text().catch(() => \"\"))"
+  },
+  {
+    "file": "app\\(site)\\dashboard\\ClientRecentProjects.tsx",
+    "line": 30,
+    "before": "err.message",
+    "after": "normalizeApiError(err)"
+  },
+  {
+    "file": "app\\grid\\new\\page.tsx",
+    "line": 280,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "app\\grid\\new\\page.tsx",
+    "line": 511,
+    "before": "Error",
+    "after": "LocalizedApiError"
+  },
+  {
+    "file": "app\\grid\\new\\page.tsx",
+    "line": 520,
+    "before": "error instanceof Error ? error.message : tt(\"solver_wizard.create_failed\", \"Could not create grid.\")",
+    "after": "normalizeApiError(error, tt(\"solver_wizard.create_failed\", \"Could not create grid.\"))"
+  }
+]

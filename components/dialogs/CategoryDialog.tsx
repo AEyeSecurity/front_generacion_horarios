@@ -1,4 +1,6 @@
 "use client";
+import { ApiError, LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import * as React from "react";
 import {
@@ -15,12 +17,7 @@ import { useI18n } from "@/lib/use-i18n";
 import { invalidateGridResource, invalidateGridScreenContext } from "@/lib/screen-context";
 const CATEGORY_VALUES_UPDATED_EVENT = "shift:category-values-updated";
 
-function safeApiText(raw: string, fallback: string) {
-  const trimmed = raw.trim();
-  if (!trimmed) return fallback;
-  if (/^<!doctype/i.test(trimmed) || /^<html/i.test(trimmed)) return fallback;
-  return trimmed;
-}
+function safeApiText(raw: string, fallback: string) { return normalizeApiError(raw, fallback); }
 
 type Category = { id: number; name: string };
 type CategoryValue = { id: number; name: string; category: number };
@@ -56,12 +53,12 @@ export default function CategoryDialog({
     setErr(null);
     try {
       const res = await fetch(`/api/category_values?category=${catId}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(t("errors.failed_status", { status: res.status }));
+      if (!res.ok) throw new ApiError(res.status, await res.text().catch(() => ""));
       const data = await res.json();
       const items = Array.isArray(data) ? data : data.results ?? [];
       setValues(items.filter((v: any) => Number(v.category) === Number(catId)));
     } catch (e: any) {
-      setErr(e.message || t("category_dialog.error_loading_values"));
+      setErr(normalizeApiError(e, t("category_dialog.error_loading_values")));
     } finally {
       setLoading(false);
     }
@@ -82,7 +79,7 @@ export default function CategoryDialog({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(safeApiText(txt, t("category_dialog.failed_add_value")));
+        throw new LocalizedApiError(safeApiText(txt, t("category_dialog.failed_add_value")));
       }
       setNewValue("");
       await load();
@@ -90,7 +87,7 @@ export default function CategoryDialog({
       invalidateGridScreenContext(gridId, "draft");
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CATEGORY_VALUES_UPDATED_EVENT));
     } catch (e: any) {
-      setErr(e.message || t("category_dialog.failed_add_value"));
+      setErr(normalizeApiError(e, t("category_dialog.failed_add_value")));
     } finally {
       setAdding(false);
     }
@@ -128,7 +125,7 @@ export default function CategoryDialog({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(safeApiText(txt, `Failed (${res.status})`));
+        throw new LocalizedApiError(safeApiText(txt, `Failed (${res.status})`));
       }
       setEditingValueId(null);
       setEditingValueName("");
@@ -137,7 +134,7 @@ export default function CategoryDialog({
       invalidateGridScreenContext(gridId, "draft");
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CATEGORY_VALUES_UPDATED_EVENT));
     } catch (error: any) {
-      setErr(error?.message || t("category_dialog.failed_update_value"));
+      setErr(normalizeApiError(error, t("category_dialog.failed_update_value")));
     } finally {
       setUpdatingValueId(null);
     }

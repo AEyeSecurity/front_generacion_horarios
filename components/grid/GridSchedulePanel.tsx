@@ -1,4 +1,6 @@
 "use client";
+import { ApiError, LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Redo2, RotateCcw, Trash2, Undo2 } from "lucide-react";
@@ -349,47 +351,7 @@ const parseClockToMin = (value: string) => {
   return hour * 60 + minute;
 };
 
-const normalizeApiError = (raw: unknown, fallback: string): string => {
-  if (raw == null) return fallback;
-  if (typeof raw === "string") {
-    const text = raw.trim();
-    if (!text) return fallback;
-    try {
-      const parsed = JSON.parse(text);
-      return normalizeApiError(parsed, fallback);
-    } catch {
-      const normalized = text.toLowerCase();
-      if (
-        normalized.startsWith("<!doctype html") ||
-        normalized.startsWith("<html") ||
-        normalized.startsWith("&lt;!doctype html") ||
-        normalized.startsWith("&lt;html")
-      ) {
-        return fallback;
-      }
-      if (
-        normalized.includes("schedule, source_cell, bundle, day_index, start_slot must make a unique set") ||
-        normalized.includes("must make a unique set")
-      ) {
-        return fallback;
-      }
-      if (text.toLowerCase().includes("overlap")) {
-        return fallback;
-      }
-      return text;
-    }
-  }
-  if (Array.isArray(raw)) {
-    const merged: string = raw.map((item) => normalizeApiError(item, "")).filter(Boolean).join(" ");
-    return merged || fallback;
-  }
-  if (typeof raw === "object") {
-    const values = Object.values(raw as Record<string, unknown>);
-    const merged: string = values.map((item) => normalizeApiError(item, "")).filter(Boolean).join(" ");
-    return merged || fallback;
-  }
-  return fallback;
-};
+;
 
 const EMPTY_DRAFT_HISTORY: DraftHistory = {
   cursor: 0,
@@ -1120,7 +1082,7 @@ export default function GridSchedulePanel({
     if (res.status === 404) return null;
 
     if (!res.ok) {
-      throw new Error(t("grid_schedule.could_not_load_published_status", { status: res.status }));
+      throw new ApiError(res.status, await res.text().catch(() => ""));
     }
 
     const data = await res.json().catch(() => null);
@@ -2064,7 +2026,7 @@ export default function GridSchedulePanel({
         if (!res.ok) {
           const raw = await res.text().catch(() => "");
           const fallback = `${t("grid_schedule.history_load_error")} (${res.status})`;
-          throw new Error(normalizeApiError(raw, fallback));
+          throw new LocalizedApiError(normalizeApiError(raw, fallback));
         }
         const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         const historyRaw = data?.draft_history ?? data?.history ?? data;
@@ -2073,7 +2035,7 @@ export default function GridSchedulePanel({
       } catch (error: unknown) {
         setDraftHistory(EMPTY_DRAFT_HISTORY);
         setHistoryError(
-          normalizeApiError(error instanceof Error ? error.message : "", t("grid_schedule.history_load_error")),
+          normalizeApiError(error, t("grid_schedule.history_load_error")),
         );
       }
     })().finally(() => {
@@ -2139,7 +2101,7 @@ export default function GridSchedulePanel({
         if (!res.ok) {
           const raw = await res.text().catch(() => "");
           const fallback = `${t("grid_schedule.history_apply_error")} (${res.status})`;
-          throw new Error(normalizeApiError(raw, fallback));
+          throw new LocalizedApiError(normalizeApiError(raw, fallback));
         }
         const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         const historyRaw = readDraftHistoryPayload(data);
@@ -2153,7 +2115,7 @@ export default function GridSchedulePanel({
         refreshAfterDraftMutation();
       } catch (error: unknown) {
         setHistoryError(
-          normalizeApiError(error instanceof Error ? error.message : "", t("grid_schedule.history_apply_error")),
+          normalizeApiError(error, t("grid_schedule.history_apply_error")),
         );
       } finally {
         setHistoryBusy(false);
@@ -2393,7 +2355,7 @@ export default function GridSchedulePanel({
           });
           if (!res.ok) {
             const raw = await res.text().catch(() => "");
-            throw new Error(
+            throw new LocalizedApiError(
               normalizeApiError(
                 raw || `${t("grid_schedule.could_not_remove_participant")} (${res.status})`,
                 t("grid_schedule.could_not_remove_participant"),
@@ -2416,7 +2378,7 @@ export default function GridSchedulePanel({
         });
         if (!res.ok) {
           const raw = await res.text().catch(() => "");
-          throw new Error(
+          throw new LocalizedApiError(
             normalizeApiError(
               raw || `${t("grid_schedule.could_not_remove_participant")} (${res.status})`,
               t("grid_schedule.could_not_remove_participant"),
@@ -2426,7 +2388,7 @@ export default function GridSchedulePanel({
       } catch (error: unknown) {
         setSchedulePlacements(previousPlacements);
         setParticipantEditError(
-          normalizeApiError(error instanceof Error ? error.message : "", t("grid_schedule.could_not_remove_participant")),
+          normalizeApiError(error, t("grid_schedule.could_not_remove_participant")),
         );
       } finally {
         setParticipantEditBusy(false);
@@ -2479,7 +2441,7 @@ export default function GridSchedulePanel({
         });
         if (!res.ok) {
           const raw = await res.text().catch(() => "");
-          throw new Error(
+          throw new LocalizedApiError(
             normalizeApiError(
               raw || `${t("grid_schedule.could_not_move_placement")} (${res.status})`,
               t("grid_schedule.could_not_move_placement"),
@@ -2489,7 +2451,7 @@ export default function GridSchedulePanel({
       } catch (error: unknown) {
         updatePlacementInState(payload.placementId, () => originalPlacement);
         setParticipantEditError(
-          normalizeApiError(error instanceof Error ? error.message : "", t("grid_schedule.could_not_move_placement")),
+          normalizeApiError(error, t("grid_schedule.could_not_move_placement")),
         );
       } finally {
         setParticipantEditBusy(false);
@@ -2591,7 +2553,7 @@ export default function GridSchedulePanel({
           if (!patchRes.ok) {
             const raw = await patchRes.text().catch(() => "");
             updatePlacementInState(placementId, () => previousPlacement);
-            throw new Error(
+            throw new LocalizedApiError(
               normalizeApiError(
                 raw || `${t("grid_schedule.could_not_place_cell")} (${patchRes.status})`,
                 t("grid_schedule.could_not_place_cell"),
@@ -2659,7 +2621,7 @@ export default function GridSchedulePanel({
                 );
                 if (!patchRes.ok) {
                   const patchRaw = await patchRes.text().catch(() => "");
-                  throw new Error(
+                  throw new LocalizedApiError(
                     normalizeApiError(
                       patchRaw || `${t("grid_schedule.could_not_place_cell")} (${patchRes.status})`,
                       t("grid_schedule.could_not_place_cell"),
@@ -2673,7 +2635,7 @@ export default function GridSchedulePanel({
                 return;
               }
             }
-            throw new Error(
+            throw new LocalizedApiError(
               normalizeApiError(
                 raw || `${t("grid_schedule.could_not_place_cell")} (${res.status})`,
                 t("grid_schedule.could_not_place_cell"),
@@ -2696,7 +2658,7 @@ export default function GridSchedulePanel({
         }
       } catch (error: unknown) {
         setParticipantEditError(
-          normalizeApiError(error instanceof Error ? error.message : "", t("grid_schedule.could_not_place_cell")),
+          normalizeApiError(error, t("grid_schedule.could_not_place_cell")),
         );
       } finally {
         setParticipantEditBusy(false);

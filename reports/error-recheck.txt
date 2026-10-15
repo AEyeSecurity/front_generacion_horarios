@@ -1,0 +1,499 @@
+﻿lib\auth-error-messages.ts:9:  const fallback = context === "login" ? t("auth.error.login_failed_guidance")
+lib\auth-error-messages.ts:12:    : t("auth.error.register_failed_guidance");
+lib\network-auth.ts:38:  toast.error(networkOfflineMessage(), {
+lib\network-auth.ts:71:  toast.error(sessionExpiredMessage(), { id: "session-expired" });
+lib\network-auth.ts:90:  return error instanceof TypeError || (error instanceof Error && /failed to fetch|network/i.test(error.message));
+components\forms\LoginForm.tsx:20:    setError(null);
+components\forms\LoginForm.tsx:29:      setError(getGuidedAuthErrorMessage(payload, res.status, t, "login"));
+components\forms\RegisterForm.tsx:28:    setError(null);
+components\forms\RegisterForm.tsx:30:      setError(passwordPolicy.valid ? t("auth.passwords_do_not_match") : t("auth.error.password_policy_unmet"));
+components\forms\RegisterForm.tsx:55:        setError(getGuidedAuthErrorMessage(payload, res.status, t, "register"));
+components\forms\RegisterForm.tsx:64:      setError(t("auth.error.register_failed_guidance"));
+components\auth\GoogleSignInButton.tsx:43:    s.onerror = () => setErr(t("auth.google_sdk_load_failed"));
+components\auth\GoogleSignInButton.tsx:51:      setErr(t("auth.google_sdk_unavailable"));
+components\auth\GoogleSignInButton.tsx:55:      setErr(t("auth.google_client_id_missing"));
+components\auth\GoogleSignInButton.tsx:66:            setErr(t("auth.google_credential_missing"));
+components\auth\GoogleSignInButton.tsx:82:              console.error("/api/auth/google error", j);
+components\auth\GoogleSignInButton.tsx:86:            setErr(String(code));
+components\auth\GoogleSignInButton.tsx:103:      setErr(normalizeApiError(error, t("auth.google_init_failed")));
+components\participants\ParticipantScheduleOverlay.tsx:318:      if (customEvent.detail?.gridId !== String(gridId)) return;
+components\participants\ParticipantScheduleOverlay.tsx:319:      const nextMode = customEvent.detail?.mode === "published" ? "published" : "draft";
+components\participants\ParticipantScheduleOverlay.tsx:560:            const message = raw?.message ?? raw?.text ?? raw?.comment ?? "";
+components\participants\ParticipantScheduleOverlay.tsx:724:      setCommentError(null);
+components\participants\ParticipantScheduleOverlay.tsx:758:      setCommentError((prev) => (prev == null ? prev : null));
+components\participants\ParticipantScheduleOverlay.tsx:838:      setCommentError(t("solve_overlay.comments_unavailable"));
+components\participants\ParticipantScheduleOverlay.tsx:842:    setCommentError(null);
+components\participants\ParticipantScheduleOverlay.tsx:887:        text: String(raw.text ?? raw.message ?? commentDraft.trim()),
+components\participants\ParticipantScheduleOverlay.tsx:896:      setCommentError(normalizeApiError(error, t("solve_overlay.could_not_add_comment")));
+components\participants\ParticipantScheduleOverlay.tsx:1094:                  setCommentError(null);
+components\participants\ParticipantScheduleOverlay.tsx:1164:                    setCommentError(null);
+components\participants\ParticipantScheduleOverlay.tsx:1191:                        setCommentError(null);
+components\auth\InviteTokenView.tsx:165:    message: readString(raw.message),
+components\auth\InviteTokenView.tsx:196:    error: readString(raw.error),
+components\auth\InviteTokenView.tsx:197:    detail: readString(raw.detail),
+components\auth\InviteTokenView.tsx:241:      data.message ||
+components\auth\InviteTokenView.tsx:254:  const message = String((obj ? readString(obj.error) : null) ?? (obj ? readString(obj.detail) : null) ?? "").toLowerCase();
+components\auth\InviteTokenView.tsx:341:      setError(null);
+components\auth\InviteTokenView.tsx:371:            if (!cancelled) setError(t("invite_token.could_not_load"));
+components\auth\InviteTokenView.tsx:374:          setError(resolveErrorMessage(resolveRaw, t("invite_token.invalid_or_expired")));
+components\auth\InviteTokenView.tsx:379:        if (!cancelled) setError(normalizeApiError(e, t("invite_token.could_not_resolve")));
+components\auth\InviteTokenView.tsx:411:      setError(t("invite_token.use_invited_account", { email: invitedEmail }));
+components\auth\InviteTokenView.tsx:415:    setError(null);
+components\auth\InviteTokenView.tsx:457:      setError(normalizeApiError(e, t("invite_token.could_not_accept")));
+components\auth\InviteTokenView.tsx:613:          {resolved.message && <div><span className="text-gray-500">{t("invite_token.message")}</span> {resolved.message}</div>}
+components\participants\ParticipantDetailContent.tsx:981:        toast.error(humanizeAvailabilityRuleError(e, "Could not resize rule."));
+components\participants\ParticipantDetailContent.tsx:1129:          toast.error(humanizeAvailabilityRuleError(e, "Could not delete rule."));
+components\participants\ParticipantDetailContent.tsx:1155:        toast.error(humanizeAvailabilityRuleError(e, "Could not move rule."));
+components\providers\I18nProvider.tsx:41:      if (customEvent.detail?.language) {
+components\providers\I18nProvider.tsx:42:        setIfChanged(customEvent.detail.language);
+components\actions\DeleteParticipantButton.tsx:22:      alert(t("participants.could_not_resolve_id"));
+components\actions\DeleteParticipantButton.tsx:29:      alert(t("participants.delete_failed_status", { status: res.status, details: txt }));
+components\panels\ParticipantsPanel.tsx:72:    setErr(null);
+components\panels\ParticipantsPanel.tsx:104:      setErr(normalizeApiError(e, "Error"));
+app\grid\new\page.tsx:273:    setCellSizeConfigError(null);
+app\grid\new\page.tsx:288:        setCellSizeConfigError(tt("grid_new.cell_size_config_error", "Could not load supported cell sizes."));
+app\grid\new\page.tsx:429:    setErr(null);
+app\grid\new\page.tsx:442:        setErr(tt("grid_new.days_required", "Select at least one day."));
+app\grid\new\page.tsx:446:        setErr(tt("grid_new.end_time_after_start_error", "End time must be after start time."));
+app\grid\new\page.tsx:450:        setErr(cellSizeConfigError || tt("grid_new.cell_size_config_error", "Could not load supported cell sizes."));
+app\grid\new\page.tsx:454:        setErr(tt("grid_new.invalid_slot_size", "Invalid slot size."));
+app\grid\new\page.tsx:458:        setErr(
+app\grid\new\page.tsx:466:      setErr(tt("solver_wizard.fix_basic_fields", "Complete all required grid basics."));
+app\grid\new\page.tsx:470:      setErr(organizationError);
+app\grid\new\page.tsx:474:      setErr(unitNatureError);
+app\grid\new\page.tsx:481:    setErr(null);
+app\grid\new\page.tsx:520:      setErr(normalizeApiError(error, tt("solver_wizard.create_failed", "Could not create grid.")));
+app\grid\new\page.tsx:533:      setErr(organizationError);
+app\grid\new\page.tsx:537:      setErr(unitNatureError);
+app\grid\new\page.tsx:540:    setErr(null);
+app\grid\new\page.tsx:812:                              setErr(null);
+components\grid\GridSchedulePanel.tsx:1108:      if (customEvent.detail?.gridId !== String(gridId)) return;
+components\grid\GridSchedulePanel.tsx:1109:      setScheduleViewMode(customEvent.detail?.mode === "published" ? "published" : "draft");
+components\grid\GridSchedulePanel.tsx:1160:      if (customEvent.detail?.gridId !== String(gridId)) return;
+components\grid\GridSchedulePanel.tsx:1182:      if (custom.detail?.gridId !== String(gridId)) return;
+components\grid\GridSchedulePanel.tsx:1183:      if (custom.detail?.open) setCommentsPanelOpen(false);
+components\grid\GridSchedulePanel.tsx:1477:            setPublishedRenderError(
+components\grid\GridSchedulePanel.tsx:1701:          setPublishedRenderError(null);
+components\grid\GridSchedulePanel.tsx:1719:          setPublishedRenderError(null);
+components\grid\GridSchedulePanel.tsx:2034:        setHistoryError(null);
+components\grid\GridSchedulePanel.tsx:2037:        setHistoryError(
+components\grid\GridSchedulePanel.tsx:2062:        setHistoryError(null);
+components\grid\GridSchedulePanel.tsx:2087:    setHistoryError(null);
+components\grid\GridSchedulePanel.tsx:2094:      setHistoryError(null);
+components\grid\GridSchedulePanel.tsx:2117:        setHistoryError(
+components\grid\GridSchedulePanel.tsx:2148:    setHistoryError(null);
+components\grid\GridSchedulePanel.tsx:2348:      setParticipantEditError(null);
+components\grid\GridSchedulePanel.tsx:2390:        setParticipantEditError(
+components\grid\GridSchedulePanel.tsx:2405:        setParticipantEditError(t("grid_schedule.impossible_availability_error"));
+components\grid\GridSchedulePanel.tsx:2408:      setParticipantEditError(null);
+components\grid\GridSchedulePanel.tsx:2453:        setParticipantEditError(
+components\grid\GridSchedulePanel.tsx:2479:        setParticipantEditError(t("grid_schedule.no_draft_schedule_error"));
+components\grid\GridSchedulePanel.tsx:2483:        setParticipantEditError(t("grid_schedule.cell_without_bundle_error"));
+components\grid\GridSchedulePanel.tsx:2487:        setParticipantEditError(t("grid_schedule.participant_tier_not_eligible_error"));
+components\grid\GridSchedulePanel.tsx:2521:        setParticipantEditError(t("grid_schedule.impossible_availability_error"));
+components\grid\GridSchedulePanel.tsx:2525:      setParticipantEditError(null);
+components\grid\GridSchedulePanel.tsx:2660:        setParticipantEditError(
+components\grid\GridSchedulePanel.tsx:2847:            onClose={() => setHistoryError(null)}
+components\invitations\InvitesMenu.tsx:179:    message: readString(raw.message),
+components\invitations\InvitesMenu.tsx:400:    error: readString(raw.error),
+components\invitations\InvitesMenu.tsx:401:    detail: readString(raw.detail),
+components\invitations\InvitesMenu.tsx:590:    setError(null);
+components\invitations\InvitesMenu.tsx:593:      setError("This invitation cannot be accepted from here.");
+components\invitations\InvitesMenu.tsx:605:      setError(normalizeApiError(raw, "", { status: r.status, translate: t }));
+components\invitations\InvitesMenu.tsx:629:    setError(null);
+components\invitations\InvitesMenu.tsx:632:      setError("This invitation cannot be declined from here.");
+components\invitations\InvitesMenu.tsx:643:      setError(parseApiError(data, "Could not reject invitation."));
+components\invitations\InvitesMenu.tsx:736:                    {inv.message && (
+components\invitations\InvitesMenu.tsx:737:                      <div className="mt-1 text-sm text-gray-800 whitespace-pre-wrap">{inv.message}</div>
+components\grid\GridActions.tsx:53:      alert(t("grid_actions.missing_grid_id_export"));
+components\grid\GridActions.tsx:61:      alert(t("grid_actions.export_failed", { view, status: res.status, details: txt || "" }));
+components\panels\CategoriesPanel.tsx:44:    setErr(null);
+components\panels\CategoriesPanel.tsx:58:      setErr(normalizeApiError(e, "Error"));
+components\panels\CategoriesPanel.tsx:88:    setErr(null);
+components\panels\CategoriesPanel.tsx:122:          } else if (payload.detail) {
+components\panels\CategoriesPanel.tsx:140:      toast.error(normalizeApiError(error, t("category_panel.failed_toggle_visibility")));
+components\actions\DeleteGridBubble.tsx:19:      alert(t("grid_actions.missing_grid_id_delete"));
+components\actions\DeleteGridBubble.tsx:26:      alert(friendlyDeleteError(txt, res.status, t));
+components\layout\TimeRangesPanel.tsx:138:    setErr(null);
+components\layout\TimeRangesPanel.tsx:143:        throw new LocalizedApiError(parseApiErrorMessage(raw, t("time_ranges.error_loading")));
+components\layout\TimeRangesPanel.tsx:160:      setErr(normalizeApiError(error, t("time_ranges.error_loading")));
+components\layout\TimeRangesPanel.tsx:173:      if (custom.detail?.gridId !== String(gridId)) return;
+components\layout\TimeRangesPanel.tsx:174:      setStatsByTimeRangeId(custom.detail?.statsByTimeRangeId || {});
+components\layout\TimeRangesPanel.tsx:233:    setErr(null);
+components\layout\TimeRangesPanel.tsx:235:      setErr(t("grid_solver_settings.time_ranges_name_required"));
+components\layout\TimeRangesPanel.tsx:239:      setErr(t("grid_solver_settings.time_ranges_invalid"));
+components\layout\TimeRangesPanel.tsx:264:      setErr(
+components\layout\TimeRangesPanel.tsx:345:      setErr(
+components\grid\UnitTabs.tsx:165:      const requested = customEvent.detail?.unitId != null ? String(customEvent.detail.unitId) : null;
+components\grid\UnitTabs.tsx:181:      const unitIds = Array.isArray(custom.detail?.unitIds)
+components\grid\UnitTabs.tsx:182:        ? custom.detail.unitIds.map((id) => String(id))
+components\grid\UnitTabs.tsx:198:      const message = typeof custom.detail?.message === "string" ? custom.detail.message.trim() : "";
+components\grid\UnitTabs.tsx:280:            {dockFeedback.message}
+components\dialogs\CategoryDialog.tsx:53:    setErr(null);
+components\dialogs\CategoryDialog.tsx:61:      setErr(normalizeApiError(e, t("category_dialog.error_loading_values")));
+components\dialogs\CategoryDialog.tsx:73:    setErr(null);
+components\dialogs\CategoryDialog.tsx:90:      setErr(normalizeApiError(e, t("category_dialog.failed_add_value")));
+components\dialogs\CategoryDialog.tsx:101:      alert(
+components\dialogs\CategoryDialog.tsx:119:    setErr(null);
+components\dialogs\CategoryDialog.tsx:137:      setErr(normalizeApiError(error, t("category_dialog.failed_update_value")));
+components\dialogs\CategoryDialog.tsx:151:      alert(
+components\dialogs\AddCategoryDialog.tsx:62:    setErr(null);
+components\dialogs\AddCategoryDialog.tsx:87:      setErr(normalizeApiError(e, t("add_category.failed_create")));
+components\dialogs\AddCategoryDialog.tsx:107:      setErr(normalizeApiError(e, t("add_category.failed_load_values")));
+components\dialogs\AddCategoryDialog.tsx:140:    setErr(null);
+components\dialogs\AddCategoryDialog.tsx:157:      setErr(normalizeApiError(e, t("add_category.failed_add_value")));
+components\dialogs\AddCategoryDialog.tsx:177:      setErr(
+components\dialogs\AddCategoryDialog.tsx:195:    setErr(null);
+components\dialogs\AddCategoryDialog.tsx:213:      setErr(normalizeApiError(error, t("category_dialog.failed_update_value")));
+components\dialogs\AddCategoryDialog.tsx:225:    setErr(null);
+components\dialogs\AddCategoryDialog.tsx:244:        setErr(normalizeApiError(e, t("add_category.failed_delete_empty")));
+components\layout\SidePanel.tsx:79:      if (custom.detail?.gridId !== String(gridId)) return;
+components\dialogs\AddRuleDialog.tsx:186:      toast.error(v);
+components\dialogs\AddRuleDialog.tsx:210:        if (!rulesRes.ok) throw new LocalizedApiError(normalizeApiError(rawError, t("add_rule.error_creating_status", { status: res.status })));
+components\dialogs\AddRuleDialog.tsx:354:      toast.error(toFriendlyRuleError(e, t("add_rule.error_creating"), t));
+components\dialogs\AddParticipantDialog.tsx:70:    setErr(null);
+components\dialogs\AddParticipantDialog.tsx:94:      setErr(normalizeApiError(e, t("add_participant.failed_create")));
+app\api\users\route.ts:51:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+components\layout\RightSideDock.tsx:247:      setFanOpen(Boolean(custom.detail?.open));
+components\layout\RightSideDock.tsx:258:      const tool = custom.detail?.tool;
+components\grid\OnboardingGuide.tsx:396:      if (custom.detail?.gridId !== String(gridId)) return;
+components\grid\OnboardingGuide.tsx:397:      const rawTab = custom.detail?.tab;
+components\grid\OnboardingGuide.tsx:400:      setLeftPanelState({ open: Boolean(custom.detail?.open), tab: normalizedTab });
+components\grid\OnboardingGuide.tsx:401:      if (!custom.detail?.open || !normalizedTab) return;
+components\grid\GridSolverSettingsForm.tsx:661:    setTimeRangesError(null);
+components\grid\GridSolverSettingsForm.tsx:671:            throw new LocalizedApiError(parseApiErrorMessage(raw, tt("time_ranges.error_loading", "Could not load time ranges.")));
+components\grid\GridSolverSettingsForm.tsx:683:      setTimeRangesError(normalizeApiError(error, tt("time_ranges.error_loading", "Could not load time ranges.")));
+components\grid\GridSolverSettingsForm.tsx:697:      setSettingsError(null);
+components\grid\GridSolverSettingsForm.tsx:757:        setSettingsError(normalizeApiError(error, tt("grid_solver_settings.load_failed", "Could not load settings.")));
+components\grid\GridSolverSettingsForm.tsx:784:    setSettingsError(null);
+components\grid\GridSolverSettingsForm.tsx:787:    if (maxDayParsed.error) {
+components\grid\GridSolverSettingsForm.tsx:788:      setSettingsError(maxDayParsed.error);
+components\grid\GridSolverSettingsForm.tsx:789:      toast.error(maxDayParsed.error);
+components\grid\GridSolverSettingsForm.tsx:793:    if (maxWeekParsed.error) {
+components\grid\GridSolverSettingsForm.tsx:794:      setSettingsError(maxWeekParsed.error);
+components\grid\GridSolverSettingsForm.tsx:795:      toast.error(maxWeekParsed.error);
+components\grid\GridSolverSettingsForm.tsx:799:    if (minWeekParsed.error) {
+components\grid\GridSolverSettingsForm.tsx:800:      setSettingsError(minWeekParsed.error);
+components\grid\GridSolverSettingsForm.tsx:801:      toast.error(minWeekParsed.error);
+components\grid\GridSolverSettingsForm.tsx:811:        setSettingsError(msg);
+components\grid\GridSolverSettingsForm.tsx:812:        toast.error(msg);
+components\grid\GridSolverSettingsForm.tsx:839:      setSettingsError(msg);
+components\grid\GridSolverSettingsForm.tsx:840:      toast.error(msg);
+components\grid\GridSolverSettingsForm.tsx:848:    setWeightsError(null);
+components\grid\GridSolverSettingsForm.tsx:856:        setWeightsError(msg);
+components\grid\GridSolverSettingsForm.tsx:857:        toast.error(msg);
+components\grid\GridSolverSettingsForm.tsx:862:        setWeightsError(msg);
+components\grid\GridSolverSettingsForm.tsx:863:        toast.error(msg);
+components\grid\GridSolverSettingsForm.tsx:888:      setWeightsError(msg);
+components\grid\GridSolverSettingsForm.tsx:889:      toast.error(msg);
+components\grid\GridSolverSettingsForm.tsx:902:      setHeatmapError(heatmapBudgetExceededMessage);
+components\grid\GridSolverSettingsForm.tsx:907:    setHeatmapError(null);
+components\grid\GridSolverSettingsForm.tsx:929:      setHeatmapError(msg);
+components\grid\GridSolverSettingsForm.tsx:930:      toast.error(msg);
+components\grid\GridSolverSettingsForm.tsx:938:      setTimeRangesError(tt("grid_solver_settings.time_ranges_name_required", "Name is required."));
+components\grid\GridSolverSettingsForm.tsx:943:    setTimeRangesError(null);
+components\grid\GridSolverSettingsForm.tsx:964:      setTimeRangesError(
+components\grid\GridSolverSettingsForm.tsx:1032:    setTimeRangesError(null);
+components\grid\GridSolverSettingsForm.tsx:1046:      setTimeRangesError(
+components\dialogs\EditorInviteDialog.tsx:96:    setErr(null);
+components\dialogs\EditorInviteDialog.tsx:97:    if (!email.trim()) { setErr(t("editor_invite.email_required")); return; }
+components\dialogs\EditorInviteDialog.tsx:130:      setErr(normalizeApiError(e, t("editor_invite.failed_send_invite")));
+components\dialogs\EditorInviteDialog.tsx:137:    setErr(null);
+components\dialogs\EditorInviteDialog.tsx:181:      setErr(normalizeApiError(e, t("editor_invite.failed_link_participant")));
+components\dialogs\EditorInviteDialog.tsx:202:              <label className="block text-sm mb-1">{t("editor_invite.message_optional")}</label>
+components\dialogs\EditCellDialog.tsx:215:    const detail = (value as { detail?: unknown }).detail;
+components\dialogs\EditCellDialog.tsx:832:      setFormLoadError(null);
+components\dialogs\EditCellDialog.tsx:837:    setFormLoadError(null);
+components\dialogs\EditCellDialog.tsx:839:    setErr(null);
+components\dialogs\EditCellDialog.tsx:1109:        if (active) setFormLoadError(normalizeApiError(error, t("create_cell.failed_load_data")));
+components\dialogs\EditCellDialog.tsx:1269:      setErr(t("create_cell.duplicate_bundle_set"));
+components\dialogs\EditCellDialog.tsx:1278:      setErr(
+components\dialogs\EditCellDialog.tsx:1288:    setErr(null);
+components\dialogs\EditCellDialog.tsx:1412:      setErr(`Duration cannot exceed ${maxDurationCellsAllowed} cells for the selected horizon.`);
+components\dialogs\EditCellDialog.tsx:1416:    setErr(null);
+components\dialogs\EditCellDialog.tsx:1521:      setErr(normalizeApiError(e, t("edit_cell.failed_update_cell")));
+components\dialogs\CreateCellDialog.tsx:156:    const detail = (value as { detail?: unknown }).detail;
+components\dialogs\CreateCellDialog.tsx:621:      setOptionsLoadError(null);
+components\dialogs\CreateCellDialog.tsx:624:    setErr(null);
+components\dialogs\CreateCellDialog.tsx:654:    setOptionsLoadError(null);
+components\dialogs\CreateCellDialog.tsx:700:        setOptionsLoadError(normalizeApiError(e, t("create_cell.failed_load_data")));
+components\dialogs\CreateCellDialog.tsx:851:      setErr(t("create_cell.duplicate_bundle_set"));
+components\dialogs\CreateCellDialog.tsx:856:      setErr(
+components\dialogs\CreateCellDialog.tsx:868:    setErr(null);
+components\dialogs\CreateCellDialog.tsx:950:      setErr(`Duration cannot exceed ${maxDurationCellsAllowed} cells for the selected horizon.`);
+components\dialogs\CreateCellDialog.tsx:954:    setErr(null);
+components\dialogs\CreateCellDialog.tsx:1036:      setErr(normalizeApiError(e, t("create_cell.failed_create")));
+components\dialogs\EditRuleDialog.tsx:67:        toast.error(getFriendlyRuleError(e, t("edit_rule.failed_load_rule"), t));
+components\dialogs\EditRuleDialog.tsx:95:      toast.error(getFriendlyRuleError(e, t("edit_rule.failed_update_rule"), t));
+components\dialogs\EditRuleDialog.tsx:114:      toast.error(getFriendlyRuleError(e, t("edit_rule.failed_delete_rule"), t));
+components\grid\TimeRangesEditor.tsx:268:    setError(null);
+components\grid\TimeRangesEditor.tsx:276:            throw new LocalizedApiError(parseApiErrorMessage(raw, t("time_ranges.error_loading")));
+components\grid\TimeRangesEditor.tsx:287:      setError(normalizeApiError(err, t("time_ranges.error_loading")));
+components\grid\TimeRangesEditor.tsx:300:      if (custom.detail?.gridId !== String(gridId)) return;
+components\grid\TimeRangesEditor.tsx:301:      setStatsByTimeRangeId(custom.detail?.statsByTimeRangeId || {});
+components\grid\TimeRangesEditor.tsx:402:      setError(normalizeApiError(err, t("grid_solver_settings.time_ranges_delete_failed")));
+components\grid\TimeRangesEditor.tsx:409:    setError(null);
+components\grid\TimeRangesEditor.tsx:411:      setError(t("grid_solver_settings.time_ranges_name_required"));
+components\grid\TimeRangesEditor.tsx:447:      setError(normalizeApiError(err, t("grid_solver_settings.time_ranges_create_failed")));
+components\dialogs\InviteDialog.tsx:324:    setError(null);
+components\dialogs\InviteDialog.tsx:330:    setError(null);
+components\dialogs\InviteDialog.tsx:415:      setError(t("invite_dialog.load_failed"));
+components\dialogs\InviteDialog.tsx:432:      toast.error(t("invite_dialog.copy_link_failed"));
+components\dialogs\InviteDialog.tsx:440:      setError(t("invite_dialog.invalid_email"));
+components\dialogs\InviteDialog.tsx:445:      setError(null);
+components\dialogs\InviteDialog.tsx:450:      setError(t("invite_dialog.max_addresses"));
+components\dialogs\InviteDialog.tsx:455:    setError(null);
+components\dialogs\InviteDialog.tsx:481:    setError(null);
+components\dialogs\InviteDialog.tsx:548:      setError(normalizeApiError(e, t("invite_dialog.save_general_access_failed")));
+components\dialogs\InviteDialog.tsx:556:      setError(t("invite_dialog.add_at_least_one_email"));
+components\dialogs\InviteDialog.tsx:560:      setError(t("invite_dialog.editor_tier_required"));
+components\dialogs\InviteDialog.tsx:571:        setError(t("invite_dialog.participant_email_already_linked", { email: duplicate }));
+components\dialogs\InviteDialog.tsx:577:    setError(null);
+components\dialogs\InviteDialog.tsx:595:      if (message.trim()) p.message = message.trim();
+components\dialogs\InviteDialog.tsx:618:      setError(reasonMessage || t("invite_dialog.invites_failed", { count: failed.length }));
+components\dialogs\InviteDialog.tsx:637:    setError(null);
+components\dialogs\InviteDialog.tsx:717:                <label className="block text-sm mb-1">{t("invite_dialog.message_optional")}</label>
+components\dialogs\InviteDialog.tsx:723:                  placeholder={t("invite_dialog.message_placeholder")}
+app\api\units\route.ts:45:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+components\layout\LeftSideDock.tsx:159:      setShowDeleteDrop(Boolean(custom.detail?.visible));
+components\layout\LeftSideDock.tsx:160:      setDeleteDropActive(Boolean(custom.detail?.active));
+components\layout\LeftSideDock.tsx:182:      if (custom.detail?.gridId !== String(gridId)) return;
+components\layout\LeftSideDock.tsx:183:      const nextOpen = Boolean(custom.detail?.open);
+components\layout\LeftSideDock.tsx:204:      if (custom.detail?.target !== "cells") return;
+components\layout\LeftSideDock.tsx:227:      if (custom.detail?.gridId !== String(gridId)) return;
+components\layout\LeftSideDock.tsx:230:      if (!custom.detail.open) {
+components\layout\LeftSideDock.tsx:234:      if (custom.detail.tab === "participants" || custom.detail.tab === "categories" || custom.detail.tab === "time-ranges") {
+components\layout\LeftSideDock.tsx:235:        setTab(custom.detail.tab);
+components\dialogs\EditParticipantDialog.tsx:65:    setErr(null);
+components\dialogs\EditParticipantDialog.tsx:107:      setErr(t("add_participant.name_required_error"));
+components\dialogs\EditParticipantDialog.tsx:114:      setErr(t("add_participant.invalid_hours_override"));
+components\dialogs\EditParticipantDialog.tsx:118:      setErr(t("add_participant.min_cannot_exceed_max"));
+components\dialogs\EditParticipantDialog.tsx:123:    setErr(null);
+components\dialogs\EditParticipantDialog.tsx:155:      setErr(normalizeApiError(error, t("edit_participant.failed_update")));
+components\dialogs\EditTimeRangeDialog.tsx:54:    setErr(null);
+components\dialogs\EditTimeRangeDialog.tsx:65:      setErr(normalizeApiError(e, t("edit_time_range.failed_update")));
+components\navigation\UserMenu.tsx:83:    setLanguageError(null);
+components\navigation\UserMenu.tsx:112:        setLanguageError(result.error);
+components\navigation\UserMenu.tsx:117:      setLanguageError(null);
+components\navigation\UserMenu.tsx:144:        setLanguageError(result.error);
+components\navigation\UserMenu.tsx:149:      setLanguageError(null);
+components\navigation\UserMenu.tsx:159:    setLanguageError(null);
+components\navigation\UserMenu.tsx:167:      setLanguageError(result.error);
+components\grid\GridSettingsTabs.tsx:291:      ((raw.type || raw.code || raw.detail || raw.message) ? normalizeApiError(raw) : raw.reason);
+components\grid\GridSettingsTabs.tsx:1064:    setTabError(null);
+components\grid\GridSettingsTabs.tsx:1109:    setLoadingError(null);
+components\grid\GridSettingsTabs.tsx:1110:    setTabError(null);
+components\grid\GridSettingsTabs.tsx:1283:      setLoadingError(normalizeApiError(error, tt("grid_settings.load_failed", "Could not load grid settings.")));
+components\grid\GridSettingsTabs.tsx:1374:      setTabError(null);
+components\grid\GridSettingsTabs.tsx:1410:        setTabError(msg);
+components\grid\GridSettingsTabs.tsx:1411:        toast.error(msg);
+components\grid\GridSettingsTabs.tsx:1429:    setTabError(null);
+components\grid\GridSettingsTabs.tsx:1434:      setTabError(msg);
+components\grid\GridSettingsTabs.tsx:1435:      toast.error(msg);
+components\grid\GridSettingsTabs.tsx:1440:      setTabError(msg);
+components\grid\GridSettingsTabs.tsx:1441:      toast.error(msg);
+components\grid\GridSettingsTabs.tsx:1446:      setTabError(msg);
+components\grid\GridSettingsTabs.tsx:1447:      toast.error(msg);
+components\grid\GridSettingsTabs.tsx:1461:        setTabError(msg);
+components\grid\GridSettingsTabs.tsx:1462:        toast.error(msg);
+components\grid\GridSettingsTabs.tsx:1487:      setTabError(msg);
+components\grid\GridSettingsTabs.tsx:1488:      toast.error(msg);
+components\grid\GridSettingsTabs.tsx:1595:      if (maxDayParsed.error) return { error: maxDayParsed.error };
+components\grid\GridSettingsTabs.tsx:1601:      if (maxWeekParsed.error) return { error: maxWeekParsed.error };
+components\grid\GridSettingsTabs.tsx:1607:      if (minWeekParsed.error) return { error: minWeekParsed.error };
+components\grid\GridSettingsTabs.tsx:1613:      if (minCellsParsed.error) return { error: minCellsParsed.error };
+components\grid\GridSettingsTabs.tsx:1640:    setTabError(null);
+components\grid\GridSettingsTabs.tsx:1644:      setTabError(msg);
+components\grid\GridSettingsTabs.tsx:1645:      toast.error(msg);
+components\grid\GridSettingsTabs.tsx:1650:      setTabError(msg);
+components\grid\GridSettingsTabs.tsx:1651:      toast.error(msg);
+components\grid\GridSettingsTabs.tsx:1656:      setTabError(msg);
+components\grid\GridSettingsTabs.tsx:1657:      toast.error(msg);
+components\grid\GridSettingsTabs.tsx:1662:      setTabError(msg);
+components\grid\GridSettingsTabs.tsx:1663:      toast.error(msg);
+components\grid\GridSettingsTabs.tsx:1696:      setTabError(msg);
+components\grid\GridSettingsTabs.tsx:1697:      toast.error(msg);
+components\grid\GridSettingsTabs.tsx:1705:    setTabError(null);
+components\grid\GridSettingsTabs.tsx:1712:      setTabError(msg);
+components\grid\GridSettingsTabs.tsx:1713:      toast.error(msg);
+components\grid\GridSettingsTabs.tsx:1719:    if (tierMerged.error) {
+components\grid\GridSettingsTabs.tsx:1720:      setTabError(tierMerged.error);
+components\grid\GridSettingsTabs.tsx:1721:      toast.error(tierMerged.error);
+components\grid\GridSettingsTabs.tsx:1748:      setTabError(msg);
+components\grid\GridSettingsTabs.tsx:1749:      toast.error(msg);
+components\grid\GridSettingsTabs.tsx:1757:    setTabError(null);
+components\grid\GridSettingsTabs.tsx:1760:    if (tierMerged.error) {
+components\grid\GridSettingsTabs.tsx:1761:      setTabError(tierMerged.error);
+components\grid\GridSettingsTabs.tsx:1762:      toast.error(tierMerged.error);
+components\grid\GridSettingsTabs.tsx:1786:      setTabError(msg);
+components\grid\GridSettingsTabs.tsx:1787:      toast.error(msg);
+components\grid\GridSettingsTabs.tsx:1799:    setTabError(null);
+components\grid\GridSettingsTabs.tsx:1825:      setTabError(message);
+components\grid\GridSettingsTabs.tsx:1826:      toast.error(message);
+components\grid\GridSettingsTabs.tsx:1861:      ? flattenApiError(draftStructurePreview?.errors ?? [])
+app\api\auth\password-reset\confirm\route.ts:27:      detail: data?.detail || data?.message || "Password updated successfully",
+components\grid\SolveOverlay.tsx:658:    const fromDetail = flattenErrorText(source.detail);
+components\grid\SolveOverlay.tsx:800:      const detailRaw = typeof entry.detail === "string" ? entry.detail : undefined;
+components\grid\SolveOverlay.tsx:817:    errors: normalizePrecheckViolationList(source.errors),
+components\grid\SolveOverlay.tsx:844:  const errorsFromField = Array.isArray(precheck.errors) ? precheck.errors : [];
+components\grid\SolveOverlay.tsx:854:  const all = allFromViolations.length > 0 ? allFromViolations : [...errors, ...warnings];
+components\grid\SolveOverlay.tsx:1666:      if (custom.detail?.gridId !== String(gridId)) return;
+components\grid\SolveOverlay.tsx:1667:      setLeftPanelOpen(Boolean(custom.detail?.open));
+components\grid\SolveOverlay.tsx:1710:    setCandidateError(null);
+components\grid\SolveOverlay.tsx:2529:      setPrecheckError(null);
+components\grid\SolveOverlay.tsx:2627:    setPlacementPreviewError(null);
+components\grid\SolveOverlay.tsx:2638:    setPlacementPreviewError(null);
+components\grid\SolveOverlay.tsx:3125:        setPlacementPreviewError(null);
+components\grid\SolveOverlay.tsx:3180:          setPlacementPreviewError(message);
+components\grid\SolveOverlay.tsx:3181:          setPinError(message);
+components\grid\SolveOverlay.tsx:3227:      setHistoryPanelError(null);
+components\grid\SolveOverlay.tsx:3236:      setHistoryPanelError(null);
+components\grid\SolveOverlay.tsx:3317:        setHistoryPanelError(
+components\grid\SolveOverlay.tsx:3371:              raw.message ??
+components\grid\SolveOverlay.tsx:4012:      setPrecheckError(null);
+components\grid\SolveOverlay.tsx:4026:        setPrecheckError(null);
+components\grid\SolveOverlay.tsx:4032:        setPrecheckError(
+components\grid\SolveOverlay.tsx:4085:        setError(t("solve_overlay.input_unchanged_latest_solution"));
+components\grid\SolveOverlay.tsx:4091:      setError(null);
+components\grid\SolveOverlay.tsx:4092:      setCandidateError(null);
+components\grid\SolveOverlay.tsx:4102:      setPrecheckError(null);
+components\grid\SolveOverlay.tsx:4106:        const blockingLines = (precheckDiagnostics.errors.length > 0
+components\grid\SolveOverlay.tsx:4107:          ? precheckDiagnostics.errors
+components\grid\SolveOverlay.tsx:4136:        setPrecheckError(null);
+components\grid\SolveOverlay.tsx:4203:        setPrecheckError(null);
+components\grid\SolveOverlay.tsx:4206:        const skippedLines = (skippedDiagnostics.errors.length > 0
+components\grid\SolveOverlay.tsx:4207:          ? skippedDiagnostics.errors
+components\grid\SolveOverlay.tsx:4217:        setError(t("solve_overlay.all_three_candidates_failed"));
+components\grid\SolveOverlay.tsx:4220:      setError(normalizeApiError(e, t("solve_overlay.solver_error")));
+components\grid\SolveOverlay.tsx:4249:      setCandidateError(t("solve_overlay.missing_candidate_run_id"));
+components\grid\SolveOverlay.tsx:4253:    setCandidateError(null);
+components\grid\SolveOverlay.tsx:4280:      setError(null);
+components\grid\SolveOverlay.tsx:4288:      setCandidateError(normalizeApiError(e, t("solve_overlay.could_not_choose_candidate")));
+components\grid\SolveOverlay.tsx:4296:      setCandidateError(t("solve_overlay.missing_candidate_run_id"));
+components\grid\SolveOverlay.tsx:4301:      setCandidateError(t("solve_overlay.select_reject_reason"));
+components\grid\SolveOverlay.tsx:4305:    setCandidateError(null);
+components\grid\SolveOverlay.tsx:4325:      setError(t("solve_overlay.candidates_rejected_adjust_and_run_again"));
+components\grid\SolveOverlay.tsx:4329:      setCandidateError(normalizeApiError(e, t("solve_overlay.could_not_reject_candidates")));
+components\grid\SolveOverlay.tsx:4857:      setPinError(null);
+components\grid\SolveOverlay.tsx:4878:        setPinError(
+components\grid\SolveOverlay.tsx:5404:      (precheckDiagnostics.errors.length > 0 ? precheckDiagnostics.errors : precheckDiagnostics.all)
+components\grid\SolveOverlay.tsx:5407:    [precheckDiagnostics.all, precheckDiagnostics.errors],
+components\grid\SolveOverlay.tsx:5530:        setBreakDialogError(error);
+components\grid\SolveOverlay.tsx:5533:      setBreakDialogError(null);
+components\grid\SolveOverlay.tsx:5661:      setPinError(null);
+components\grid\SolveOverlay.tsx:5662:      setBreakDialogError(null);
+components\grid\SolveOverlay.tsx:5696:      setPinError(null);
+components\grid\SolveOverlay.tsx:5752:      setPinError(null);
+components\grid\SolveOverlay.tsx:5918:    setHistoryPanelError(null);
+components\grid\SolveOverlay.tsx:5947:      setHistoryPanelError(normalizeApiError(error, t("solve_overlay.could_not_export_version")));
+components\grid\SolveOverlay.tsx:5956:    setHistoryPanelError(null);
+components\grid\SolveOverlay.tsx:5976:      setHistoryPanelError(
+components\grid\SolveOverlay.tsx:6590:    setCommentError(null);
+components\grid\SolveOverlay.tsx:6657:      setCommentError(null);
+components\grid\SolveOverlay.tsx:6710:      setCommentError(t("solve_overlay.comments_unavailable"));
+components\grid\SolveOverlay.tsx:6714:    setCommentError(null);
+components\grid\SolveOverlay.tsx:6759:        text: String(raw.text ?? raw.message ?? commentDraft.trim()),
+components\grid\SolveOverlay.tsx:6768:      setCommentError(normalizeApiError(e, t("solve_overlay.could_not_add_comment")));
+components\grid\SolveOverlay.tsx:6790:    setPinError(null);
+components\grid\SolveOverlay.tsx:6825:      setPinError(normalizeApiError(e, t("solve_overlay.could_not_update_placement_lock")));
+components\grid\SolveOverlay.tsx:6847:    setBreakDialogError(null);
+components\grid\SolveOverlay.tsx:6859:      setBreakDialogError(normalizeApiError(error, t("break_dialog.update_failed")));
+components\grid\SolveOverlay.tsx:6937:        setPinError(t("grid_schedule.no_draft_schedule_error"));
+components\grid\SolveOverlay.tsx:7056:        setPinError(t("solve_overlay.placement_pending_wait"));
+components\grid\SolveOverlay.tsx:7134:          setPinError(normalizeApiError(error, t("solve_overlay.could_not_remove_participant")));
+components\grid\SolveOverlay.tsx:7179:        setPinError(normalizeApiError(error, t("solve_overlay.could_not_remove_placement")));
+components\grid\SolveOverlay.tsx:7216:        setPinError(t("solve_overlay.resolve_pending_candidates"));
+components\grid\SolveOverlay.tsx:7230:        setPinError(
+components\grid\SolveOverlay.tsx:7248:          setPinError(t("grid_schedule.no_draft_schedule_error"));
+components\grid\SolveOverlay.tsx:7469:        setPinError(normalizeApiError(error, t("grid_schedule.could_not_place_cell")));
+components\grid\SolveOverlay.tsx:7506:          setPinError(t("grid_schedule.no_draft_schedule_error"));
+components\grid\SolveOverlay.tsx:7537:        setPinError(normalizeApiError(error, t("grid_schedule.could_not_place_cell")));
+components\grid\SolveOverlay.tsx:7564:          setPinError(t("grid_schedule.no_draft_schedule_error"));
+components\grid\SolveOverlay.tsx:7591:        setPinError(normalizeApiError(error, t("grid_schedule.could_not_place_cell")));
+components\grid\SolveOverlay.tsx:7609:        setPinError(t("solve_overlay.placement_pending_wait"));
+components\grid\SolveOverlay.tsx:7618:        setPinError(t("solve_overlay.locked_placements_cannot_be_moved"));
+components\grid\SolveOverlay.tsx:7642:        setPinError(
+components\grid\SolveOverlay.tsx:7721:        setPinError(
+components\grid\SolveOverlay.tsx:7764:        setPinError(t("solve_overlay.select_matching_unit_tab_before_placing"));
+components\grid\SolveOverlay.tsx:7808:        setPinError(normalizeApiError(error, t("solve_overlay.could_not_create_blockage")));
+components\grid\SolveOverlay.tsx:7882:          setPinError(normalizeApiError(error, t("solve_overlay.could_not_delete_blockage")));
+components\grid\SolveOverlay.tsx:7899:          setPinError(normalizeApiError(error, t("solve_overlay.could_not_update_blockage")));
+components\grid\SolveOverlay.tsx:8072:            setPinError(t("solve_overlay.participant_already_assigned"));
+components\grid\SolveOverlay.tsx:8074:            setPinError(t("solve_overlay.placement_at_capacity"));
+components\grid\SolveOverlay.tsx:8076:            setPinError(t("solve_overlay.participant_not_eligible_for_cell", { name: activeDrag.participantName }));
+components\grid\SolveOverlay.tsx:8094:          setPinError(t("solve_overlay.placement_pending_wait"));
+components\grid\SolveOverlay.tsx:8144:            setPinError(normalizeApiError(error, t("solve_overlay.could_not_assign_participant")));
+components\grid\SolveOverlay.tsx:8225:          setPinError(t("solve_overlay.select_matching_unit_tab_before_placing"));
+components\grid\SolveOverlay.tsx:8798:    setCandidateError(null);
+components\grid\SolveOverlay.tsx:8829:    setError(null);
+components\grid\SolveOverlay.tsx:8853:      setError(normalizeApiError(e, t("solve_overlay.could_not_publish_schedule")));
+components\grid\SolveOverlay.tsx:8865:          message={pinErrorCard.message}
+components\grid\SolveOverlay.tsx:8869:            setPinError(null);
+components\grid\SolveOverlay.tsx:9106:                    setPinError(normalizeApiError(error, t("solve_overlay.could_not_delete_blockage")));
+components\grid\SolveOverlay.tsx:9434:                    setBreakDialogError(null);
+components\grid\SolveOverlay.tsx:9465:                  setCommentError(null);
+components\grid\SolveOverlay.tsx:9474:                      setPinError(null);
+components\grid\SolveOverlay.tsx:9699:            setBreakDialogError(null);
+components\grid\SolveOverlay.tsx:9866:                  setBreakDialogError(null);
+components\grid\SolveOverlay.tsx:9923:                        setPinError(normalizeApiError(error, t("solve_overlay.could_not_delete_blockage")));
+components\grid\SolveOverlay.tsx:9941:                        setPinError(normalizeApiError(error, t("solve_overlay.could_not_delete_blockage")));
+components\grid\SolveOverlay.tsx:10230:                            setHistoryPanelError(null);
+components\grid\SolveOverlay.tsx:10293:                  setCommentError(null);
+components\grid\SolveOverlay.tsx:10321:                      setCommentError(null);
+components\grid\SolveOverlay.tsx:10410:          if (!open) setCandidateError(null);
+components\grid\SolveOverlay.tsx:11252:          onErrorDismiss={() => setError(null)}
+components\grid\SolveOverlay.tsx:11293:            setPinError(reason || t("solve_overlay.select_matching_unit_tab_before_placing"));
+components\navigation\GridTopBarTools.tsx:46:      if (customEvent.detail?.gridId !== String(gridId)) return;
+components\navigation\GridTopBarTools.tsx:47:      setScheduleViewMode(customEvent.detail?.mode === "published" ? "published" : "draft");
+app\api\time_ranges\route.ts:51:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\time_ranges\route.ts:106:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\(site)\password-change\page.tsx:48:    setError(null);
+app\(site)\password-change\page.tsx:52:      setError(t("password_change.google_accounts_change_in_google"));
+app\(site)\password-change\page.tsx:57:      setError(t("auth.error.password_policy_unmet"));
+app\(site)\password-change\page.tsx:61:      setError(t("password_change.new_passwords_do_not_match"));
+app\(site)\password-change\page.tsx:65:      setError(t("password_change.new_password_must_differ"));
+app\(site)\password-change\page.tsx:82:        setError(getGuidedAuthErrorMessage(payload, r.status, t, "password_change"));
+app\(site)\password-change\page.tsx:90:      setError(t("password_change.could_not_change_password"));
+app\(public)\verify-email\confirm\page.tsx:38:        setError(t("verify_email_confirm.invalid_link"));
+app\(public)\verify-email\confirm\page.tsx:59:            setError(msg);
+app\(public)\verify-email\confirm\page.tsx:74:          setError(normalizeApiError(err, t("verify_email_confirm.verification_failed")));
+app\api\auth\password-change\route.ts:128:  const detail = typeof data.detail === "string" ? data.detail : undefined;
+app\api\auth\password-change\route.ts:129:  const apiError = typeof data.error === "string" ? data.error : undefined;
+app\api\auth\password-change\route.ts:130:  const apiMessage = typeof data.message === "string" ? data.message : undefined;
+app\(public)\password-reset\page.tsx:26:    setError(null);
+app\(public)\password-reset\page.tsx:34:        setError(t("auth.email_no_account"));
+app\(public)\password-reset\page.tsx:46:        setError(t("auth.email_no_account"));
+app\(public)\password-reset\page.tsx:63:        setError(msg);
+app\(public)\password-reset\page.tsx:68:      setError(normalizeApiError(submitError, t("auth.request_process_failed")));
+app\(site)\dashboard\ClientRecentProjects.tsx:32:        setError(normalizeApiError(err));
+app\(site)\dashboard\ClientRecentProjects.tsx:60:          {t("recent_projects.error_loading", { code: error })}
+app\api\invitations\route.ts:39:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\invitations\route.ts:70:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\placement-comments\route.ts:42:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\placement-comments\route.ts:81:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\staff-members\route.ts:39:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\staff-members\route.ts:72:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\participants\route.ts:42:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\participants\route.ts:82:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\grids\[id]\cells\[cell_id]\place\route.ts:77:      { non_field_errors: Array.isArray(optionsData.errors) ? optionsData.errors : ["Placement is not valid."] },
+app\api\grids\route.ts:33:    return NextResponse.json({ error: err?.message || "error" }, { status: err?.status || 500 });
+app\api\staffs\route.ts:39:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\staffs\route.ts:72:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\(public)\password-reset\confirm\page.tsx:26:    setError(null);
+app\(public)\password-reset\confirm\page.tsx:30:      setError(t("auth.invalid_reset_link"));
+app\(public)\password-reset\confirm\page.tsx:34:      setError(t("auth.error.password_policy_unmet"));
+app\(public)\password-reset\confirm\page.tsx:38:      setError(t("auth.passwords_do_not_match"));
+app\(public)\password-reset\confirm\page.tsx:51:        setError(getGuidedAuthErrorMessage(payload, r.status, t, "password_reset"));
+app\(public)\password-reset\confirm\page.tsx:58:      setError(t("auth.could_not_reset_password"));
+app\api\bundles\route.ts:45:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\bundles\route.ts:79:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\grids\[id]\cells\form-options\route.ts:17:    return NextResponse.json({ detail: error instanceof Error ? error.message : "Invalid grid id." }, { status: 400 });
+app\api\grids\[id]\cells\cards\route.ts:17:    return NextResponse.json({ detail: error instanceof Error ? error.message : "Invalid grid id." }, { status: 400 });
+app\api\grids\config\route.ts:11:    const detail = error instanceof Error ? error.message : "Could not load grid configuration.";
+app\api\cells\route.ts:39:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\cells\route.ts:72:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\cells\bulk_create\route.ts:43:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\cells\[id]\route.ts:43:      const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\categories\route.ts:42:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\categories\route.ts:74:    const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+app\api\cells\[id]\form-bootstrap\route.ts:17:    return NextResponse.json({ detail: error instanceof Error ? error.message : "Invalid cell id." }, { status: 400 });

@@ -8,16 +8,8 @@ import { CELL_COLOR_OPTIONS, CELL_TEXT_DARK, CELL_TEXT_LIGHT } from "@/lib/cell-
 type ToolKey = "participants" | "break" | "blockage" | "unassigned";
 type DockActionStatus = "active" | "locked" | "hidden";
 type UnassignedCellPlacementState = "UNPLACED" | "PARTIALLY_PLACED" | "FULLY_PLACED" | "STALE";
-const GRID_ONBOARDING_RIGHT_FAN_REQUEST_EVENT = "shift:onboarding-right-fan-request";
-const GRID_ONBOARDING_RIGHT_TOOL_REQUEST_EVENT = "shift:onboarding-right-tool-request";
 const DOCK_FEEDBACK_HIGHLIGHT_EVENT = "shift:dock-feedback-highlight";
 const UNIT_TABS_HIGHLIGHT_EVENT = "shift:unit-tabs-highlight";
-const TOOL_KEYS: ToolKey[] = ["participants", "break", "blockage", "unassigned"];
-
-function isToolKey(value: unknown): value is ToolKey {
-  return typeof value === "string" && TOOL_KEYS.includes(value as ToolKey);
-}
-
 type ParticipantScrollerItem = {
   id: string;
   name: string;
@@ -240,31 +232,6 @@ export default function RightSideDock({
     if (showToolScroller) setFanOpen(false);
   }, [showToolScroller]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onOnboardingFanRequest = (event: Event) => {
-      const custom = event as CustomEvent<{ open?: boolean }>;
-      setFanOpen(Boolean(custom.detail?.open));
-    };
-    window.addEventListener(GRID_ONBOARDING_RIGHT_FAN_REQUEST_EVENT, onOnboardingFanRequest as EventListener);
-    return () =>
-      window.removeEventListener(GRID_ONBOARDING_RIGHT_FAN_REQUEST_EVENT, onOnboardingFanRequest as EventListener);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onOnboardingToolRequest = (event: Event) => {
-      const custom = event as CustomEvent<{ tool?: unknown }>;
-      const tool = custom.detail?.tool;
-      if (!isToolKey(tool)) return;
-      onActivateTool?.(tool);
-      setFanOpen(false);
-    };
-    window.addEventListener(GRID_ONBOARDING_RIGHT_TOOL_REQUEST_EVENT, onOnboardingToolRequest as EventListener);
-    return () =>
-      window.removeEventListener(GRID_ONBOARDING_RIGHT_TOOL_REQUEST_EVENT, onOnboardingToolRequest as EventListener);
-  }, [onActivateTool]);
-
   const activeScroller = useMemo(() => {
     if (showParticipantScroller) return "participants" as const;
     if (showUnassignedScroller) return "unassigned" as const;
@@ -323,7 +290,6 @@ export default function RightSideDock({
           {!fanOpen && !showToolScroller && (
             <button
               type="button"
-              data-onboarding-target="right-dock-solve"
               title={pendingCandidateReview ? pendingCandidateTitle : solveDisabledReason}
               onClick={() => {
                 if (pendingCandidateReview) {
@@ -350,7 +316,7 @@ export default function RightSideDock({
           )}
 
           {!pendingCandidateReview && !showToolScroller && (
-            <div className="relative h-12 w-12 pointer-events-auto" data-jiggle-tools data-onboarding-target="right-dock-fan">
+            <div className="relative h-12 w-12 pointer-events-auto" data-jiggle-tools>
               <div
                 className={`absolute inset-0 pointer-events-none transition-all duration-200 ${
                   fanOpen ? "opacity-100 scale-100" : "opacity-0 scale-95"
@@ -382,7 +348,6 @@ export default function RightSideDock({
                       lockedReason: labels.createAtLeastOneCellFirst || labels.noCells || labels.participants,
                   onClick: () => onActivateTool?.("participants"),
                   angle: -78,
-                  onboardingTarget: undefined as string | undefined,
                     }
                   : null,
                 {
@@ -394,7 +359,6 @@ export default function RightSideDock({
                   lockedReason: labels.assignCellBeforeBreaks || labels.breaks,
                   onClick: () => onActivateTool?.("break"),
                   angle: -26,
-                  onboardingTarget: undefined as string | undefined,
                 },
                 {
                   key: "blockage" as const,
@@ -405,7 +369,6 @@ export default function RightSideDock({
                   lockedReason: "",
                   onClick: () => onActivateTool?.("blockage"),
                   angle: 26,
-                  onboardingTarget: "right-dock-blockage",
                 },
                 {
                   key: "cells" as const,
@@ -422,7 +385,6 @@ export default function RightSideDock({
                     : labels.noCellsAvailableForUnit || labels.cells,
                   onClick: () => onActivateTool?.("unassigned"),
                   angle: 78,
-                  onboardingTarget: undefined as string | undefined,
                 },
               ].filter((action): action is NonNullable<typeof action> => Boolean(action)).map((action, idx, list) => {
                 const fanStartAngle = -78;
@@ -441,8 +403,6 @@ export default function RightSideDock({
                   <button
                     key={action.key}
                     type="button"
-                    data-onboarding-target={action.onboardingTarget}
-                    data-onboarding-active={action.active ? "true" : undefined}
                     data-state={action.status}
                     title={locked ? action.lockedReason : action.title}
                     onClick={(event) => {
@@ -474,7 +434,6 @@ export default function RightSideDock({
 
               <button
                 type="button"
-                data-onboarding-target="right-dock-fan-toggle"
                 title={labels.add}
                 onClick={() => setFanOpen((prev) => !prev)}
                 disabled={!canManualEditCards}

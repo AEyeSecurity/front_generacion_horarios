@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 // Proxy: /api/time_ranges/:id -> BACKEND /api/time-ranges/:id
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
@@ -22,20 +23,20 @@ async function refreshAccessToken() {
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
   let res: Response;
   try {
     res = await fetch(`${B}/api/time-ranges/${id}/`, { headers: { Authorization: `Bearer ${access}`, cookie: req.headers.get("cookie") || "" }, cache: "no-store" });
   } catch {
-    return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+    return NextResponse.json(apiErrorPayload({ error: "upstream_unreachable" }, 502), { status: 502 });
   }
   if (res.status === 401) {
     const newAccess = await refreshAccessToken();
-    if (!newAccess) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+    if (!newAccess) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
     try {
       res = await fetch(`${B}/api/time-ranges/${id}/`, { headers: { Authorization: `Bearer ${newAccess}`, cookie: req.headers.get("cookie") || "" }, cache: "no-store" });
     } catch {
-      return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+      return NextResponse.json(apiErrorPayload({ error: "upstream_unreachable" }, 502), { status: 502 });
     }
   }
   const txt = await res.text().catch(() => "");
@@ -45,21 +46,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
   const body = await req.text();
   let res: Response;
   try {
     res = await fetch(`${B}/api/time-ranges/${id}/`, { method: "PATCH", headers: { Authorization: `Bearer ${access}`, "content-type": "application/json", cookie: req.headers.get("cookie") || "" }, body, cache: "no-store" });
   } catch {
-    return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+    return NextResponse.json(apiErrorPayload({ error: "upstream_unreachable" }, 502), { status: 502 });
   }
   if (res.status === 401) {
     const newAccess = await refreshAccessToken();
-    if (!newAccess) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+    if (!newAccess) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
     try {
       res = await fetch(`${B}/api/time-ranges/${id}/`, { method: "PATCH", headers: { Authorization: `Bearer ${newAccess}`, "content-type": "application/json", cookie: req.headers.get("cookie") || "" }, body, cache: "no-store" });
     } catch {
-      return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+      return NextResponse.json(apiErrorPayload({ error: "upstream_unreachable" }, 502), { status: 502 });
     }
   }
   const txt = await res.text().catch(() => "");
@@ -69,20 +70,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
   let res: Response;
   try {
     res = await fetch(`${B}/api/time-ranges/${id}/`, { method: "DELETE", headers: { Authorization: `Bearer ${access}`, cookie: req.headers.get("cookie") || "" }, cache: "no-store" });
   } catch {
-    return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+    return NextResponse.json(apiErrorPayload({ error: "upstream_unreachable" }, 502), { status: 502 });
   }
   if (res.status === 401) {
     const newAccess = await refreshAccessToken();
-    if (!newAccess) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+    if (!newAccess) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
     try {
       res = await fetch(`${B}/api/time-ranges/${id}/`, { method: "DELETE", headers: { Authorization: `Bearer ${newAccess}`, cookie: req.headers.get("cookie") || "" }, cache: "no-store" });
     } catch {
-      return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+      return NextResponse.json(apiErrorPayload({ error: "upstream_unreachable" }, 502), { status: 502 });
     }
   }
   if (res.status === 204) return new NextResponse(null, { status: 204 });

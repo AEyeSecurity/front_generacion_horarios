@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 // Proxy: /api/category_values -> NEXT_PUBLIC_API_URL/api/category-values
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
 // POST /api/category_values  { category, name }
 export async function POST(req: NextRequest) {
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
 
   const body = await req.text();
   const res = await fetch(`${B}/api/category-values/`, {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiErrorPayload } from "./api-error-contract";
 
 const HTML_PREFIXES = ["<!doctype html", "<html", "&lt;!doctype html", "&lt;html"];
 
@@ -16,16 +17,18 @@ export async function forwardApiResponse(response: Promise<Response>): Promise<N
 
     if (isHtmlResponse(body, contentType)) {
       return NextResponse.json(
-        { code: "UPSTREAM_INVALID_RESPONSE", upstream_status: upstream.status },
+        { code: "UPSTREAM_INVALID_RESPONSE", detail: "The upstream service returned an invalid response.", params: {}, upstream_status: upstream.status },
         { status: upstream.ok ? 502 : upstream.status },
       );
     }
+
+    if (!upstream.ok) return NextResponse.json(apiErrorPayload(body, upstream.status), { status: upstream.status });
 
     return new NextResponse(body, {
       status: upstream.status,
       headers: { "content-type": contentType || "application/json" },
     });
   } catch {
-    return NextResponse.json({ code: "UPSTREAM_UNAVAILABLE" }, { status: 502 });
+    return NextResponse.json({ code: "UPSTREAM_UNAVAILABLE", detail: "The upstream service is unavailable.", params: {} }, { status: 502 });
   }
 }

@@ -1,4 +1,6 @@
 "use client";
+import { ApiError, LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import * as React from "react";
 import {
@@ -103,7 +105,7 @@ export default function EditorInviteDialog({
         return pid !== String(participantId) && linkedEmail !== "" && linkedEmail === targetEmail;
       });
       if (linkedElsewhere) {
-        throw new Error(t("editor_invite.email_linked_elsewhere"));
+        throw new LocalizedApiError(t("editor_invite.email_linked_elsewhere"));
       }
 
       const res = await fetch(`/api/invitations/`, {
@@ -120,12 +122,12 @@ export default function EditorInviteDialog({
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        throw new Error(typeof j === "object" ? JSON.stringify(j) : String(j));
+        throw new LocalizedApiError(normalizeApiError(j));
       }
       onOpenChange(false);
       setEmail(""); setMessage("");
     } catch (e: any) {
-      setErr(e?.message || t("editor_invite.failed_send_invite"));
+      setErr(normalizeApiError(e, t("editor_invite.failed_send_invite")));
     } finally {
       setSaving(false);
     }
@@ -137,12 +139,12 @@ export default function EditorInviteDialog({
     try {
       const who = await fetch("/api/whoami", { cache: "no-store" });
       if (!who.ok) {
-        throw new Error(t("editor_invite.failed_load_current_user"));
+        throw new ApiError(who.status, await who.text().catch(() => ""));
       }
       const me = await who.json().catch(() => ({} as { id?: number | string }));
       const meId = me?.id;
       if (meId == null || meId === "") {
-        throw new Error(t("editor_invite.failed_identify_current_user"));
+        throw new LocalizedApiError(t("editor_invite.failed_identify_current_user"));
       }
 
       const participants = await loadLinkedParticipantByGrid();
@@ -152,7 +154,7 @@ export default function EditorInviteDialog({
         return pid !== String(participantId) && linkedUserId != null && String(linkedUserId) === String(meId);
       });
       if (linkedElsewhere) {
-        throw new Error(t("editor_invite.current_user_linked_elsewhere"));
+        throw new LocalizedApiError(t("editor_invite.current_user_linked_elsewhere"));
       }
 
       const patchCandidates = [{ user_id: meId }, { user: meId }];
@@ -171,12 +173,12 @@ export default function EditorInviteDialog({
         const raw = await res.text().catch(() => "");
         lastMessage = raw || `Failed (${res.status})`;
       }
-      if (!patched) throw new Error(lastMessage || t("editor_invite.failed_link_participant"));
+      if (!patched) throw new LocalizedApiError(normalizeApiError(lastMessage, t("editor_invite.failed_link_participant")));
 
       onOpenChange(false);
       onLinked?.();
     } catch (e: any) {
-      setErr(e?.message || t("editor_invite.failed_link_participant"));
+      setErr(normalizeApiError(e, t("editor_invite.failed_link_participant")));
     } finally {
       setLinkingSelf(false);
     }

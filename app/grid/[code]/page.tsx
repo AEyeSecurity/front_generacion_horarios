@@ -1,10 +1,10 @@
+import { normalizeApiError } from "@/lib/api-errors";
 // app/grid/[code]/page.tsx
 import { backendFetchJSON } from "@/lib/backend";
 import { requireUserOrRedirect, isAuthApiError } from "@/lib/auth";
 import type { Grid, Role } from "@/lib/types";
 import LeftSideDock from "@/components/layout/LeftSideDock";
 import GridSchedulePanel from "@/components/grid/GridSchedulePanel";
-import OnboardingGuide from "@/components/grid/OnboardingGuide";
 import { readGridTierEnabled } from "@/lib/grid-tier";
 import { resolveGridByCode } from "./_helpers";
 import { t as translate } from "@/lib/i18n";
@@ -38,17 +38,13 @@ type ContextUnit = { id?: number | string; name?: string };
 // Next 15: params es Promise
 export default async function GridOverview({
   params,
-  searchParams,
 }: {
   params: Promise<{ code: string }>;
-  searchParams?: Promise<{ onboarding?: string | string[] }>;
 }) {
   const { code } = await params;
-  const sp = await searchParams;
   const nextPath = `/grid/${encodeURIComponent(code)}`;
-  const onboardingParam = Array.isArray(sp?.onboarding) ? sp?.onboarding[0] : sp?.onboarding;
-  const showOnboarding = onboardingParam === "1" || onboardingParam === "true";
 
+  const me = await requireUserOrRedirect(nextPath);
   let grid: Grid;
   try {
     grid = await resolveGridByCode(code);
@@ -58,18 +54,17 @@ export default async function GridOverview({
     }
     return (
       <div className="space-y-3">
-        <h1 className="text-xl font-semibold">{translate("en-US", "grid_overview.not_found")}</h1>
+        <h1 className="text-xl font-semibold">{translate(me.preferred_language, "grid_overview.not_found")}</h1>
         <pre className="text-xs p-3 bg-red-50 border rounded text-red-700 overflow-auto">
-          {String(e instanceof Error ? e.message : e)}
+          {normalizeApiError(e, "", { locale: me.preferred_language })}
         </pre>
         <p className="text-sm text-gray-600">
-          {translate("en-US", "grid_overview.not_found_help", { code })}
+          {translate(me.preferred_language, "grid_overview.not_found_help", { code })}
         </p>
       </div>
     );
   }
   const id = String(grid.id);
-  const me = await requireUserOrRedirect(nextPath);
   const t = (key: Parameters<typeof translate>[1], params?: Record<string, string | number>) =>
     translate(me?.preferred_language, key, params);
 
@@ -156,13 +151,6 @@ export default async function GridOverview({
         tiersEnabled={tiersEnabled}
         participantCount={participants.length}
       />
-      <OnboardingGuide
-        gridId={Number(grid.id)}
-        gridCode={String(grid.grid_code || code)}
-        show={showOnboarding}
-        unitNature={grid.unit_nature ?? null}
-      />
-
       <div className="p-4">
         <div className="w-[80%] mx-auto space-y-4">
           <div className="relative border rounded-lg bg-white overflow-hidden shadow-sm">

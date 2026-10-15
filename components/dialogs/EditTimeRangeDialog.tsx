@@ -1,4 +1,6 @@
 "use client";
+import { ApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import * as React from "react";
 import {
@@ -56,11 +58,11 @@ export default function EditTimeRangeDialog({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name, start_time: norm(start), end_time: norm(end) }),
       });
-      if (!r.ok) throw new Error(t("errors.failed_status", { status: r.status }));
+      if (!r.ok) throw new ApiError(r.status, await r.text().catch(() => ""));
       onSaved?.();
       onOpenChange(false);
     } catch (e: any) {
-      setErr(e?.message || t("edit_time_range.failed_update"));
+      setErr(normalizeApiError(e, t("edit_time_range.failed_update")));
     } finally {
       setSaving(false);
     }

@@ -1,4 +1,6 @@
 "use client";
+import { ApiError, LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import * as React from "react";
 import { Trash2 } from "lucide-react";
@@ -28,38 +30,7 @@ const collectErrorMessages = (value: unknown): string[] => {
   return [String(value)];
 };
 
-const getFriendlyRuleError = (error: unknown, fallback: string, translateFn?: (key: I18nKey) => string) => {
-  const raw = error instanceof Error ? error.message : "";
-  let parsed: unknown = raw;
-  if (typeof raw === "string") {
-    const text = raw.trim();
-    if (!text) return fallback;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = text;
-    }
-  }
-  const message = collectErrorMessages(parsed)
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .join(" ");
-  if (!message) return fallback;
-  const normalized = message.toLowerCase();
-  if (normalized.includes("overlapping availability rule already exists")) {
-    return translateFn?.("availability_rule.overlap_message") ?? fallback;
-  }
-  if (normalized.includes("end") && normalized.includes("start")) {
-    return translateFn?.("availability_rule.end_must_be_later_than_start") ?? fallback;
-  }
-  if (normalized.includes("grid bounds") || normalized.includes("within grid bounds")) {
-    return translateFn?.("availability_rule.within_grid_range_message") ?? fallback;
-  }
-  if (normalized.includes("required")) {
-    return translateFn?.("availability_rule.required_fields_message") ?? fallback;
-  }
-  return message;
-};
+const getFriendlyRuleError = (error: unknown, fallback: string, translateFn?: (key: I18nKey) => string) => { return normalizeApiError(error, "", { translate: translateFn }); };
 
 export default function EditRuleDialog({
   ruleId,
@@ -86,7 +57,7 @@ export default function EditRuleDialog({
     (async () => {
       try {
         const r = await fetch(`/api/availability_rules/${ruleId}`, { cache: "no-store" });
-        if (!r.ok) throw new Error(t("errors.failed_status", { status: r.status }));
+        if (!r.ok) throw new ApiError(r.status, await r.text().catch(() => ""));
         const data = await r.json();
         setPreference(data.preference);
         setDay(Number(data.day_of_week));
@@ -116,7 +87,7 @@ export default function EditRuleDialog({
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || t("edit_rule.failed_update_status", { status: res.status }));
+        throw new LocalizedApiError(normalizeApiError(txt, t("edit_rule.failed_update_status", { status: res.status })));
       }
       onSaved?.();
       onOpenChange(false);
@@ -135,7 +106,7 @@ export default function EditRuleDialog({
       const res = await fetch(`/api/availability_rules/${ruleId}`, { method: "DELETE" });
       if (!res.ok && res.status !== 204) {
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || t("edit_rule.failed_delete_status", { status: res.status }));
+        throw new LocalizedApiError(normalizeApiError(txt, t("edit_rule.failed_delete_status", { status: res.status })));
       }
       onSaved?.();
       onOpenChange(false);

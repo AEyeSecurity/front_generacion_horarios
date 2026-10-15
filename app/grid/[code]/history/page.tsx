@@ -1,12 +1,12 @@
-import Link from "next/link";
 import LeftSideDock from "@/components/layout/LeftSideDock";
 import GridSchedulePanel from "@/components/grid/GridSchedulePanel";
 import { backendFetchJSON } from "@/lib/backend";
 import { requireUserOrRedirect } from "@/lib/auth";
 import { readGridTierEnabled } from "@/lib/grid-tier";
 import type { Role } from "@/lib/types";
-import { resolveGridByCode, resolveScheduleByGridCode } from "../_helpers";
+import { resolveGridByCode } from "../_helpers";
 import { getTranslation } from "@/lib/i18n";
+import { redirect } from "next/navigation";
 
 const EN_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -24,6 +24,18 @@ export default async function GridHistoryPage({
     getTranslation(me.preferred_language, key).replace(/\{(\w+)\}/g, (_, token: string) =>
       Object.prototype.hasOwnProperty.call(values ?? {}, token) ? String(values?.[token]) : `{${token}}`,
     );
+
+  let hasPublishedSchedule = false;
+  try {
+    const published = await backendFetchJSON<{ id?: number | string | null }>(
+      `/api/grids/${encodeURIComponent(gridId)}/published-schedule/`,
+    );
+    hasPublishedSchedule = published?.id != null;
+  } catch {}
+
+  if (!hasPublishedSchedule) {
+    redirect(`/grid/${encodeURIComponent(gridCode)}`);
+  }
 
   const toMin = (hhmmss: string) => {
     const [h, m] = hhmmss.split(":").map(Number);
@@ -78,32 +90,6 @@ export default async function GridHistoryPage({
     const mine = contextParticipants.find((participant) => Number(participant.user_id) === Number(me.id));
     if (mine?.id != null) selfPid = Number(mine.id);
     if (mine?.grid_participant_id != null) selfRoutePid = mine.grid_participant_id as string | number;
-  }
-
-  let hasSolved = false;
-  try {
-    const schedule = await resolveScheduleByGridCode(gridCode);
-    hasSolved = Array.isArray(schedule?.placements) && schedule.placements.length > 0;
-  } catch {}
-
-  if (!hasSolved) {
-    return (
-      <div className="p-4">
-        <div className="w-[80%] mx-auto">
-          <div className="rounded-lg border bg-white p-6 text-sm text-gray-700">
-            {t("schedule.no_published_versions")}
-            <div className="mt-3">
-              <Link
-                href={`/grid/${encodeURIComponent(gridCode)}`}
-                className="inline-flex rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
-              >
-                {t("grid_topbar.back_to_schedule")}
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
   }
 
   return (

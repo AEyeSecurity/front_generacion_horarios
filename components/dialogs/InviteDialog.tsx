@@ -1,4 +1,6 @@
 "use client";
+import { LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import * as React from "react";
 import { ArrowLeft, Link2, X } from "lucide-react";
@@ -246,26 +248,7 @@ function normalizeInvitationList(data: unknown): InvitationRecord[] {
   return listFromResponse(data).map((item) => normalizeInvitation(item));
 }
 
-function parseApiError(data: unknown, fallback: string): string {
-  const raw = asObject(data);
-  const error = raw ? readString(raw.error) : null;
-  const detail = raw ? readString(raw.detail) : null;
-  if (error || detail) return error || detail || fallback;
-  if (raw) {
-    const lines = Object.entries(raw)
-      .flatMap(([key, value]) => {
-        if (typeof value === "string") return [`${key}: ${value}`];
-        if (Array.isArray(value)) {
-          return value
-            .filter((entry): entry is string => typeof entry === "string")
-            .map((entry) => `${key}: ${entry}`);
-        }
-        return [];
-      });
-    if (lines.length > 0) return lines.join("\n");
-  }
-  return fallback;
-}
+function parseApiError(data: unknown, fallback: string): string { return normalizeApiError(data, fallback); }
 
 function getTokenFromInvite(inv: InvitationRecord): string | null {
   const direct = inv.token ?? inv.invite_token ?? inv.invitation_token ?? inv.accept_token;
@@ -522,7 +505,7 @@ export default function InviteDialog({
           (r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.ok)
         );
         if (failedCancel) {
-          throw new Error(t("invite_dialog.deactivate_failed"));
+          throw new LocalizedApiError(t("invite_dialog.deactivate_failed"));
         }
 
         setViewerLinks((prev) =>
@@ -554,7 +537,7 @@ export default function InviteDialog({
       });
       const bodyRaw = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(parseApiError(bodyRaw, t("invite_dialog.save_general_access_failed")));
+        throw new LocalizedApiError(parseApiError(bodyRaw, t("invite_dialog.save_general_access_failed")));
       }
       const body = normalizeInvitation(bodyRaw);
       const url = getShareUrl(body);
@@ -562,7 +545,7 @@ export default function InviteDialog({
       setGeneralAccessEnabled(true);
       setViewerLinks((prev) => [...prev, body]);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t("invite_dialog.save_general_access_failed"));
+      setError(normalizeApiError(e, t("invite_dialog.save_general_access_failed")));
     } finally {
       setSavingGeneral(false);
     }
@@ -622,7 +605,7 @@ export default function InviteDialog({
           body: JSON.stringify(p),
         }).then(async (res) => {
           const bodyRaw = await res.json().catch(() => null);
-          if (!res.ok) throw new Error(parseApiError(bodyRaw, t("invite_dialog.invite_failed")));
+          if (!res.ok) throw new LocalizedApiError(parseApiError(bodyRaw, t("invite_dialog.invite_failed")));
           return normalizeInvitation(bodyRaw);
         })
       )
@@ -631,7 +614,7 @@ export default function InviteDialog({
     const failed = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
     if (failed.length > 0) {
       const firstReason = failed[0]?.reason;
-      const reasonMessage = firstReason instanceof Error ? firstReason.message : "";
+      const reasonMessage = normalizeApiError(firstReason, "");
       setError(reasonMessage || t("invite_dialog.invites_failed", { count: failed.length }));
       setSendingEmails(false);
       return;

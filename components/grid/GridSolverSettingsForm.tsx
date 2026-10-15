@@ -1,4 +1,6 @@
 "use client";
+import { LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
+
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -152,22 +154,7 @@ function flattenApiError(value: unknown): string[] {
   return [];
 }
 
-function parseApiErrorMessage(raw: string, fallback: string): string {
-  const text = raw.trim();
-  if (!text) return fallback;
-  if (/^<!doctype html/i.test(text) || /^<html[\s>]/i.test(text)) {
-    if (process.env.NODE_ENV !== "production") console.error("Unexpected HTML API error:", text);
-    return fallback;
-  }
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    const flattened = flattenApiError(parsed);
-    if (flattened.length > 0) return flattened.join(" ");
-  } catch {
-    return text;
-  }
-  return fallback;
-}
+function parseApiErrorMessage(raw: string, fallback: string): string { return normalizeApiError(raw, fallback); }
 
 function parseTimeRangeDeleteError(raw: string, status: number, fallback: string): string {
   const text = raw.trim();
@@ -179,16 +166,13 @@ function parseTimeRangeDeleteError(raw: string, status: number, fallback: string
         referencing_cells?: Array<{ id?: unknown; name?: unknown }>;
       };
       if (status === 409 && parsed.code === "TIME_RANGE_IN_USE") {
-        const detail =
-          typeof parsed.detail === "string" && parsed.detail.trim()
-            ? parsed.detail.trim()
-            : "This time range cannot be deleted because it is used by existing cells.";
+        const detail = normalizeApiError(parsed);
         const cells = Array.isArray(parsed.referencing_cells)
           ? parsed.referencing_cells
               .map((cell) => String(cell?.name ?? cell?.id ?? "").trim())
               .filter(Boolean)
           : [];
-        return cells.length > 0 ? `${detail}\n\nUsed by:\n${cells.map((name) => `- ${name}`).join("\n")}` : detail;
+        return cells.length > 0 ? `${detail}\n\n${cells.map((name) => `- ${name}`).join("\n")}` : detail;
       }
     } catch {
       // Fall back to generic parsing below.
@@ -684,7 +668,7 @@ export default function GridSolverSettingsForm({
           });
           if (!response.ok) {
             const raw = await response.text().catch(() => "");
-            throw new Error(parseApiErrorMessage(raw, tt("time_ranges.error_loading", "Could not load time ranges.")));
+            throw new LocalizedApiError(parseApiErrorMessage(raw, tt("time_ranges.error_loading", "Could not load time ranges.")));
           }
           const payload = (await response.json().catch(() => ({}))) as TimeRangeResource[] | TimeRangeListResponse;
           return Array.isArray(payload) ? payload : Array.isArray(payload.results) ? payload.results : [];
@@ -696,7 +680,7 @@ export default function GridSolverSettingsForm({
         .sort((a, b) => a.startOffsetMin - b.startOffsetMin || a.endOffsetMin - b.endOffsetMin || a.id - b.id);
       setTimeRanges(nextRanges);
     } catch (error: unknown) {
-      setTimeRangesError(error instanceof Error ? error.message : tt("time_ranges.error_loading", "Could not load time ranges."));
+      setTimeRangesError(normalizeApiError(error, tt("time_ranges.error_loading", "Could not load time ranges.")));
     } finally {
       setTimeRangesLoading(false);
     }
@@ -717,7 +701,7 @@ export default function GridSolverSettingsForm({
             const gridRes = await fetch(`/api/grids/${encodeURIComponent(String(gridId))}`, { cache: "no-store" });
             if (!gridRes.ok) {
               const raw = await gridRes.text().catch(() => "");
-              throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.load_failed", "Could not load settings.")));
+              throw new LocalizedApiError(parseApiErrorMessage(raw, tt("grid_solver_settings.load_failed", "Could not load settings.")));
             }
             return gridRes.json().catch(() => ({}));
           },
@@ -770,7 +754,7 @@ export default function GridSolverSettingsForm({
         setObjectiveWeights(nextWeights);
       } catch (error: unknown) {
         if (!mounted) return;
-        setSettingsError(error instanceof Error ? error.message : tt("grid_solver_settings.load_failed", "Could not load settings."));
+        setSettingsError(normalizeApiError(error, tt("grid_solver_settings.load_failed", "Could not load settings.")));
       } finally {
         if (mounted) setSettingsLoading(false);
       }
@@ -789,7 +773,7 @@ export default function GridSolverSettingsForm({
     });
     if (!response.ok) {
       const raw = await response.text().catch(() => "");
-      throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.save_failed", "Could not save settings.")));
+      throw new LocalizedApiError(parseApiErrorMessage(raw, tt("grid_solver_settings.save_failed", "Could not save settings.")));
     }
     invalidateGridResource(gridId, "grid");
     invalidateGridScreenContext(gridId, "draft");
@@ -851,7 +835,7 @@ export default function GridSolverSettingsForm({
       setSettingsSaved(msg);
       toast.success(msg);
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : tt("grid_solver_settings.save_failed", "Could not save settings.");
+      const msg = normalizeApiError(error, tt("grid_solver_settings.save_failed", "Could not save settings."));
       setSettingsError(msg);
       toast.error(msg);
     } finally {
@@ -900,7 +884,7 @@ export default function GridSolverSettingsForm({
       setWeightsSaved(msg);
       toast.success(msg);
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : tt("grid_solver_settings.save_failed", "Could not save settings.");
+      const msg = normalizeApiError(error, tt("grid_solver_settings.save_failed", "Could not save settings."));
       setWeightsError(msg);
       toast.error(msg);
     } finally {
@@ -934,14 +918,14 @@ export default function GridSolverSettingsForm({
       });
       if (!response.ok) {
         const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.heatmap_save_failed", "Could not save day heatmap.")));
+        throw new LocalizedApiError(parseApiErrorMessage(raw, tt("grid_solver_settings.heatmap_save_failed", "Could not save day heatmap.")));
       }
       invalidateGridResource(gridId, "grid");
       invalidateGridScreenContext(gridId, "draft");
       setHeatmapSaved(tt("grid_solver_settings.heatmap_saved", "Saved."));
       toast.success(tt("grid_solver_settings.heatmap_saved", "Saved."));
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : tt("grid_solver_settings.heatmap_save_failed", "Could not save day heatmap.");
+      const msg = normalizeApiError(error, tt("grid_solver_settings.heatmap_save_failed", "Could not save day heatmap."));
       setHeatmapError(msg);
       toast.error(msg);
     } finally {
@@ -970,7 +954,7 @@ export default function GridSolverSettingsForm({
       });
       if (!response.ok) {
         const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.time_ranges_create_failed", "Could not create time range.")));
+        throw new LocalizedApiError(parseApiErrorMessage(raw, tt("grid_solver_settings.time_ranges_create_failed", "Could not create time range.")));
       }
       setNewTimeRangeName("");
       invalidateGridResource(gridId, "time_ranges");
@@ -978,7 +962,7 @@ export default function GridSolverSettingsForm({
       await loadTimeRanges(true);
     } catch (error: unknown) {
       setTimeRangesError(
-        error instanceof Error ? error.message : tt("grid_solver_settings.time_ranges_create_failed", "Could not create time range."),
+        normalizeApiError(error, tt("grid_solver_settings.time_ranges_create_failed", "Could not create time range.")),
       );
     } finally {
       setCreatingTimeRange(false);
@@ -1021,7 +1005,7 @@ export default function GridSolverSettingsForm({
       });
       if (!response.ok) {
         const raw = await response.text().catch(() => "");
-        throw new Error(parseApiErrorMessage(raw, tt("grid_solver_settings.time_ranges_save_failed", "Could not save time range.")));
+        throw new LocalizedApiError(parseApiErrorMessage(raw, tt("grid_solver_settings.time_ranges_save_failed", "Could not save time range.")));
       }
       const next = timeRanges.map((entry) =>
         entry.id === id ? { ...entry, name: current.name.trim(), rowError: null } : entry,
@@ -1032,7 +1016,7 @@ export default function GridSolverSettingsForm({
       toast.success(tt("common.saved", "Saved."));
     } catch (error: unknown) {
       const rowMessage =
-        error instanceof Error ? error.message : tt("grid_solver_settings.time_ranges_save_failed", "Could not save time range.");
+        normalizeApiError(error, tt("grid_solver_settings.time_ranges_save_failed", "Could not save time range."));
       setTimeRanges((prev) =>
         prev.map((entry) => (entry.id === id ? { ...entry, rowError: rowMessage } : entry)),
       );
@@ -1052,7 +1036,7 @@ export default function GridSolverSettingsForm({
       });
       if (response.status !== 204) {
         const raw = await response.text().catch(() => "");
-        throw new Error(parseTimeRangeDeleteError(raw, response.status, tt("grid_solver_settings.time_ranges_delete_failed", "Could not delete time range.")));
+        throw new LocalizedApiError(parseTimeRangeDeleteError(raw, response.status, tt("grid_solver_settings.time_ranges_delete_failed", "Could not delete time range.")));
       }
       setTimeRanges((prev) => prev.filter((entry) => entry.id !== id));
       invalidateGridResource(gridId, "time_ranges");
@@ -1060,7 +1044,7 @@ export default function GridSolverSettingsForm({
       toast.success(tt("common.deleted", "Deleted."));
     } catch (error: unknown) {
       setTimeRangesError(
-        error instanceof Error ? error.message : tt("grid_solver_settings.time_ranges_delete_failed", "Could not delete time range."),
+        normalizeApiError(error, tt("grid_solver_settings.time_ranges_delete_failed", "Could not delete time range.")),
       );
     } finally {
       setRowBusy(id, false);

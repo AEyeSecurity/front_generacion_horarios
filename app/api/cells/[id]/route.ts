@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken, getRefreshToken } from "@/lib/cookies";
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (res.status === 401) {
     const refreshed = await refreshTokens();
     if ("error" in refreshed) {
-      const out = NextResponse.json({ error: refreshed.error }, { status: 401 });
+      const out = NextResponse.json(apiErrorPayload({ error: refreshed.error }, 401), { status: 401 });
       out.cookies.delete(ACCESS);
       out.cookies.delete(REFRESH);
       return out;
@@ -74,7 +75,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
   const body = await req.text();
   const res = await fetch(`${B}/api/cells/${id}/`, {
     method: "PATCH",
@@ -96,7 +97,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
   const res = await fetch(`${B}/api/cells/${id}/`, {
     method: "DELETE",
     headers: {

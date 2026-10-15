@@ -1,3 +1,4 @@
+import { apiErrorPayload } from "@/lib/api-error-contract";
 import { NextRequest, NextResponse } from "next/server";
 import { getApiBaseUrlNormalized } from "@/lib/api-base";
 import { getAccessToken } from "@/lib/cookies";
@@ -44,7 +45,7 @@ async function placeSplitSegment(args: {
   const dayIndex = Number(payload.day_index);
   const startSlot = Number(payload.start_slot);
   if (scheduleId == null || !Number.isInteger(dayIndex) || !Number.isInteger(startSlot)) {
-    return NextResponse.json({ detail: "Invalid split placement request." }, { status: 400 });
+    return NextResponse.json(apiErrorPayload({ code: "INVALID_SPLIT_PLACEMENT_REQUEST", detail: "Invalid split placement request.", params: {} }, 400), { status: 400 });
   }
   const endSlot = startSlot + durationSlots;
   const selectedIds = Array.isArray(payload.selected_participant_ids)
@@ -74,7 +75,7 @@ async function placeSplitSegment(args: {
   }
   if (optionsData?.is_valid === false) {
     return NextResponse.json(
-      { non_field_errors: Array.isArray(optionsData.errors) ? optionsData.errors : ["Placement is not valid."] },
+      apiErrorPayload({ code: "PLACEMENT_INVALID", params: {}, non_field_errors: Array.isArray(optionsData.errors) ? optionsData.errors : ["Placement is not valid."] }, 400),
       { status: 400 },
     );
   }
@@ -90,7 +91,7 @@ async function placeSplitSegment(args: {
       : [];
     if (headcount != null && headcount > 0 && validAssignments.length === 0) {
       return NextResponse.json(
-        { non_field_errors: ["No valid participant assignment is available for this placement."] },
+        apiErrorPayload({ code: "PLACEMENT_AUTO_SELECTION_FAILED", detail: "No valid participant assignment is available for this placement.", params: {} }, 400),
         { status: 400 },
       );
     }
@@ -130,7 +131,7 @@ export async function POST(
 ) {
   const { id, cell_id } = await params;
   const access = await getAccessToken();
-  if (!access) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
 
   const body = await req.text();
   const parsed = (() => {
