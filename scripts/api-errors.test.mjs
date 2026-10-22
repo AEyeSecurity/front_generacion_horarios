@@ -57,6 +57,13 @@ test("unknown, legacy, HTML and malformed errors have safe translated fallbacks"
   assert.deepEqual(json(legacy.fields), { email: ["Ingresá un valor válido."], non_field_errors: ["Ingresá un valor válido."] });
 });
 
+test("unexpected server errors preserve Spanish Unicode", () => {
+  assert.equal(
+    normalizeApiError({ code: "UNEXPECTED_ERROR" }, "", { locale: "es-AR", status: 500 }),
+    "Ocurrió un error inesperado en el servidor. Volvé a intentarlo.",
+  );
+});
+
 test("HTTP, network and repeated normalization preserve useful errors", () => {
   assert.equal(normalizeApiError(null, "", { locale: "es-AR", status: 401 }), "Iniciá sesión para continuar.");
   assert.equal(normalizeApiError(new TypeError("Failed to fetch"), "", { locale: "es-AR" }), "No se pudo conectar. Revisá tu conexión y volvé a intentarlo.");

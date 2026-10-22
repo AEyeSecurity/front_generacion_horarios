@@ -45,6 +45,11 @@ import {
 
 type SectionId = "main" | "schedule" | "solver" | "units" | "danger";
 type TierKey = (typeof TIER_KEYS)[number];
+const TIER_LABEL_KEYS = {
+  PRIMARY: "tier.primary",
+  SECONDARY: "tier.secondary",
+  TERTIARY: "tier.tertiary",
+} as const;
 type OrganizationType = "school" | "work" | "gym" | "private_tutor" | "event" | "other" | "";
 type UnitNature = "audience" | "internal" | "none" | "space" | "";
 type TimeWindowMode = "SOFT" | "HARD";
@@ -354,20 +359,20 @@ function emptyTierRecord(): Record<TierKey, string> {
 function parseTierForSave(
   enabled: boolean,
   values: Record<TierKey, string>,
-  label: string,
+  messages: { required: string; nonNegative: string },
 ): { value?: Record<TierKey, number>; error?: string } {
   if (!enabled) return {};
   const trimmed = TIER_KEYS.map((tier) => values[tier].trim());
   const hasAny = trimmed.some((value) => value !== "");
   if (!hasAny) return {};
   if (trimmed.some((value) => value === "")) {
-    return { error: `${label}: all tier values are required once you start filling this field.` };
+    return { error: messages.required };
   }
   const output = {} as Record<TierKey, number>;
   for (const tier of TIER_KEYS) {
     const parsed = parseFiniteNumber(values[tier]);
     if (parsed === undefined || parsed < 0) {
-      return { error: `${label}: values must be non-negative numbers.` };
+      return { error: messages.nonNegative };
     }
     output[tier] = parsed;
   }
@@ -638,7 +643,7 @@ function TierInputs({
       <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
         {TIER_KEYS.map((tier) => (
           <div key={tier}>
-            <label className="mb-1 block text-xs text-gray-500">{tier}</label>
+            <label className="mb-1 block text-xs text-gray-500">{t(TIER_LABEL_KEYS[tier])}</label>
             <input
               type="number"
               min={0}
@@ -1587,25 +1592,39 @@ export default function GridSettingsTabs({
 
   const mergeTierPayload = useCallback(
     (solverPayload: Record<string, unknown>) => {
-      const maxDayParsed = parseTierForSave(
+      const parseTierSetting = (enabled: boolean, values: Record<TierKey, string>, label: string) =>
+        parseTierForSave(enabled, values, {
+          required: tt(
+            "grid_solver_settings.tier_values_required",
+            "{label}: complete all tier values after filling in this setting.",
+            { label },
+          ),
+          nonNegative: tt(
+            "grid_solver_settings.tier_values_non_negative",
+            "{label}: values must be valid non-negative numbers.",
+            { label },
+          ),
+        });
+
+      const maxDayParsed = parseTierSetting(
         maxHoursDayByTierEnabled,
         maxHoursDayByTier,
         tt("grid_settings.max_hours_day_by_tier", "Max hours per day by tier"),
       );
       if (maxDayParsed.error) return { error: maxDayParsed.error };
-      const maxWeekParsed = parseTierForSave(
+      const maxWeekParsed = parseTierSetting(
         maxHoursWeekByTierEnabled,
         maxHoursWeekByTier,
         tt("grid_settings.max_hours_week_by_tier", "Max hours per week by tier"),
       );
       if (maxWeekParsed.error) return { error: maxWeekParsed.error };
-      const minWeekParsed = parseTierForSave(
+      const minWeekParsed = parseTierSetting(
         minHoursWeekByTierEnabled,
         minHoursWeekByTier,
         tt("grid_settings.min_hours_week_by_tier", "Min hours per week by tier"),
       );
       if (minWeekParsed.error) return { error: minWeekParsed.error };
-      const minCellsParsed = parseTierForSave(
+      const minCellsParsed = parseTierSetting(
         minCellsWeekByTierEnabled,
         minCellsWeekByTier,
         tt("grid_settings.min_cells_week_by_tier", "Min cells per week by tier"),

@@ -23,6 +23,11 @@ import {
 } from "@/lib/screen-context";
 
 type TierKey = (typeof TIER_KEYS)[number];
+const TIER_LABEL_KEYS = {
+  PRIMARY: "tier.primary",
+  SECONDARY: "tier.secondary",
+  TERTIARY: "tier.tertiary",
+} as const;
 type DayHeatmapKey = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 type DayHeatmapValues = Record<DayHeatmapKey, 1 | 2 | 3>;
 type DayHeatmapApiInput = Partial<Record<string, number>> | null;
@@ -233,20 +238,20 @@ function formatTierHoursInput(hours: TierHours | null): Record<TierKey, string> 
 
 function parseTierHoursForSave(
   source: Record<TierKey, string>,
-  label: string,
+  messages: { required: string; nonNegative: string },
 ): { value?: TierHours; error?: string } {
   const trimmed = TIER_KEYS.map((tier) => source[tier].trim());
   const hasAny = trimmed.some((value) => value !== "");
   if (!hasAny) return {};
   const hasMissing = trimmed.some((value) => value === "");
   if (hasMissing) {
-    return { error: `${label}: all tier values are required once you start filling this field.` };
+    return { error: messages.required };
   }
   const out = {} as TierHours;
   for (const tier of TIER_KEYS) {
     const parsed = parseFiniteNumber(source[tier]);
     if (parsed === undefined || parsed < 0) {
-      return { error: `${label}: values must be valid non-negative numbers.` };
+      return { error: messages.nonNegative };
     }
     out[tier] = parsed;
   }
@@ -783,19 +788,42 @@ export default function GridSolverSettingsForm({
     setSettingsSaved(null);
     setSettingsError(null);
 
-    const maxDayParsed = parseTierHoursForSave(maxHoursDayByTier, "Max hours/day by tier");
+    const parseTierSetting = (values: Record<TierKey, string>, label: string) =>
+      parseTierHoursForSave(values, {
+        required: tt(
+          "grid_solver_settings.tier_values_required",
+          "{label}: complete all tier values after filling in this setting.",
+          { label },
+        ),
+        nonNegative: tt(
+          "grid_solver_settings.tier_values_non_negative",
+          "{label}: values must be valid non-negative numbers.",
+          { label },
+        ),
+      });
+
+    const maxDayParsed = parseTierSetting(
+      maxHoursDayByTier,
+      tt("grid_solver_settings.max_hours_day_by_tier", "Maximum hours per day by tier"),
+    );
     if (maxDayParsed.error) {
       setSettingsError(maxDayParsed.error);
       toast.error(maxDayParsed.error);
       return;
     }
-    const maxWeekParsed = parseTierHoursForSave(maxHoursWeekByTier, "Max hours/week by tier");
+    const maxWeekParsed = parseTierSetting(
+      maxHoursWeekByTier,
+      tt("grid_solver_settings.max_hours_week_by_tier", "Maximum hours per week by tier"),
+    );
     if (maxWeekParsed.error) {
       setSettingsError(maxWeekParsed.error);
       toast.error(maxWeekParsed.error);
       return;
     }
-    const minWeekParsed = parseTierHoursForSave(minHoursWeekByTier, "Min hours/week by tier");
+    const minWeekParsed = parseTierSetting(
+      minHoursWeekByTier,
+      tt("grid_solver_settings.min_hours_week_by_tier", "Minimum hours per week by tier"),
+    );
     if (minWeekParsed.error) {
       setSettingsError(minWeekParsed.error);
       toast.error(minWeekParsed.error);
@@ -807,7 +835,10 @@ export default function GridSolverSettingsForm({
     if (minRestTrimmed !== "") {
       const parsed = parseFiniteNumber(minRestTrimmed);
       if (parsed === undefined || parsed < 0) {
-        const msg = "Minimum rest hours must be a non-negative number.";
+        const msg = tt(
+          "grid_solver_settings.min_rest_non_negative",
+          "Minimum rest hours must be a non-negative number.",
+        );
         setSettingsError(msg);
         toast.error(msg);
         return;
@@ -852,13 +883,26 @@ export default function GridSolverSettingsForm({
       const raw = objectiveWeights[row.key]?.trim() ?? "";
       const parsed = parseFiniteNumber(raw);
       if (parsed === undefined) {
-        const msg = `${row.label}: invalid number.`;
+        const msg = tt("grid_solver_settings.invalid_number", "{label}: enter a valid number.", {
+          label: row.label,
+        });
         setWeightsError(msg);
         toast.error(msg);
         return;
       }
       if (parsed < row.min || (typeof row.max === "number" && parsed > row.max)) {
-        const msg = `${row.label}: value must be between ${row.min}${typeof row.max === "number" ? ` and ${row.max}` : ""}.`;
+        const msg =
+          typeof row.max === "number"
+            ? tt(
+                "grid_solver_settings.value_between",
+                "{label}: the value must be between {min} and {max}.",
+                { label: row.label, min: row.min, max: row.max },
+              )
+            : tt(
+                "grid_solver_settings.value_at_least",
+                "{label}: the value must be at least {min}.",
+                { label: row.label, min: row.min },
+              );
         setWeightsError(msg);
         toast.error(msg);
         return;
@@ -1146,7 +1190,7 @@ export default function GridSolverSettingsForm({
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {TIER_KEYS.map((tier) => (
                       <div key={`${row.key}-${tier}`}>
-                        <label className="mb-1 block text-xs text-gray-500">{tier}</label>
+                        <label className="mb-1 block text-xs text-gray-500">{t(TIER_LABEL_KEYS[tier])}</label>
                         <input
                           type="number"
                           min={0}

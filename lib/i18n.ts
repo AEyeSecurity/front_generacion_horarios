@@ -886,6 +886,34 @@ const EN_US = {
 
   "grid_solver_settings.title": "Settings",
   "grid_solver_settings.loading": "Loading settings...",
+  "grid_solver_settings.load_failed": "Could not load settings.",
+  "grid_solver_settings.save_failed": "Could not save settings.",
+  "grid_solver_settings.saved": "Saved.",
+  "grid_solver_settings.constraints": "Constraints",
+  "grid_solver_settings.constraints_help": "Configure the scheduling constraints used by the solver.",
+  "grid_solver_settings.unit_nooverlap_title": "Prevent overlap for the same unit",
+  "grid_solver_settings.unit_nooverlap_help":
+    "When enabled, cells belonging to the same unit cannot overlap in time.",
+  "grid_solver_settings.min_rest_hours": "Minimum rest between shifts (hours)",
+  "grid_solver_settings.min_rest_placeholder": "e.g. 8",
+  "grid_solver_settings.tier_hours_title": "Maximum and minimum hours by tier",
+  "grid_solver_settings.tier_hours_help":
+    "Complete all three tier values in a row, or leave the entire row empty.",
+  "grid_solver_settings.max_hours_day_by_tier": "Maximum hours per day by tier",
+  "grid_solver_settings.max_hours_week_by_tier": "Maximum hours per week by tier",
+  "grid_solver_settings.min_hours_week_by_tier": "Minimum hours per week by tier",
+  "grid_solver_settings.objective_weights": "Advanced: Objective weights",
+  "grid_solver_settings.objective_weights_note":
+    "These values are calibrated automatically by the solver. Edit them only if you understand their impact.",
+  "grid_solver_settings.tier_values_required":
+    "{label}: complete all tier values after filling in this setting.",
+  "grid_solver_settings.tier_values_non_negative":
+    "{label}: values must be valid non-negative numbers.",
+  "grid_solver_settings.min_rest_non_negative":
+    "Minimum rest hours must be a non-negative number.",
+  "grid_solver_settings.invalid_number": "{label}: enter a valid number.",
+  "grid_solver_settings.value_at_least": "{label}: the value must be at least {min}.",
+  "grid_solver_settings.value_between": "{label}: the value must be between {min} and {max}.",
   "grid_solver_settings.runtime_options":
     "Runtime solver options. Only enabled and fully configured fields are sent in solver_params.",
   "grid_solver_settings.prevent_overlap_title": "Prevent overlap for same unit",
@@ -1626,14 +1654,14 @@ const ES_AR: Dictionary = {
   "grid_settings.schedule_section": "Horario",
   "grid_settings.unit_constraints": "Restricciones de unidades",
   "grid_settings.save_units": "Guardar restricciones de unidad",
-  "grid_settings.tiers_configuration": "Configuracion de tiers",
-  "grid_settings.tiers_enabled": "Tiers habilitados",
-  "grid_settings.hour_limits_by_tier": "Limites de horas por tier",
-  "grid_settings.max_hours_day_by_tier": "Maximo de horas por dia por tier",
-  "grid_settings.max_hours_week_by_tier": "Maximo de horas por semana por tier",
-  "grid_settings.min_hours_week_by_tier": "Minimo de horas por semana por tier",
-  "grid_settings.min_cells_week_by_tier": "Minimo de celdas por semana por tier",
-  "grid_settings.min_cells_week_by_tier_help": "Minimo semanal de asignaciones de celdas por tier.",
+  "grid_settings.tiers_configuration": "Configuración de niveles",
+  "grid_settings.tiers_enabled": "Niveles habilitados",
+  "grid_settings.hour_limits_by_tier": "Límites de horas por nivel",
+  "grid_settings.max_hours_day_by_tier": "Máximo de horas por día según el nivel",
+  "grid_settings.max_hours_week_by_tier": "Máximo de horas por semana según el nivel",
+  "grid_settings.min_hours_week_by_tier": "Mínimo de horas por semana según el nivel",
+  "grid_settings.min_cells_week_by_tier": "Mínimo de celdas por semana según el nivel",
+  "grid_settings.min_cells_week_by_tier_help": "Mínimo semanal de asignaciones de celdas según el nivel.",
   "grid_settings.additional_participant_constraints": "Restricciones adicionales de participantes",
   "grid_settings.min_rest_hours": "Minimo de horas de descanso",
   "grid_settings.min_hours_week_hard": "Horas semanales minimas estrictas",
@@ -2225,6 +2253,34 @@ const ES_AR: Dictionary = {
   "cells.subtitle":"Haz doble click en cualquier tarjeta para modificarla",
 
   "grid_solver_settings.day_heatmap_title": "Heatmap diario",
+  "grid_solver_settings.load_failed": "No se pudo cargar la configuración.",
+  "grid_solver_settings.save_failed": "No se pudo guardar la configuración.",
+  "grid_solver_settings.saved": "Configuración guardada.",
+  "grid_solver_settings.constraints": "Restricciones",
+  "grid_solver_settings.constraints_help": "Configurá las restricciones de planificación utilizadas por el solver.",
+  "grid_solver_settings.unit_nooverlap_title": "Evitar superposiciones en una misma unidad",
+  "grid_solver_settings.unit_nooverlap_help":
+    "Cuando está habilitado, las celdas de una misma unidad no pueden superponerse en el tiempo.",
+  "grid_solver_settings.min_rest_hours": "Descanso mínimo entre turnos (horas)",
+  "grid_solver_settings.min_rest_placeholder": "p. ej., 8",
+  "grid_solver_settings.tier_hours_title": "Horas máximas y mínimas por nivel",
+  "grid_solver_settings.tier_hours_help":
+    "Completá los tres niveles de una fila o dejá toda la fila vacía.",
+  "grid_solver_settings.max_hours_day_by_tier": "Máximo de horas por día según el nivel",
+  "grid_solver_settings.max_hours_week_by_tier": "Máximo de horas por semana según el nivel",
+  "grid_solver_settings.min_hours_week_by_tier": "Mínimo de horas por semana según el nivel",
+  "grid_solver_settings.objective_weights": "Avanzado: pesos de objetivos",
+  "grid_solver_settings.objective_weights_note":
+    "El solver calibra estos valores automáticamente. Editalos solo si comprendés su impacto.",
+  "grid_solver_settings.tier_values_required":
+    "{label}: completá todos los niveles después de ingresar un valor.",
+  "grid_solver_settings.tier_values_non_negative":
+    "{label}: los valores deben ser números válidos no negativos.",
+  "grid_solver_settings.min_rest_non_negative":
+    "El descanso mínimo debe ser un número no negativo.",
+  "grid_solver_settings.invalid_number": "{label}: ingresá un número válido.",
+  "grid_solver_settings.value_at_least": "{label}: el valor debe ser al menos {min}.",
+  "grid_solver_settings.value_between": "{label}: el valor debe estar entre {min} y {max}.",
   "grid_solver_settings.day_heatmap_help":
     "Define intensidad diaria de 1 a 3 para cada dia habilitado. Los dias faltantes se toman como 1.",
   "grid_solver_settings.no_enabled_days": "No se encontraron dias habilitados para esta grilla.",

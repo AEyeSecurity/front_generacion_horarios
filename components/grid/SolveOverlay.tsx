@@ -9804,7 +9804,7 @@ export default function SolveOverlay({
                             }}
                             aria-label={t("common.delete")}
                           >
-                            Ã—
+                            ×
                           </button>
                           <div
                             className="absolute left-0 right-0 top-0 h-2 cursor-ns-resize"
