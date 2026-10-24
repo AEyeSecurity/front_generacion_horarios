@@ -7,6 +7,7 @@ import { Users, Tags, User as UserIcon, LayoutGrid, Clock } from "lucide-react";
 import type { Role } from "@/lib/types";
 import { useI18n } from "@/lib/use-i18n";
 import DeleteDropBubble from "@/components/layout/DeleteDropBubble";
+import { startPanelTiming } from "@/lib/dev-panel-timing";
 
 type Tab = "participants" | "categories" | "time-ranges";
 const SHEET_ANIM_MS = 240;
@@ -105,6 +106,7 @@ export default function LeftSideDock({
     (next: Tab) => {
       if (lockRef.current) return;
       if (open && tab === next) return;
+      startPanelTiming(next);
       if (!open) {
         setTab(next);
         setOpen(true);
@@ -142,6 +144,7 @@ export default function LeftSideDock({
       triggerParticipantsFeedback(t("dock.create_participants_first"));
       return;
     }
+    startPanelTiming("cells");
     router.push(`${gridBase}/cells`);
   };
 

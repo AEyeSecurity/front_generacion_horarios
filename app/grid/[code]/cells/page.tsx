@@ -40,14 +40,20 @@ export default async function GridCellsPage({
   params: Promise<{ code: string }>;
 }) {
   const { code } = await params;
-  const grid = await resolveGridByCode(code);
+  const nextPath = `/grid/${encodeURIComponent(code)}/cells`;
+  const [grid, me] = await Promise.all([
+    resolveGridByCode(code),
+    requireUserOrRedirect(nextPath),
+  ]);
   const id = String(grid.id);
-  const nextPath = `/grid/${encodeURIComponent(grid.grid_code || code)}/cells`;
-  const me = await requireUserOrRedirect(nextPath);
   const t = (key: Parameters<typeof getTranslation>[1]) => getTranslation(me.preferred_language, key);
   const gridBase = `/grid/${encodeURIComponent(grid.grid_code || code)}`;
 
-  const payload = await backendFetchJSON<any>(gridCellCardsPath(id));
+  const [payload, membershipsData, participantData] = await Promise.all([
+    backendFetchJSON<any>(gridCellCardsPath(id)),
+    backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`).catch(() => []),
+    backendFetchJSON<any>(`/api/participants/?grid=${id}`).catch(() => []),
+  ]);
   const cells = readCells(payload);
   const bundleList = Array.isArray(payload?.bundles) ? payload.bundles : [];
   const bundles: { id: number | string; name?: string; units?: unknown[] }[] = bundleList
@@ -59,20 +65,14 @@ export default async function GridCellsPage({
     }));
 
   // Resolve my role and (if editor) my participant id in this grid
-  let role: Role = "viewer";
-  let participants: any[] = [];
-  try {
-    const data = await backendFetchJSON<any>(`/api/grid-memberships/?grid=${id}`);
-    const list = Array.isArray(data) ? data : data.results ?? [];
-    const mine = list.find(
-      (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
-    );
-    role = (mine?.role ?? "viewer") as Role;
-  } catch {}
-  try {
-    const pdata = await backendFetchJSON<any>(`/api/participants/?grid=${id}`);
-    participants = Array.isArray(pdata) ? pdata : pdata.results ?? [];
-  } catch {}
+  const memberships = Array.isArray(membershipsData) ? membershipsData : membershipsData?.results ?? [];
+  const mine = memberships.find(
+    (membership: any) =>
+      (membership.user_id ??
+        (typeof membership.user === "number" ? membership.user : membership.user?.id)) === me.id,
+  );
+  const role = (mine?.role ?? "viewer") as Role;
+  const participants = Array.isArray(participantData) ? participantData : participantData?.results ?? [];
 
   if (participants.length === 0) {
     redirect(`${gridBase}?dock=participants&dock_feedback=participants_before_cells`);

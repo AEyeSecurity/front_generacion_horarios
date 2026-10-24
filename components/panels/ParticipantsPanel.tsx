@@ -19,6 +19,7 @@ import PanelScrollArea from "@/components/panels/PanelScrollArea";
 import EditParticipantDialog from "@/components/dialogs/EditParticipantDialog";
 import { useI18n } from "@/lib/use-i18n";
 import { fetchGridResource } from "@/lib/screen-context";
+import { markPanelTiming, measurePanelRequest } from "@/lib/dev-panel-timing";
 
 type Participant = {
   id: number;
@@ -75,7 +76,9 @@ export default function ParticipantsPanel({
         fetchGridResource<Participant[]>(gridId, "participants", {
           force,
           fallback: async () => {
-            const response = await fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" });
+            const response = await measurePanelRequest("participants", () =>
+              fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" }),
+            );
             if (!response.ok) throw new ApiError(response.status, await response.text().catch(() => ""));
             const data = await response.json();
             return Array.isArray(data) ? data : data.results ?? [];
@@ -84,7 +87,9 @@ export default function ParticipantsPanel({
         tiersEnabled == null
           ? fetchGridResource<Record<string, unknown>>(gridId, "grid", {
               fallback: async () => {
-                const response = await fetch(`/api/grids/${gridId}/`, { cache: "no-store" });
+                const response = await measurePanelRequest("participants", () =>
+                  fetch(`/api/grids/${gridId}/`, { cache: "no-store" }),
+                );
                 if (!response.ok) return {};
                 return response.json().catch(() => ({}));
               },
@@ -98,6 +103,7 @@ export default function ParticipantsPanel({
         setTierEnabled(readGridTierEnabled(gridData, false));
       }
       setList(items);
+      markPanelTiming("participants", "data-ready");
       onCountChange?.(items.length);
     } catch (e: unknown) {
       if (requestId !== loadRequestRef.current) return;
@@ -105,7 +111,7 @@ export default function ParticipantsPanel({
     } finally {
       if (requestId === loadRequestRef.current) setLoading(false);
     }
-  }, [gridId, onCountChange, t, tiersEnabled]);
+  }, [gridId, onCountChange, tiersEnabled]);
 
   useEffect(() => {
     void load(refreshKey > 0);

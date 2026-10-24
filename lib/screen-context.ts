@@ -104,6 +104,7 @@ export type FetchGridResourceOptions = {
   force?: boolean;
   fallback?: () => Promise<unknown>;
   acceptCached?: (value: unknown) => boolean;
+  preferFallback?: boolean;
 };
 
 export async function fetchGridResource<T = unknown>(
@@ -125,7 +126,7 @@ export async function fetchGridResource<T = unknown>(
   };
 
   const request: Promise<unknown> = (async () => {
-    if (!options.force) {
+    if (!options.force && !options.preferFallback) {
       try {
         const context = await fetchGridScreenContext(gridId, "draft");
         const fromContext = readContextResource(context, resource);

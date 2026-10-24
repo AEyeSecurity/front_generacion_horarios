@@ -3,6 +3,7 @@ import { LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
 
 
 import * as React from "react";
+import { confirmDuplicateParticipant } from "@/lib/participant-duplicates";
 import { type Tier } from "@/components/badges/TierBadge";
 import { readGridTierEnabled } from "@/lib/grid-tier";
 import {
@@ -49,7 +50,7 @@ export default function EditParticipantDialog({
   onOpenChange: (v: boolean) => void;
   onUpdated?: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const isSupervisor = role === "supervisor";
   const [tierEnabled, setTierEnabled] = React.useState(true);
   const [name, setName] = React.useState("");
@@ -122,6 +123,7 @@ export default function EditParticipantDialog({
     setSaving(true);
     setErr(null);
     try {
+      if (!(await confirmDuplicateParticipant(gridId, name, surname, participant.id, locale))) return;
       const payload: Record<string, unknown> = {
         name: name.trim(),
         surname: surname.trim(),

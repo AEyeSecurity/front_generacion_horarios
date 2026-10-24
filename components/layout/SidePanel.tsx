@@ -11,6 +11,7 @@ import {
 import { useI18n } from "@/lib/use-i18n";
 import type { Role } from "@/lib/types";
 import { invalidateGridResource, invalidateGridScreenContext } from "@/lib/screen-context";
+import { markPanelTiming } from "@/lib/dev-panel-timing";
 
 const ParticipantsPanel = dynamic(() => import("@/components/panels/ParticipantsPanel"), { ssr: false });
 const CategoriesPanel = dynamic(() => import("@/components/panels/CategoriesPanel"), { ssr: false });
@@ -83,6 +84,10 @@ export default function SidePanel({
     window.addEventListener(PARTICIPANT_ADD_HIGHLIGHT_EVENT, onHighlight as EventListener);
     return () => window.removeEventListener(PARTICIPANT_ADD_HIGHLIGHT_EVENT, onHighlight as EventListener);
   }, [gridId]);
+
+  useEffect(() => {
+    if (open) markPanelTiming(tab, "visible");
+  }, [open, tab]);
 
   // Evitar que un click en el dock sea considerado "outside" por el Sheet
   const ignoreDockOutside = (e: Event) => {

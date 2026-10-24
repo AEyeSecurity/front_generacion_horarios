@@ -11,6 +11,7 @@ import {
   invalidateGridScreenContext,
   primeGridResource,
 } from "@/lib/screen-context";
+import { markPanelTiming, measurePanelRequest } from "@/lib/dev-panel-timing";
 
 const TIME_RANGE_STATS_EVENT = "shift:time-range-stats";
 const PIE_COLORS = ["#3B82F6", "#8B5CF6", "#F59E0B", "#10B981", "#EF4444", "#EC4899"];
@@ -269,7 +270,9 @@ export default function TimeRangesEditor({
       const list = await fetchGridResource<TimeRangeApi[]>(gridId, "time_ranges", {
         force,
         fallback: async () => {
-          const res = await fetch(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`, { cache: "no-store" });
+          const res = await measurePanelRequest("time-ranges", () =>
+            fetch(`/api/time_ranges?grid=${encodeURIComponent(String(gridId))}`, { cache: "no-store" }),
+          );
           if (!res.ok) {
             const raw = await res.text().catch(() => "");
             throw new LocalizedApiError(parseApiErrorMessage(raw, t("time_ranges.error_loading")));
@@ -282,6 +285,7 @@ export default function TimeRangesEditor({
         .map(mapApiToDraft)
         .sort((a, b) => a.startOffsetMin - b.startOffsetMin || a.endOffsetMin - b.endOffsetMin || a.id - b.id);
       setRanges(sorted);
+      markPanelTiming("time-ranges", "data-ready");
     } catch (err: unknown) {
       setError(normalizeApiError(err, t("time_ranges.error_loading")));
     } finally {

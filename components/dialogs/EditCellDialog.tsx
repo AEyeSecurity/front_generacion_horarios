@@ -528,6 +528,7 @@ export default function EditCellDialog({
   const [participants, setParticipants] = React.useState<Participant[]>([]);
   const [timeRanges, setTimeRanges] = React.useState<TimeRange[]>([]);
   const [units, setUnits] = React.useState<Unit[]>([]);
+  const [hasCategories, setHasCategories] = React.useState(false);
   const [bundles, setBundles] = React.useState<Bundle[]>([]);
   const [cellMin, setCellMin] = React.useState<number>(60);
   const [enabledDaysCount, setEnabledDaysCount] = React.useState<number>(7);
@@ -678,7 +679,7 @@ export default function EditCellDialog({
   }, [maxDurationDayCells, enabledDaysCount]);
   const hasTimeRangeOptions = timeRanges.length > 0;
   const canShowMultiDayToggle = enabledDaysCount > 1;
-  const hasUnitsStep = true;
+  const hasUnitsStep = hasCategories;
 
   React.useEffect(() => {
     if (!multiDayEnabled) {
@@ -843,6 +844,7 @@ export default function EditCellDialog({
     setDescription(cell.description || "");
     setQuantity(Math.max(1, Number(cell.quantity) || 1));
     setUnitIds([]);
+    setHasCategories(false);
     setEditingBundleIndex(null);
     setAvailableStaffGroups([]);
 
@@ -975,6 +977,7 @@ export default function EditCellDialog({
         const unitOptions = [...(bootstrap.units as Unit[]), ...resolvedBundleUnits]
           .filter((unit, index, all) => unit?.id != null && all.findIndex((entry) => String(entry.id) === String(unit.id)) === index);
         setUnits(unitOptions);
+        setHasCategories(bootstrap.categories.length > 0 || unitOptions.length > 0);
         setBundles(bundleOptions);
 
         const bundlesById = new Map(bundleOptions.map((bundle) => [String(bundle.id), bundle]));

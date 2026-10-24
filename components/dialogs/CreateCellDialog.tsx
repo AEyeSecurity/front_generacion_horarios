@@ -329,6 +329,7 @@ export default function CreateCellDialog({
   const [participants, setParticipants] = React.useState<Participant[]>([]);
   const [timeRanges, setTimeRanges] = React.useState<TimeRange[]>([]);
   const [units, setUnits] = React.useState<Unit[]>([]);
+  const [hasCategories, setHasCategories] = React.useState(false);
   const [cellMin, setCellMin] = React.useState<number>(60);
   const [enabledDaysCount, setEnabledDaysCount] = React.useState<number>(7);
   const [horizonDayMinutes, setHorizonDayMinutes] = React.useState<number | null>(null);
@@ -467,7 +468,7 @@ export default function CreateCellDialog({
   }, [maxDurationDayCells, enabledDaysCount]);
   const hasTimeRangeOptions = timeRanges.length > 0;
   const canShowMultiDayToggle = enabledDaysCount > 1;
-  const hasUnitsStep = true;
+  const hasUnitsStep = hasCategories;
 
   React.useEffect(() => {
     if (!multiDayEnabled) {
@@ -641,6 +642,7 @@ export default function CreateCellDialog({
     setColorHex(null);
     setUnitIds([]);
     setBundleUnitSets([]);
+    setHasCategories(false);
     setTierCounts({ PRIMARY: 1, SECONDARY: 0, TERTIARY: 0 });
     setTierPools({ ...EMPTY_TIER_POOLS });
     setStaffGroups([]);
@@ -691,6 +693,7 @@ export default function CreateCellDialog({
         setParticipants(bootstrap.participants as Participant[]);
         setTimeRanges(bootstrap.timeRanges as TimeRange[]);
         setUnits(bootstrap.units as Unit[]);
+        setHasCategories(bootstrap.categories.length > 0 || bootstrap.units.length > 0);
         setAvailableStaffGroups(normalizeStaffGroups(
           [...bootstrap.staffGroups, ...bootstrap.staffs] as Parameters<typeof normalizeStaffGroups>[0],
         ));

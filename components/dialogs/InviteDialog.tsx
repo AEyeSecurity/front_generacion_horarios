@@ -90,6 +90,7 @@ type InvitationRecord = {
   role: string | null;
   status: string | null;
   active: boolean | null;
+  expires_at: string | null;
   participant_id: Id | null;
   participant: ParticipantRef | null;
   to_user_id: Id | null;
@@ -233,6 +234,7 @@ function normalizeInvitation(data: unknown): InvitationRecord {
     role: readString(raw.role),
     status: readString(raw.status),
     active: readBoolean(raw.active),
+    expires_at: readString(raw.expires_at),
     participant_id: readId(raw.participant_id),
     participant: normalizeParticipantRef(raw.participant),
     to_user_id: readId(raw.to_user_id),
@@ -250,47 +252,43 @@ function normalizeInvitationList(data: unknown): InvitationRecord[] {
 
 function parseApiError(data: unknown, fallback: string): string { return normalizeApiError(data, fallback); }
 
-function getTokenFromInvite(inv: InvitationRecord): string | null {
-  const direct = inv.token ?? inv.invite_token ?? inv.invitation_token ?? inv.accept_token;
-  if (direct) return String(direct);
-
-  const rawUrl = inv.link_url ?? inv.invite_url ?? inv.invitation_url ?? inv.url ?? inv.link;
-  if (!rawUrl || typeof rawUrl !== "string") return null;
-
-  try {
-    const base = typeof window !== "undefined" ? window.location.origin : "http://localhost";
-    const u = new URL(rawUrl, base);
-    const token = u.searchParams.get("token");
-    if (token) return token;
-    const m = u.pathname.match(/\/invite\/([^/?#]+)/);
-    return m?.[1] ?? null;
-  } catch {
-    return null;
-  }
+function isActiveGridLink(inv: InvitationRecord, gridId: number): boolean {
+  return inv.id != null && String(inv.grid_id) === String(gridId)
+    && (inv.grid?.id == null || String(inv.grid.id) === String(gridId))
+    && inv.type === "link" && inv.role === "viewer"
+    && inv.active === true && inv.status === "pending" && Boolean(inv.token)
+    && (!inv.expires_at || Date.parse(inv.expires_at) > Date.now());
 }
 
 function getShareUrl(inv: InvitationRecord): string {
-  const explicit = inv.link_url ?? inv.invite_url ?? inv.invitation_url ?? inv.url ?? inv.link;
-  if (explicit && typeof explicit === "string") return explicit;
-  const token = getTokenFromInvite(inv);
+  // Only the persisted token identifies the invitation. Never trust a stale
+  // URL alias or a URL generated for a different frontend deployment.
+  const token = inv.token;
   if (!token) return "";
   if (typeof window !== "undefined") return `${window.location.origin}/invite/${encodeURIComponent(token)}`;
   return `/invite/${encodeURIComponent(token)}`;
 }
 
-export default function InviteDialog({
-  gridId,
-  gridName,
-  open,
-  onOpenChange,
-  roleOptions,
-}: {
+type InviteDialogProps = {
   gridId: number;
   gridName: string;
   open: boolean;
   onOpenChange: (v: boolean) => void;
   roleOptions?: Role[];
-}) {
+};
+
+export default function InviteDialog(props: InviteDialogProps) {
+  // Each opening/Grid gets its own state and request lifetime.
+  return props.open ? <InviteDialogSession key={props.gridId} {...props} /> : null;
+}
+
+function InviteDialogSession({
+  gridId,
+  gridName,
+  open,
+  onOpenChange,
+  roleOptions,
+}: InviteDialogProps) {
   const { t } = useI18n();
   const allowedRoles = React.useMemo<Role[]>(
     () => (roleOptions && roleOptions.length > 0 ? roleOptions : ["viewer", "editor", "supervisor"]),
@@ -304,16 +302,22 @@ export default function InviteDialog({
   const [participantTier, setParticipantTier] = React.useState<Tier>("PRIMARY");
   const [message, setMessage] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
-  const [loadingData, setLoadingData] = React.useState(false);
+  const [loadingData, setLoadingData] = React.useState(true);
   const [savingGeneral, setSavingGeneral] = React.useState(false);
   const [sendingEmails, setSendingEmails] = React.useState(false);
   const [gridTiersEnabled, setGridTiersEnabled] = React.useState(true);
 
   const [accessList, setAccessList] = React.useState<AccessUser[]>([]);
   const [participantRecords, setParticipantRecords] = React.useState<ParticipantRecord[]>([]);
-  const [viewerLinks, setViewerLinks] = React.useState<InvitationRecord[]>([]);
+  const [savedLink, setSavedLink] = React.useState<InvitationRecord | null>(null);
+  const [savedEnabled, setSavedEnabled] = React.useState<boolean | null>(null);
+  const [copying, setCopying] = React.useState(false);
+  const lifetime = React.useRef<AbortController | null>(null);
   const [generalAccessEnabled, setGeneralAccessEnabled] = React.useState(false);
-  const [generalAccessUrl, setGeneralAccessUrl] = React.useState("");
+  const ready = savedEnabled !== null && !loadingData;
+  const dirty = ready && generalAccessEnabled !== savedEnabled;
+  const busy = savingGeneral || copying;
+  const canCopy = ready && !dirty && !busy && generalAccessEnabled && savedLink !== null;
 
   React.useEffect(() => {
     if (!open) return;
@@ -325,21 +329,29 @@ export default function InviteDialog({
     setRole(allowedRoles[0] ?? "viewer");
   }, [open, allowedRoles]);
 
-  const loadData = React.useCallback(async () => {
+  const loadData = React.useCallback(async (signal: AbortSignal) => {
     setLoadingData(true);
+    setSavedEnabled(null);
+    setSavedLink(null);
     setError(null);
     try {
       const [membersRes, participantsRes, gridRes, invitesRes] = await Promise.all([
-        fetch(`/api/grid_memberships/?grid=${gridId}`, { cache: "no-store" }),
-        fetch(`/api/participants?grid=${gridId}`, { cache: "no-store" }),
-        fetch(`/api/grids/${gridId}`, { cache: "no-store" }),
-        fetch(`/api/invitations/?grid=${gridId}`, { cache: "no-store" }),
+        fetch(`/api/grid_memberships/?grid=${gridId}`, { cache: "no-store", signal }),
+        fetch(`/api/participants?grid=${gridId}`, { cache: "no-store", signal }),
+        fetch(`/api/grids/${gridId}`, { cache: "no-store", signal }),
+        fetch(`/api/invitations/?grid=${gridId}`, { cache: "no-store", signal }),
       ]);
 
-      const membersData = membersRes.ok ? await membersRes.json().catch(() => null) : null;
-      const participantsData = participantsRes.ok ? await participantsRes.json().catch(() => null) : null;
-      const gridData = gridRes.ok ? await gridRes.json().catch(() => null) : null;
-      const invitesData = invitesRes.ok ? await invitesRes.json().catch(() => null) : null;
+      if ([membersRes, participantsRes, gridRes, invitesRes].some((res) => !res.ok)) {
+        throw new LocalizedApiError(t("invite_dialog.load_failed"));
+      }
+      const [membersData, participantsData, gridData, invitesData] = await Promise.all(
+        [membersRes, participantsRes, gridRes, invitesRes].map((res) => res.json()),
+      );
+      if (signal.aborted) return;
+      if (!Array.isArray(invitesData) && !Array.isArray(asObject(invitesData)?.results)) {
+        throw new LocalizedApiError(t("invite_dialog.load_failed"));
+      }
 
       const memberships = normalizeMembershipList(membersData);
       const participants = normalizeParticipantList(participantsData);
@@ -394,42 +406,48 @@ export default function InviteDialog({
         .sort((a, b) => ROLE_RANK[b.role] - ROLE_RANK[a.role] || a.name.localeCompare(b.name));
       setAccessList(filtered);
 
-      const activeViewerLinks = invites.filter((inv) => {
-        const typeOk = String(inv.type ?? "").toLowerCase() === "link";
-        const roleOk = String(inv.role ?? "").toLowerCase() === "viewer";
-        const status = String(inv.status ?? "").toLowerCase();
-        const active = inv.active !== false && status !== "cancelled" && status !== "expired";
-        return typeOk && roleOk && active;
-      });
-      setViewerLinks(activeViewerLinks);
-
-      const selected = activeViewerLinks[0] || null;
-      if (selected) {
-        setGeneralAccessEnabled(true);
-        setGeneralAccessUrl(getShareUrl(selected));
-      } else {
-        setGeneralAccessEnabled(false);
-        setGeneralAccessUrl("");
-      }
+      const selected = invites.find((inv) => isActiveGridLink(inv, gridId)) ?? null;
+      setSavedLink(selected);
+      setSavedEnabled(Boolean(selected));
+      setGeneralAccessEnabled(Boolean(selected));
     } catch {
-      setError(t("invite_dialog.load_failed"));
+      if (!signal.aborted) setError(t("invite_dialog.load_failed"));
     } finally {
-      setLoadingData(false);
+      if (!signal.aborted) setLoadingData(false);
     }
   }, [gridId, t]);
 
   React.useEffect(() => {
-    if (!open) return;
-    loadData();
-  }, [open, loadData]);
+    const controller = new AbortController();
+    lifetime.current = controller;
+    void loadData(controller.signal);
+    return () => controller.abort();
+  }, [loadData]);
 
-  async function copy(text: string) {
-    if (!text) return;
+  async function copy() {
+    const signal = lifetime.current?.signal;
+    if (!canCopy || !savedLink || !signal || signal.aborted) return;
+    setCopying(true);
+    setError(null);
     try {
-      await navigator.clipboard.writeText(text);
+      // Revalidate at copy time: another modal/tab may have revoked the URL.
+      const res = await fetch(`/api/invitations/resolve/?token=${encodeURIComponent(savedLink.token!)}`, {
+        cache: "no-store", signal,
+      });
+      const current = normalizeInvitation(await res.json());
+      if (signal.aborted) return;
+      if (!res.ok || !isActiveGridLink(current, gridId) || current.token !== savedLink.token) {
+        await loadData(signal);
+        if (!signal.aborted) setError(t("invite_dialog.link_changed"));
+        return;
+      }
+      await navigator.clipboard.writeText(getShareUrl(current));
+      if (signal.aborted) return;
       toast.success(t("invite_dialog.link_copied"));
     } catch {
-      toast.error(t("invite_dialog.copy_link_failed"));
+      if (!signal.aborted) toast.error(t("invite_dialog.copy_link_failed"));
+    } finally {
+      if (!signal.aborted) setCopying(false);
     }
   }
 
@@ -477,52 +495,22 @@ export default function InviteDialog({
   }
 
   async function saveGeneralAccess() {
+    const signal = lifetime.current?.signal;
+    if (!dirty || busy || !signal || signal.aborted) return;
     setSavingGeneral(true);
     setError(null);
     try {
-      const activeViewerLinks = viewerLinks.filter((inv) => {
-        const status = String(inv.status ?? "").toLowerCase();
-        return inv.active !== false && status !== "cancelled" && status !== "expired";
-      });
-
       if (!generalAccessEnabled) {
-        if (activeViewerLinks.length === 0) {
-          setGeneralAccessUrl("");
-          return;
-        }
-
-        const idsToCancel = activeViewerLinks
-          .map((inv) => inv.id)
-          .filter((id): id is Id => id !== null);
-
-        const cancelResults = await Promise.allSettled(
-          idsToCancel.map((id) =>
-            fetch(`/api/invitations/${encodeURIComponent(String(id))}/cancel/`, { method: "POST" })
-          )
-        );
-
-        const failedCancel = cancelResults.find(
-          (r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.ok)
-        );
-        if (failedCancel) {
-          throw new LocalizedApiError(t("invite_dialog.deactivate_failed"));
-        }
-
-        setViewerLinks((prev) =>
-          prev.map((inv) => {
-            const id = inv.id;
-            const isCancelled = id !== null && idsToCancel.some((targetId) => String(targetId) === String(id));
-            if (!isCancelled) return inv;
-            return { ...inv, active: false, status: "cancelled" };
-          })
-        );
-        setGeneralAccessUrl("");
-        return;
-      }
-
-      const existing = activeViewerLinks[0];
-      if (existing) {
-        setGeneralAccessUrl(getShareUrl(existing));
+        const res = await fetch("/api/invitations/revoke-links/", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ grid: gridId }),
+          signal,
+        });
+        if (!res.ok) throw new LocalizedApiError(t("invite_dialog.deactivate_failed"));
+        if (signal.aborted) return;
+        setSavedLink(null);
+        setSavedEnabled(false);
         return;
       }
 
@@ -534,20 +522,27 @@ export default function InviteDialog({
           type: "link" as InviteType,
           role: "viewer",
         }),
+        signal,
       });
       const bodyRaw = await res.json().catch(() => null);
       if (!res.ok) {
         throw new LocalizedApiError(parseApiError(bodyRaw, t("invite_dialog.save_general_access_failed")));
       }
       const body = normalizeInvitation(bodyRaw);
-      const url = getShareUrl(body);
-      setGeneralAccessUrl(url);
+      if (signal.aborted) return;
+      if (!isActiveGridLink(body, gridId)) throw new LocalizedApiError(t("invite_dialog.save_general_access_failed"));
+      setSavedLink(body);
+      setSavedEnabled(true);
       setGeneralAccessEnabled(true);
-      setViewerLinks((prev) => [...prev, body]);
     } catch (e: unknown) {
-      setError(normalizeApiError(e, t("invite_dialog.save_general_access_failed")));
+      if (!signal.aborted) {
+        // A lost response can hide a committed write. Require a fresh read
+        // before another save or copy rather than guessing persisted state.
+        await loadData(signal);
+        if (!signal.aborted) setError(normalizeApiError(e, t("invite_dialog.save_general_access_failed")));
+      }
     } finally {
-      setSavingGeneral(false);
+      if (!signal.aborted) setSavingGeneral(false);
     }
   }
 
@@ -639,7 +634,7 @@ export default function InviteDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => { if (!busy && !sendingEmails) onOpenChange(next); }}>
         <DialogContent className="max-w-[760px] p-0">
           <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col">
           <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
@@ -760,10 +755,11 @@ export default function InviteDialog({
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-sm font-medium">
-                        {generalAccessEnabled ? t("invite_dialog.anyone_with_link") : t("invite_dialog.general_link_disabled")}
+                        {!ready ? t(loadingData ? "invite_dialog.loading" : "invite_dialog.load_failed")
+                          : generalAccessEnabled ? t("invite_dialog.anyone_with_link") : t("invite_dialog.general_link_disabled")}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {generalAccessEnabled
+                        {!ready ? null : dirty ? t("invite_dialog.pending_changes") : generalAccessEnabled
                           ? t("invite_dialog.viewer_link_active")
                           : t("invite_dialog.viewer_link_inactive")}
                       </div>
@@ -776,6 +772,7 @@ export default function InviteDialog({
                           : "border-green-300 text-green-700 hover:bg-green-50"
                       }`}
                       onClick={() => setGeneralAccessEnabled((v) => !v)}
+                      disabled={!ready || busy}
                     >
                       {generalAccessEnabled ? t("invite_dialog.deactivate_url") : t("invite_dialog.activate_url")}
                     </button>
@@ -791,9 +788,9 @@ export default function InviteDialog({
                 <button
                   type="button"
                   className="inline-flex h-9 w-9 items-center justify-center rounded text-sm hover:bg-gray-100 disabled:opacity-50"
-                  onClick={() => copy(generalAccessUrl)}
+                  onClick={copy}
                   title={t("invite_dialog.copy_url")}
-                  disabled={!generalAccessUrl}
+                  disabled={!canCopy}
                 >
                   <Link2 className="h-4 w-4" />
                 </button>
@@ -808,7 +805,7 @@ export default function InviteDialog({
                   <button
                     type="button"
                     className="px-4 py-2 rounded bg-black text-white text-sm disabled:opacity-50"
-                    disabled={sendingEmails || emails.length === 0}
+                    disabled={!ready || busy || sendingEmails || emails.length === 0}
                     onClick={sendEmailInvites}
                   >
                     {sendingEmails ? t("invite_dialog.sending") : t("invite_dialog.send")}
@@ -820,20 +817,20 @@ export default function InviteDialog({
                 <button
                   type="button"
                   className="inline-flex items-center gap-2 px-3 py-2 rounded border text-sm disabled:opacity-50"
-                  disabled={!generalAccessUrl}
-                  onClick={() => copy(generalAccessUrl)}
+                  disabled={!canCopy}
+                  onClick={copy}
                 >
                   <Link2 className="h-4 w-4" />
                   {t("invite_dialog.copy_url")}
                 </button>
                 <div className="flex items-center gap-2">
                   <DialogClose asChild>
-                    <button type="button" className="px-3 py-2 rounded border text-sm">{t("invite_dialog.close")}</button>
+                    <button type="button" disabled={busy} className="px-3 py-2 rounded border text-sm">{t("invite_dialog.close")}</button>
                   </DialogClose>
                   <button
                     type="button"
                     className="px-4 py-2 rounded bg-black text-white text-sm disabled:opacity-50"
-                    disabled={savingGeneral}
+                    disabled={!dirty || busy}
                     onClick={saveGeneralAccess}
                   >
                     {savingGeneral ? t("common.saving") : t("invite_dialog.save_changes")}

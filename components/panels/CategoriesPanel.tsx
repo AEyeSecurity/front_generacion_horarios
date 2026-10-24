@@ -11,10 +11,12 @@ import PanelScrollArea from "@/components/panels/PanelScrollArea";
 import { useI18n } from "@/lib/use-i18n";
 import {
   fetchGridResource,
+  getCachedGridResource,
   invalidateGridResource,
   invalidateGridScreenContext,
   primeGridResource,
 } from "@/lib/screen-context";
+import { markPanelTiming, measurePanelRequest } from "@/lib/dev-panel-timing";
 
 const CATEGORY_VALUES_UPDATED_EVENT = "shift:category-values-updated";
 const CategoryDialog = dynamic(() => import("../dialogs/CategoryDialog"), { ssr: false });
@@ -30,8 +32,9 @@ export default function CategoriesPanel({
   onParents?: (parents: { id: number; name: string }[]) => void;
   refreshKey?: number;
 }) {
-  const [list, setList] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(false);
+  const cachedCategories = getCachedGridResource<Category[]>(gridId, "categories");
+  const [list, setList] = useState<Category[]>(() => cachedCategories ?? []);
+  const [loading, setLoading] = useState(cachedCategories === undefined);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Category | null>(null);
@@ -40,26 +43,38 @@ export default function CategoriesPanel({
   const { t } = useI18n();
 
   const load = useCallback(async (force = false) => {
+    const cached = force ? undefined : getCachedGridResource<Category[]>(gridId, "categories");
+    if (cached !== undefined) {
+      setList(cached);
+      setLoading(false);
+      markPanelTiming("categories", "data-ready");
+      onParents?.(cached.map((category) => ({ id: category.id, name: category.name })));
+      return;
+    }
     setLoading(true);
     setErr(null);
     try {
       const items = await fetchGridResource<Category[]>(gridId, "categories", {
         force,
+        preferFallback: true,
         fallback: async () => {
-          const res = await fetch(`/api/categories?grid=${gridId}`, { cache: "no-store" });
+          const res = await measurePanelRequest("categories", () =>
+            fetch(`/api/categories?grid=${gridId}`, { cache: "no-store" }),
+          );
           if (!res.ok) throw new ApiError(res.status, await res.text().catch(() => ""));
           const data = await res.json();
           return Array.isArray(data) ? data : data.results ?? [];
         },
       });
       setList(items);
+      markPanelTiming("categories", "data-ready");
       onParents?.(items.map((c: Category) => ({ id: c.id, name: c.name })));
     } catch (e: unknown) {
       setErr(normalizeApiError(e, "Error"));
     } finally {
       setLoading(false);
     }
-  }, [gridId, onParents, t]);
+  }, [gridId, onParents]);
 
   useEffect(() => {
     void load(refreshKey > 0);

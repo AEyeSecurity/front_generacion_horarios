@@ -61,6 +61,7 @@ export type CellFormBootstrap = {
   cell: UnknownRecord | null;
   seriesCells: UnknownRecord[];
   participants: UnknownRecord[];
+  categories: UnknownRecord[];
   units: UnknownRecord[];
   bundles: UnknownRecord[];
   timeRanges: UnknownRecord[];
@@ -105,6 +106,8 @@ export function normalizeCellFormBootstrap(payload: unknown): CellFormBootstrap 
     seriesCells: readList(sources, ["series_cells", "seriesCells"])
       .filter(isRecord),
     participants: tieredParticipants.length > 0 ? tieredParticipants : flatParticipants,
+    categories: readList(sources, ["categories", "category_options"])
+      .filter(isRecord),
     units: readList(sources, ["units", "unit_options"])
       .filter(isRecord),
     bundles: readList(sources, ["bundles", "bundle_options"])

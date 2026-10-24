@@ -2,7 +2,7 @@ import { apiErrorPayload } from "@/lib/api-error-contract";
 // app/api/categories/route.ts
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
-import { getRefreshToken } from "@/lib/cookies";
+import { getAccessToken, getRefreshToken } from "@/lib/cookies";
 
 const ACCESS  = process.env.AUTH_ACCESS_COOKIE!;
 const REFRESH = process.env.AUTH_REFRESH_COOKIE!;
@@ -10,7 +10,7 @@ const DOMAIN  = process.env.AUTH_COOKIE_DOMAIN;
 const SECURE  = String(process.env.AUTH_COOKIE_SECURE) === "true";
 
 const baseCookie = { httpOnly: true, sameSite: "lax" as const, secure: SECURE, path: "/" } as const;
-const withDomain = <T extends Record<string, any>>(o: T) => (DOMAIN ? { ...o, domain: DOMAIN } : o);
+const withDomain = <T extends Record<string, unknown>>(o: T) => (DOMAIN ? { ...o, domain: DOMAIN } : o);
 
 async function refreshTokens() {
   const refresh = await getRefreshToken();
@@ -30,7 +30,11 @@ async function refreshTokens() {
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const qs = url.searchParams.toString();
-  let r = await fetch(`${getApiBaseUrl()}/api/categories/${qs ? `?${qs}` : ""}`, { cache: "no-store" });
+  const access = await getAccessToken();
+  let r = await fetch(`${getApiBaseUrl()}/api/categories/${qs ? `?${qs}` : ""}`, {
+    headers: access ? { Authorization: `Bearer ${access}` } : undefined,
+    cache: "no-store",
+  });
   if (r.ok) return NextResponse.json(await r.json());
 
   if (r.status !== 401) {
@@ -59,14 +63,21 @@ export async function GET(req: Request) {
 // POST /api/categories  { grid, name, parent? }
 export async function POST(req: Request) {
   const body = await req.text();
+  const access = await getAccessToken();
   let r = await fetch(`${getApiBaseUrl()}/api/categories/`, {
-    method: "POST", headers: { "content-type": "application/json" }, body, cache: "no-store",
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(access ? { Authorization: `Bearer ${access}` } : {}),
+    },
+    body,
+    cache: "no-store",
   });
   if (r.ok) return NextResponse.json(await r.json(), { status: 201 });
 
   if (r.status !== 401) {
     const txt = await r.text().catch(()=> "");
-    let detail: any = txt; try { detail = JSON.parse(txt); } catch {}
+    let detail: unknown = txt; try { detail = JSON.parse(txt); } catch {}
     return NextResponse.json(apiErrorPayload({ error: "validation", detail }, r.status), { status: r.status });
   }
 
@@ -85,7 +96,7 @@ export async function POST(req: Request) {
   });
 
   const text = await r.text().catch(()=> "");
-  let data: any = text; try { data = JSON.parse(text); } catch {}
+  let data: unknown = text; try { data = JSON.parse(text); } catch {}
   const out = NextResponse.json(data, { status: r.status });
   out.cookies.set(ACCESS, tokens.access, withDomain({ ...baseCookie, maxAge: 60*15 }));
   out.cookies.set(REFRESH, tokens.refresh ?? refresh!, withDomain({ ...baseCookie, maxAge: 60*60*24*7 }));

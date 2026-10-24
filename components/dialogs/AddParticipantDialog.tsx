@@ -3,6 +3,7 @@ import { LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
 
 
 import * as React from "react";
+import { confirmDuplicateParticipant } from "@/lib/participant-duplicates";
 import { type Tier } from "@/components/badges/TierBadge";
 import { readGridTierEnabled } from "@/lib/grid-tier";
 import {
@@ -29,7 +30,7 @@ export default function AddParticipantDialog({
   onCreated?: () => void;
   tiersEnabled?: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [first, setFirst] = React.useState("");
   const [last, setLast] = React.useState("");
   const [tier, setTier] = React.useState<Tier>("PRIMARY");
@@ -69,6 +70,7 @@ export default function AddParticipantDialog({
     setSaving(true);
     setErr(null);
     try {
+      if (!(await confirmDuplicateParticipant(gridId, first, last, undefined, locale))) return;
       const res = await fetch(`/api/participants/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
