@@ -478,6 +478,7 @@ export default function NewGridPage() {
   }
 
   async function createGrid() {
+    if (loading) return;
     setErr(null);
     if (!validateBeforeSubmit()) return;
 
@@ -515,7 +516,6 @@ export default function NewGridPage() {
       router.replace(`/grid/${encodeURIComponent(target || String(gridId))}`);
     } catch (error: unknown) {
       setErr(normalizeApiError(error, tt("solver_wizard.create_failed", "Could not create grid.")));
-    } finally {
       setLoading(false);
     }
   }

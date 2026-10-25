@@ -26,7 +26,6 @@ import {
   detectPreferredLanguageFromNavigator,
   parsePreferredLanguage,
   readExplicitPreferredLanguage,
-  readLastSyncedPreferredLanguage,
   type PreferredLanguage,
   writeExplicitPreferredLanguage,
   writeLastSyncedPreferredLanguage,
@@ -60,117 +59,53 @@ export default function UserMenu({ me }: { me: User }) {
   const initials = useMemo(() => getAvatarInitials(fallbackName), [fallbackName]);
   const palette = useMemo(() => getAvatarPalette(getAvatarSeed(me)), [me]);
   const allowPasswordChange = useMemo(() => canChangePassword(me), [me]);
-  const activeRequestRef = useRef<string | null>(null);
+  const languageRequest = useRef(false);
 
+  // A local language change is only committed after the profile endpoint
+  // acknowledges the persisted value. Do not treat an empty/HTML 200 as success.
   const savePreferredLanguage = useCallback(async (nextLanguage: PreferredLanguage) => {
     const response = await fetch("/api/whoami", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ preferred_language: nextLanguage }),
     });
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      return { ok: false as const, error: normalizeApiError(payload, t("user_menu.language_save_error"), { status: response.status, translate: t }) };
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || parsePreferredLanguage(payload?.preferred_language) !== nextLanguage) {
+      throw new Error(normalizeApiError(payload, undefined, { status: response.status }));
     }
-    const payload = (await response.json().catch(() => ({}))) as { preferred_language?: unknown };
-    return { ok: true as const, language: parsePreferredLanguage(payload.preferred_language) ?? nextLanguage };
-  }, [t]);
+    return nextLanguage;
+  }, []);
 
   useEffect(() => {
-    const explicit = readExplicitPreferredLanguage(userId);
-    const initial = backendPreferredLanguage ?? explicit ?? detectPreferredLanguageFromNavigator();
+    const initial = backendPreferredLanguage ?? readExplicitPreferredLanguage(userId) ?? detectPreferredLanguageFromNavigator();
     setLanguage(initial);
     setLanguageError(null);
+    applyDocumentPreferredLanguage(initial);
     if (backendPreferredLanguage) {
       writeExplicitPreferredLanguage(userId, backendPreferredLanguage);
       writeLastSyncedPreferredLanguage(userId, backendPreferredLanguage);
     }
   }, [backendPreferredLanguage, userId]);
 
-  useEffect(() => {
-    applyDocumentPreferredLanguage(language);
-  }, [language]);
-
-  useEffect(() => {
-    if (backendPreferredLanguage) return;
-    const explicit = readExplicitPreferredLanguage(userId);
-    if (!explicit) return;
-
-    const lastSynced = readLastSyncedPreferredLanguage(userId);
-    if (lastSynced === explicit) return;
-
-    const requestKey = `explicit:${userId}:${explicit}`;
-    if (activeRequestRef.current === requestKey) return;
-    activeRequestRef.current = requestKey;
-    let active = true;
-    setLanguageBusy(true);
-    void savePreferredLanguage(explicit).then((result) => {
-      if (!active) return;
-      setLanguageBusy(false);
-      activeRequestRef.current = null;
-      if (!result.ok) {
-        setLanguageError(result.error);
-        return;
-      }
-      writeLastSyncedPreferredLanguage(userId, result.language);
-      setLanguage(result.language);
-      setLanguageError(null);
-    });
-    return () => {
-      active = false;
-    };
-  }, [backendPreferredLanguage, savePreferredLanguage, userId]);
-
-  useEffect(() => {
-    const explicit = readExplicitPreferredLanguage(userId);
-    if (explicit) return;
-    if (backendPreferredLanguage) return;
-
-    const detected = detectPreferredLanguageFromNavigator();
-    setLanguage(detected);
-    const lastSynced = readLastSyncedPreferredLanguage(userId);
-    if (lastSynced === detected) return;
-
-    const requestKey = `auto:${userId}:${detected}`;
-    if (activeRequestRef.current === requestKey) return;
-    activeRequestRef.current = requestKey;
-    let active = true;
-    setLanguageBusy(true);
-    void savePreferredLanguage(detected).then((result) => {
-      if (!active) return;
-      setLanguageBusy(false);
-      activeRequestRef.current = null;
-      if (!result.ok) {
-        setLanguageError(result.error);
-        return;
-      }
-      writeLastSyncedPreferredLanguage(userId, result.language);
-      setLanguage(result.language);
-      setLanguageError(null);
-    });
-    return () => {
-      active = false;
-    };
-  }, [backendPreferredLanguage, savePreferredLanguage, userId]);
-
   const onLanguageSelect = useCallback(async (nextLanguage: PreferredLanguage) => {
-    writeExplicitPreferredLanguage(userId, nextLanguage);
-    setLanguage(nextLanguage);
-    setLanguageError(null);
-    const requestKey = `explicit:${userId}:${nextLanguage}`;
-    activeRequestRef.current = requestKey;
+    if (languageRequest.current) return;
+    languageRequest.current = true;
     setLanguageBusy(true);
-    const result = await savePreferredLanguage(nextLanguage);
-    setLanguageBusy(false);
-    activeRequestRef.current = null;
-    if (!result.ok) {
-      setLanguageError(result.error);
-      return;
+    setLanguageError(null);
+    try {
+      const saved = await savePreferredLanguage(nextLanguage);
+      writeExplicitPreferredLanguage(userId, saved);
+      writeLastSyncedPreferredLanguage(userId, saved);
+      setLanguage(saved);
+      applyDocumentPreferredLanguage(saved);
+      router.refresh();
+    } catch (error) {
+      setLanguageError(normalizeApiError(error, t("user_menu.language_save_error")));
+    } finally {
+      languageRequest.current = false;
+      setLanguageBusy(false);
     }
-    writeLastSyncedPreferredLanguage(userId, result.language);
-    setLanguage(result.language);
-    router.refresh();
-  }, [router, savePreferredLanguage, userId]);
+  }, [router, savePreferredLanguage, t, userId]);
 
   const SmallAvatar = (
     <div

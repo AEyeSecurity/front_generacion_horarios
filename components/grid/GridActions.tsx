@@ -3,7 +3,9 @@
 // components/GridActions.tsx
 import { normalizeApiError } from "@/lib/api-errors";
 import { useRouter } from "next/navigation";
-import { MoreVertical, FileDown, Settings } from "lucide-react";
+import { MoreVertical, FileDown, Settings, LogOut } from "lucide-react";
+import { useState } from "react";
+import { authFetch } from "@/lib/client-auth";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -19,6 +21,7 @@ type Props = {
   gridId: number | string;
   gridCode?: string | null;
   canConfigureSolve?: boolean;
+  canLeave?: boolean;
   hasPublishedSchedule?: boolean;
 };
 
@@ -26,10 +29,25 @@ export default function GridActions({
   gridId,
   gridCode,
   canConfigureSolve = false,
+  canLeave = false,
   hasPublishedSchedule = false,
 }: Props) {
   const { t } = useI18n();
   const router = useRouter();
+  const [leaving, setLeaving] = useState(false);
+  const leaveGrid = async () => {
+    if (leaving || !window.confirm(t("grid_actions.leave_confirm"))) return;
+    setLeaving(true);
+    try {
+      const res = await authFetch(`/api/grids/${encodeURIComponent(String(gridId))}/leave`, { method: "POST" });
+      if (!res.ok) throw new Error(normalizeApiError(await res.text(), t("grid_actions.leave_failed"), { status: res.status }));
+      router.replace("/dashboard");
+      router.refresh();
+    } catch (error) {
+      window.alert(normalizeApiError(error, t("grid_actions.leave_failed")));
+      setLeaving(false);
+    }
+  };
   const canExportDraft = canConfigureSolve;
   const canExportPublished = hasPublishedSchedule;
   const hasExportOptions = canExportDraft || canExportPublished;
@@ -84,6 +102,12 @@ export default function GridActions({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[10rem]">
+        {canLeave && (
+          <DropdownMenuItem disabled={leaving} onClick={() => void leaveGrid()}>
+            <LogOut className="w-4 h-4 mr-2" />
+            {t("grid_actions.leave")}
+          </DropdownMenuItem>
+        )}
         {canConfigureSolve && (
           <DropdownMenuItem onClick={goSettings}>
             <Settings className="w-4 h-4 mr-2" />

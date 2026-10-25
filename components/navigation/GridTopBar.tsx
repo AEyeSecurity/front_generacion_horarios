@@ -13,6 +13,7 @@ export default async function GridTopBar({
   gridCode,
   name,
   canDelete = false,
+  canLeave = false,
   canInvite = false,
   hasSolution = false,
   canConfigureSolve = false,
@@ -22,6 +23,7 @@ export default async function GridTopBar({
   gridCode?: string | null;
   name: string;
   canDelete?: boolean;
+  canLeave?: boolean;
   canInvite?: boolean;
   hasSolution?: boolean;
   canConfigureSolve?: boolean;
@@ -56,10 +58,11 @@ export default async function GridTopBar({
             />
           )}
           {me && <UserMenu me={me} />}
-          {(hasPublishedSchedule || canConfigureSolve || canDelete) && (
+          {(hasPublishedSchedule || canConfigureSolve || canDelete || canLeave) && (
             <GridActions
               gridId={id}
               gridCode={gridCode}
+              canLeave={canLeave}
               canConfigureSolve={canConfigureSolve}
               hasPublishedSchedule={hasPublishedSchedule}
             />

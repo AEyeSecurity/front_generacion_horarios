@@ -23,6 +23,9 @@ with TemporaryDirectory(prefix="shift-contract-") as directory:
     get_user_model().objects.create_superuser(
         email="contract-audit@example.invalid", password="Contract-audit-local-123!", email_verified=True,
     )
+    get_user_model().objects.create_user(
+        email="solver-reviewer@example.invalid", password="Solver-reviewer-local-123!", email_verified=True,
+    )
     address = f"127.0.0.1:{os.environ.get('E2E_BACKEND_PORT', '8000')}"
     print(f"Disposable contract backend ready on {address}", flush=True)
     call_command("runserver", address, use_reloader=False)

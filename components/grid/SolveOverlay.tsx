@@ -49,6 +49,8 @@ import ShiftSpinner from "@/components/ui/ShiftSpinner";
 import type { ScheduleViewMode } from "@/lib/schedule-view";
 import { useI18n } from "@/lib/use-i18n";
 import { authFetch } from "@/lib/client-auth";
+import { useSolverRun } from "@/lib/use-solver-run";
+import SolverProgressDialog from "@/components/grid/SolverProgressDialog";
 import { readGridTierEnabled } from "@/lib/grid-tier";
 import { readDraftHistoryPayload, type DraftMutationNotice } from "@/lib/draft-mutation";
 import {
@@ -1416,8 +1418,6 @@ export default function SolveOverlay({
   const [currentUserAvatarUrl, setCurrentUserAvatarUrl] = useState<string | null>(null);
   const [leftPanelOpen, setLeftPanelOpen] = useState(false);
   const [isNarrowMobile, setIsNarrowMobile] = useState(false);
-  const [inputSignature, setInputSignature] = useState<string | null>(null);
-  const [isInputSignatureLoading, setIsInputSignatureLoading] = useState(false);
   const [candidateDialogOpen, setCandidateDialogOpen] = useState(false);
   const [candidateRunId, setCandidateRunId] = useState<string | null>(null);
   const [solveCandidates, setSolveCandidates] = useState<SolveCandidate[]>([]);
@@ -1617,13 +1617,20 @@ export default function SolveOverlay({
   );
 
   const canSolve = role === "supervisor" && !historyMode;
+  const { run: serverRun, disconnected: solverDisconnected, checking: solverChecking, refresh: refreshSolverRun } =
+    useSolverRun(gridId, canSolve && scheduleViewMode === "draft");
+  const [solveProgressOpen, setSolveProgressOpen] = useState(false);
+  const solverRunning = isSolving || serverRun?.state === "running";
   const notifyDraftMutation = useCallback((notice: DraftMutationNotice = {}) => {
     if (historyMode) return;
     if (scheduleViewMode !== "draft") return;
 
     invalidatePlacementPreviewCacheForSchedule(gridId, currentSchedule?.id);
+    void refreshSolverRun();
     onDraftMutated?.(notice);
-  }, [currentSchedule?.id, gridId, historyMode, onDraftMutated, scheduleViewMode]);
+  }, [currentSchedule?.id, gridId, historyMode, onDraftMutated, scheduleViewMode, refreshSolverRun]);
+
+  useEffect(() => { void refreshSolverRun(); }, [externalRefreshTick, refreshSolverRun]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1679,11 +1686,15 @@ export default function SolveOverlay({
   const persistPendingCandidateRun = useCallback(
     (snapshot: PendingCandidateRunSnapshot | null) => {
       if (typeof window === "undefined") return;
-      if (!snapshot) {
-        window.localStorage.removeItem(pendingCandidateStorageKey);
-        return;
+      try {
+        if (!snapshot) {
+          window.localStorage.removeItem(pendingCandidateStorageKey);
+          return;
+        }
+        window.localStorage.setItem(pendingCandidateStorageKey, JSON.stringify(snapshot));
+      } catch {
+        // The authoritative response is persisted by Django, not this cache.
       }
-      window.localStorage.setItem(pendingCandidateStorageKey, JSON.stringify(snapshot));
     },
     [pendingCandidateStorageKey],
   );
@@ -1710,58 +1721,43 @@ export default function SolveOverlay({
     setCandidateError(null);
   }, [persistPendingCandidateRun]);
 
+  const observedResolution = useRef<string | null>(null);
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!canSolve || scheduleViewMode !== "draft") return;
-    try {
-      const raw = window.localStorage.getItem(pendingCandidateStorageKey);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as Partial<PendingCandidateRunSnapshot>;
-      const runId = typeof parsed.run_id === "string" ? parsed.run_id : "";
-      if (!runId) {
-        window.localStorage.removeItem(pendingCandidateStorageKey);
-        return;
+    if (!serverRun) return;
+    if (["ready", "failed"].includes(serverRun.state)) setIsSolving(false);
+    if (["idle", "chosen", "rejected"].includes(serverRun.state)) {
+      if (candidateRunId) {
+        clearResolvedCandidateRun();
       }
-      const candidates = Array.isArray(parsed.candidates) ? parsed.candidates : [];
-      if (candidates.length === 0) {
-        window.localStorage.removeItem(pendingCandidateStorageKey);
-        return;
+      const resolution = `${serverRun.run_id}:${serverRun.state}`;
+      if (serverRun.state === "chosen" && observedResolution.current !== resolution) {
+        observedResolution.current = resolution;
+        // Another user may have materialized a schedule while this tab was open,
+        // even if this tab never received the ready response.
+        invalidateGridScreenContext(gridId);
+        router.refresh();
       }
-      setCandidateRunId(runId);
-      setSolveCandidates(candidates);
-      setSelectableCandidateIndexes(
-        Array.isArray(parsed.selectable_candidate_indexes)
-          ? parsed.selectable_candidate_indexes.map((idx) => Number(idx)).filter((idx) => Number.isFinite(idx))
-          : [],
-      );
-      setAllCandidatesFailed(Boolean(parsed.all_candidates_failed));
-      setCandidatePreference(
-        parsed.preference && typeof parsed.preference === "object"
-          ? (parsed.preference as Record<string, unknown>)
-          : null,
-      );
-      const reasons = Array.isArray(parsed.reject_reason_options)
-        ? parsed.reject_reason_options.filter(
-            (item): item is CandidateReasonOption =>
-              Boolean(item && typeof item.code === "string" && typeof item.label === "string"),
-          )
-        : [];
-      setRejectReasonOptions(reasons);
-      setRejectReasonCode(reasons[0]?.code ?? "");
-      setCandidatePreviewContext(
-        parsed.preview_context && typeof parsed.preview_context === "object"
-          ? (parsed.preview_context as CandidatePreviewContext)
-          : null,
-      );
-      setPendingSolveSignature(
-        typeof parsed.pending_solve_signature === "string" ? parsed.pending_solve_signature : null,
-      );
-      const previewIdx = Number(parsed.preview_candidate_index);
-      setPreviewCandidateIndex(Number.isFinite(previewIdx) ? previewIdx : Number(candidates[0]?.index ?? 0));
-    } catch {
-      window.localStorage.removeItem(pendingCandidateStorageKey);
+      return;
     }
-  }, [canSolve, pendingCandidateStorageKey, scheduleViewMode]);
+    if (serverRun.state !== "ready" || String(serverRun.run_id) === candidateRunId) return;
+    const data = serverRun as unknown as SolveCandidatesResponse;
+    const candidates = (Array.isArray(data.candidates) ? data.candidates : [])
+      .map((item, index) => normalizeSolveCandidate(item, index))
+      .filter((item): item is SolveCandidate => Boolean(item));
+    setCandidateRunId(String(serverRun.run_id));
+    setSolveCandidates(candidates);
+    setSelectableCandidateIndexes((data.selectable_candidate_indexes ?? []).map(Number));
+    setAllCandidatesFailed(Boolean(data.all_candidates_failed));
+    setCandidatePreference(data.preference ?? null);
+    setCandidatePreviewContext(normalizeCandidatePreviewContext(data.preview_context));
+    const reasons = normalizeReasonOptions(data.none_option?.reason_options);
+    setRejectReasonOptions(reasons);
+    setRejectReasonCode(reasons[0]?.code ?? "other");
+    setRejectNote("");
+    // Recovery is indicated by the dock badge; do not steal another user's focus.
+    setPreviewCandidateIndex(null);
+    setCandidateDialogOpen(false);
+  }, [serverRun, candidateRunId, clearResolvedCandidateRun, gridId, router]);
 
   useEffect(() => {
     if (!canSolve) return;
@@ -3965,45 +3961,10 @@ export default function SolveOverlay({
   }, [dayStartMin, externalRefreshTick, gridId, historyMode, normalizeScheduleResource, renderModel, scheduleViewMode, slotMin]);
 
   useEffect(() => {
-    if (!isSolving) return;
+    if (!solverRunning) return;
     const id = window.setInterval(() => setTick((t) => t + 1), 250);
     return () => window.clearInterval(id);
-  }, [isSolving]);
-
-  useEffect(() => {
-    if (!canSolve) {
-      setInputSignature(null);
-      return;
-    }
-    let active = true;
-    (async () => {
-      setIsInputSignatureLoading(true);
-      try {
-        const { signature, maxUpdatedAt } = await computeCurrentSolveInputSignature();
-        if (!active) return;
-        const saved = window.localStorage.getItem(solveSignatureStorageKey);
-        let baseline = saved;
-        if (!baseline && currentSchedule && Array.isArray(currentSchedule.placements) && currentSchedule.placements.length > 0) {
-          const scheduleUpdatedAt = Math.max(
-            parseTimestamp(currentSchedule.updated_at),
-            parseTimestamp(currentSchedule.created_at),
-          );
-          if (scheduleUpdatedAt > 0 && maxUpdatedAt <= scheduleUpdatedAt) {
-            baseline = signature;
-            window.localStorage.setItem(solveSignatureStorageKey, signature);
-          }
-        }
-        setInputSignature(baseline && baseline === signature ? signature : null);
-      } catch {
-        if (active) setInputSignature(null);
-      } finally {
-        if (active) setIsInputSignatureLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [canSolve, gridId, hasCells, currentSchedule?.id, currentSchedule?.updated_at, currentSchedule?.created_at]);
+  }, [solverRunning]);
 
   useEffect(() => {
     if (!canSolve || historyMode || scheduleViewMode !== "draft" || !hasCells) {
@@ -4059,9 +4020,9 @@ export default function SolveOverlay({
   ]);
 
   const solveElapsedMs = useMemo(() => {
-    if (!solveStartedAt) return 0;
-    return Date.now() - solveStartedAt;
-  }, [solveStartedAt, tick]);
+    const start = serverRun?.state === "running" && serverRun.created_at ? Date.parse(serverRun.created_at) : solveStartedAt;
+    return start ? Math.max(0, Date.now() - start) : 0;
+  }, [solveStartedAt, serverRun, tick]);
 
   const openPrecheckDialog = useCallback(
     (blocking: boolean, lines: string[]) => {
@@ -4078,13 +4039,10 @@ export default function SolveOverlay({
   );
 
   async function runSolve() {
+    if (solverRunning || solverChecking || solverDisconnected || ["ready", "failed"].includes(serverRun?.state ?? "")) return;
     try {
+      setSolveProgressOpen(true);
       const { signature, solverParams } = await computeCurrentSolveInputSignature();
-      const saved = window.localStorage.getItem(solveSignatureStorageKey);
-      if (saved && saved === signature) {
-        setError(t("solve_overlay.input_unchanged_latest_solution"));
-        return;
-      }
 
       setIsSolving(true);
       setSolveStartedAt(Date.now());
@@ -4103,6 +4061,7 @@ export default function SolveOverlay({
       const precheckResult = await runPrecheckRequest(solverParams, { signature });
       const precheckDiagnostics = getPrecheckDiagnostics(precheckResult);
       if (precheckDiagnostics.hasBlockingErrors) {
+        setSolveProgressOpen(false);
         const blockingLines = (precheckDiagnostics.errors.length > 0
           ? precheckDiagnostics.errors
           : precheckDiagnostics.all
@@ -4123,6 +4082,10 @@ export default function SolveOverlay({
         }),
       });
       if (!r.ok) {
+        if (r.status === 409) {
+          await refreshSolverRun();
+          return;
+        }
         const txt = await r.text().catch(() => "");
         const fallback = r.status >= 500
           ? t("solve_overlay.solver_internal_error")
@@ -4130,6 +4093,10 @@ export default function SolveOverlay({
         throw new LocalizedApiError(parseApiErrorMessage(txt, fallback));
       }
       const data = (await r.json()) as SolveCandidatesResponse;
+      const persisted = await refreshSolverRun();
+      // Another supervisor can already have resolved this run while its POST
+      // response was in flight. Never reopen a stale response.
+      if (!persisted || persisted.state !== "ready" || String(persisted.run_id) !== String(data.run_id)) return;
       const responsePrecheck = data.precheck ? normalizePrecheckResponse(data.precheck) : null;
       if (responsePrecheck) {
         setPrecheck(responsePrecheck);
@@ -4153,7 +4120,7 @@ export default function SolveOverlay({
       );
       const reasonOptions = normalizeReasonOptions(data.none_option?.reason_options);
 
-      setCandidateRunId(data.run_id ?? null);
+      setCandidateRunId(data.run_id == null ? null : String(data.run_id));
       setSolveCandidates(candidates);
       setSelectableCandidateIndexes(selectable);
       setAllCandidatesFailed(Boolean(data.all_candidates_failed));
@@ -4170,6 +4137,7 @@ export default function SolveOverlay({
           .map((candidate) => Number(candidate.index))
           .find((index) => Number.isFinite(index)) ?? null;
       setPreviewCandidateIndex(firstCandidateIndex);
+      setSolveProgressOpen(false);
       setPreviewParticipantsOpen(false);
       setPreviewParticipantId(null);
       setPreviewSelectedUnitId(null);
@@ -4221,6 +4189,7 @@ export default function SolveOverlay({
     } finally {
       setPrecheckBusy(false);
       setIsSolving(false);
+      await refreshSolverRun();
     }
   }
 
@@ -4235,14 +4204,6 @@ export default function SolveOverlay({
     }
     router.refresh();
   }, [gridId, pathname, router]);
-
-  const hardReloadGridView = useCallback((scope: ScheduleViewMode | "all" = "all") => {
-    if (typeof window !== "undefined") {
-      window.location.reload();
-      return;
-    }
-    refreshGridView(scope);
-  }, [refreshGridView]);
 
   const chooseCandidate = async (candidateIndex: number) => {
     if (!candidateRunId) {
@@ -4280,23 +4241,25 @@ export default function SolveOverlay({
       setError(null);
       if (pendingSolveSignature) {
         window.localStorage.setItem(solveSignatureStorageKey, pendingSolveSignature);
-        setInputSignature(pendingSolveSignature);
       }
       clearResolvedCandidateRun();
+      await refreshSolverRun();
       notifyDraftMutation({ draftHistory: readDraftHistoryPayload(chosen) });
     } catch (e: any) {
       setCandidateError(normalizeApiError(e, t("solve_overlay.could_not_choose_candidate")));
+      await refreshSolverRun();
     } finally {
       setCandidateBusy(false);
     }
   };
 
-  const rejectCandidates = async () => {
-    if (!candidateRunId) {
+  const rejectCandidates = async (explicitClose = false) => {
+    const runId = candidateRunId ?? (serverRun?.run_id != null ? String(serverRun.run_id) : null);
+    if (!runId) {
       setCandidateError(t("solve_overlay.missing_candidate_run_id"));
       return;
     }
-    const reason = rejectReasonCode || rejectReasonOptions[0]?.code;
+    const reason = explicitClose ? "other" : rejectReasonCode || rejectReasonOptions[0]?.code;
     if (!reason) {
       setCandidateError(t("solve_overlay.select_reject_reason"));
       return;
@@ -4305,13 +4268,13 @@ export default function SolveOverlay({
     setCandidateError(null);
     try {
       const res = await authFetch(
-        `/api/grids/${gridId}/solve-candidates/${encodeURIComponent(candidateRunId)}/reject/`,
+        `/api/grids/${gridId}/solve-candidates/${encodeURIComponent(runId)}/reject/`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             reason_code: reason,
-            note: rejectNote.trim() || undefined,
+            note: explicitClose ? "Dismissed failed execution" : rejectNote.trim() || undefined,
           }),
         },
       );
@@ -4322,11 +4285,14 @@ export default function SolveOverlay({
         );
       }
       setCandidateDialogOpen(false);
-      setError(t("solve_overlay.candidates_rejected_adjust_and_run_again"));
+      setSolveProgressOpen(false);
+      setError(null);
       persistPendingCandidateRun(null);
-      hardReloadGridView("draft");
+      clearResolvedCandidateRun();
+      await refreshSolverRun();
     } catch (e: any) {
       setCandidateError(normalizeApiError(e, t("solve_overlay.could_not_reject_candidates")));
+      await refreshSolverRun();
     } finally {
       setCandidateBusy(false);
     }
@@ -5411,31 +5377,30 @@ export default function SolveOverlay({
     [precheckDiagnostics.warnings],
   );
 
-  const isInputUnchanged = Boolean(inputSignature);
   const hasPendingCandidateResolution =
     canSolve &&
     scheduleViewMode === "draft" &&
-    Boolean(candidateRunId) &&
-    solveCandidates.length > 0;
+    (Boolean(candidateRunId) || serverRun?.state === "ready" || serverRun?.state === "failed");
   const canUseSolve =
     canSolve &&
     hasCells &&
-    !isSolving &&
+    !solverRunning &&
+    !solverChecking &&
+    !solverDisconnected &&
     !hasPendingCandidateResolution &&
-    !isInputUnchanged &&
-    !isInputSignatureLoading &&
     !precheckBusy;
   const canPublishDraft =
     canSolve &&
     scheduleViewMode === "draft" &&
     Array.isArray(currentSchedule?.placements) &&
     currentSchedule.placements.length > 0 &&
+    !solverRunning && !hasPendingCandidateResolution &&
     !isPublishing;
   const canPinCards = enablePinning && role === "supervisor" && scheduleViewMode === "draft";
   const canManualEditCards =
     role === "supervisor" &&
     scheduleViewMode === "draft" &&
-    !hasPendingCandidateResolution;
+    !solverRunning;
   const canCommentCards =
     scheduleViewMode === "published" &&
     Boolean(currentSchedule?.published_schedule_id ?? currentSchedule?.id) &&
@@ -7212,8 +7177,8 @@ export default function SolveOverlay({
         endSlot,
       };
 
-      if (hasPendingCandidateResolution) {
-        setPinError(t("solve_overlay.resolve_pending_candidates"));
+      if (solverRunning) {
+        setPinError(t("solve_overlay.solving"));
         restoreSuppressedUnassignedCell(sourceCellId);
         return;
       }
@@ -7480,7 +7445,7 @@ export default function SolveOverlay({
       confirmCellPlacement,
       ensureDraftSchedule,
       formatPlacementPreviewMessage,
-      hasPendingCandidateResolution,
+      solverRunning,
       notifyDraftMutation,
       placementPreviewBusy,
       placementPreviewBySlot,
@@ -8368,10 +8333,6 @@ export default function SolveOverlay({
     ? t("solve_overlay.precheck_blocking_fix_before_solve")
     : hasPendingCandidateResolution
     ? t("solve_overlay.resolve_pending_candidates")
-    : isInputUnchanged
-    ? t("solve_overlay.input_unchanged_latest_solution")
-    : isInputSignatureLoading
-    ? t("solve_overlay.checking_changes")
     : isSolving
     ? t("solve_overlay.solving")
     : t("solve_overlay.solve");
@@ -8390,7 +8351,7 @@ export default function SolveOverlay({
   );
 
   const previewCandidate = useMemo(
-    () => orderedCandidates.find((candidate) => Number(candidate.index) === Number(previewCandidateIndex)) ?? null,
+    () => previewCandidateIndex == null ? null : orderedCandidates.find((candidate) => Number(candidate.index) === Number(previewCandidateIndex)) ?? null,
     [orderedCandidates, previewCandidateIndex],
   );
 
@@ -8739,7 +8700,12 @@ export default function SolveOverlay({
   );
 
   const openPendingCandidatePreview = useCallback(() => {
-    if (orderedCandidates.length === 0) return;
+    if (serverRun?.state !== "ready" || orderedCandidates.length === 0 || solverDisconnected) {
+      setSolveProgressOpen(true);
+      void refreshSolverRun();
+      return;
+    }
+    setSolveProgressOpen(false);
     const fallbackIndex = Number(orderedCandidates[0].index);
     const targetIndex =
       previewCandidateIndex != null && Number.isFinite(Number(previewCandidateIndex))
@@ -8751,7 +8717,7 @@ export default function SolveOverlay({
     setPreviewParticipantsOpen(false);
     setPreviewParticipantsQuery("");
     setPreviewCandidateIndex(targetIndex);
-  }, [orderedCandidates, previewCandidateIndex]);
+  }, [orderedCandidates, previewCandidateIndex, serverRun, solverDisconnected, refreshSolverRun]);
 
   const openCandidatePreview = (candidateIndex: number) => {
     setPreviewMode("candidate");
@@ -8771,15 +8737,11 @@ export default function SolveOverlay({
         setPreviewParticipantsOpen(false);
         return;
       }
-      setPreviewParticipantsOpen(false);
-      setPreviewParticipantsQuery("");
-      setPreviewParticipantId(null);
-      setPreviewMode("candidate");
-      setPreviewCandidateIndex(null);
+      if (!candidateBusy) setPreviewCandidateIndex(null);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [previewCandidate, previewParticipantsOpen]);
+  }, [previewCandidate, previewParticipantsOpen, candidateBusy]);
 
   const shiftPreviewCandidate = (direction: -1 | 1) => {
     if (orderedCandidates.length === 0) return;
@@ -8859,6 +8821,19 @@ export default function SolveOverlay({
 
   return (
     <>
+      <SolverProgressDialog
+        open={solveProgressOpen}
+        onOpenChange={setSolveProgressOpen}
+        state={solverRunning ? "running" : serverRun?.state ?? "idle"}
+        disconnected={solverDisconnected}
+        elapsedMs={solveElapsedMs}
+        actor={serverRun?.created_by_name}
+        busy={candidateBusy}
+        error={candidateError || error}
+        onReview={openPendingCandidatePreview}
+        onDismissFailure={() => void rejectCandidates(true)}
+        onRetry={() => void refreshSolverRun()}
+      />
       {pinErrorCard && pinErrorCardAnchor && (
         <ScheduleErrorCard
           message={pinErrorCard.message}
@@ -10406,7 +10381,6 @@ export default function SolveOverlay({
         onOpenChange={(open) => {
           if (candidateBusy) return;
           setCandidateDialogOpen(open);
-          if (!open) setCandidateError(null);
         }}
       >
         <DialogContent className="z-[170] max-w-[760px] p-0">
@@ -11227,9 +11201,9 @@ export default function SolveOverlay({
         <RightSideDock
           visible={true}
           closeSignal={rightDockCloseSignal}
-          pendingCandidateReview={hasPendingCandidateResolution}
+          pendingCandidateReview={hasPendingCandidateResolution || solverRunning || solverDisconnected}
           pendingCandidateTitle={t("solve_overlay.review_pending_candidates")}
-          showSolveNotification={hasPendingCandidateResolution}
+          showSolveNotification={hasPendingCandidateResolution || solverDisconnected}
           canUseSolve={canUseSolve}
           solveDisabledReason={solveDisabledReason}
           canManualEditCards={canManualEditCards}
@@ -11245,8 +11219,7 @@ export default function SolveOverlay({
           isUnassignedToolActive={isUnassignedToolActive}
           canPublishDraft={canPublishDraft}
           isPublishing={isPublishing}
-          isSolving={isSolving}
-          solveElapsedMs={solveElapsedMs}
+          isSolving={solverRunning}
           error={error}
           onErrorDismiss={() => setError(null)}
           labels={{

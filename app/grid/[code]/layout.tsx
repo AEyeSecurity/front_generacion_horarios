@@ -19,6 +19,7 @@ export default async function GridByCodeLayout({
   let gridName = "Grid";
   let gridCode: string | null = null;
   let role: Role = "viewer";
+  let canLeave = false;
   let hasSolved = false;
   let hasPublishedSchedule = false;
 
@@ -41,6 +42,7 @@ export default async function GridByCodeLayout({
         (m: any) => (m.user_id ?? (typeof m.user === "number" ? m.user : m.user?.id)) === me.id
       );
       role = (mine?.role ?? "viewer") as Role;
+      canLeave = Boolean(mine && !mine.owner && (role === "editor" || role === "viewer"));
     } catch {}
 
     try {
@@ -61,6 +63,7 @@ export default async function GridByCodeLayout({
         gridCode={gridCode}
         name={gridName}
         canDelete={role === "supervisor"}
+        canLeave={canLeave}
         canInvite={role === "supervisor"}
         hasSolution={hasSolved}
         canConfigureSolve={role === "supervisor"}

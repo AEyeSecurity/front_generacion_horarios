@@ -6,6 +6,15 @@ import { forwardApiResponse } from "@/lib/api-proxy-response";
 
 const B = getApiBaseUrlNormalized();
 
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
+  const { code } = await params;
+  const access = await getAccessToken();
+  if (!access) return NextResponse.json(apiErrorPayload({ error: "unauthenticated" }, 401), { status: 401 });
+  return forwardApiResponse(fetch(`${B}/api/grids/code/${encodeURIComponent(code)}/solve-candidates/`, {
+    headers: { Authorization: `Bearer ${access}` }, cache: "no-store",
+  }));
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ code: string }> },

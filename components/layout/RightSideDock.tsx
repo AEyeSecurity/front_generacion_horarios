@@ -58,7 +58,6 @@ type Props = {
   canPublishDraft?: boolean;
   isPublishing?: boolean;
   isSolving?: boolean;
-  solveElapsedMs?: number;
   error: string | null;
   onErrorDismiss?: () => void;
   labels: {
@@ -163,7 +162,6 @@ export default function RightSideDock({
   canPublishDraft = false,
   isPublishing = false,
   isSolving = false,
-  solveElapsedMs = 0,
   error,
   onErrorDismiss,
   labels,
@@ -268,7 +266,7 @@ export default function RightSideDock({
   if (!visible) return null;
   if (publishedCommentOnly) {
     return (
-      <div data-right-side-dock className="fixed right-4 top-1/2 z-[160] -translate-y-1/2 pointer-events-none">
+      <div data-right-side-dock className="fixed right-4 top-1/2 z-[160] w-12 -translate-y-1/2 pointer-events-none">
         <div className="flex flex-col items-center gap-3">
           <button
             type="button"
@@ -285,12 +283,13 @@ export default function RightSideDock({
 
   return (
     <>
-      <div data-right-side-dock className="fixed right-4 top-1/2 z-[160] -translate-y-1/2 pointer-events-none">
+      <div data-right-side-dock className="fixed right-4 top-1/2 z-[160] w-12 -translate-y-1/2 pointer-events-none">
         <div className="flex flex-col items-center gap-3">
           {!fanOpen && !showToolScroller && (
             <button
               type="button"
               title={pendingCandidateReview ? pendingCandidateTitle : solveDisabledReason}
+              data-testid="solve-dock-button"
               onClick={() => {
                 if (pendingCandidateReview) {
                   onPendingReviewPressed?.();
@@ -302,20 +301,18 @@ export default function RightSideDock({
               className={`${bubbleClass} relative scale-75 opacity-90 ${pendingCandidateReview || canUseSolve ? "" : "opacity-70"} disabled:cursor-default`}
               aria-disabled={pendingCandidateReview ? false : !canUseSolve}
             >
-              {pendingCandidateReview || canUseSolve ? (
+              {isSolving ? <Loader2 className="h-5 w-5 animate-spin text-violet-600" /> : pendingCandidateReview || canUseSolve ? (
                 <Lightbulb className={`w-5 h-5 ${iconClass}`} />
               ) : (
                 <LightbulbOff className="w-5 h-5 text-gray-300" />
               )}
               {showSolveNotification && (
-                <span className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white shadow-sm">
-                  !
-                </span>
+                <span data-testid="solve-pending-badge" aria-label={pendingCandidateTitle} className="absolute right-0 top-0 h-3 w-3 rounded-full bg-red-600 shadow-sm" />
               )}
             </button>
           )}
 
-          {!pendingCandidateReview && !showToolScroller && (
+          {!isSolving && !showToolScroller && (
             <div className="relative h-12 w-12 pointer-events-auto" data-jiggle-tools>
               <div
                 className={`absolute inset-0 pointer-events-none transition-all duration-200 ${
@@ -447,7 +444,7 @@ export default function RightSideDock({
             </div>
           )}
 
-          {!pendingCandidateReview && !fanOpen && !showToolScroller && (
+          {!isSolving && !fanOpen && !showToolScroller && (
             <button
               type="button"
               title={canPublishDraft ? labels.publishDraft : labels.nothingToPublish}
@@ -467,7 +464,7 @@ export default function RightSideDock({
         {error && (
           <div
             role="alert"
-            className="mt-2 flex max-h-24 w-64 items-start gap-2 overflow-y-auto break-words rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-left text-xs leading-relaxed text-red-700 shadow-sm"
+            className="absolute right-0 top-full mt-2 flex max-h-24 w-64 items-start gap-2 overflow-y-auto break-words rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-left text-xs leading-relaxed text-red-700 shadow-sm pointer-events-auto"
           >
             <span className="min-w-0 flex-1">{error}</span>
             {onErrorDismiss && (
@@ -481,11 +478,6 @@ export default function RightSideDock({
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
-          </div>
-        )}
-        {isSolving && (
-          <div className="mt-1 w-48 text-xs text-gray-600 text-right">
-            {labels.solving} {Math.round(solveElapsedMs / 100) / 10}{labels.secondsShort}
           </div>
         )}
       </div>

@@ -14,6 +14,7 @@ test("creates a new grid through the UI and deletes it afterwards", async ({ pag
   const gridName = uniqueName("E2E UI Grid");
 
   await ensureAuthenticated(page);
+  let releaseNavigation = () => {};
 
   try {
     await page.goto("/grid/new");
@@ -40,6 +41,16 @@ test("creates a new grid through the UI and deletes it afterwards", async ({ pag
     await page.getByText(/People covering shifts or tasks|Personas cubriendo turnos o tareas/i).click();
     await page.getByRole("button", { name: /^(Next|Siguiente)$/i }).click();
 
+    let navigationStarted!: () => void;
+    const navigating = new Promise<void>((resolve) => { navigationStarted = resolve; });
+    const navigationGate = new Promise<void>((resolve) => { releaseNavigation = resolve; });
+    await page.route("**/grid/*", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (!path.startsWith("/grid/") || path === "/grid/new") return route.continue();
+      navigationStarted();
+      await navigationGate;
+      await route.continue();
+    });
     const createResponsePromise = page.waitForResponse(
       (response) =>
         (response.status() < 300 || response.status() >= 400) &&
@@ -65,6 +76,12 @@ test("creates a new grid through the UI and deletes it afterwards", async ({ pag
     expect(Number.isFinite(createdGrid.id)).toBe(true);
     resources.grid = createdGrid;
 
+    await navigating;
+    const creating = page.getByRole("button", { name: /Creating|Creando/i });
+    await expect(creating).toBeVisible();
+    await expect(creating).toBeDisabled();
+    releaseNavigation();
+
     expect(createdGrid.name).toBe(gridName);
     await page.waitForURL(
       (url) =>
@@ -78,6 +95,7 @@ test("creates a new grid through the UI and deletes it afterwards", async ({ pag
     expect([404, 410]).toContain(deletedLookup.status());
     resources.grid = undefined;
   } finally {
+    releaseNavigation();
     await cleanupResources(page, resources);
   }
 });
