@@ -2,7 +2,7 @@ import { apiErrorPayload } from "@/lib/api-error-contract";
 // app/api/participants/route.ts
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
-import { getRefreshToken } from "@/lib/cookies";
+import { getAccessToken, getRefreshToken } from "@/lib/cookies";
 
 const ACCESS  = process.env.AUTH_ACCESS_COOKIE!;
 const REFRESH = process.env.AUTH_REFRESH_COOKIE!;
@@ -10,7 +10,7 @@ const DOMAIN  = process.env.AUTH_COOKIE_DOMAIN;
 const SECURE  = String(process.env.AUTH_COOKIE_SECURE) === "true";
 
 const baseCookie = { httpOnly: true, sameSite: "lax" as const, secure: SECURE, path: "/" } as const;
-const withDomain = <T extends Record<string, any>>(o: T) => (DOMAIN ? { ...o, domain: DOMAIN } : o);
+const withDomain = <T extends Record<string, unknown>>(o: T) => (DOMAIN ? { ...o, domain: DOMAIN } : o);
 
 async function refreshTokens() {
   const refresh = await getRefreshToken();
@@ -30,7 +30,11 @@ async function refreshTokens() {
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const qs = url.searchParams.toString();
-  let r = await fetch(`${getApiBaseUrl()}/api/participants/${qs ? `?${qs}` : ""}`, { cache: "no-store" });
+  const access = await getAccessToken();
+  let r = await fetch(`${getApiBaseUrl()}/api/participants/${qs ? `?${qs}` : ""}`, {
+    headers: access ? { Authorization: `Bearer ${access}` } : undefined,
+    cache: "no-store",
+  });
 
   if (r.ok) return NextResponse.json(await r.json(), { status: r.status });
   if (r.status !== 401) {
@@ -60,10 +64,14 @@ export async function GET(req: Request) {
 // POST /api/participants  body: { grid, name, surname?, user? }
 export async function POST(req: Request) {
   const body = await req.text();
+  const access = await getAccessToken();
 
   let r = await fetch(`${getApiBaseUrl()}/api/participants/`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(access ? { Authorization: `Bearer ${access}` } : {}),
+    },
     body,
     cache: "no-store",
   });
@@ -73,7 +81,7 @@ export async function POST(req: Request) {
   // Si no es 401, devolvemos tal cual (incluye 400 y 403 de permisos)
   if (r.status !== 401) {
     const txt = await r.text().catch(() => "");
-    let detail: any = txt;
+    let detail: unknown = txt;
     try { detail = JSON.parse(txt); } catch {}
     return NextResponse.json(detail, { status: r.status });
   }
@@ -94,7 +102,7 @@ export async function POST(req: Request) {
   });
 
   const text = await r.text().catch(() => "");
-  let data: any = text; try { data = JSON.parse(text); } catch {}
+  let data: unknown = text; try { data = JSON.parse(text); } catch {}
   const out = NextResponse.json(data, { status: r.status });
   out.cookies.set(ACCESS, tokens.access, withDomain({ ...baseCookie, maxAge: 60 * 15 }));
   out.cookies.set(REFRESH, tokens.refresh ?? refresh!, withDomain({ ...baseCookie, maxAge: 60 * 60 * 24 * 7 }));

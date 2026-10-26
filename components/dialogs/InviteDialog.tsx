@@ -103,6 +103,7 @@ type InvitationRecord = {
 
 const ROLE_RANK: Record<Role, number> = { viewer: 0, editor: 1, supervisor: 2 };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const INITIAL_LOAD_TIMEOUT_MS = 15_000;
 
 function asObject(value: unknown): ApiObject | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -333,13 +334,19 @@ function InviteDialogSession({
     setLoadingData(true);
     setSavedEnabled(null);
     setSavedLink(null);
+    setAccessList([]);
+    setParticipantRecords([]);
     setError(null);
+    const requestController = new AbortController();
+    const abortRequest = () => requestController.abort();
+    signal.addEventListener("abort", abortRequest, { once: true });
+    const timeoutId = window.setTimeout(abortRequest, INITIAL_LOAD_TIMEOUT_MS);
     try {
       const [membersRes, participantsRes, gridRes, invitesRes] = await Promise.all([
-        fetch(`/api/grid_memberships/?grid=${gridId}`, { cache: "no-store", signal }),
-        fetch(`/api/participants?grid=${gridId}`, { cache: "no-store", signal }),
-        fetch(`/api/grids/${gridId}`, { cache: "no-store", signal }),
-        fetch(`/api/invitations/?grid=${gridId}`, { cache: "no-store", signal }),
+        fetch(`/api/grid_memberships/?grid=${gridId}`, { cache: "no-store", signal: requestController.signal }),
+        fetch(`/api/participants?grid=${gridId}`, { cache: "no-store", signal: requestController.signal }),
+        fetch(`/api/grids/${gridId}`, { cache: "no-store", signal: requestController.signal }),
+        fetch(`/api/invitations/?grid=${gridId}`, { cache: "no-store", signal: requestController.signal }),
       ]);
 
       if ([membersRes, participantsRes, gridRes, invitesRes].some((res) => !res.ok)) {
@@ -411,8 +418,11 @@ function InviteDialogSession({
       setSavedEnabled(Boolean(selected));
       setGeneralAccessEnabled(Boolean(selected));
     } catch {
+      requestController.abort();
       if (!signal.aborted) setError(t("invite_dialog.load_failed"));
     } finally {
+      window.clearTimeout(timeoutId);
+      signal.removeEventListener("abort", abortRequest);
       if (!signal.aborted) setLoadingData(false);
     }
   }, [gridId, t]);

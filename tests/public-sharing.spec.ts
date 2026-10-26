@@ -56,6 +56,31 @@ async function assertCopied(page: Page, invite: Invite) {
   expect(resolved.active).toBe(true);
 }
 
+test("new Grid sharing data completes on the first modal open", async ({ page }) => {
+  const resources = newResourceTracker();
+  await ensureAuthenticated(page);
+  try {
+    const grid = await createTestGrid(page, resources, "Immediate sharing");
+    await page.goto(`/grid/${grid.code}`);
+
+    const resourceResponses = Promise.all([
+      page.waitForResponse((response) => response.url().includes(`/api/grid_memberships/?grid=${grid.id}`)),
+      page.waitForResponse((response) => response.url().includes(`/api/participants?grid=${grid.id}`)),
+      page.waitForResponse((response) => response.url().includes(`/api/grids/${grid.id}`)),
+      page.waitForResponse((response) => response.url().includes(`/api/invitations/?grid=${grid.id}`)),
+    ]);
+
+    await share(page).click();
+    await expect(dialog(page)).toBeVisible();
+    const responses = await resourceResponses;
+    expect(responses.every((response) => response.ok())).toBe(true);
+    await expect(dialog(page).getByText(/^(Loading|Cargando)(\.\.\.)?$/)).toHaveCount(0);
+    await expect(activate(page)).toBeEnabled();
+  } finally {
+    await cleanupResources(page, resources);
+  }
+});
+
 test("two owned Grids keep persisted links isolated across copying, revocation and reactivation", async ({ page, context, browser, baseURL }) => {
   const aResources = newResourceTracker();
   const bResources = newResourceTracker();

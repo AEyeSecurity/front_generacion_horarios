@@ -2,7 +2,7 @@ import { apiErrorPayload } from "@/lib/api-error-contract";
 // Proxy for /api/invitations -> NEXT_PUBLIC_API_URL/api/invitations
 import { NextResponse } from "next/server";
 import { getApiBaseUrl } from "@/lib/api-base";
-import { getRefreshToken } from "@/lib/cookies";
+import { getAccessToken, getRefreshToken } from "@/lib/cookies";
 
 const ACCESS = process.env.AUTH_ACCESS_COOKIE!;
 const REFRESH = process.env.AUTH_REFRESH_COOKIE!;
@@ -10,7 +10,7 @@ const DOMAIN = process.env.AUTH_COOKIE_DOMAIN;
 const SECURE = String(process.env.AUTH_COOKIE_SECURE) === "true";
 
 const baseCookie = { httpOnly: true, sameSite: "lax" as const, secure: SECURE, path: "/" } as const;
-const withDomain = <T extends Record<string, any>>(o: T) => (DOMAIN ? { ...o, domain: DOMAIN } : o);
+const withDomain = <T extends Record<string, unknown>>(o: T) => (DOMAIN ? { ...o, domain: DOMAIN } : o);
 
 async function refreshTokens() {
   const refresh = await getRefreshToken();
@@ -29,7 +29,11 @@ async function refreshTokens() {
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const qs = url.searchParams.toString();
-  let r = await fetch(`${getApiBaseUrl()}/api/invitations/${qs ? `?${qs}` : ""}`, { cache: "no-store" });
+  const access = await getAccessToken();
+  let r = await fetch(`${getApiBaseUrl()}/api/invitations/${qs ? `?${qs}` : ""}`, {
+    headers: access ? { Authorization: `Bearer ${access}` } : undefined,
+    cache: "no-store",
+  });
   if (r.ok) return NextResponse.json(await r.json(), { status: r.status });
   if (r.status !== 401) {
     const text = await r.text().catch(() => "error");
@@ -54,16 +58,20 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const body = await req.text();
+  const access = await getAccessToken();
   let r = await fetch(`${getApiBaseUrl()}/api/invitations/`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(access ? { Authorization: `Bearer ${access}` } : {}),
+    },
     body,
     cache: "no-store",
   });
   if (r.ok) return NextResponse.json(await r.json(), { status: r.status });
   if (r.status !== 401) {
     const text = await r.text().catch(() => "");
-    let detail: any = text; try { detail = JSON.parse(text); } catch {}
+    let detail: unknown = text; try { detail = JSON.parse(text); } catch {}
     return NextResponse.json(detail, { status: r.status });
   }
   const refreshed = await refreshTokens();
@@ -80,7 +88,7 @@ export async function POST(req: Request) {
     cache: "no-store",
   });
   const text = await r.text().catch(() => "");
-  let data: any = text; try { data = JSON.parse(text); } catch {}
+  let data: unknown = text; try { data = JSON.parse(text); } catch {}
   const out = NextResponse.json(data, { status: r.status });
   out.cookies.set(ACCESS, tokens.access, withDomain({ ...baseCookie, maxAge: 60 * 15 }));
   out.cookies.set(REFRESH, tokens.refresh ?? refresh!, withDomain({ ...baseCookie, maxAge: 60 * 60 * 24 * 7 }));
