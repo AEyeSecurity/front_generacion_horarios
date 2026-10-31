@@ -47,6 +47,68 @@ function rejectionReason(solve: SolverCandidatesResponse): string {
   return reason;
 }
 
+test("does not poll solve candidates while an idle Grid is open", async ({ page }) => {
+  const resources = newResourceTracker();
+  await ensureAuthenticated(page);
+  try {
+    const grid = await createTestGrid(page, resources, uniqueName("E2E Idle Solver Grid"));
+    let candidateStatusGets = 0;
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (
+        request.method() === "GET" &&
+        url.pathname === `/api/grids/${grid.id}/solve-candidates`
+      ) {
+        candidateStatusGets += 1;
+      }
+    });
+
+    await page.goto(`/grid/${grid.code}`);
+    await expect.poll(() => candidateStatusGets, { timeout: 15_000 }).toBe(1);
+    const initialCount = candidateStatusGets;
+
+    await page.waitForTimeout(30_000);
+    expect(candidateStatusGets).toBe(initialCount);
+  } finally {
+    await cleanupResources(page, resources);
+  }
+});
+
+test("polls an active solve until it reaches a terminal state", async ({ page }) => {
+  const resources = newResourceTracker();
+  await ensureAuthenticated(page);
+  try {
+    const grid = await createTestGrid(page, resources, uniqueName("E2E Active Solver Grid"));
+    let candidateStatusGets = 0;
+
+    await page.route(`**/api/grids/${grid.id}/solve-candidates`, async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+
+      candidateStatusGets += 1;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          grid: grid.id,
+          state: candidateStatusGets < 3 ? "running" : "ready",
+          run_id: 1,
+        }),
+      });
+    });
+
+    await page.goto(`/grid/${grid.code}`);
+    await expect.poll(() => candidateStatusGets, { timeout: 15_000 }).toBe(3);
+    const terminalCount = candidateStatusGets;
+
+    await page.waitForTimeout(7_000);
+    expect(candidateStatusGets).toBe(terminalCount);
+  } finally {
+    await cleanupResources(page, resources);
+  }
+});
+
 test("chooses a solver candidate and exposes the chosen draft", async ({ page }) => {
   const resources = newResourceTracker();
 

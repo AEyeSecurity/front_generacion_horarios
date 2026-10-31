@@ -149,7 +149,7 @@ export default function ParticipantDetailContent({
   initialParticipantTabs = [],
   lazyLoadRules = false,
 }: Props) {
-  const { t } = useI18n();
+  const { t, tp } = useI18n();
   const [displayParticipantName, setDisplayParticipantName] = useState(participantName);
   const [hasParticipantPlacement, setHasParticipantPlacement] = useState(false);
   const [participantLinkedState, setParticipantLinkedState] = useState(participantLinked);
@@ -1934,7 +1934,11 @@ export default function ParticipantDetailContent({
                 {linkedPlacementsLoading
                   ? t("common.loading")
                   : linkedPlacementsCount > 0
-                  ? t("participant_detail.linked_placements_warning", { count: linkedPlacementsCount })
+                  ? tp(
+                      "participant_detail.linked_placements_warning_one",
+                      "participant_detail.linked_placements_warning",
+                      linkedPlacementsCount,
+                    )
                   : t("participant_detail.delete_participant_with_rules")}
               </div>
             </div>

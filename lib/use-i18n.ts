@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useI18nContext } from "@/components/providers/I18nProvider";
-import { t as translate, type I18nKey } from "@/lib/i18n";
+import { selectPluralKey, t as translate, type I18nKey } from "@/lib/i18n";
 import {
   PREFERRED_LANGUAGE_CHANGED_EVENT,
   readDocumentPreferredLanguage,
@@ -14,6 +14,7 @@ type Params = Record<string, string | number>;
 type I18nApi = {
   locale: PreferredLanguage;
   t: (key: I18nKey, params?: Params) => string;
+  tp: (singularKey: I18nKey, pluralKey: I18nKey, count: number, params?: Params) => string;
 };
 
 export function useI18n(): I18nApi {
@@ -54,5 +55,9 @@ export function useI18n(): I18nApi {
     return translate(locale, key, params);
   }, [locale]);
 
-  return { locale, t };
+  const tp = useCallback((singularKey: I18nKey, pluralKey: I18nKey, count: number, params?: Params) => {
+    return translate(locale, selectPluralKey(count, singularKey, pluralKey), { ...params, count });
+  }, [locale]);
+
+  return { locale, t, tp };
 }

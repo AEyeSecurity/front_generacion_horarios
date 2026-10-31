@@ -290,7 +290,7 @@ function InviteDialogSession({
   onOpenChange,
   roleOptions,
 }: InviteDialogProps) {
-  const { t } = useI18n();
+  const { t, tp } = useI18n();
   const allowedRoles = React.useMemo<Role[]>(
     () => (roleOptions && roleOptions.length > 0 ? roleOptions : ["viewer", "editor", "supervisor"]),
     [roleOptions]
@@ -620,7 +620,7 @@ function InviteDialogSession({
     if (failed.length > 0) {
       const firstReason = failed[0]?.reason;
       const reasonMessage = normalizeApiError(firstReason, "");
-      setError(reasonMessage || t("invite_dialog.invites_failed", { count: failed.length }));
+      setError(reasonMessage || tp("invite_dialog.invites_failed_one", "invite_dialog.invites_failed", failed.length));
       setSendingEmails(false);
       return;
     }

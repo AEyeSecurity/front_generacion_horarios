@@ -1,27 +1,84 @@
 name: Playwright Tests
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      backend_ref:
+        description: 'Shift-Backend commit SHA or branch (defaults to E2E_BACKEND_REF or main)'
+        required: false
+        type: string
+permissions:
+  contents: read
 jobs:
   test:
-    timeout-minutes: 60
-    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: Shift-Frontend
+    env:
+      CI: 'true'
+      # Empty means isolated mode. Do not point CI at a hosted application.
+      E2E_BASE_URL: ''
+      E2E_BACKEND_DIR: '../Shift-Backend'
+      E2E_PYTHON: 'python'
+      NEXT_PUBLIC_API_URL: 'http://127.0.0.1:18000'
+      AUTH_ACCESS_COOKIE: 'access'
+      AUTH_REFRESH_COOKIE: 'refresh'
+      AUTH_COOKIE_DOMAIN: ''
+      AUTH_COOKIE_SECURE: 'false'
+      E2E_EMAIL: 'e2e-owner@example.invalid'
+      E2E_PASSWORD: 'Shift-E2E-owner-123!'
+      E2E_SOLVER_REVIEWER_PASSWORD: 'Shift-E2E-reviewer-123!'
+      NEXT_TELEMETRY_DISABLED: '1'
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
-      with:
-        node-version: lts/*
-    - name: Install dependencies
-      run: npm ci
-    - name: Install Playwright Browsers
-      run: npx playwright install --with-deps
-    - name: Run Playwright tests
-      run: npx playwright test
-    - uses: actions/upload-artifact@v4
-      if: ${{ !cancelled() }}
-      with:
-        name: playwright-report
-        path: playwright-report/
-        retention-days: 30
+      - uses: actions/checkout@v7
+        with:
+          path: Shift-Frontend
+          persist-credentials: false
+      - name: Checkout matching backend
+        uses: actions/checkout@v7
+        with:
+          repository: ShiftScheduler/Shift-Backend
+          ref: ${{ inputs.backend_ref || vars.E2E_BACKEND_REF || 'main' }}
+          path: Shift-Backend
+          token: ${{ secrets.E2E_REPO_READ_TOKEN || github.token }}
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+          cache: pip
+          cache-dependency-path: Shift-Backend/requirements-e2e.txt
+      - name: Install backend dependencies
+        run: python -m pip install -r ../Shift-Backend/requirements-e2e.txt
+      - name: Verify database isolation settings
+        run: python ../Shift-Backend/scripts/test_e2e_settings.py
+      - name: Record tested revisions
+        run: |
+          git rev-parse HEAD
+          git -C ../Shift-Backend rev-parse HEAD
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.20.0'
+          cache: npm
+          cache-dependency-path: Shift-Frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Build isolated Next.js frontend
+        run: npm run e2e:build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Migrate, seed, start services and run Chromium
+        # webServer owns both processes and waits for HTTP readiness, no sleeps.
+        run: npm run e2e:test
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: |
+            Shift-Frontend/playwright-report/
+            Shift-Frontend/test-results/
+          retention-days: 14

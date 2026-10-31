@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useMemo, useState } from "react";
 import { getAvatarInitials, getAvatarPalette } from "@/lib/avatar";
+import { formatRelativeTime } from "@/lib/date-time";
 import type { PreferredLanguage } from "@/lib/language";
 
 type PlacementCommentBubbleProps = {
@@ -18,29 +19,6 @@ type PlacementCommentBubbleProps = {
   justNowLabel: string;
   fallbackAuthorLabel: string;
 };
-
-function formatRelativeTime(createdAt: string | null | undefined, locale: PreferredLanguage, justNowLabel: string) {
-  if (!createdAt) return "";
-  const timestamp = new Date(createdAt).getTime();
-  if (!Number.isFinite(timestamp)) return "";
-
-  const diffMs = timestamp - Date.now();
-  const absSeconds = Math.abs(diffMs) / 1000;
-  if (absSeconds < 45) return justNowLabel;
-
-  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-    ["year", 60 * 60 * 24 * 365],
-    ["month", 60 * 60 * 24 * 30],
-    ["week", 60 * 60 * 24 * 7],
-    ["day", 60 * 60 * 24],
-    ["hour", 60 * 60],
-    ["minute", 60],
-  ];
-
-  const [unit, secondsPerUnit] = units.find(([, seconds]) => absSeconds >= seconds) ?? ["minute", 60];
-  const value = Math.round(diffMs / 1000 / secondsPerUnit);
-  return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(value, unit);
-}
 
 function CommentAvatar({
   name,
@@ -95,7 +73,7 @@ export default function PlacementCommentBubble({
     String(currentUserId) === String(authorId);
   const displayName = isMine ? youLabel : (authorName?.trim() || fallbackAuthorLabel);
   const avatarUrl = authorAvatarUrl || (isMine ? currentUserAvatarUrl : null);
-  const relativeTime = formatRelativeTime(createdAt, locale, justNowLabel);
+  const relativeTime = formatRelativeTime(createdAt, locale, { justNowLabel });
 
   return (
     <div className={`flex w-full items-start gap-3 py-1 ${isMine ? "justify-end" : "justify-start"}`}>

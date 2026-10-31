@@ -18,6 +18,7 @@ import {
   getAvatarSeed,
   getAvatarSource,
 } from "@/lib/avatar";
+import { formatRelativeTime } from "@/lib/date-time";
 import { useI18n } from "@/lib/use-i18n";
 
 type InviteStatus = "pending" | "accepted" | "declined" | "expired";
@@ -271,29 +272,6 @@ function createdAtFromInvite(inv: Invite): Date | null {
   return d;
 }
 
-function relativeTimeFromInvite(inv: Invite): string {
-  const d = createdAtFromInvite(inv);
-  if (!d) return "";
-
-  const diff = Date.now() - d.getTime();
-  if (diff < 60_000) return "less than a minute ago";
-
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes === 1) return "a minute ago";
-  if (minutes < 60) return `${minutes} minutes ago`;
-
-  const hours = Math.floor(minutes / 60);
-  if (hours === 1) return "an hour ago";
-  if (hours < 24) return `${hours} hours ago`;
-
-  const days = Math.floor(hours / 24);
-  if (days >= 30) return "a month ago";
-  if (days >= 14) return `${Math.floor(days / 7)} weeks ago`;
-  if (days >= 7) return "a week ago";
-  if (days === 1) return "a day ago";
-  return `${days} days ago`;
-}
-
 function isWithinLastMonth(inv: Invite): boolean {
   const d = createdAtFromInvite(inv);
   if (!d) return true;
@@ -409,7 +387,7 @@ function normalizeAcceptInviteResponse(data: unknown): AcceptInviteResponse {
 }
 
 export default function InvitesMenu({ me }: { me: User }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const router = useRouter();
   const [items, setItems] = useState<Invite[]>([]);
   const [open, setOpen] = useState(false);
@@ -693,7 +671,7 @@ export default function InvitesMenu({ me }: { me: User }) {
               const initials = getAvatarInitials(fallbackName);
               const palette = getAvatarPalette(getAvatarSeed(sender));
               const gridName = inv.grid_name ?? inv.grid?.name ?? t("invites_menu.unknown_grid");
-              const sentAgo = relativeTimeFromInvite(inv);
+              const sentAgo = formatRelativeTime(inv.created_at, locale);
 
               return (
                 <div

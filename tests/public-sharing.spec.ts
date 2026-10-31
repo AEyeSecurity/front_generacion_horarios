@@ -64,11 +64,15 @@ test("new Grid sharing data completes on the first modal open", async ({ page })
     await page.goto(`/grid/${grid.code}`);
 
     const resourceResponses = Promise.all([
-      page.waitForResponse((response) => response.url().includes(`/api/grid_memberships/?grid=${grid.id}`)),
-      page.waitForResponse((response) => response.url().includes(`/api/participants?grid=${grid.id}`)),
-      page.waitForResponse((response) => response.url().includes(`/api/grids/${grid.id}`)),
-      page.waitForResponse((response) => response.url().includes(`/api/invitations/?grid=${grid.id}`)),
-    ]);
+      '/api/grid_memberships', '/api/participants', `/api/grids/${grid.id}`, '/api/invitations',
+    ].map((path) => page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      // Inspect the final response, not Next's trailing-slash redirect or a
+      // different /grids/:id/* resource. Errors still fail the assertion below.
+      return url.pathname.replace(/\/$/, '') === path &&
+        (path === `/api/grids/${grid.id}` || url.searchParams.get('grid') === String(grid.id)) &&
+        (response.status() < 300 || response.status() >= 400);
+    })));
 
     await share(page).click();
     await expect(dialog(page)).toBeVisible();
@@ -122,7 +126,8 @@ test("two owned Grids keep persisted links isolated across copying, revocation a
     expect((await anonymous.request.post("/api/invitations/revoke-links/", { data: { grid: a.id } })).status()).toBe(401);
     await deactivate(page).click();
     // A long-open modal can outlive its access token; the BFF must refresh it.
-    const accessCookie = (await context.cookies()).find((cookie) => cookie.name.endsWith("_access"));
+    const accessCookie = (await context.cookies()).find((cookie) =>
+      process.env.AUTH_ACCESS_COOKIE ? cookie.name === process.env.AUTH_ACCESS_COOKIE : cookie.name.endsWith("_access"));
     expect(accessCookie).toBeTruthy();
     await context.addCookies([{ ...accessCookie!, value: "expired-access-token" }]);
     await save(page).click();

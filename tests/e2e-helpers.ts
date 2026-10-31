@@ -17,14 +17,8 @@ export type TestResources = {
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
-export const TEST_EMAIL =
-  process.env.E2E_EMAIL ??
-  process.env.PLAYWRIGHT_EMAIL ??
-  "pedrodiazromagnoli@gmail.com";
-export const TEST_PASSWORD =
-  process.env.E2E_PASSWORD ??
-  process.env.PLAYWRIGHT_PASSWORD ??
-  "littledrops";
+export const TEST_EMAIL = process.env.E2E_EMAIL ?? process.env.PLAYWRIGHT_EMAIL ?? "";
+export const TEST_PASSWORD = process.env.E2E_PASSWORD ?? process.env.PLAYWRIGHT_PASSWORD ?? "";
 
 export function newResourceTracker(): TestResources {
   return {

@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { formatSlotRange } from "@/lib/schedule";
+import { formatArgentineDateTime } from "@/lib/date-time";
 import {
   Dialog,
   DialogContent,
@@ -1360,7 +1361,7 @@ export default function SolveOverlay({
   historyGridCode = null,
   unitNature = null,
 }: Props) {
-  const { t, locale } = useI18n();
+  const { t, tp, locale } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
   const [hasCells, setHasCells] = useState(false);
@@ -1621,16 +1622,25 @@ export default function SolveOverlay({
     useSolverRun(gridId, canSolve && scheduleViewMode === "draft");
   const [solveProgressOpen, setSolveProgressOpen] = useState(false);
   const solverRunning = isSolving || serverRun?.state === "running";
+  const previousSolverExternalRefreshTick = useRef(externalRefreshTick);
   const notifyDraftMutation = useCallback((notice: DraftMutationNotice = {}) => {
     if (historyMode) return;
     if (scheduleViewMode !== "draft") return;
 
     invalidatePlacementPreviewCacheForSchedule(gridId, currentSchedule?.id);
-    void refreshSolverRun();
+    // Full draft refreshes advance externalRefreshTick. Local-only placement
+    // updates do not, so refresh solver state directly only for that path.
+    if (notice.requiresContextRefresh === false || !onDraftMutated) {
+      void refreshSolverRun();
+    }
     onDraftMutated?.(notice);
   }, [currentSchedule?.id, gridId, historyMode, onDraftMutated, scheduleViewMode, refreshSolverRun]);
 
-  useEffect(() => { void refreshSolverRun(); }, [externalRefreshTick, refreshSolverRun]);
+  useEffect(() => {
+    if (previousSolverExternalRefreshTick.current === externalRefreshTick) return;
+    previousSolverExternalRefreshTick.current = externalRefreshTick;
+    void refreshSolverRun();
+  }, [externalRefreshTick, refreshSolverRun]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -4186,10 +4196,10 @@ export default function SolveOverlay({
       }
     } catch (e: any) {
       setError(normalizeApiError(e, t("solve_overlay.solver_error")));
+      await refreshSolverRun();
     } finally {
       setPrecheckBusy(false);
       setIsSolving(false);
-      await refreshSolverRun();
     }
   }
 
@@ -4243,7 +4253,6 @@ export default function SolveOverlay({
         window.localStorage.setItem(solveSignatureStorageKey, pendingSolveSignature);
       }
       clearResolvedCandidateRun();
-      await refreshSolverRun();
       notifyDraftMutation({ draftHistory: readDraftHistoryPayload(chosen) });
     } catch (e: any) {
       setCandidateError(normalizeApiError(e, t("solve_overlay.could_not_choose_candidate")));
@@ -10184,7 +10193,7 @@ export default function SolveOverlay({
                           ? t("solve_overlay.version_with_number", { version: entry.publishedVersion })
                           : t("solve_overlay.published_snapshot_with_index", { index: publishedHistorySchedules.length - idx });
                       const createdLabel = entry.createdAt
-                        ? new Date(entry.createdAt).toLocaleString()
+                        ? formatArgentineDateTime(entry.createdAt, locale)
                         : t("solve_overlay.no_timestamp");
                       const placementsCount = Array.isArray(entry.schedule.placements)
                         ? entry.schedule.placements.length
@@ -10207,7 +10216,7 @@ export default function SolveOverlay({
                           <div className="text-sm font-medium text-gray-900">{versionLabel}</div>
                           <div className="mt-1 text-xs text-gray-500">{createdLabel}</div>
                           <div className="mt-1 text-xs text-gray-600">
-                            {t("solve_overlay.placements_count", { count: placementsCount })}
+                            {tp("solve_overlay.placements_count_one", "solve_overlay.placements_count", placementsCount)}
                           </div>
                         </button>
                       );
@@ -10440,10 +10449,10 @@ export default function SolveOverlay({
                       )}
                       <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
                         <span className="rounded border border-gray-200 bg-gray-50 px-2 py-1">
-                          {t("solve_overlay.placements_count", { count: scheduleCount })}
+                          {tp("solve_overlay.placements_count_one", "solve_overlay.placements_count", scheduleCount)}
                         </span>
                         <span className="rounded border border-gray-200 bg-gray-50 px-2 py-1">
-                          {t("solve_overlay.violations_count", { count: violationCount })}
+                          {tp("solve_overlay.violations_count_one", "solve_overlay.violations_count", violationCount)}
                         </span>
                         {runtimeMs != null && (
                           <span className="rounded border border-gray-200 bg-gray-50 px-2 py-1">

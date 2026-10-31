@@ -498,7 +498,7 @@ export default function EditCellDialog({
   onOpenChange: (v: boolean) => void;
   onSaved?: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, tp } = useI18n();
   const requestClose = React.useCallback(() => {
     onOpenChange(false);
   }, [onOpenChange]);
@@ -1409,7 +1409,11 @@ export default function EditCellDialog({
       return;
     }
     if (maxDurationCellsAllowed != null && durationCellsSafe > maxDurationCellsAllowed) {
-      setErr(`Duration cannot exceed ${maxDurationCellsAllowed} cells for the selected horizon.`);
+      setErr(tp(
+        "create_cell.duration_exceeds_horizon_one",
+        "create_cell.duration_exceeds_horizon",
+        maxDurationCellsAllowed,
+      ));
       return;
     }
     setSaving(true);
@@ -1939,7 +1943,7 @@ export default function EditCellDialog({
                             className="absolute -translate-x-1/2 text-[11px] text-gray-600 whitespace-nowrap"
                             style={{ left: `${segment.centerPct}%` }}
                           >
-                            {t("create_cell.split_preview_compact", {
+                            {tp("create_cell.split_preview_compact_one", "create_cell.split_preview_compact", segment.cells, {
                               cells: segment.cells,
                               minutes: segment.minutes,
                             })}

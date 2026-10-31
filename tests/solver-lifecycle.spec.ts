@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { cleanupResources, createMinimalCell, createParticipant, createTestGrid, createTimeRange,
   ensureAuthenticated, newResourceTracker, requestJson } from "./e2e-helpers";
 
-// Run against scripts/api-contract-backend.py, which provisions this second supervisor.
+// The isolated backend provisions the second user; this test grants Grid membership.
 test.skip(!process.env.E2E_SOLVER_REVIEWER_PASSWORD, "Requires disposable two-user backend");
 test.setTimeout(180_000);
 
@@ -56,13 +56,13 @@ test("pending candidates survive interruptions, resolve across users, and expire
     await expect(current.getByTestId("solve-pending-badge")).toBeVisible();
     await current.getByTestId("solve-dock-button").click();
     await expect(current.getByRole("button", { name: /Close and reject|Cerrar y rechazar/i })).toHaveCount(0);
-    await expect(current.getByTitle(/Reject all candidates|Rechazar todos los candidatos/i)).toBeVisible();
+    await expect(current.getByTitle(/Reject all candidates|Rechazar todas las candidaturas/i)).toBeVisible();
 
     await other.goto(`/grid/${grid.code}`);
     await expect(other.getByTestId("solve-pending-badge")).toBeVisible();
     await other.getByTestId("solve-dock-button").click();
     other.once("dialog", (dialog) => dialog.accept());
-    await other.getByTitle(/Reject all candidates|Rechazar todos los candidatos/i).click();
+    await other.getByTitle(/Reject all candidates|Rechazar todas las candidaturas/i).click();
     await expect.poll(async () => (await status()).state).toBe("rejected");
     await expect(current.getByTestId("solve-pending-badge")).toHaveCount(0);
     await expect(current.getByTestId("solve-dock-button")).toBeEnabled();

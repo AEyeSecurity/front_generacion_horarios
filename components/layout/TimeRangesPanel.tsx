@@ -104,7 +104,7 @@ export default function TimeRangesPanel({
   dayStartMin?: number;
   dayEndMin?: number;
 }) {
-  const { t } = useI18n();
+  const { t, tp } = useI18n();
   const [items, setItems] = useState<TimeRange[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -544,7 +544,9 @@ export default function TimeRangesPanel({
                       <span className="truncate font-medium text-gray-800">{segment.name}</span>
                       <span className="text-gray-500">{`${segment.start}-${segment.end}`}</span>
                       <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600">
-                        {placementCount != null ? t("time_ranges.cells_count", { count: placementCount }) : "—"}
+                        {placementCount != null
+                          ? tp("time_ranges.cells_count_one", "time_ranges.cells_count", placementCount)
+                          : "—"}
                       </span>
                       <span className="text-gray-500">{formatPercent(segment.ratio)}</span>
                     </div>

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { TEST_EMAIL, TEST_PASSWORD } from "./e2e-helpers";
 
 const AUTH_STATE_PATH = "playwright/.auth/user.json";
@@ -7,6 +7,8 @@ const AUTH_STATE_PATH = "playwright/.auth/user.json";
 test.use({ storageState: { cookies: [], origins: [] } });
 
 test("authenticates and stores browser session", async ({ page }) => {
+  rmSync(AUTH_STATE_PATH, { force: true });
+  if (!TEST_EMAIL || !TEST_PASSWORD) throw new Error("Set E2E_EMAIL and E2E_PASSWORD for the external test environment.");
   const loginResponse = await test.step("log in through the auth API", async () =>
     page.request.post("/api/auth/login", {
       data: {
@@ -31,6 +33,16 @@ test("authenticates and stores browser session", async ({ page }) => {
     await expect(page.locator("body")).toContainText(/Dashboard|Tablero|Proyectos|Projects/i, {
       timeout: 20_000,
     });
+  });
+
+  await test.step("verify the BFF refresh cookie and persisted identity", async () => {
+    const refreshed = await page.request.post("/api/auth/refresh");
+    expect(refreshed.ok()).toBeTruthy();
+    const me = await page.request.get("/api/whoami");
+    expect(me.ok()).toBeTruthy();
+    expect((await me.json()).email).toBe(TEST_EMAIL);
+    const cookies = await page.context().cookies();
+    expect(cookies.some((cookie) => cookie.httpOnly)).toBeTruthy();
   });
 
   mkdirSync("playwright/.auth", { recursive: true });

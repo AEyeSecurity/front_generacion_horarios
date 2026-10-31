@@ -631,9 +631,8 @@ export default function GridSolverSettingsForm({
   const heatmapBudgetExceeded = heatmapUpgradeSum > heatmapBudget;
   const heatmapBudgetRatio = heatmapBudget > 0 ? Math.min(1, heatmapUpgradeSum / heatmapBudget) : 0;
   const heatmapBudgetExceededMessage = useMemo(
-    () =>
-      `Heatmap budget exceeded: you used ${heatmapUpgradeSum} upgrade points, max allowed is ${heatmapBudget} for ${enabledDaysCount} days.`,
-    [enabledDaysCount, heatmapBudget, heatmapUpgradeSum],
+    () => t("grid_settings.heatmap_budget_exceeded", { used: heatmapUpgradeSum, max: heatmapBudget }),
+    [heatmapBudget, heatmapUpgradeSum, t],
   );
 
   const toTimeRangeDraft = useCallback(

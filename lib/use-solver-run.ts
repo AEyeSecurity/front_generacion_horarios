@@ -14,55 +14,138 @@ export type SolverRunState = {
   [key: string]: unknown;
 };
 
-/** Server state is shared across users. Connectivity loss never resolves a run. */
+type CachedSolverRun = { run: SolverRunState; fetchedAt: number };
+
+const INITIAL_CACHE_TTL_MS = 5_000;
+const ACTIVE_RUN_POLL_MS = 3_000;
+const solverRunCache = new Map<string, CachedSolverRun>();
+const solverRunInflight = new Map<string, Promise<SolverRunState>>();
+
+function validateSolverRun(gridId: string | number, value: unknown): SolverRunState {
+  const run = value as SolverRunState;
+  if (
+    !run ||
+    String(run.grid) !== String(gridId) ||
+    !["idle", "running", "ready", "failed", "chosen", "rejected"].includes(run.state)
+  ) {
+    throw new Error("Invalid run status");
+  }
+  return run;
+}
+
+async function requestSolverRun(gridId: string | number): Promise<SolverRunState> {
+  const key = String(gridId);
+  const pending = solverRunInflight.get(key);
+  if (pending) return pending;
+
+  const request = (async () => {
+    const response = await authFetch(`/api/grids/${encodeURIComponent(key)}/solve-candidates`, {
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error("Run status unavailable");
+    const run = validateSolverRun(gridId, await response.json());
+    solverRunCache.set(key, { run, fetchedAt: Date.now() });
+    return run;
+  })().finally(() => {
+    if (solverRunInflight.get(key) === request) solverRunInflight.delete(key);
+  });
+
+  solverRunInflight.set(key, request);
+  return request;
+}
+
+function readFreshSolverRun(gridId: string | number): SolverRunState | null {
+  const cached = solverRunCache.get(String(gridId));
+  if (!cached || Date.now() - cached.fetchedAt > INITIAL_CACHE_TTL_MS) return null;
+  return cached.run;
+}
+
+/** Server state is shared across users. Only an explicitly running solve is polled. */
 export function useSolverRun(gridId: string | number, enabled: boolean) {
+  const gridKey = String(gridId);
   const [snapshot, setSnapshot] = useState<{ grid: string; run: SolverRunState } | null>(null);
   const [disconnected, setDisconnected] = useState(false);
-  const lifetime = useRef<AbortController | null>(null);
   const sequence = useRef(0);
+
   const refresh = useCallback(async () => {
-    const signal = lifetime.current?.signal;
-    if (!enabled || !signal || signal.aborted) return null;
+    if (!enabled) return null;
     const request = ++sequence.current;
     try {
-      const response = await authFetch(`/api/grids/${gridId}/solve-candidates`, { cache: "no-store", signal });
-      if (!response.ok) throw new Error("Run status unavailable");
-      const run = await response.json() as SolverRunState;
-      if (String(run.grid) !== String(gridId) || !["idle", "running", "ready", "failed", "chosen", "rejected"].includes(run.state)) {
-        throw new Error("Invalid run status");
-      }
-      if (signal.aborted || request !== sequence.current) return null;
-      setSnapshot({ grid: String(gridId), run });
+      const run = await requestSolverRun(gridId);
+      if (request !== sequence.current) return null;
+      setSnapshot({ grid: gridKey, run });
       setDisconnected(false);
       return run;
     } catch {
-      if (!signal.aborted && request === sequence.current) setDisconnected(true);
+      if (request === sequence.current) setDisconnected(true);
       return null;
     }
-  }, [enabled, gridId]);
+  }, [enabled, gridId, gridKey]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    lifetime.current = controller;
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      await refresh();
-      if (!controller.signal.aborted) timer = setTimeout(poll, 3000);
+    if (!enabled) return;
+    let active = true;
+    const loadInitial = async () => {
+      const cached = readFreshSolverRun(gridId);
+      if (!cached) {
+        await refresh();
+        return;
+      }
+      // Keep cached hydration asynchronous, like the network-backed path.
+      await Promise.resolve();
+      if (!active) return;
+      setSnapshot({ grid: gridKey, run: cached });
+      setDisconnected(false);
     };
-    if (enabled) void poll();
-    const wake = () => { if (document.visibilityState === "visible") void refresh(); };
+    void loadInitial();
+    return () => {
+      active = false;
+      sequence.current += 1;
+    };
+  }, [enabled, gridId, gridKey, refresh]);
+
+  const run = snapshot?.grid === gridKey ? snapshot.run : null;
+
+  useEffect(() => {
+    if (!enabled || run?.state !== "running") return;
+
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const clearTimer = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+    };
+    const schedule = () => {
+      clearTimer();
+      if (active && document.visibilityState === "visible") {
+        timer = setTimeout(() => void poll(), ACTIVE_RUN_POLL_MS);
+      }
+    };
+    const poll = async () => {
+      if (!active || document.visibilityState !== "visible") return;
+      const latest = await refresh();
+      if (active && latest?.state === "running") schedule();
+    };
+    const wake = () => {
+      if (document.visibilityState !== "visible") {
+        clearTimer();
+        return;
+      }
+      void poll();
+    };
+
+    schedule();
     window.addEventListener("online", wake);
     window.addEventListener("focus", wake);
     document.addEventListener("visibilitychange", wake);
     return () => {
-      controller.abort();
-      clearTimeout(timer);
+      active = false;
+      clearTimer();
       window.removeEventListener("online", wake);
       window.removeEventListener("focus", wake);
       document.removeEventListener("visibilitychange", wake);
     };
-  }, [enabled, refresh]);
+  }, [enabled, refresh, run?.state]);
 
-  const run = snapshot?.grid === String(gridId) ? snapshot.run : null;
   return { run, disconnected, checking: enabled && !run, refresh };
 }

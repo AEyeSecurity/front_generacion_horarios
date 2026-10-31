@@ -96,7 +96,7 @@ test("cell bootstrap and schedule lifecycle cross the real BFF and Django contra
     await page.goto(`/grid/${grid.code}/categories`);
     await expect(page.getByText("Contract category", { exact: true }).first()).toBeVisible();
     await page.goto(`/grid/${grid.code}`);
-    await page.locator('[data-onboarding-target="left-dock-time-ranges"]').click();
+    await page.getByRole("button", { name: /^(Time Ranges|Rangos horarios)$/i }).click();
     await expect(page.getByText("Contract range", { exact: true }).first()).toBeVisible();
 
     const precheck = await requestJson<{ ok: boolean }>(page, "POST", `${base}/precheck`, {});

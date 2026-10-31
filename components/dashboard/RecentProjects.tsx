@@ -5,6 +5,7 @@ import Link from "next/link";
 import { List as ListIcon, Grid as GridIcon, ArrowDownAZ, Clock4, Search, User } from "lucide-react";
 import type { Grid } from "@/lib/types";
 import { getAvatarInitials, getAvatarPalette, getAvatarSeed } from "@/lib/avatar";
+import { formatArgentineDate } from "@/lib/date-time";
 import { useI18n } from "@/lib/use-i18n";
 import EmptyState from "@/components/ui/EmptyState";
 
@@ -396,7 +397,7 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
               <DayBadges days={g.days_enabled || []} align="center" splitWeekends={shouldWrapWeekends} />
               <div className="mt-1 text-xs text-gray-600 flex items-center justify-between">
                 <span>{g.creator === meId ? t("recent_projects.by_you") : ownerByGrid[g.id] || ""}</span>
-                <span>{new Date(g.created_at).toLocaleDateString()}</span>
+                <span>{formatArgentineDate(g.created_at)}</span>
               </div>
             </Link>
           ))}
@@ -418,7 +419,7 @@ export default function RecentProjects({ meId, initialItems }: { meId: number; i
                   <DayBadges days={g.days_enabled || []} align="left" />
                 </div>
                 <div className="col-span-3 truncate">{g.creator === meId ? t("recent_projects.you") : ownerByGrid[g.id] || ""}</div>
-                <div className="col-span-3 text-right text-gray-600 text-xs">{new Date(g.created_at).toLocaleDateString()}</div>
+                <div className="col-span-3 text-right text-gray-600 text-xs">{formatArgentineDate(g.created_at)}</div>
               </Link>
             ))}
           </div>

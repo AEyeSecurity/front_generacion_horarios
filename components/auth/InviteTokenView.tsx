@@ -5,6 +5,7 @@ import { LocalizedApiError, normalizeApiError } from "@/lib/api-errors";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { formatArgentineDateTime } from "@/lib/date-time";
 import { useI18n } from "@/lib/use-i18n";
 
 type Id = number | string;
@@ -277,7 +278,7 @@ function invitedEmailFromResolved(resolved: ResolveData | null): string {
 }
 
 export default function InviteTokenView({ token }: { token: string }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
@@ -617,7 +618,7 @@ export default function InviteTokenView({ token }: { token: string }) {
               {statusTag.label}
             </span>
           </div>
-          {resolved.expires_at && <div><span className="text-gray-500">{t("invite_token.expires")}</span> {new Date(resolved.expires_at).toLocaleString()}</div>}
+          {resolved.expires_at && <div><span className="text-gray-500">{t("invite_token.expires")}</span> {formatArgentineDateTime(resolved.expires_at, locale)}</div>}
           {isPendingStatus && (
             <button
               type="button"

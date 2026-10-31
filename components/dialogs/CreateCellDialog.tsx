@@ -309,7 +309,7 @@ export default function CreateCellDialog({
   onOpenChange: (v: boolean) => void;
   onCreated?: () => void | Promise<void>;
 }) {
-  const { t } = useI18n();
+  const { t, tp } = useI18n();
   const [step, setStep] = React.useState<number>(1);
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
@@ -947,7 +947,11 @@ export default function CreateCellDialog({
       return;
     }
     if (maxDurationCellsAllowed != null && durationCellsSafe > maxDurationCellsAllowed) {
-      setErr(`Duration cannot exceed ${maxDurationCellsAllowed} cells for the selected horizon.`);
+      setErr(tp(
+        "create_cell.duration_exceeds_horizon_one",
+        "create_cell.duration_exceeds_horizon",
+        maxDurationCellsAllowed,
+      ));
       return;
     }
     setSaving(true);
@@ -1380,7 +1384,7 @@ export default function CreateCellDialog({
                               className="absolute -translate-x-1/2 text-[11px] text-gray-600 whitespace-nowrap"
                               style={{ left: `${segment.centerPct}%` }}
                             >
-                              {t("create_cell.split_preview_compact", {
+                              {tp("create_cell.split_preview_compact_one", "create_cell.split_preview_compact", segment.cells, {
                                 cells: segment.cells,
                                 minutes: segment.minutes,
                               })}
