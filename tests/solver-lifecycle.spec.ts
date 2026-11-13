@@ -28,6 +28,16 @@ test("pending candidates survive interruptions, resolve across users, and expire
     const url = `/api/grids/${grid.id}/solve-candidates`;
     const status = () => requestJson<{ state: string; run_id: number; rejection_reason: string }>(other, "GET", url);
     const solve = () => requestJson<{ run_id: number; selectable_candidate_indexes: number[] }>(other, "POST", url, { solver_params: {} }, { timeout: 120_000 });
+    const focusAndSynchronize = async () => {
+      await other.bringToFront();
+      const refreshed = current.waitForResponse((response) =>
+        response.request().method() === "GET" && response.url().endsWith(url),
+      );
+      await current.bringToFront();
+      // Headless Chromium does not emit window focus across browser contexts.
+      await current.evaluate(() => window.dispatchEvent(new FocusEvent("focus")));
+      expect((await refreshed).ok()).toBeTruthy();
+    };
     await page.goto(`/grid/${grid.code}`);
     const dock = page.getByTestId("solve-dock-button");
     await expect(dock).toBeEnabled();
@@ -64,11 +74,13 @@ test("pending candidates survive interruptions, resolve across users, and expire
     other.once("dialog", (dialog) => dialog.accept());
     await other.getByTitle(/Reject all candidates|Rechazar todas las candidaturas/i).click();
     await expect.poll(async () => (await status()).state).toBe("rejected");
+    await focusAndSynchronize();
     await expect(current.getByTestId("solve-pending-badge")).toHaveCount(0);
     await expect(current.getByTestId("solve-dock-button")).toBeEnabled();
     await expect(other.getByText(/Candidates rejected\. Adjust|Candidatos rechazados\./)).toHaveCount(0);
 
     const next = await solve();
+    await focusAndSynchronize();
     await expect(current.getByTestId("solve-pending-badge")).toBeVisible();
     await current.getByTestId("solve-dock-button").click();
     await current.getByTitle(/Choose this candidate|Elegir este candidato/i).click();
@@ -76,9 +88,11 @@ test("pending candidates survive interruptions, resolve across users, and expire
     await expect(current.getByTestId("solve-dock-button")).toBeEnabled();
     expect(next.run_id).toBeTruthy();
     const pending = await solve();
+    await focusAndSynchronize();
     await expect(current.getByTestId("solve-pending-badge")).toBeVisible();
     await requestJson(other, "PATCH", `/api/grids/${grid.id}`, { day_end: "13:00:00" });
     await expect.poll(async () => (await status()).rejection_reason).toBe("input_changed");
+    await focusAndSynchronize();
     await expect(current.getByTestId("solve-pending-badge")).toHaveCount(0);
     await expect(current.getByTestId("solve-dock-button")).toBeEnabled();
     const stale = await other.request.post(`${url}/${pending.run_id}/choose`, { data: { candidate_index: 0 } });

@@ -221,7 +221,7 @@ test("loading, failed reads and late responses never masquerade as saved sharing
       status: 503, contentType: "application/json", body: '{"code":"UPSTREAM_UNAVAILABLE"}',
     }));
     await share(page).click();
-    await expect(dialog(page).getByText(/Could not load sharing data|No se pudo cargar la informacion para compartir/i).first()).toBeVisible();
+    await expect(dialog(page).getByText(/Could not load sharing data|No se pudo cargar la información para compartir/i).first()).toBeVisible();
     await expect(activate(page)).toBeDisabled();
     await expect(save(page)).toBeDisabled();
     await expect(copy(page)).toBeDisabled();
